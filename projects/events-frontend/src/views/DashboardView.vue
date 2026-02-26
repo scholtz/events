@@ -78,9 +78,7 @@ function statusBadgeClass(status: string): string {
                   event.title
                 }}</RouterLink>
               </td>
-              <td>{{
-                categories.getCategoryBySlug(event.category)?.name ?? event.category
-              }}</td>
+              <td>{{ categories.getCategoryBySlug(event.category)?.name ?? event.category }}</td>
               <td>{{ formatDate(event.date) }}</td>
               <td>
                 <span class="badge" :class="statusBadgeClass(event.status)">
@@ -88,10 +86,7 @@ function statusBadgeClass(status: string): string {
                 </span>
               </td>
               <td>
-                <button
-                  class="btn btn-danger btn-sm"
-                  @click="eventsStore.deleteEvent(event.id)"
-                >
+                <button class="btn btn-danger btn-sm" @click="eventsStore.deleteEvent(event.id)">
                   Delete
                 </button>
               </td>
@@ -106,7 +101,7 @@ function statusBadgeClass(status: string): string {
 
     <div v-else class="card login-prompt">
       <p>You need to be logged in to access the dashboard.</p>
-      <button class="btn btn-primary" @click="auth.loginAsUser()">Log In</button>
+      <RouterLink to="/login" class="btn btn-primary">Log In</RouterLink>
     </div>
   </div>
 </template>

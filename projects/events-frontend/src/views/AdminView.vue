@@ -111,10 +111,7 @@ function addCategory() {
                   >
                     Reject
                   </button>
-                  <button
-                    class="btn btn-danger btn-sm"
-                    @click="eventsStore.deleteEvent(event.id)"
-                  >
+                  <button class="btn btn-danger btn-sm" @click="eventsStore.deleteEvent(event.id)">
                     Delete
                   </button>
                 </td>
@@ -170,13 +167,12 @@ function addCategory() {
                   <span class="color-dot" :style="{ background: cat.color }"></span>
                 </td>
                 <td>{{ cat.name }}</td>
-                <td><code>{{ cat.slug }}</code></td>
+                <td>
+                  <code>{{ cat.slug }}</code>
+                </td>
                 <td>{{ cat.description }}</td>
                 <td>
-                  <button
-                    class="btn btn-danger btn-sm"
-                    @click="categories.deleteCategory(cat.id)"
-                  >
+                  <button class="btn btn-danger btn-sm" @click="categories.deleteCategory(cat.id)">
                     Delete
                   </button>
                 </td>
@@ -189,7 +185,7 @@ function addCategory() {
 
     <div v-else class="card login-prompt">
       <p>You need admin privileges to access this page.</p>
-      <button class="btn btn-primary" @click="auth.loginAsAdmin()">Admin Login</button>
+      <RouterLink to="/login" class="btn btn-primary">Login</RouterLink>
     </div>
   </div>
 </template>

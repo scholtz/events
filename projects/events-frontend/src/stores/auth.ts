@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
+import { supabase } from '@/lib/supabase'
 import type { User } from '@/types'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -8,29 +9,79 @@ export const useAuthStore = defineStore('auth', () => {
   const isAuthenticated = computed(() => currentUser.value !== null)
   const isAdmin = computed(() => currentUser.value?.role === 'admin')
 
-  function loginAsUser() {
-    currentUser.value = {
-      id: '1',
-      name: 'Demo User',
-      email: 'user@example.com',
-      role: 'user',
-      createdAt: '2026-01-01',
+  async function login(email: string, password: string) {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+    if (error) throw error
+    if (data.user) {
+      // Fetch user profile from users table
+      const { data: profile } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', data.user.id)
+        .single()
+      if (profile) {
+        currentUser.value = {
+          id: profile.id,
+          name: profile.name,
+          email: profile.email,
+          role: profile.role,
+          createdAt: profile.created_at,
+        }
+      }
     }
   }
 
-  function loginAsAdmin() {
-    currentUser.value = {
-      id: '0',
-      name: 'Admin',
-      email: 'admin@example.com',
-      role: 'admin',
-      createdAt: '2026-01-01',
+  async function signup(email: string, password: string, name: string) {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+    })
+    if (error) throw error
+    if (data.user) {
+      // Create user profile
+      const { error: profileError } = await supabase.from('users').insert({
+        id: data.user.id,
+        name,
+        email,
+        role: 'user',
+      })
+      if (profileError) throw profileError
+      currentUser.value = {
+        id: data.user.id,
+        name,
+        email,
+        role: 'user',
+        createdAt: new Date().toISOString(),
+      }
     }
   }
 
-  function logout() {
+  async function logout() {
+    const { error } = await supabase.auth.signOut()
+    if (error) throw error
     currentUser.value = null
   }
 
-  return { currentUser, isAuthenticated, isAdmin, loginAsUser, loginAsAdmin, logout }
+  async function checkAuth() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (user) {
+      const { data: profile } = await supabase.from('users').select('*').eq('id', user.id).single()
+      if (profile) {
+        currentUser.value = {
+          id: profile.id,
+          name: profile.name,
+          email: profile.email,
+          role: profile.role,
+          createdAt: profile.created_at,
+        }
+      }
+    }
+  }
+
+  return { currentUser, isAuthenticated, isAdmin, login, signup, logout, checkAuth }
 })
