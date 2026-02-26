@@ -8,16 +8,27 @@ const eventsStore = useEventsStore()
 
 const mapCenter = computed(() => {
   const firstEvent = eventsStore.filteredEvents[0]
-  if (!firstEvent) return null
+  if (!firstEvent?.location) return null
+  const { lat, lng } = firstEvent.location
+  if (
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng) ||
+    Math.abs(lat) > 90 ||
+    Math.abs(lng) > 180
+  ) {
+    return null
+  }
   return {
-    lat: Number.isFinite(firstEvent.location.lat) ? firstEvent.location.lat : 0,
-    lng: Number.isFinite(firstEvent.location.lng) ? firstEvent.location.lng : 0,
+    lat,
+    lng,
     label: firstEvent.location.name || firstEvent.location.address || firstEvent.title,
   }
 })
 
 function mapUrl(lat: number, lng: number): string {
-  return `https://www.openstreetmap.org/export/embed.html?bbox=${lng - 0.02},${lat - 0.02},${lng + 0.02},${lat + 0.02}&layer=mapnik&marker=${lat},${lng}`
+  const safeLat = Math.min(90, Math.max(-90, lat))
+  const safeLng = Math.min(180, Math.max(-180, lng))
+  return `https://www.openstreetmap.org/export/embed.html?bbox=${safeLng - 0.02},${safeLat - 0.02},${safeLng + 0.02},${safeLat + 0.02}&layer=mapnik&marker=${safeLat},${safeLng}`
 }
 </script>
 
@@ -52,6 +63,7 @@ function mapUrl(lat: number, lng: number): string {
             :src="mapUrl(mapCenter.lat, mapCenter.lng)"
             title="Event locations map"
             loading="lazy"
+            sandbox="allow-scripts"
           ></iframe>
           <p v-else class="map-empty">Add filters or events to preview locations on the map.</p>
         </aside>
