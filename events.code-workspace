@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"name": "Root",
+			"path": "."
+		},
+		{
+			"name": "Frontend",
+			"path": "./projects/events-frontend"
+		}
+	],
+	"settings": {}
+}
