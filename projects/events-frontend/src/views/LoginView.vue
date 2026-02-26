@@ -33,45 +33,71 @@ const handleSubmit = async () => {
 
 <template>
   <div class="login-view">
-    <div class="container">
+    <div class="login-container">
       <div class="card login-card">
-        <h1>{{ isLogin ? 'Login' : 'Sign Up' }}</h1>
+        <div class="login-brand">
+          <span class="brand-icon">📅</span>
+          <span class="brand-name">Events</span>
+        </div>
+
+        <h1>{{ isLogin ? 'Welcome back' : 'Create account' }}</h1>
+        <p class="login-subtitle">
+          {{ isLogin ? 'Sign in to manage your events.' : 'Join to discover and submit events.' }}
+        </p>
 
         <form @submit.prevent="handleSubmit">
           <div v-if="!isLogin" class="form-group">
-            <label for="name">Name</label>
-            <input id="name" v-model="name" type="text" required placeholder="Your name" />
-          </div>
-
-          <div class="form-group">
-            <label for="email">Email</label>
-            <input id="email" v-model="email" type="email" required placeholder="your@email.com" />
-          </div>
-
-          <div class="form-group">
-            <label for="password">Password</label>
+            <label class="form-label" for="name">Full Name</label>
             <input
-              id="password"
-              v-model="password"
-              type="password"
+              id="name"
+              v-model="name"
+              class="form-input"
+              type="text"
               required
-              placeholder="Password"
+              placeholder="Your name"
+              autocomplete="name"
             />
           </div>
 
-          <div v-if="error" class="error-message">
+          <div class="form-group">
+            <label class="form-label" for="email">Email</label>
+            <input
+              id="email"
+              v-model="email"
+              class="form-input"
+              type="email"
+              required
+              placeholder="your@email.com"
+              autocomplete="email"
+            />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="password">Password</label>
+            <input
+              id="password"
+              v-model="password"
+              class="form-input"
+              type="password"
+              required
+              placeholder="••••••••"
+              autocomplete="current-password"
+            />
+          </div>
+
+          <div v-if="error" class="error-message" role="alert">
             {{ error }}
           </div>
 
-          <button type="submit" class="btn btn-primary" :disabled="loading">
-            {{ loading ? 'Loading...' : isLogin ? 'Login' : 'Sign Up' }}
+          <button type="submit" class="btn btn-primary submit-btn" :disabled="loading">
+            {{ loading ? 'Please wait…' : isLogin ? 'Sign In' : 'Create Account' }}
           </button>
         </form>
 
         <p class="toggle-mode">
           {{ isLogin ? "Don't have an account?" : 'Already have an account?' }}
-          <button type="button" @click="isLogin = !isLogin" class="link-btn">
-            {{ isLogin ? 'Sign Up' : 'Login' }}
+          <button type="button" class="link-btn" @click="isLogin = !isLogin">
+            {{ isLogin ? 'Sign Up' : 'Sign In' }}
           </button>
         </p>
       </div>
@@ -81,51 +107,83 @@ const handleSubmit = async () => {
 
 <style scoped>
 .login-view {
-  padding: 4rem 0;
+  min-height: calc(100vh - 64px);
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 60vh;
+  padding: 2rem 1rem;
+  background: radial-gradient(ellipse at 50% 0%, rgba(19, 127, 236, 0.08) 0%, transparent 70%);
+}
+
+.login-container {
+  width: 100%;
+  max-width: 420px;
 }
 
 .login-card {
-  max-width: 400px;
-  width: 100%;
+  padding: 2.5rem 2rem;
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+}
+
+.brand-icon {
+  font-size: 1.75rem;
+}
+
+.brand-name {
+  font-size: 1.25rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.375rem;
+}
+
+.login-subtitle {
+  color: var(--color-text-secondary);
+  font-size: 0.9375rem;
+  margin-bottom: 1.75rem;
 }
 
 .form-group {
   margin-bottom: 1rem;
 }
 
-label {
-  display: block;
-  margin-bottom: 0.5rem;
-  font-weight: 500;
-}
-
-input {
+.submit-btn {
   width: 100%;
+  justify-content: center;
+  margin-top: 0.5rem;
   padding: 0.75rem;
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
-  font-size: 1rem;
-}
-
-input:focus {
-  outline: none;
-  border-color: var(--color-primary);
+  font-size: 0.9375rem;
 }
 
 .error-message {
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.3);
   color: var(--color-error);
+  border-radius: var(--radius-sm);
+  padding: 0.625rem 0.875rem;
+  font-size: 0.875rem;
   margin-bottom: 1rem;
-  font-size: 0.9rem;
 }
 
 .toggle-mode {
   text-align: center;
   margin-top: 1.5rem;
   font-size: 0.9rem;
+  color: var(--color-text-secondary);
 }
 
 .link-btn {
@@ -133,10 +191,13 @@ input:focus {
   border: none;
   color: var(--color-primary);
   cursor: pointer;
-  text-decoration: underline;
+  font-size: inherit;
+  font-weight: 500;
+  text-decoration: none;
+  padding: 0;
 }
 
 .link-btn:hover {
-  color: var(--color-primary-dark);
+  text-decoration: underline;
 }
 </style>

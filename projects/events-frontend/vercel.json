@@ -1,13 +1,10 @@
 {
-  "functions": {
-    "src/**/*.ts": {
-      "runtime": "@vercel/node"
-    }
-  },
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
   "rewrites": [
     {
       "source": "/(.*)",
-      "destination": "/api/index.js"
+      "destination": "/api/index"
     }
   ]
 }
