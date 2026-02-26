@@ -5,8 +5,8 @@ import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
 // https://vite.dev/config/
-export default defineConfig({
-  plugins: [vue(), vueDevTools()],
+export default defineConfig(({ isSsrBuild }) => ({
+  plugins: [vue(), ...(isSsrBuild ? [] : [vueDevTools()])],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -16,11 +16,7 @@ export default defineConfig({
     noExternal: ['@supabase/supabase-js'],
   },
   build: {
-    rollupOptions: {
-      input: {
-        main: './index.html',
-        server: './src/entry-server.ts',
-      },
-    },
+    emptyOutDir: true,
+    outDir: isSsrBuild ? 'dist/server' : 'dist',
   },
-})
+}))

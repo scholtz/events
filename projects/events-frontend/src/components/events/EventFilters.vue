@@ -9,7 +9,7 @@ const categories = useCategoriesStore()
 <template>
   <div class="event-filters card">
     <div class="filters-grid">
-      <div class="form-group">
+      <div class="form-group filter-search">
         <label class="form-label" for="filter-search">Search</label>
         <input
           id="filter-search"
@@ -68,7 +68,7 @@ const categories = useCategoriesStore()
         />
       </div>
       <div class="form-group filter-actions">
-        <button class="btn btn-secondary" @click="eventsStore.clearFilters()">Clear</button>
+        <button class="btn btn-outline" @click="eventsStore.clearFilters()">Clear</button>
       </div>
     </div>
   </div>
@@ -76,24 +76,47 @@ const categories = useCategoriesStore()
 
 <style scoped>
 .event-filters {
-  padding: 1.25rem;
+  padding: 1.125rem 1.25rem;
   margin-bottom: 1.5rem;
 }
 
 .filters-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 0.75rem;
+  grid-template-columns: 2fr repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.625rem;
   align-items: end;
+}
+
+.filter-search {
+  grid-column: span 1;
 }
 
 .filter-actions {
   display: flex;
-  align-items: end;
+  align-items: flex-end;
 }
 
-.filter-actions .btn {
+.btn-outline {
+  background: transparent;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
   width: 100%;
   justify-content: center;
+}
+
+.btn-outline:hover {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+@media (max-width: 768px) {
+  .filters-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .filter-search {
+    grid-column: 1 / -1;
+  }
 }
 </style>

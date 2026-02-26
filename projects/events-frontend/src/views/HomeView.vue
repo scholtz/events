@@ -35,12 +35,21 @@ function mapUrl(lat: number, lng: number): string {
 <template>
   <div class="home-view">
     <section class="hero">
-      <div class="container">
-        <h1>Discover Events Near You</h1>
-        <p>Find crypto, AI, cooking, and more events happening in your area.</p>
+      <div class="container hero-content">
+        <div class="hero-text">
+          <h1>Discover Events<br /><span class="hero-accent">Near You</span></h1>
+          <p>Find crypto, AI, cooking, and more events happening in your area.</p>
+          <RouterLink to="/submit" class="btn btn-primary hero-cta">Submit an Event</RouterLink>
+        </div>
+        <div class="hero-stat-row">
+          <div class="hero-stat">
+            <span class="hero-stat-num">{{ eventsStore.filteredEvents.length }}</span>
+            <span class="hero-stat-label">Events Listed</span>
+          </div>
+        </div>
       </div>
     </section>
-    <div class="container">
+    <div class="container catalog-section">
       <EventFilters />
       <div class="catalog-layout">
         <div>
@@ -52,12 +61,24 @@ function mapUrl(lat: number, lng: number): string {
             />
           </div>
           <div v-else class="empty-state card">
-            <p>No events match your filters. Try adjusting your search criteria.</p>
+            <div class="empty-icon">🔍</div>
+            <h3>No events found</h3>
+            <p>Try adjusting your search criteria or submit a new event.</p>
+            <RouterLink to="/submit" class="btn btn-primary">Submit an Event</RouterLink>
           </div>
         </div>
         <aside class="map-panel card">
-          <h2>Event Map</h2>
-          <p v-if="mapCenter" class="map-caption">Centered on {{ mapCenter.label }}</p>
+          <h2 class="map-title">
+            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path
+                fill-rule="evenodd"
+                d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z"
+                clip-rule="evenodd"
+              />
+            </svg>
+            Event Map
+          </h2>
+          <p v-if="mapCenter" class="map-caption">Showing: {{ mapCenter.label }}</p>
           <iframe
             v-if="mapCenter"
             :src="mapUrl(mapCenter.lat, mapCenter.lng)"
@@ -65,7 +86,7 @@ function mapUrl(lat: number, lng: number): string {
             loading="lazy"
             sandbox="allow-scripts"
           ></iframe>
-          <p v-else class="map-empty">Add filters or events to preview locations on the map.</p>
+          <p v-else class="map-empty">Events with location data will appear on the map.</p>
         </aside>
       </div>
     </div>
@@ -74,51 +95,113 @@ function mapUrl(lat: number, lng: number): string {
 
 <style scoped>
 .hero {
-  background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
-  color: #fff;
-  padding: 3rem 0;
-  margin-bottom: 2rem;
+  background: linear-gradient(160deg, #0d0f14 0%, rgba(19, 127, 236, 0.12) 100%);
+  border-bottom: 1px solid var(--color-border);
+  padding: 4rem 0 3rem;
+  margin-bottom: 0;
 }
 
-.hero h1 {
+.hero-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.hero-text h1 {
+  font-size: 2.75rem;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  margin-bottom: 0.875rem;
+  color: var(--color-text);
+}
+
+.hero-accent {
+  color: var(--color-primary);
+}
+
+.hero-text p {
+  font-size: 1.0625rem;
+  color: var(--color-text-secondary);
+  max-width: 480px;
+  margin-bottom: 1.5rem;
+}
+
+.hero-cta {
+  font-weight: 600;
+}
+
+.hero-stat-row {
+  display: flex;
+  gap: 2rem;
+}
+
+.hero-stat {
+  display: flex;
+  flex-direction: column;
+}
+
+.hero-stat-num {
   font-size: 2rem;
   font-weight: 700;
-  margin-bottom: 0.5rem;
+  color: var(--color-primary);
+  line-height: 1;
 }
 
-.hero p {
-  font-size: 1.0625rem;
-  opacity: 0.9;
+.hero-stat-label {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  margin-top: 0.25rem;
+}
+
+.catalog-section {
+  padding-top: 2rem;
+  padding-bottom: 3rem;
 }
 
 .events-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 1rem;
 }
 
 .catalog-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 1.5rem;
 }
 
 .map-panel {
   height: fit-content;
-  padding: 1rem;
+  padding: 1.125rem;
   position: sticky;
   top: 80px;
 }
 
-.map-panel h2 {
-  font-size: 1rem;
-  margin-bottom: 0.25rem;
+.map-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: var(--color-text);
+}
+
+.map-title svg {
+  width: 16px;
+  height: 16px;
+  color: var(--color-primary);
+  flex-shrink: 0;
 }
 
 .map-caption {
   color: var(--color-text-secondary);
   font-size: 0.8125rem;
   margin-bottom: 0.75rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .map-panel iframe {
@@ -131,12 +214,34 @@ function mapUrl(lat: number, lng: number): string {
 .map-empty {
   color: var(--color-text-secondary);
   font-size: 0.875rem;
+  padding: 1.5rem 0;
+  text-align: center;
 }
 
 .empty-state {
-  padding: 3rem;
+  padding: 3rem 2rem;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.empty-icon {
+  font-size: 2.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.empty-state h3 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.empty-state p {
   color: var(--color-text-secondary);
+  font-size: 0.9375rem;
+  max-width: 320px;
 }
 
 @media (max-width: 1024px) {
@@ -146,6 +251,17 @@ function mapUrl(lat: number, lng: number): string {
 
   .map-panel {
     position: static;
+    order: -1;
+  }
+
+  .map-panel iframe {
+    height: 240px;
+  }
+}
+
+@media (max-width: 640px) {
+  .hero-text h1 {
+    font-size: 2rem;
   }
 }
 </style>
