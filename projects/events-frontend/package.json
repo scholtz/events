@@ -1,6 +1,6 @@
 {
   "name": "events-frontend",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -27,7 +27,7 @@
   "devDependencies": {
     "@playwright/test": "^1.58.2",
     "@tsconfig/node24": "^24.0.4",
-    "@types/node": "^24.10.13",
+    "@types/node": "^24.10.15",
     "@vitejs/plugin-vue": "^6.0.4",
     "@vue/eslint-config-typescript": "^14.7.0",
     "@vue/tsconfig": "^0.8.1",
@@ -46,6 +46,6 @@
     "vue-tsc": "^3.2.5"
   },
   "engines": {
-    "node": "^20.19.0 || >=22.12.0"
+    "node": "^24.0.0"
   }
 }
