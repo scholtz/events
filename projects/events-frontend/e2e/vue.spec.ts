@@ -37,7 +37,8 @@ type MockEvent = {
 }
 
 function parseJsonBody<T>(body: string | null): T {
-  return body ? (JSON.parse(body) as T) : ({} as T)
+  if (!body) throw new Error('Expected request body to be present')
+  return JSON.parse(body) as T
 }
 
 test('full flow: signup, submit event, approve, list and filter', async ({ page }) => {
