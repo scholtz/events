@@ -19,6 +19,7 @@
   - `singleQuote: true`
   - `printWidth: 100`
 - Keep changes minimal and scoped to the issue being solved.
+- For any UI change or new UI behavior, add or update Playwright end-to-end tests that cover the user-visible flow.
 - Use `<script setup lang="ts">` in all Vue single-file components.
 - Use scoped styles (`<style scoped>`) in Vue components.
 - Use CSS custom properties (variables) defined in `main.css` for theming/colors.
