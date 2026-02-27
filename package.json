@@ -1,0 +1,33 @@
+{
+  "name": "events",
+  "version": "1.0.0",
+  "description": "Events catalog application",
+  "scripts": {
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:reset": "supabase db reset",
+    "supabase:migration:new": "supabase migration new",
+    "supabase:migration:up": "supabase db push",
+    "supabase:seed": "supabase seed",
+    "supabase:studio": "supabase studio",
+    "supabase:status": "supabase status",
+    "supabase:link": "supabase link",
+    "supabase:login": "supabase login",
+    "db:check": "node setup-db.js",
+    "db:migrate": "node auto-migrate.js",
+    "db:migrate-manual": "node show-sql.js",
+    "db:migrate-current": "node migrate-current.js",
+    "db:migrate-service": "node migrate-service-role.js",
+    "db:setup": "npm run db:migrate && npm run db:check"
+  },
+  "devDependencies": {
+    "@supabase/supabase-js": "^2.39.3",
+    "dotenv": "^17.3.1",
+    "supabase": "^2.76.15"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.98.0",
+    "dotenv": "^17.3.1",
+    "pg": "^8.19.0"
+  }
+}

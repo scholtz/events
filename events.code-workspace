@@ -7,6 +7,10 @@
 		{
 			"name": "Frontend",
 			"path": "./projects/events-frontend"
+		},
+		{
+			"name": "Supabase",
+			"path": "./supabase"
 		}
 	],
 	"settings": {}

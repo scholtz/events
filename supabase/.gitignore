@@ -1,0 +1,7 @@
+# Supabase
+.branches
+.temp
+.env
+.env.local
+.env.production
+.env.staging
