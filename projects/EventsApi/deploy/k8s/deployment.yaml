@@ -23,6 +23,8 @@ spec:
           env:
             - name: ASPNETCORE_ENVIRONMENT
               value: Production
+            - name: DOTNET_HOSTBUILDER__RELOADCONFIGONCHANGE
+              value: "false"
             - name: ConnectionStrings__EventsCatalog
               value: Data Source=/data/events.db
             - name: Jwt__Issuer
