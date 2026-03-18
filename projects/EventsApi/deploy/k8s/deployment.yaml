@@ -4,7 +4,7 @@ metadata:
   name: events-api
   namespace: events-api
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: events-api

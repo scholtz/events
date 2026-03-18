@@ -5,7 +5,7 @@ metadata:
   namespace: events-api
 spec:
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteMany
   storageClassName: nfs-fast-retain
   resources:
     requests:
