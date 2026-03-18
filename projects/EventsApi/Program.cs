@@ -34,8 +34,17 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("EventsCatalog")
-        ?? throw new InvalidOperationException("Connection string 'EventsCatalog' is missing.")));
+{
+    if (builder.Environment.IsEnvironment("Testing"))
+    {
+        options.UseInMemoryDatabase("events-tests");
+    }
+    else
+    {
+        options.UseSqlite(builder.Configuration.GetConnectionString("EventsCatalog")
+            ?? throw new InvalidOperationException("Connection string 'EventsCatalog' is missing."));
+    }
+});
 
 builder.Services.AddScoped<AppDbInitializer>();
 builder.Services.AddScoped<JwtTokenService>();
