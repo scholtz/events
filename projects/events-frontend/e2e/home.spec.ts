@@ -229,12 +229,13 @@ test.describe('Event filters', () => {
 
     await page.getByLabel('Preset name').fill('Paid Prague')
     await page.getByRole('button', { name: 'Save current search' }).click()
-    await expect(page.getByRole('button', { name: /Paid Prague/ })).toBeVisible()
+    const savedSearchButton = page.locator('.saved-search-apply', { hasText: 'Paid Prague' })
+    await expect(savedSearchButton).toBeVisible()
 
     await page.getByRole('button', { name: 'Clear all' }).click()
     await expect(page.locator('.event-card', { hasText: 'Brno Free Meetup' })).toBeVisible()
 
-    await page.getByRole('button', { name: /Paid Prague/ }).click()
+    await savedSearchButton.click()
     await expect(page).toHaveURL(/location=Prague/)
     await expect(page.locator('.event-card', { hasText: 'Prague Paid Summit' })).toBeVisible()
     await expect(page.locator('.event-card', { hasText: 'Brno Free Meetup' })).toBeHidden()
