@@ -1,0 +1,23 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: events-api
+  namespace: events-api
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt"
+spec:
+  tls:
+    - hosts:
+        - events-api.de-4.biatec.io
+      secretName: tls-events-api.de-4.biatec.io
+  rules:
+    - host: events-api.de-4.biatec.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: events-api
+                port:
+                  number: 80

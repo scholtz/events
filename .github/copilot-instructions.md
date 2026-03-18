@@ -2,6 +2,8 @@
 
 ## Repository structure
 - Root repository currently contains the frontend app at `projects/events-frontend`.
+- Backend GraphQL API lives at `projects/EventsApi`.
+- The deployed backend is available at `https://events-api.de-4.biatec.io/graphql`.
 - Main frontend source files are in `projects/events-frontend/src`.
 - Views (page-level components) are in `src/views/`.
 - Reusable components are in `src/components/`, organized by feature (e.g., `layout/`, `events/`).
@@ -12,6 +14,7 @@
 
 ## Technology and conventions
 - Frontend uses Vue 3 + TypeScript + Vite.
+- Backend uses ASP.NET Core 8, Hot Chocolate GraphQL, Entity Framework Core, and JWT bearer authentication.
 - State management uses Pinia with the Composition API (`defineStore` with `setup` function syntax).
 - Routing uses Vue Router 5 with lazy-loaded route components (except the home page).
 - Follow existing formatting conventions from `projects/events-frontend/.prettierrc.json`:
@@ -25,12 +28,19 @@
 - Use CSS custom properties (variables) defined in `main.css` for theming/colors.
 - Prefer semantic HTML elements and accessibility attributes.
 - Use `@/` path alias for imports from the `src` directory.
+- When the frontend needs live event data, prefer the GraphQL contract exposed by `projects/EventsApi` instead of introducing parallel mock-specific shapes.
+- Keep frontend event filtering aligned with backend `events(filter: ...)`, `domainBySubdomain(subdomain: ...)`, `eventBySlug(slug: ...)`, `myDashboard`, and `adminOverview` operations.
+- Domain-specific catalog pages should use the backend `subdomain` and `slug` fields rather than hard-coded frontend routing metadata.
+- Authenticated frontend features should use JWT tokens returned by `registerUser` or `login` and send them as bearer tokens.
 
 ## Validate changes
 - Run commands from `projects/events-frontend`:
   - `npm run lint`
   - `npm run build`
 - E2E tests use Playwright via `npm run test:e2e` (requires Playwright browsers to be installed).
+- Run backend validation from `projects/EventsApi` when backend files or frontend GraphQL integrations change:
+  - `dotnet build events.slnx`
+  - `dotnet test events.slnx`
 
 ## Playwright E2E testing
 
@@ -93,4 +103,3 @@ npm run test:e2e
 ./node_modules/.bin/playwright test --headed --project=chromium
 # Debug step-by-step
 ./node_modules/.bin/playwright test --debug --project=chromium
-```
