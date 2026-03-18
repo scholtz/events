@@ -11,20 +11,23 @@ const domainsStore = useDomainsStore()
 const submitting = ref(false)
 const submitted = ref(false)
 
-const form = reactive({
-  name: '',
-  description: '',
-  domainSlug: '',
+  const form = reactive({
+    name: '',
+    description: '',
+    domainSlug: '',
   startsAtUtc: '',
   endsAtUtc: '',
   venueName: '',
   addressLine1: '',
-  city: '',
-  countryCode: 'CZ',
-  latitude: '',
-  longitude: '',
-  eventUrl: '',
-})
+    city: '',
+    countryCode: 'CZ',
+    isFree: true,
+    priceAmount: '',
+    currencyCode: 'EUR',
+    latitude: '',
+    longitude: '',
+    eventUrl: '',
+  })
 
 async function handleSubmit() {
   if (!form.name || !form.description || !form.domainSlug || !form.startsAtUtc || !form.eventUrl)
@@ -40,6 +43,9 @@ async function handleSubmit() {
       addressLine1: form.addressLine1,
       city: form.city,
       countryCode: form.countryCode || 'CZ',
+      isFree: form.isFree,
+      priceAmount: form.isFree ? 0 : parseFloat(form.priceAmount) || 0,
+      currencyCode: form.currencyCode || 'EUR',
       latitude: parseFloat(form.latitude) || 0,
       longitude: parseFloat(form.longitude) || 0,
       startsAtUtc: new Date(form.startsAtUtc).toISOString(),
@@ -145,6 +151,43 @@ async function handleSubmit() {
                 v-model="form.endsAtUtc"
                 class="form-input"
                 type="date"
+              />
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="form-section">
+          <legend class="section-legend">Pricing</legend>
+          <div class="form-group form-checkbox">
+            <label class="checkbox-label" for="event-free">
+              <input id="event-free" v-model="form.isFree" type="checkbox" />
+              <span>Free event</span>
+            </label>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="event-price">Price</label>
+              <input
+                id="event-price"
+                v-model="form.priceAmount"
+                class="form-input"
+                type="number"
+                min="0"
+                step="0.01"
+                :disabled="form.isFree"
+                placeholder="49.00"
+              />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="event-currency">Currency</label>
+              <input
+                id="event-currency"
+                v-model="form.currencyCode"
+                class="form-input"
+                type="text"
+                maxlength="8"
+                :disabled="form.isFree"
+                placeholder="EUR"
               />
             </div>
           </div>
@@ -329,6 +372,18 @@ async function handleSubmit() {
   gap: 0.75rem;
   padding: 1.25rem 1.5rem;
   border-top: 1px solid var(--color-border);
+}
+
+.form-checkbox {
+  padding-top: 0.25rem;
+}
+
+.checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  color: var(--color-text);
+  font-size: 0.9375rem;
 }
 
 .btn-ghost {

@@ -19,4 +19,7 @@ public sealed class ApplicationUser
 
     [GraphQLIgnore]
     public List<CatalogEvent> ReviewedEvents { get; set; } = [];
+
+    [GraphQLIgnore]
+    public List<SavedSearch> SavedSearches { get; set; } = [];
 }

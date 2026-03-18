@@ -16,6 +16,9 @@ public sealed class Query
         [Service] AppDbContext dbContext,
         CancellationToken cancellationToken)
     {
+        var normalizedSearchText = NormalizeFilterValue(filter?.SearchText);
+        var normalizedLocationText = NormalizeFilterValue(filter?.LocationText);
+
         var query = dbContext.Events
             .AsNoTracking()
             .Include(catalogEvent => catalogEvent.Domain)
@@ -30,6 +33,16 @@ public sealed class Query
         else if (filter?.Status is not null)
         {
             query = query.Where(catalogEvent => catalogEvent.Status == filter.Status.Value);
+        }
+
+        if (normalizedSearchText is not null)
+        {
+            query = query.Where(catalogEvent =>
+                catalogEvent.Name.ToLower().Contains(normalizedSearchText)
+                || catalogEvent.Description.ToLower().Contains(normalizedSearchText)
+                || catalogEvent.VenueName.ToLower().Contains(normalizedSearchText)
+                || catalogEvent.AddressLine1.ToLower().Contains(normalizedSearchText)
+                || catalogEvent.City.ToLower().Contains(normalizedSearchText));
         }
 
         if (!string.IsNullOrWhiteSpace(filter?.DomainSlug))
@@ -50,6 +63,14 @@ public sealed class Query
             query = query.Where(catalogEvent => catalogEvent.City.ToLower() == city);
         }
 
+        if (normalizedLocationText is not null)
+        {
+            query = query.Where(catalogEvent =>
+                catalogEvent.City.ToLower().Contains(normalizedLocationText)
+                || catalogEvent.VenueName.ToLower().Contains(normalizedLocationText)
+                || catalogEvent.AddressLine1.ToLower().Contains(normalizedLocationText));
+        }
+
         if (filter?.StartsFromUtc is not null)
         {
             query = query.Where(catalogEvent => catalogEvent.StartsAtUtc >= filter.StartsFromUtc.Value.ToUniversalTime());
@@ -60,7 +81,26 @@ public sealed class Query
             query = query.Where(catalogEvent => catalogEvent.StartsAtUtc <= filter.StartsToUtc.Value.ToUniversalTime());
         }
 
-        return await query.OrderBy(catalogEvent => catalogEvent.StartsAtUtc).ToListAsync(cancellationToken);
+        if (filter?.IsFree is not null)
+        {
+            query = query.Where(catalogEvent => catalogEvent.IsFree == filter.IsFree.Value);
+        }
+
+        if (filter?.PriceMin is not null)
+        {
+            var priceMin = filter.PriceMin.Value;
+            query = query.Where(catalogEvent =>
+                (catalogEvent.IsFree ? 0m : catalogEvent.PriceAmount ?? decimal.MaxValue) >= priceMin);
+        }
+
+        if (filter?.PriceMax is not null)
+        {
+            var priceMax = filter.PriceMax.Value;
+            query = query.Where(catalogEvent =>
+                (catalogEvent.IsFree ? 0m : catalogEvent.PriceAmount ?? decimal.MaxValue) <= priceMax);
+        }
+
+        return await ApplySorting(query, filter?.SortBy, normalizedSearchText).ToListAsync(cancellationToken);
     }
 
     public async Task<CatalogEvent?> GetEventBySlugAsync(
@@ -107,6 +147,18 @@ public sealed class Query
         => await dbContext.Users
             .AsNoTracking()
             .SingleAsync(user => user.Id == claimsPrincipal.GetRequiredUserId(), cancellationToken);
+
+    [Authorize]
+    public async Task<IReadOnlyList<SavedSearch>> GetMySavedSearchesAsync(
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+        => await dbContext.SavedSearches
+            .AsNoTracking()
+            .Where(savedSearch => savedSearch.UserId == claimsPrincipal.GetRequiredUserId())
+            .OrderByDescending(savedSearch => savedSearch.UpdatedAtUtc)
+            .ThenBy(savedSearch => savedSearch.Name)
+            .ToListAsync(cancellationToken);
 
     [Authorize]
     public async Task<DashboardOverview> GetMyDashboardAsync(
@@ -172,4 +224,28 @@ public sealed class Query
             PendingReviewEvents: pendingReviewEvents,
             Domains: domains);
     }
+
+    private static IOrderedQueryable<CatalogEvent> ApplySorting(
+        IQueryable<CatalogEvent> query,
+        EventSortOption? sortBy,
+        string? normalizedSearchText)
+    {
+        return sortBy switch
+        {
+            EventSortOption.Newest => query
+                .OrderByDescending(catalogEvent => catalogEvent.SubmittedAtUtc)
+                .ThenBy(catalogEvent => catalogEvent.StartsAtUtc),
+            EventSortOption.Relevance when normalizedSearchText is not null => query
+                .OrderByDescending(catalogEvent => catalogEvent.Name.ToLower().StartsWith(normalizedSearchText))
+                .ThenByDescending(catalogEvent => catalogEvent.Name.ToLower().Contains(normalizedSearchText))
+                .ThenByDescending(catalogEvent => catalogEvent.Description.ToLower().Contains(normalizedSearchText))
+                .ThenBy(catalogEvent => catalogEvent.StartsAtUtc),
+            _ => query
+                .OrderBy(catalogEvent => catalogEvent.StartsAtUtc)
+                .ThenBy(catalogEvent => catalogEvent.Name)
+        };
+    }
+
+    private static string? NormalizeFilterValue(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToLowerInvariant();
 }

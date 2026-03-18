@@ -1,29 +1,90 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using EventsApi.Data;
+using EventsApi.Data.Entities;
+using EventsApi.Security;
 using EventsApi.Tests.Infrastructure;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace EventsApi.Tests;
 
 public sealed class GraphQlIntegrationTests
 {
     [Fact]
-    public async Task EventsQuery_ReturnsSeededPragueCryptoEvent()
+    public async Task EventsQuery_ComposesKeywordLocationDateDomainAndPriceFilters()
     {
         await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("organizer@example.com", "Organizer");
+            var crypto = CreateDomain("Crypto", "crypto");
+            var ai = CreateDomain("AI", "ai");
+            var nextMonth = FirstDayOfNextMonthUtc();
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.AddRange(crypto, ai);
+            dbContext.Events.AddRange(
+                CreateEvent(
+                    "Prague Crypto Summit",
+                    "prague-crypto-summit",
+                    "A premium crypto conference for founders.",
+                    "Prague Congress Centre",
+                    "Prague",
+                    nextMonth,
+                    crypto,
+                    user,
+                    isFree: false,
+                    priceAmount: 149m),
+                CreateEvent(
+                    "Prague Crypto Builders Breakfast",
+                    "prague-crypto-builders-breakfast",
+                    "A free breakfast meetup for builders.",
+                    "Impact Hub Prague",
+                    "Prague",
+                    nextMonth.AddDays(1),
+                    crypto,
+                    user,
+                    isFree: true,
+                    priceAmount: 0m),
+                CreateEvent(
+                    "Brno Crypto Night",
+                    "brno-crypto-night",
+                    "Crypto networking in Brno.",
+                    "Clubhouse",
+                    "Brno",
+                    nextMonth,
+                    crypto,
+                    user,
+                    isFree: false,
+                    priceAmount: 39m),
+                CreateEvent(
+                    "Prague AI Forum",
+                    "prague-ai-forum",
+                    "AI product discussions in Prague.",
+                    "Opero",
+                    "Prague",
+                    nextMonth,
+                    ai,
+                    user,
+                    isFree: false,
+                    priceAmount: 89m));
+        });
+
         using var client = factory.CreateClient();
+        var nextMonth = FirstDayOfNextMonthUtc();
 
         using var document = await ExecuteGraphQlAsync(
             client,
             """
-            query ($filter: EventFilterInput) {
+            query Events($filter: EventFilterInput) {
               events(filter: $filter) {
                 name
                 city
-                mapUrl
-                domain {
-                  slug
-                }
+                isFree
+                priceAmount
+                domain { slug }
               }
             }
             """,
@@ -31,65 +92,195 @@ public sealed class GraphQlIntegrationTests
             {
                 filter = new
                 {
+                    searchText = "crypto",
                     domainSlug = "crypto",
-                    city = "Prague"
+                    locationText = "prague",
+                    startsFromUtc = nextMonth,
+                    startsToUtc = nextMonth,
+                    isFree = false,
+                    priceMin = 100m,
+                    priceMax = 200m,
+                    sortBy = "UPCOMING"
                 }
             });
 
-        var events = document.RootElement.GetProperty("data").GetProperty("events");
-        Assert.True(events.GetArrayLength() > 0);
-        Assert.Equal("Prague Crypto Builders Meetup", events[0].GetProperty("name").GetString());
-        Assert.Equal("crypto", events[0].GetProperty("domain").GetProperty("slug").GetString());
-        Assert.Equal("Prague", events[0].GetProperty("city").GetString());
-        Assert.Contains("openstreetmap.org", events[0].GetProperty("mapUrl").GetString());
+        Assert.Equal(["Prague Crypto Summit"], GetEventNames(document));
     }
 
     [Fact]
-    public async Task RegisterAndSubmitEvent_CreatesPendingDashboardItem()
+    public async Task EventsQuery_SupportsUpcomingNewestAndRelevanceSorts()
     {
         await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("sorter@example.com", "Sorter");
+            var crypto = CreateDomain("Crypto", "crypto");
+            var today = DateTime.UtcNow.Date;
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(crypto);
+            dbContext.Events.AddRange(
+                CreateEvent(
+                    "Crypto Launch Week",
+                    "crypto-launch-week",
+                    "Launch week for crypto builders.",
+                    "Venue 1",
+                    "Prague",
+                    today.AddDays(10),
+                    crypto,
+                    user,
+                    submittedAtUtc: today.AddDays(-5)),
+                CreateEvent(
+                    "Builder Week",
+                    "builder-week",
+                    "A week focused on crypto product design.",
+                    "Venue 2",
+                    "Prague",
+                    today.AddDays(5),
+                    crypto,
+                    user,
+                    submittedAtUtc: today.AddDays(-1)),
+                CreateEvent(
+                    "Crypto Breakfast",
+                    "crypto-breakfast",
+                    "Morning crypto networking.",
+                    "Venue 3",
+                    "Prague",
+                    today.AddDays(2),
+                    crypto,
+                    user,
+                    submittedAtUtc: today.AddDays(-10)));
+        });
+
         using var client = factory.CreateClient();
 
-        using var registerDocument = await ExecuteGraphQlAsync(
+        using var upcoming = await ExecuteGraphQlAsync(
             client,
             """
-            mutation ($input: RegisterUserInput!) {
-              registerUser(input: $input) {
-                token
-                user {
-                  email
-                }
-              }
+            query Events($filter: EventFilterInput) {
+              events(filter: $filter) { name }
+            }
+            """,
+            new { filter = new { sortBy = "UPCOMING" } });
+
+        Assert.Equal(
+            ["Crypto Breakfast", "Builder Week", "Crypto Launch Week"],
+            GetEventNames(upcoming));
+
+        using var newest = await ExecuteGraphQlAsync(
+            client,
+            """
+            query Events($filter: EventFilterInput) {
+              events(filter: $filter) { name }
+            }
+            """,
+            new { filter = new { sortBy = "NEWEST" } });
+
+        Assert.Equal(
+            ["Builder Week", "Crypto Launch Week", "Crypto Breakfast"],
+            GetEventNames(newest));
+
+        using var relevance = await ExecuteGraphQlAsync(
+            client,
+            """
+            query Events($filter: EventFilterInput) {
+              events(filter: $filter) { name }
+            }
+            """,
+            new { filter = new { searchText = "crypto", sortBy = "RELEVANCE" } });
+
+        Assert.Equal(
+            ["Crypto Breakfast", "Crypto Launch Week", "Builder Week"],
+            GetEventNames(relevance));
+    }
+
+    [Fact]
+    public async Task EventsQuery_TreatsBlankFiltersAsUnsetAndKeepsPendingEventsPrivate()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("privacy@example.com", "Privacy");
+            var crypto = CreateDomain("Crypto", "crypto");
+            var today = DateTime.UtcNow.Date;
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(crypto);
+            dbContext.Events.AddRange(
+                CreateEvent(
+                    "Published Crypto Meetup",
+                    "published-crypto-meetup",
+                    "Public listing",
+                    "Venue 1",
+                    "Prague",
+                    today.AddDays(7),
+                    crypto,
+                    user,
+                    status: EventStatus.Published),
+                CreateEvent(
+                    "Pending Crypto Meetup",
+                    "pending-crypto-meetup",
+                    "Hidden pending listing",
+                    "Venue 2",
+                    "Prague",
+                    today.AddDays(8),
+                    crypto,
+                    user,
+                    status: EventStatus.PendingApproval));
+        });
+
+        using var client = factory.CreateClient();
+
+        using var publicResult = await ExecuteGraphQlAsync(
+            client,
+            """
+            query Events($filter: EventFilterInput) {
+              events(filter: $filter) { name status }
             }
             """,
             new
             {
-                input = new
+                filter = new
                 {
-                    email = "alice@example.com",
-                    displayName = "Alice",
-                    password = "Password123!"
+                    searchText = "",
+                    locationText = " ",
+                    domainSlug = "",
+                    sortBy = "UPCOMING"
                 }
             });
 
-        var token = registerDocument.RootElement.GetProperty("data").GetProperty("registerUser").GetProperty("token").GetString();
-        Assert.False(string.IsNullOrWhiteSpace(token));
+        Assert.Equal(["Published Crypto Meetup"], GetEventNames(publicResult));
+    }
 
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+    [Fact]
+    public async Task SavedSearches_CanBeCreatedListedAndDeleted()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
 
-        var startsAtUtc = DateTime.UtcNow.AddMonths(1).AddDays(3);
-        var endsAtUtc = startsAtUtc.AddHours(2);
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("saved@example.com", "Saved Search User");
+            userId = user.Id;
+            dbContext.Users.Add(user);
+        });
 
-        using var submitDocument = await ExecuteGraphQlAsync(
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        using var createDocument = await ExecuteGraphQlAsync(
             client,
             """
-            mutation ($input: EventSubmissionInput!) {
-              submitEvent(input: $input) {
+            mutation SaveSearch($input: SavedSearchInput!) {
+              saveSearch(input: $input) {
+                id
                 name
-                status
-                domain {
-                  slug
-                }
+                searchText
+                domainSlug
+                locationText
+                isFree
+                priceMax
+                sortBy
               }
             }
             """,
@@ -97,43 +288,106 @@ public sealed class GraphQlIntegrationTests
             {
                 input = new
                 {
-                    domainSlug = "crypto",
-                    name = "Alice Prague Side Event",
-                    description = "A community-led evening session for crypto founders visiting Prague.",
-                    eventUrl = "https://events.example.com/alice-prague-side-event",
-                    venueName = "Campus Hybernska",
-                    addressLine1 = "Hybernská 4",
-                    city = "Prague",
-                    countryCode = "CZ",
-                    latitude = 50.087000m,
-                    longitude = 14.432000m,
-                    startsAtUtc,
-                    endsAtUtc
+                    name = "Crypto in Prague next month",
+                    filter = new
+                    {
+                        searchText = "crypto",
+                        domainSlug = "crypto",
+                        locationText = "Prague",
+                        isFree = false,
+                        priceMax = 150m,
+                        sortBy = "UPCOMING"
+                    }
                 }
             });
 
-        var submittedEvent = submitDocument.RootElement.GetProperty("data").GetProperty("submitEvent");
-        Assert.Equal("PENDING_APPROVAL", submittedEvent.GetProperty("status").GetString());
-        Assert.Equal("crypto", submittedEvent.GetProperty("domain").GetProperty("slug").GetString());
+        var savedSearchId = createDocument.RootElement
+            .GetProperty("data")
+            .GetProperty("saveSearch")
+            .GetProperty("id")
+            .GetString();
 
-        using var dashboardDocument = await ExecuteGraphQlAsync(
+        Assert.False(string.IsNullOrWhiteSpace(savedSearchId));
+
+        using var listDocument = await ExecuteGraphQlAsync(
             client,
             """
-            query {
-              myDashboard {
-                totalSubmittedEvents
-                pendingApprovalEvents
-                managedEvents {
-                  name
-                }
+            query SavedSearches {
+              mySavedSearches {
+                id
+                name
+                searchText
+                domainSlug
+                locationText
+                isFree
+                priceMax
+                sortBy
               }
             }
             """);
 
-        var dashboard = dashboardDocument.RootElement.GetProperty("data").GetProperty("myDashboard");
-        Assert.Equal(1, dashboard.GetProperty("totalSubmittedEvents").GetInt32());
-        Assert.Equal(1, dashboard.GetProperty("pendingApprovalEvents").GetInt32());
-        Assert.Equal("Alice Prague Side Event", dashboard.GetProperty("managedEvents")[0].GetProperty("name").GetString());
+        var savedSearches = listDocument.RootElement
+            .GetProperty("data")
+            .GetProperty("mySavedSearches")
+            .EnumerateArray()
+            .ToArray();
+
+        var savedSearch = Assert.Single(savedSearches);
+        Assert.Equal("Crypto in Prague next month", savedSearch.GetProperty("name").GetString());
+        Assert.Equal("crypto", savedSearch.GetProperty("searchText").GetString());
+        Assert.Equal("crypto", savedSearch.GetProperty("domainSlug").GetString());
+        Assert.Equal("Prague", savedSearch.GetProperty("locationText").GetString());
+        Assert.False(savedSearch.GetProperty("isFree").GetBoolean());
+        Assert.Equal(150m, savedSearch.GetProperty("priceMax").GetDecimal());
+        Assert.Equal("UPCOMING", savedSearch.GetProperty("sortBy").GetString());
+
+        using var deleteDocument = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation DeleteSavedSearch($savedSearchId: UUID!) {
+              deleteSavedSearch(savedSearchId: $savedSearchId)
+            }
+            """,
+            new { savedSearchId });
+
+        Assert.True(
+            deleteDocument.RootElement
+                .GetProperty("data")
+                .GetProperty("deleteSavedSearch")
+                .GetBoolean());
+
+        using var emptyListDocument = await ExecuteGraphQlAsync(
+            client,
+            """
+            query SavedSearches {
+              mySavedSearches { id }
+            }
+            """);
+
+        Assert.Empty(
+            emptyListDocument.RootElement
+                .GetProperty("data")
+                .GetProperty("mySavedSearches")
+                .EnumerateArray());
+    }
+
+    private static async Task SeedAsync(EventsApiWebApplicationFactory factory, Action<AppDbContext> seedAction)
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await dbContext.Database.EnsureDeletedAsync();
+        await dbContext.Database.EnsureCreatedAsync();
+        seedAction(dbContext);
+        await dbContext.SaveChangesAsync();
+    }
+
+    private static async Task<string> CreateTokenAsync(EventsApiWebApplicationFactory factory, Guid userId)
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var jwtTokenService = scope.ServiceProvider.GetRequiredService<JwtTokenService>();
+        var user = await dbContext.Users.SingleAsync(candidate => candidate.Id == userId);
+        return jwtTokenService.CreateSession(user).Token;
     }
 
     private static async Task<JsonDocument> ExecuteGraphQlAsync(HttpClient client, string query, object? variables = null)
@@ -148,5 +402,76 @@ public sealed class GraphQlIntegrationTests
         }
 
         return document;
+    }
+
+    private static string[] GetEventNames(JsonDocument document)
+        => document.RootElement
+            .GetProperty("data")
+            .GetProperty("events")
+            .EnumerateArray()
+            .Select(catalogEvent => catalogEvent.GetProperty("name").GetString()!)
+            .ToArray();
+
+    private static ApplicationUser CreateUser(string email, string displayName)
+        => new()
+        {
+            Email = email,
+            DisplayName = displayName,
+            PasswordHash = "hashed",
+            Role = ApplicationUserRole.Contributor
+        };
+
+    private static EventDomain CreateDomain(string name, string slug)
+        => new()
+        {
+            Name = name,
+            Slug = slug,
+            Subdomain = slug,
+            Description = $"{name} events"
+        };
+
+    private static CatalogEvent CreateEvent(
+        string name,
+        string slug,
+        string description,
+        string venueName,
+        string city,
+        DateTime startsAtUtc,
+        EventDomain domain,
+        ApplicationUser user,
+        bool isFree = true,
+        decimal? priceAmount = 0m,
+        DateTime? submittedAtUtc = null,
+        EventStatus status = EventStatus.Published)
+        => new()
+        {
+            Name = name,
+            Slug = slug,
+            Description = description,
+            EventUrl = $"https://events.example.com/{slug}",
+            VenueName = venueName,
+            AddressLine1 = "Address 1",
+            City = city,
+            CountryCode = "CZ",
+            StartsAtUtc = DateTime.SpecifyKind(startsAtUtc, DateTimeKind.Utc),
+            EndsAtUtc = DateTime.SpecifyKind(startsAtUtc.AddHours(4), DateTimeKind.Utc),
+            SubmittedAtUtc = DateTime.SpecifyKind(submittedAtUtc ?? startsAtUtc.AddDays(-10), DateTimeKind.Utc),
+            UpdatedAtUtc = DateTime.SpecifyKind((submittedAtUtc ?? startsAtUtc.AddDays(-10)).AddHours(1), DateTimeKind.Utc),
+            Domain = domain,
+            SubmittedBy = user,
+            Status = status,
+            PublishedAtUtc = status == EventStatus.Published ? DateTime.UtcNow : null,
+            ReviewedBy = status == EventStatus.Published ? user : null,
+            IsFree = isFree,
+            PriceAmount = isFree ? 0m : priceAmount,
+            CurrencyCode = "EUR",
+            Latitude = 50.0755m,
+            Longitude = 14.4378m
+        };
+
+    private static DateTime FirstDayOfNextMonthUtc()
+    {
+        var now = DateTime.UtcNow;
+        return new DateTime(now.Year, now.Month, 1, 10, 0, 0, DateTimeKind.Utc).AddMonths(1);
     }
 }

@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+import { formatEventPrice } from '@/stores/events'
 import type { CatalogEvent } from '@/types'
 
-defineProps<{
+const props = defineProps<{
   event: CatalogEvent
 }>()
 
@@ -12,10 +14,24 @@ function formatDate(dateStr: string): string {
     year: 'numeric',
   })
 }
+
+function formatTime(dateStr: string): string {
+  return new Date(dateStr).toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+const locationSummary = computed(() => {
+  if (props.event.venueName && props.event.city) return `${props.event.venueName}, ${props.event.city}`
+  return props.event.venueName || props.event.city || 'Location TBD'
+})
+
+const priceSummary = computed(() => formatEventPrice(props.event))
 </script>
 
 <template>
-  <RouterLink :to="`/event/${event.slug}`" class="event-card card">
+  <article class="event-card card">
     <div class="event-card-body">
       <div class="event-meta">
         <span class="badge badge-primary">
@@ -23,34 +39,56 @@ function formatDate(dateStr: string): string {
         </span>
         <span class="event-date">{{ formatDate(event.startsAtUtc) }}</span>
       </div>
-      <h3 class="event-title">{{ event.name }}</h3>
+
+      <h3 class="event-title">
+        <RouterLink :to="`/event/${event.slug}`" class="event-title-link">
+          {{ event.name }}
+        </RouterLink>
+      </h3>
+
       <p class="event-description">{{ event.description }}</p>
-      <div class="event-footer">
-        <div class="event-location">
-          <svg
-            class="location-icon"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            aria-hidden="true"
-          >
-            <path
-              fill-rule="evenodd"
-              d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z"
-              clip-rule="evenodd"
-            />
-          </svg>
-          {{ event.venueName || event.city || 'Location TBD' }}
+
+      <dl class="event-details">
+        <div class="event-detail-item">
+          <dt>Date</dt>
+          <dd>{{ formatDate(event.startsAtUtc) }} · {{ formatTime(event.startsAtUtc) }}</dd>
         </div>
-        <span class="event-link-hint">View →</span>
+        <div class="event-detail-item">
+          <dt>Location</dt>
+          <dd>{{ locationSummary }}</dd>
+        </div>
+        <div class="event-detail-item">
+          <dt>Price</dt>
+          <dd>{{ priceSummary }}</dd>
+        </div>
+      </dl>
+
+      <div class="event-actions">
+        <RouterLink :to="`/event/${event.slug}`" class="btn btn-primary btn-sm">View details</RouterLink>
+        <a
+          :href="event.eventUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="btn btn-outline btn-sm"
+        >
+          Event link ↗
+        </a>
+        <a
+          v-if="event.mapUrl"
+          :href="event.mapUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="btn btn-ghost btn-sm"
+        >
+          Map ↗
+        </a>
       </div>
     </div>
-  </RouterLink>
+  </article>
 </template>
 
 <style scoped>
 .event-card {
-  display: block;
-  text-decoration: none;
   color: inherit;
   transition:
     box-shadow 0.2s,
@@ -63,20 +101,20 @@ function formatDate(dateStr: string): string {
   box-shadow: var(--shadow-md);
   transform: translateY(-2px);
   border-color: var(--color-primary);
-  text-decoration: none;
 }
 
 .event-card-body {
   padding: 1.25rem;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.75rem;
 }
 
 .event-meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 0.75rem;
 }
 
 .event-date {
@@ -89,7 +127,15 @@ function formatDate(dateStr: string): string {
   font-size: 1.0625rem;
   font-weight: 600;
   line-height: 1.4;
+}
+
+.event-title-link {
   color: var(--color-text);
+  text-decoration: none;
+}
+
+.event-title-link:hover {
+  color: var(--color-primary);
 }
 
 .event-description {
@@ -102,38 +148,54 @@ function formatDate(dateStr: string): string {
   line-height: 1.5;
 }
 
-.event-footer {
+.event-details {
+  display: grid;
+  gap: 0.625rem;
+  margin: 0;
+}
+
+.event-detail-item {
+  display: grid;
+  gap: 0.125rem;
+}
+
+.event-detail-item dt {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.event-detail-item dd {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--color-text);
+}
+
+.event-actions {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   margin-top: 0.25rem;
   padding-top: 0.75rem;
   border-top: 1px solid var(--color-border);
 }
 
-.event-location {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  font-size: 0.8125rem;
+.btn-outline {
+  background: transparent;
   color: var(--color-text-secondary);
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  border: 1px solid var(--color-border);
 }
 
-.location-icon {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
+.btn-ghost {
+  background: transparent;
   color: var(--color-primary);
+  border: none;
+  padding-inline: 0;
 }
 
-.event-link-hint {
-  font-size: 0.8125rem;
-  color: var(--color-primary);
-  font-weight: 500;
-  white-space: nowrap;
+.btn-ghost:hover {
+  text-decoration: underline;
 }
 </style>

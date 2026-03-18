@@ -68,10 +68,10 @@ test('full flow: signup, submit event, approve, list and filter', async ({ page 
   await expect(page.locator('.event-card', { hasText: title })).toBeVisible()
 
   // ── Search filter: no match ───────────────────────────────────────────────
-  await page.getByLabel('Search').fill('no-match-value-xyz')
+  await page.getByLabel('Keyword').fill('no-match-value-xyz')
   await expect(page.getByRole('heading', { name: 'No events found' })).toBeVisible()
 
   // ── Search filter: match ──────────────────────────────────────────────────
-  await page.getByLabel('Search').fill(title)
+  await page.getByLabel('Keyword').fill(title)
   await expect(page.locator('.event-card', { hasText: title })).toBeVisible()
 })

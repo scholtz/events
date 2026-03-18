@@ -31,6 +31,10 @@ coverage
 
 .eslintcache
 
+# .NET
+bin/
+obj/
+
 # Cypress
 /cypress/videos/
 /cypress/screenshots/

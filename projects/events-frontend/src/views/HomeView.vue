@@ -1,28 +1,39 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { useEventsStore } from '@/stores/events'
+import { computed, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
+import {
+  areEventFiltersEqual,
+  createDefaultEventFilters,
+  eventFiltersFromQuery,
+  eventFiltersToQuery,
+  useEventsStore,
+} from '@/stores/events'
+import { useSavedSearchesStore } from '@/stores/savedSearches'
 import EventCard from '@/components/events/EventCard.vue'
 import EventFilters from '@/components/events/EventFilters.vue'
 
+const route = useRoute()
+const router = useRouter()
+const authStore = useAuthStore()
 const eventsStore = useEventsStore()
+const savedSearchesStore = useSavedSearchesStore()
+
+const syncingFromRoute = ref(false)
 
 const mapCenter = computed(() => {
-  const firstEvent = eventsStore.filteredEvents[0]
+  const firstEvent = eventsStore.discoveryEvents[0]
   if (!firstEvent) return null
   const lat = Number(firstEvent.latitude)
   const lng = Number(firstEvent.longitude)
-  if (
-    !Number.isFinite(lat) ||
-    !Number.isFinite(lng) ||
-    Math.abs(lat) > 90 ||
-    Math.abs(lng) > 180
-  ) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
     return null
   }
   return {
     lat,
     lng,
     label: firstEvent.venueName || firstEvent.city || firstEvent.name,
+    mapUrl: firstEvent.mapUrl,
   }
 })
 
@@ -31,6 +42,73 @@ function mapUrl(lat: number, lng: number): string {
   const safeLng = Math.min(180, Math.max(-180, lng))
   return `https://www.openstreetmap.org/export/embed.html?bbox=${safeLng - 0.02},${safeLat - 0.02},${safeLng + 0.02},${safeLat + 0.02}&layer=mapnik&marker=${safeLat},${safeLng}`
 }
+
+async function syncFromRoute() {
+  syncingFromRoute.value = true
+
+  const nextFilters = eventFiltersFromQuery(route.query)
+  if (!areEventFiltersEqual(nextFilters, eventsStore.filters)) {
+    eventsStore.replaceFilters(nextFilters)
+  }
+
+  syncingFromRoute.value = false
+  await eventsStore.fetchDiscoveryEvents()
+}
+
+watch(
+  () => route.query,
+  async () => {
+    await syncFromRoute()
+  },
+  { immediate: true },
+)
+
+watch(
+  () => ({ ...eventsStore.filters }),
+  async (filters) => {
+    if (syncingFromRoute.value) return
+
+    const nextQuery = eventFiltersToQuery(filters)
+    const currentFilters = eventFiltersFromQuery(route.query)
+
+    if (!areEventFiltersEqual(filters, currentFilters)) {
+      await router.replace({ query: nextQuery })
+      return
+    }
+
+    await eventsStore.fetchDiscoveryEvents()
+  },
+  { deep: true },
+)
+
+watch(
+  () => authStore.isAuthenticated,
+  async (isAuthenticated) => {
+    if (isAuthenticated) {
+      await savedSearchesStore.fetchSavedSearches()
+      return
+    }
+
+    savedSearchesStore.clearSavedSearches()
+  },
+  { immediate: true },
+)
+
+function clearDiscoveryFilters() {
+  eventsStore.clearFilters()
+}
+
+const emptyStateMessage = computed(() => {
+  if (!eventsStore.hasActiveFilters) {
+    return 'No events are available yet. Check back soon or submit a new one.'
+  }
+
+  return 'Try broadening your filters or clearing a few constraints to see more events.'
+})
+
+const hasDefaultDiscoveryState = computed(() =>
+  areEventFiltersEqual(eventsStore.filters, createDefaultEventFilters()),
+)
 </script>
 
 <template>
@@ -39,35 +117,68 @@ function mapUrl(lat: number, lng: number): string {
       <div class="container hero-content">
         <div class="hero-text">
           <h1>Discover Events<br /><span class="hero-accent">Near You</span></h1>
-          <p>Find crypto, AI, cooking, and more events happening in your area.</p>
+          <p>
+            Find high-intent, domain-specific events with shareable filters, map context, and
+            pricing details.
+          </p>
           <RouterLink to="/submit" class="btn btn-primary hero-cta">Submit an Event</RouterLink>
         </div>
         <div class="hero-stat-row">
           <div class="hero-stat">
-            <span class="hero-stat-num">{{ eventsStore.filteredEvents.length }}</span>
-            <span class="hero-stat-label">Events Listed</span>
+            <span class="hero-stat-num">{{ eventsStore.discoveryEvents.length }}</span>
+            <span class="hero-stat-label">Matching Events</span>
           </div>
         </div>
       </div>
     </section>
+
     <div class="container catalog-section">
       <EventFilters />
       <div class="catalog-layout">
-        <div>
-          <div v-if="eventsStore.filteredEvents.length" class="events-grid">
+        <div class="results-column">
+          <div v-if="eventsStore.discoveryLoading" class="results-state card loading-state" aria-live="polite">
+            <div class="loading-spinner" aria-hidden="true"></div>
+            <div>
+              <h2>Updating results…</h2>
+              <p>Applying your filters and loading the best matching events.</p>
+            </div>
+          </div>
+
+          <div v-else-if="eventsStore.discoveryError" class="results-state card error-state" role="alert">
+            <div class="state-icon">⚠️</div>
+            <div>
+              <h2>Couldn’t load event results</h2>
+              <p>{{ eventsStore.discoveryError }}</p>
+            </div>
+            <div class="state-actions">
+              <button class="btn btn-primary" @click="eventsStore.fetchDiscoveryEvents()">Try again</button>
+              <button v-if="eventsStore.hasActiveFilters" class="btn btn-outline" @click="clearDiscoveryFilters">
+                Clear filters
+              </button>
+            </div>
+          </div>
+
+          <div v-else-if="eventsStore.discoveryEvents.length" class="events-grid">
             <EventCard
-              v-for="event in eventsStore.filteredEvents"
+              v-for="event in eventsStore.discoveryEvents"
               :key="event.id"
               :event="event"
             />
           </div>
-          <div v-else class="empty-state card">
+
+          <div v-else class="results-state empty-state card">
             <div class="empty-icon">🔍</div>
-            <h3>No events found</h3>
-            <p>Try adjusting your search criteria or submit a new event.</p>
-            <RouterLink to="/submit" class="btn btn-primary">Submit an Event</RouterLink>
+            <h2>No events found</h2>
+            <p>{{ emptyStateMessage }}</p>
+            <div class="state-actions">
+              <button v-if="eventsStore.hasActiveFilters" class="btn btn-primary" @click="clearDiscoveryFilters">
+                Clear filters
+              </button>
+              <RouterLink v-else to="/submit" class="btn btn-primary">Submit an Event</RouterLink>
+            </div>
           </div>
         </div>
+
         <aside class="map-panel card">
           <h2 class="map-title">
             <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -77,7 +188,7 @@ function mapUrl(lat: number, lng: number): string {
                 clip-rule="evenodd"
               />
             </svg>
-            Event Map
+            Map context
           </h2>
           <p v-if="mapCenter" class="map-caption">Showing: {{ mapCenter.label }}</p>
           <iframe
@@ -87,7 +198,15 @@ function mapUrl(lat: number, lng: number): string {
             loading="lazy"
             sandbox="allow-scripts"
           ></iframe>
-          <p v-else class="map-empty">Events with location data will appear on the map.</p>
+          <div v-if="mapCenter" class="map-actions">
+            <a :href="mapCenter.mapUrl" target="_blank" rel="noopener noreferrer" class="map-link">
+              Open in OpenStreetMap ↗
+            </a>
+          </div>
+          <p v-else-if="hasDefaultDiscoveryState" class="map-empty">
+            Events with location data will appear here as soon as they match your discovery view.
+          </p>
+          <p v-else class="map-empty">Adjust your filters to find results with map context.</p>
         </aside>
       </div>
     </div>
@@ -124,12 +243,8 @@ function mapUrl(lat: number, lng: number): string {
 .hero-text p {
   font-size: 1.0625rem;
   color: var(--color-text-secondary);
-  max-width: 480px;
+  max-width: 560px;
   margin-bottom: 1.5rem;
-}
-
-.hero-cta {
-  font-weight: 600;
 }
 
 .hero-stat-row {
@@ -160,16 +275,52 @@ function mapUrl(lat: number, lng: number): string {
   padding-bottom: 3rem;
 }
 
+.catalog-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 1.5rem;
+}
+
+.results-column {
+  display: flex;
+  flex-direction: column;
+}
+
 .events-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 1rem;
 }
 
-.catalog-layout {
+.results-state {
+  padding: 2rem;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
-  gap: 1.5rem;
+  gap: 1rem;
+}
+
+.loading-state,
+.error-state {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.loading-spinner {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  border: 3px solid rgba(19, 127, 236, 0.15);
+  border-top-color: var(--color-primary);
+  animation: spin 0.9s linear infinite;
+}
+
+.state-icon {
+  font-size: 1.75rem;
+}
+
+.state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
 }
 
 .map-panel {
@@ -212,37 +363,35 @@ function mapUrl(lat: number, lng: number): string {
   border-radius: var(--radius-sm);
 }
 
-.map-empty {
+.map-actions {
+  margin-top: 0.75rem;
+}
+
+.map-link {
+  font-size: 0.8125rem;
+  color: var(--color-primary);
+}
+
+.map-empty,
+.empty-state p,
+.results-state p,
+.results-state h2 {
   color: var(--color-text-secondary);
-  font-size: 0.875rem;
-  padding: 1.5rem 0;
-  text-align: center;
 }
 
 .empty-state {
-  padding: 3rem 2rem;
   text-align: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.75rem;
+  justify-items: center;
 }
 
 .empty-icon {
   font-size: 2.5rem;
-  margin-bottom: 0.25rem;
 }
 
-.empty-state h3 {
-  font-size: 1.125rem;
-  font-weight: 600;
-  color: var(--color-text);
-}
-
-.empty-state p {
-  color: var(--color-text-secondary);
-  font-size: 0.9375rem;
-  max-width: 320px;
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media (max-width: 1024px) {
@@ -263,6 +412,11 @@ function mapUrl(lat: number, lng: number): string {
 @media (max-width: 640px) {
   .hero-text h1 {
     font-size: 2rem;
+  }
+
+  .loading-state,
+  .error-state {
+    grid-template-columns: 1fr;
   }
 }
 </style>

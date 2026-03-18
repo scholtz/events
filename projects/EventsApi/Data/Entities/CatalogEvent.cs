@@ -22,6 +22,9 @@ public sealed class CatalogEvent
     public DateTime? PublishedAtUtc { get; set; }
     public string? AdminNotes { get; set; }
     public EventStatus Status { get; set; } = EventStatus.PendingApproval;
+    public bool IsFree { get; set; } = true;
+    public decimal? PriceAmount { get; set; }
+    public string CurrencyCode { get; set; } = "EUR";
     public Guid DomainId { get; set; }
     public EventDomain Domain { get; set; } = null!;
     public Guid SubmittedByUserId { get; set; }
