@@ -91,7 +91,7 @@ test.describe('Dashboard', () => {
     await loginAs(page, admin)
 
     await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
-    await expect(page.getByText(`Welcome back, ${admin.name}`)).toBeVisible()
+    await expect(page.getByText(`Welcome back, ${admin.displayName}`)).toBeVisible()
   })
 })
 
@@ -103,13 +103,13 @@ test.describe('Admin panel', () => {
     await expect(page.getByRole('heading', { name: 'Admin access required' })).toBeVisible()
   })
 
-  test('shows events and categories tabs when admin', async ({ page }) => {
+  test('shows events and domains tabs when admin', async ({ page }) => {
     const admin = makeAdminUser()
     setupMockApi(page, { users: [admin] })
     await loginAs(page, admin)
     await page.goto('/admin')
 
     await expect(page.getByRole('button', { name: /Events/ })).toBeVisible()
-    await expect(page.getByRole('button', { name: /Categories/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Domains/ })).toBeVisible()
   })
 })

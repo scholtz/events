@@ -105,12 +105,10 @@ export default defineConfig({
     command: process.env.CI ? 'npm run build:client && npm run preview' : 'npm run dev',
     port: process.env.CI ? 4173 : 5173,
     reuseExistingServer: !process.env.CI,
-    // Provide dummy Supabase credentials so the Vite dev server (non-CI) can
-    // initialise the app without real env vars.  Real credentials are set via
-    // repository secrets and injected at build time in the CI workflow.
+    // Provide the GraphQL URL for the Vite dev server.
+    // All API calls are intercepted by page.route() in tests.
     env: {
-      VITE_SUPABASE_URL: process.env.VITE_SUPABASE_URL ?? 'http://localhost:54321',
-      VITE_SUPABASE_ANON_KEY: process.env.VITE_SUPABASE_ANON_KEY ?? 'placeholder-anon-key',
+      VITE_GRAPHQL_URL: process.env.VITE_GRAPHQL_URL ?? 'http://localhost:4000/graphql',
     },
   },
 })

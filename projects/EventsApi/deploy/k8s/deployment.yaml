@@ -45,6 +45,12 @@ spec:
                 secretKeyRef:
                   name: events-api-secrets
                   key: admin-password
+            - name: Cors__AllowedOrigins__0
+              value: https://events-delta-black.vercel.app
+            - name: Cors__AllowedOrigins__1
+              value: https://events-scholtz.vercel.app
+            - name: Cors__AllowedOrigins__2
+              value: http://localhost:5173
           readinessProbe:
             httpGet:
               path: /healthz

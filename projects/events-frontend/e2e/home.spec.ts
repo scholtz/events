@@ -2,11 +2,11 @@
  * Home page and navigation tests.
  */
 import { expect, test } from '@playwright/test'
-import { makeApprovedEvent, makeTechCategory, setupMockApi } from './helpers/mock-api'
+import { makeApprovedEvent, makeTechDomain, setupMockApi } from './helpers/mock-api'
 
 test.describe('Home page', () => {
   test('shows hero heading and submit CTA', async ({ page }) => {
-    setupMockApi(page, { categories: [makeTechCategory()] })
+    setupMockApi(page, { domains: [makeTechDomain()] })
     await page.goto('/')
 
     await expect(page.getByRole('heading', { level: 1 })).toContainText('Discover Events')
@@ -15,27 +15,27 @@ test.describe('Home page', () => {
 
   test('shows event count stat in hero', async ({ page }) => {
     setupMockApi(page, {
-      categories: [makeTechCategory()],
+      domains: [makeTechDomain()],
       events: [makeApprovedEvent()],
     })
     await page.goto('/')
 
-    // Hero stat shows count of approved events
+    // Hero stat shows count of published events
     await expect(page.getByText('Events Listed')).toBeVisible()
   })
 
-  test('shows empty state when no approved events exist', async ({ page }) => {
-    setupMockApi(page, { categories: [makeTechCategory()] })
+  test('shows empty state when no published events exist', async ({ page }) => {
+    setupMockApi(page, { domains: [makeTechDomain()] })
     await page.goto('/')
 
     await expect(page.getByRole('heading', { name: 'No events found' })).toBeVisible()
     await expect(page.getByText('Try adjusting your search criteria')).toBeVisible()
   })
 
-  test('shows event cards for approved events', async ({ page }) => {
-    const event = makeApprovedEvent({ title: 'Approved Summit' })
+  test('shows event cards for published events', async ({ page }) => {
+    const event = makeApprovedEvent({ name: 'Approved Summit', slug: 'approved-summit' })
     setupMockApi(page, {
-      categories: [makeTechCategory()],
+      domains: [makeTechDomain()],
       events: [event],
     })
     await page.goto('/')
@@ -44,28 +44,37 @@ test.describe('Home page', () => {
   })
 
   test('pending events are NOT shown in the listing', async ({ page }) => {
-    const pending = makeApprovedEvent({ id: 'e-pending', title: 'Pending Summit', status: 'pending' })
+    const pending = makeApprovedEvent({
+      id: 'e-pending',
+      name: 'Pending Summit',
+      slug: 'pending-summit',
+      status: 'PENDING_APPROVAL',
+    })
     setupMockApi(page, {
-      categories: [makeTechCategory()],
+      domains: [makeTechDomain()],
       events: [pending],
     })
     await page.goto('/')
 
-    // Empty state should show because no approved events
+    // Empty state should show because no published events
     await expect(page.getByRole('heading', { name: 'No events found' })).toBeVisible()
     await expect(page.locator('.event-card', { hasText: 'Pending Summit' })).toBeHidden()
   })
 
   test('event card links to detail page', async ({ page }) => {
-    const event = makeApprovedEvent({ id: 'detail-test', title: 'Detail Link Event' })
+    const event = makeApprovedEvent({
+      id: 'detail-test',
+      name: 'Detail Link Event',
+      slug: 'detail-link-event',
+    })
     setupMockApi(page, {
-      categories: [makeTechCategory()],
+      domains: [makeTechDomain()],
       events: [event],
     })
     await page.goto('/')
 
     await page.locator('.event-card', { hasText: 'Detail Link Event' }).click()
-    await expect(page).toHaveURL(/\/event\/detail-test$/)
+    await expect(page).toHaveURL(/\/event\/detail-link-event$/)
   })
 })
 
@@ -88,7 +97,7 @@ test.describe('Header navigation', () => {
   })
 
   test('Submit Event header link navigates to submit page', async ({ page }) => {
-    setupMockApi(page, { categories: [makeTechCategory()] })
+    setupMockApi(page, { domains: [makeTechDomain()] })
     await page.goto('/')
 
     await page.getByRole('link', { name: 'Submit Event' }).click()
@@ -98,22 +107,24 @@ test.describe('Header navigation', () => {
 })
 
 test.describe('Event filters', () => {
-  test('category filter is populated from API', async ({ page }) => {
-    setupMockApi(page, { categories: [makeTechCategory()] })
+  test('domain filter is populated from API', async ({ page }) => {
+    setupMockApi(page, { domains: [makeTechDomain()] })
     await page.goto('/')
 
-    const select = page.getByLabel('Category')
+    const select = page.getByLabel('Domain')
     await expect(select).toBeVisible()
     await expect(select.getByRole('option', { name: 'Technology' })).toBeAttached()
   })
 
-  test('location filter narrows results', async ({ page }) => {
+  test('city filter narrows results', async ({ page }) => {
     const event = makeApprovedEvent({
-      title: 'Prague Summit',
-      location: { name: 'Prague Congress Centre', address: 'Prague', lat: 50.0755, lng: 14.4378 },
+      name: 'Prague Summit',
+      slug: 'prague-summit',
+      venueName: 'Prague Congress Centre',
+      city: 'Prague',
     })
     setupMockApi(page, {
-      categories: [makeTechCategory()],
+      domains: [makeTechDomain()],
       events: [event],
     })
     await page.goto('/')
@@ -121,20 +132,30 @@ test.describe('Event filters', () => {
     // Event visible before filter
     await expect(page.locator('.event-card', { hasText: 'Prague Summit' })).toBeVisible()
 
-    // Filter by non-matching location
-    await page.getByLabel('Location').fill('Berlin')
+    // Filter by non-matching city
+    await page.getByLabel('City').fill('Berlin')
     await expect(page.getByRole('heading', { name: 'No events found' })).toBeVisible()
 
-    // Filter by matching location
-    await page.getByLabel('Location').fill('Prague')
+    // Filter by matching city
+    await page.getByLabel('City').fill('Prague')
     await expect(page.locator('.event-card', { hasText: 'Prague Summit' })).toBeVisible()
   })
 
   test('date from filter excludes events before date', async ({ page }) => {
-    const oldEvent = makeApprovedEvent({ id: 'old', title: 'Old Event', date: '2025-01-01' })
-    const newEvent = makeApprovedEvent({ id: 'new', title: 'New Event', date: '2026-06-01' })
+    const oldEvent = makeApprovedEvent({
+      id: 'old',
+      name: 'Old Event',
+      slug: 'old-event',
+      startsAtUtc: '2025-01-01T10:00:00Z',
+    })
+    const newEvent = makeApprovedEvent({
+      id: 'new',
+      name: 'New Event',
+      slug: 'new-event',
+      startsAtUtc: '2026-06-01T10:00:00Z',
+    })
     setupMockApi(page, {
-      categories: [makeTechCategory()],
+      domains: [makeTechDomain()],
       events: [oldEvent, newEvent],
     })
     await page.goto('/')
@@ -148,9 +169,9 @@ test.describe('Event filters', () => {
   })
 
   test('clear button resets all filters', async ({ page }) => {
-    const event = makeApprovedEvent({ title: 'Clearable Event' })
+    const event = makeApprovedEvent({ name: 'Clearable Event', slug: 'clearable-event' })
     setupMockApi(page, {
-      categories: [makeTechCategory()],
+      domains: [makeTechDomain()],
       events: [event],
     })
     await page.goto('/')

@@ -2,48 +2,50 @@
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useEventsStore } from '@/stores/events'
-import { useCategoriesStore } from '@/stores/categories'
+import { useDomainsStore } from '@/stores/domains'
 
 const router = useRouter()
 const eventsStore = useEventsStore()
-const categories = useCategoriesStore()
+const domainsStore = useDomainsStore()
 
 const submitting = ref(false)
 const submitted = ref(false)
 
 const form = reactive({
-  title: '',
+  name: '',
   description: '',
-  category: '',
-  date: '',
-  endDate: '',
-  locationName: '',
-  locationAddress: '',
-  lat: '',
-  lng: '',
-  link: '',
-  organizer: '',
+  domainSlug: '',
+  startsAtUtc: '',
+  endsAtUtc: '',
+  venueName: '',
+  addressLine1: '',
+  city: '',
+  countryCode: 'CZ',
+  latitude: '',
+  longitude: '',
+  eventUrl: '',
 })
 
 async function handleSubmit() {
-  if (!form.title || !form.description || !form.category || !form.date || !form.link) return
+  if (!form.name || !form.description || !form.domainSlug || !form.startsAtUtc || !form.eventUrl)
+    return
   submitting.value = true
   try {
-    await eventsStore.addEvent({
-      title: form.title,
+    await eventsStore.submitEvent({
+      domainSlug: form.domainSlug,
+      name: form.name,
       description: form.description,
-      category: form.category,
-      date: form.date,
-      endDate: form.endDate || undefined,
-      location: {
-        name: form.locationName,
-        address: form.locationAddress,
-        lat: parseFloat(form.lat) || 0,
-        lng: parseFloat(form.lng) || 0,
-      },
-      link: form.link,
-      imageUrl: '',
-      organizer: form.organizer,
+      eventUrl: form.eventUrl,
+      venueName: form.venueName,
+      addressLine1: form.addressLine1,
+      city: form.city,
+      countryCode: form.countryCode || 'CZ',
+      latitude: parseFloat(form.latitude) || 0,
+      longitude: parseFloat(form.longitude) || 0,
+      startsAtUtc: new Date(form.startsAtUtc).toISOString(),
+      endsAtUtc: form.endsAtUtc
+        ? new Date(form.endsAtUtc).toISOString()
+        : new Date(form.startsAtUtc).toISOString(),
     })
     submitted.value = true
     setTimeout(() => router.push('/dashboard'), 1500)
@@ -60,7 +62,10 @@ async function handleSubmit() {
         <RouterLink to="/" class="back-link">← Back</RouterLink>
         <div>
           <h1>Submit an Event</h1>
-          <p>Share an upcoming event with the community. Submitted events are reviewed before publishing.</p>
+          <p>
+            Share an upcoming event with the community. Submitted events are reviewed before
+            publishing.
+          </p>
         </div>
       </div>
 
@@ -79,7 +84,7 @@ async function handleSubmit() {
             <label class="form-label" for="event-title">Event Title *</label>
             <input
               id="event-title"
-              v-model="form.title"
+              v-model="form.name"
               class="form-input"
               type="text"
               required
@@ -98,22 +103,22 @@ async function handleSubmit() {
           </div>
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label" for="event-category">Category *</label>
-              <select id="event-category" v-model="form.category" class="form-select" required>
-                <option value="" disabled>Select a category</option>
-                <option v-for="cat in categories.categories" :key="cat.id" :value="cat.slug">
-                  {{ cat.name }}
+              <label class="form-label" for="event-domain">Domain *</label>
+              <select id="event-domain" v-model="form.domainSlug" class="form-select" required>
+                <option value="" disabled>Select a domain</option>
+                <option v-for="d in domainsStore.domains" :key="d.id" :value="d.slug">
+                  {{ d.name }}
                 </option>
               </select>
             </div>
             <div class="form-group">
-              <label class="form-label" for="event-organizer">Organizer</label>
+              <label class="form-label" for="event-country">Country Code</label>
               <input
-                id="event-organizer"
-                v-model="form.organizer"
+                id="event-country"
+                v-model="form.countryCode"
                 class="form-input"
                 type="text"
-                placeholder="Organization or person"
+                placeholder="CZ"
               />
             </div>
           </div>
@@ -125,11 +130,22 @@ async function handleSubmit() {
           <div class="form-row">
             <div class="form-group">
               <label class="form-label" for="event-date">Start Date *</label>
-              <input id="event-date" v-model="form.date" class="form-input" type="date" required />
+              <input
+                id="event-date"
+                v-model="form.startsAtUtc"
+                class="form-input"
+                type="date"
+                required
+              />
             </div>
             <div class="form-group">
               <label class="form-label" for="event-end-date">End Date</label>
-              <input id="event-end-date" v-model="form.endDate" class="form-input" type="date" />
+              <input
+                id="event-end-date"
+                v-model="form.endsAtUtc"
+                class="form-input"
+                type="date"
+              />
             </div>
           </div>
         </fieldset>
@@ -142,7 +158,7 @@ async function handleSubmit() {
               <label class="form-label" for="event-location-name">Venue Name</label>
               <input
                 id="event-location-name"
-                v-model="form.locationName"
+                v-model="form.venueName"
                 class="form-input"
                 type="text"
                 placeholder="e.g., Prague Congress Centre"
@@ -152,10 +168,22 @@ async function handleSubmit() {
               <label class="form-label" for="event-location-address">Address</label>
               <input
                 id="event-location-address"
-                v-model="form.locationAddress"
+                v-model="form.addressLine1"
                 class="form-input"
                 type="text"
-                placeholder="e.g., Prague 4, Czech Republic"
+                placeholder="e.g., 5. května 1640/65"
+              />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="event-city">City</label>
+              <input
+                id="event-city"
+                v-model="form.city"
+                class="form-input"
+                type="text"
+                placeholder="e.g., Prague"
               />
             </div>
           </div>
@@ -164,7 +192,7 @@ async function handleSubmit() {
               <label class="form-label" for="event-lat">Latitude</label>
               <input
                 id="event-lat"
-                v-model="form.lat"
+                v-model="form.latitude"
                 class="form-input"
                 type="text"
                 placeholder="e.g., 50.0614"
@@ -174,7 +202,7 @@ async function handleSubmit() {
               <label class="form-label" for="event-lng">Longitude</label>
               <input
                 id="event-lng"
-                v-model="form.lng"
+                v-model="form.longitude"
                 class="form-input"
                 type="text"
                 placeholder="e.g., 14.4283"
@@ -190,7 +218,7 @@ async function handleSubmit() {
             <label class="form-label" for="event-link">Website / Registration URL *</label>
             <input
               id="event-link"
-              v-model="form.link"
+              v-model="form.eventUrl"
               class="form-input"
               type="url"
               required

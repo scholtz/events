@@ -3,12 +3,12 @@
  * registration → event submission → admin approval → listing + filter
  */
 import { expect, test } from '@playwright/test'
-import { makeAdminUser, makeTechCategory, setupMockApi } from './helpers/mock-api'
+import { makeAdminUser, makeTechDomain, setupMockApi } from './helpers/mock-api'
 
 test('full flow: signup, submit event, approve, list and filter', async ({ page }) => {
   const state = setupMockApi(page, {
     users: [makeAdminUser()],
-    categories: [makeTechCategory()],
+    domains: [makeTechDomain()],
   })
 
   const title = `Playwright Event ${Date.now()}`
@@ -34,11 +34,11 @@ test('full flow: signup, submit event, approve, list and filter', async ({ page 
 
   await page.getByLabel('Event Title *').fill(title)
   await page.getByLabel('Description *').fill('End-to-end submitted event for UI coverage.')
-  await page.getByLabel('Category *').selectOption('technology')
-  await page.getByLabel('Organizer').fill('Flow Team')
+  await page.getByLabel('Domain *').selectOption('technology')
   await page.getByLabel('Start Date *').fill('2026-03-15')
   await page.getByLabel('Venue Name').fill('Stitch Hall')
   await page.getByLabel('Address').fill('Design Street 123')
+  await page.getByLabel('City').fill('Prague')
   await page.getByLabel('Latitude').fill('50.0755')
   await page.getByLabel('Longitude').fill('14.4378')
   await page.getByLabel('Website / Registration URL *').fill('https://example.com/event')
@@ -61,9 +61,9 @@ test('full flow: signup, submit event, approve, list and filter', async ({ page 
   await page.getByRole('link', { name: 'Admin' }).click()
   const adminRow = page.locator('tr', { hasText: title })
   await adminRow.getByRole('button', { name: 'Approve' }).click()
-  await expect(adminRow).toContainText('approved')
+  await expect(adminRow).toContainText('published')
 
-  // ── Approved event visible on home listing ───────────────────────────────
+  // ── Published event visible on home listing ───────────────────────────────
   await page.getByRole('link', { name: 'Browse' }).click()
   await expect(page.locator('.event-card', { hasText: title })).toBeVisible()
 

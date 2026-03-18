@@ -2,32 +2,49 @@
 import { computed } from 'vue'
 import { useEventsStore } from '@/stores/events'
 import { useAuthStore } from '@/stores/auth'
-import { useCategoriesStore } from '@/stores/categories'
 
 const eventsStore = useEventsStore()
 const auth = useAuthStore()
-const categories = useCategoriesStore()
 
 const userEvents = computed(() => eventsStore.allEvents)
-const approvedCount = computed(() => userEvents.value.filter((e) => e.status === 'approved').length)
-const pendingCount = computed(() => userEvents.value.filter((e) => e.status === 'pending').length)
-const rejectedCount = computed(() => userEvents.value.filter((e) => e.status === 'rejected').length)
+const publishedCount = computed(
+  () => userEvents.value.filter((e) => e.status === 'PUBLISHED').length,
+)
+const pendingCount = computed(
+  () => userEvents.value.filter((e) => e.status === 'PENDING_APPROVAL').length,
+)
+const rejectedCount = computed(
+  () => userEvents.value.filter((e) => e.status === 'REJECTED').length,
+)
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', {
+  return new Date(dateStr).toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
   })
 }
 
+function statusLabel(status: string): string {
+  switch (status) {
+    case 'PUBLISHED':
+      return 'published'
+    case 'PENDING_APPROVAL':
+      return 'pending'
+    case 'REJECTED':
+      return 'rejected'
+    default:
+      return status.toLowerCase()
+  }
+}
+
 function statusBadgeClass(status: string): string {
   switch (status) {
-    case 'approved':
+    case 'PUBLISHED':
       return 'badge-success'
-    case 'pending':
+    case 'PENDING_APPROVAL':
       return 'badge-warning'
-    case 'rejected':
+    case 'REJECTED':
       return 'badge-danger'
     default:
       return ''
@@ -40,7 +57,9 @@ function statusBadgeClass(status: string): string {
     <div class="page-header">
       <div>
         <h1>Dashboard</h1>
-        <p v-if="auth.isAuthenticated">Welcome back, {{ auth.currentUser?.name }}!</p>
+        <p v-if="auth.isAuthenticated">
+          Welcome back, {{ auth.currentUser?.displayName }}!
+        </p>
         <p v-else>Please log in to see your dashboard.</p>
       </div>
       <RouterLink v-if="auth.isAuthenticated" to="/submit" class="btn btn-primary">
@@ -60,8 +79,8 @@ function statusBadgeClass(status: string): string {
         <div class="stat-card card">
           <div class="stat-icon stat-icon--approved">✅</div>
           <div class="stat-info">
-            <div class="stat-number stat-number--success">{{ approvedCount }}</div>
-            <div class="stat-label">Approved</div>
+            <div class="stat-number stat-number--success">{{ publishedCount }}</div>
+            <div class="stat-label">Published</div>
           </div>
         </div>
         <div class="stat-card card">
@@ -89,7 +108,7 @@ function statusBadgeClass(status: string): string {
           <thead>
             <tr>
               <th>Event</th>
-              <th>Category</th>
+              <th>Domain</th>
               <th>Date</th>
               <th>Status</th>
               <th>Actions</th>
@@ -98,31 +117,25 @@ function statusBadgeClass(status: string): string {
           <tbody>
             <tr v-for="event in userEvents" :key="event.id">
               <td>
-                <RouterLink :to="`/event/${event.id}`" class="event-link">
-                  {{ event.title }}
+                <RouterLink :to="`/event/${event.slug}`" class="event-link">
+                  {{ event.name }}
                 </RouterLink>
               </td>
               <td>
                 <span class="category-label">
-                  {{ categories.getCategoryBySlug(event.category)?.name ?? event.category }}
+                  {{ event.domain?.name ?? '—' }}
                 </span>
               </td>
-              <td class="date-cell">{{ formatDate(event.date) }}</td>
+              <td class="date-cell">{{ formatDate(event.startsAtUtc) }}</td>
               <td>
                 <span class="badge" :class="statusBadgeClass(event.status)">
-                  {{ event.status }}
+                  {{ statusLabel(event.status) }}
                 </span>
               </td>
               <td>
-                <RouterLink :to="`/event/${event.id}`" class="btn btn-outline btn-sm">
+                <RouterLink :to="`/event/${event.slug}`" class="btn btn-outline btn-sm">
                   View
                 </RouterLink>
-                <button
-                  class="btn btn-danger btn-sm"
-                  @click="eventsStore.deleteEvent(event.id)"
-                >
-                  Delete
-                </button>
               </td>
             </tr>
           </tbody>
