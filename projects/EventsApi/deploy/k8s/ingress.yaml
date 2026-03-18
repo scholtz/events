@@ -6,6 +6,7 @@ metadata:
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt"
 spec:
+  ingressClassName: nginx
   tls:
     - hosts:
         - events-api.de-4.biatec.io
