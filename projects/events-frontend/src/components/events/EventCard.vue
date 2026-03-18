@@ -1,15 +1,12 @@
 <script setup lang="ts">
-import type { EventItem } from '@/types'
-import { useCategoriesStore } from '@/stores/categories'
+import type { CatalogEvent } from '@/types'
 
 defineProps<{
-  event: EventItem
+  event: CatalogEvent
 }>()
 
-const categories = useCategoriesStore()
-
 function formatDate(dateStr: string): string {
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', {
+  return new Date(dateStr).toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
@@ -18,21 +15,15 @@ function formatDate(dateStr: string): string {
 </script>
 
 <template>
-  <RouterLink :to="`/event/${event.id}`" class="event-card card">
+  <RouterLink :to="`/event/${event.slug}`" class="event-card card">
     <div class="event-card-body">
       <div class="event-meta">
-        <span
-          class="badge"
-          :style="{
-            background: (categories.getCategoryBySlug(event.category)?.color ?? '#137fec') + '22',
-            color: categories.getCategoryBySlug(event.category)?.color ?? '#137fec',
-          }"
-        >
-          {{ categories.getCategoryBySlug(event.category)?.name ?? event.category }}
+        <span class="badge badge-primary">
+          {{ event.domain?.name ?? 'Event' }}
         </span>
-        <span class="event-date">{{ formatDate(event.date) }}</span>
+        <span class="event-date">{{ formatDate(event.startsAtUtc) }}</span>
       </div>
-      <h3 class="event-title">{{ event.title }}</h3>
+      <h3 class="event-title">{{ event.name }}</h3>
       <p class="event-description">{{ event.description }}</p>
       <div class="event-footer">
         <div class="event-location">
@@ -48,7 +39,7 @@ function formatDate(dateStr: string): string {
               clip-rule="evenodd"
             />
           </svg>
-          {{ event.location.name || event.location.address || 'Location TBD' }}
+          {{ event.venueName || event.city || 'Location TBD' }}
         </div>
         <span class="event-link-hint">View →</span>
       </div>

@@ -1,59 +1,74 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
-import { supabase } from '@/lib/supabase'
-import type { EventItem, EventFilters } from '@/types'
+import { gqlRequest } from '@/lib/graphql'
+import type { CatalogEvent, EventFilters } from '@/types'
+
+const EVENT_FIELDS = `
+  id name slug description eventUrl
+  venueName addressLine1 city countryCode
+  latitude longitude startsAtUtc endsAtUtc
+  submittedAtUtc updatedAtUtc publishedAtUtc
+  adminNotes status domainId mapUrl
+  domain { id name slug }
+  submittedBy { displayName }
+`
 
 export const useEventsStore = defineStore('events', () => {
-  const events = ref<EventItem[]>([])
+  const events = ref<CatalogEvent[]>([])
   const loading = ref(false)
 
   const filters = ref<EventFilters>({
     search: '',
-    category: '',
+    domain: '',
     dateFrom: '',
     dateTo: '',
-    location: '',
+    city: '',
   })
 
   async function fetchEvents() {
     loading.value = true
-    const { data, error } = await supabase
-      .from('events')
-      .select('*')
-      .order('created_at', { ascending: false })
-    if (error) throw error
-    events.value = data || []
-    loading.value = false
+    try {
+      const data = await gqlRequest<{ events: CatalogEvent[] }>(
+        `query Events {
+          events { ${EVENT_FIELDS} }
+        }`,
+      )
+      events.value = data.events
+    } finally {
+      loading.value = false
+    }
   }
 
   const filteredEvents = computed(() => {
     return events.value.filter((event) => {
-      if (event.status !== 'approved') return false
+      if (event.status !== 'PUBLISHED') return false
 
       if (
         filters.value.search &&
-        !event.title.toLowerCase().includes(filters.value.search.toLowerCase()) &&
+        !event.name.toLowerCase().includes(filters.value.search.toLowerCase()) &&
         !event.description.toLowerCase().includes(filters.value.search.toLowerCase())
       ) {
         return false
       }
 
-      if (filters.value.category && event.category !== filters.value.category) {
+      if (filters.value.domain && event.domain?.slug !== filters.value.domain) {
         return false
       }
 
-      if (filters.value.dateFrom && event.date < filters.value.dateFrom) {
+      const eventDate = event.startsAtUtc.slice(0, 10)
+      if (filters.value.dateFrom && eventDate < filters.value.dateFrom) {
         return false
       }
 
-      if (filters.value.dateTo && event.date > filters.value.dateTo) {
+      if (filters.value.dateTo && eventDate > filters.value.dateTo) {
         return false
       }
 
       if (
-        filters.value.location &&
-        !event.location.name.toLowerCase().includes(filters.value.location.toLowerCase()) &&
-        !event.location.address.toLowerCase().includes(filters.value.location.toLowerCase())
+        filters.value.city &&
+        !event.venueName.toLowerCase().includes(filters.value.city.toLowerCase()) &&
+        !event.city.toLowerCase().includes(filters.value.city.toLowerCase()) &&
+        !event.addressLine1.toLowerCase().includes(filters.value.city.toLowerCase())
       ) {
         return false
       }
@@ -64,39 +79,52 @@ export const useEventsStore = defineStore('events', () => {
 
   const allEvents = computed(() => events.value)
 
-  const pendingEvents = computed(() => events.value.filter((e) => e.status === 'pending'))
+  const pendingEvents = computed(() =>
+    events.value.filter((e) => e.status === 'PENDING_APPROVAL'),
+  )
 
-  function getEventById(id: string): EventItem | undefined {
+  function getEventBySlug(slug: string): CatalogEvent | undefined {
+    return events.value.find((e) => e.slug === slug)
+  }
+
+  function getEventById(id: string): CatalogEvent | undefined {
     return events.value.find((e) => e.id === id)
   }
 
-  async function addEvent(event: Omit<EventItem, 'id' | 'createdAt' | 'status'>) {
-    const { data, error } = await supabase
-      .from('events')
-      .insert({
-        ...event,
-        status: 'pending',
-      })
-      .select()
-      .single()
-    if (error) throw error
-    events.value.push(data)
-    return data
+  async function submitEvent(input: {
+    domainSlug: string
+    name: string
+    description: string
+    eventUrl: string
+    venueName: string
+    addressLine1: string
+    city: string
+    countryCode?: string
+    latitude: number
+    longitude: number
+    startsAtUtc: string
+    endsAtUtc: string
+  }) {
+    const data = await gqlRequest<{ submitEvent: CatalogEvent }>(
+      `mutation SubmitEvent($input: EventSubmissionInput!) {
+        submitEvent(input: $input) { ${EVENT_FIELDS} }
+      }`,
+      { input },
+    )
+    events.value.unshift(data.submitEvent)
+    return data.submitEvent
   }
 
-  async function updateEventStatus(id: string, status: EventItem['status']) {
-    const { error } = await supabase.from('events').update({ status }).eq('id', id)
-    if (error) throw error
-    const event = events.value.find((e) => e.id === id)
-    if (event) {
-      event.status = status
-    }
-  }
-
-  async function deleteEvent(id: string) {
-    const { error } = await supabase.from('events').delete().eq('id', id)
-    if (error) throw error
-    events.value = events.value.filter((e) => e.id !== id)
+  async function reviewEvent(eventId: string, status: string, adminNotes?: string) {
+    const data = await gqlRequest<{ reviewEvent: CatalogEvent }>(
+      `mutation ReviewEvent($eventId: UUID!, $input: ReviewEventInput!) {
+        reviewEvent(eventId: $eventId, input: $input) { ${EVENT_FIELDS} }
+      }`,
+      { eventId, input: { status, adminNotes } },
+    )
+    const idx = events.value.findIndex((e) => e.id === eventId)
+    if (idx >= 0) events.value[idx] = data.reviewEvent
+    return data.reviewEvent
   }
 
   function setFilters(newFilters: Partial<EventFilters>) {
@@ -104,7 +132,7 @@ export const useEventsStore = defineStore('events', () => {
   }
 
   function clearFilters() {
-    filters.value = { search: '', category: '', dateFrom: '', dateTo: '', location: '' }
+    filters.value = { search: '', domain: '', dateFrom: '', dateTo: '', city: '' }
   }
 
   return {
@@ -114,12 +142,13 @@ export const useEventsStore = defineStore('events', () => {
     filteredEvents,
     allEvents,
     pendingEvents,
-    fetchEvents,
+    getEventBySlug,
     getEventById,
-    addEvent,
-    updateEventStatus,
-    deleteEvent,
+    fetchEvents,
+    submitEvent,
+    reviewEvent,
     setFilters,
     clearFilters,
   }
 })
+

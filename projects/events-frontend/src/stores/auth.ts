@@ -1,87 +1,74 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
-import { supabase } from '@/lib/supabase'
-import type { User } from '@/types'
+import { gqlRequest } from '@/lib/graphql'
+import type { AuthPayload, User } from '@/types'
 
 export const useAuthStore = defineStore('auth', () => {
   const currentUser = ref<User | null>(null)
 
   const isAuthenticated = computed(() => currentUser.value !== null)
-  const isAdmin = computed(() => currentUser.value?.role === 'admin')
+  const isAdmin = computed(() => currentUser.value?.role === 'ADMIN')
 
   async function login(email: string, password: string) {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-    if (error) throw error
-    if (data.user) {
-      // Fetch user profile from users table
-      const { data: profile } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', data.user.id)
-        .single()
-      if (profile) {
-        currentUser.value = {
-          id: profile.id,
-          name: profile.name,
-          email: profile.email,
-          role: profile.role,
-          createdAt: profile.created_at,
+    const data = await gqlRequest<{ login: AuthPayload }>(
+      `mutation Login($input: LoginInput!) {
+        login(input: $input) {
+          token
+          expiresAtUtc
+          user { id displayName email role createdAtUtc }
         }
-      }
-    }
+      }`,
+      { input: { email, password } },
+    )
+    localStorage.setItem('auth_token', data.login.token)
+    localStorage.setItem('auth_expires', data.login.expiresAtUtc)
+    currentUser.value = data.login.user
   }
 
-  async function signup(email: string, password: string, name: string) {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-    })
-    if (error) throw error
-    if (data.user) {
-      // Create user profile
-      const { error: profileError } = await supabase.from('users').insert({
-        id: data.user.id,
-        name,
-        email,
-        role: 'user',
-      })
-      if (profileError) throw profileError
-      currentUser.value = {
-        id: data.user.id,
-        name,
-        email,
-        role: 'user',
-        createdAt: new Date().toISOString(),
-      }
-    }
+  async function signup(email: string, password: string, displayName: string) {
+    const data = await gqlRequest<{ registerUser: AuthPayload }>(
+      `mutation Register($input: RegisterUserInput!) {
+        registerUser(input: $input) {
+          token
+          expiresAtUtc
+          user { id displayName email role createdAtUtc }
+        }
+      }`,
+      { input: { email, displayName, password } },
+    )
+    localStorage.setItem('auth_token', data.registerUser.token)
+    localStorage.setItem('auth_expires', data.registerUser.expiresAtUtc)
+    currentUser.value = data.registerUser.user
   }
 
   async function logout() {
-    const { error } = await supabase.auth.signOut()
-    if (error) throw error
+    localStorage.removeItem('auth_token')
+    localStorage.removeItem('auth_expires')
     currentUser.value = null
   }
 
   async function checkAuth() {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (user) {
-      const { data: profile } = await supabase.from('users').select('*').eq('id', user.id).single()
-      if (profile) {
-        currentUser.value = {
-          id: profile.id,
-          name: profile.name,
-          email: profile.email,
-          role: profile.role,
-          createdAt: profile.created_at,
-        }
-      }
+    const token = localStorage.getItem('auth_token')
+    const expires = localStorage.getItem('auth_expires')
+    if (!token || !expires) return
+
+    if (new Date(expires) <= new Date()) {
+      await logout()
+      return
+    }
+
+    try {
+      const data = await gqlRequest<{ me: User }>(
+        `query Me {
+          me { id displayName email role createdAtUtc }
+        }`,
+      )
+      currentUser.value = data.me
+    } catch {
+      await logout()
     }
   }
 
   return { currentUser, isAuthenticated, isAdmin, login, signup, logout, checkAuth }
 })
+

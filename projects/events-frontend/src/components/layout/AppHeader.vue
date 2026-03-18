@@ -19,7 +19,7 @@ const auth = useAuthStore()
       </nav>
       <div class="header-actions">
         <template v-if="auth.isAuthenticated">
-          <span class="user-name">{{ auth.currentUser?.name }}</span>
+          <span class="user-name">{{ auth.currentUser?.displayName }}</span>
           <button class="btn btn-ghost" @click="auth.logout()">Logout</button>
         </template>
         <template v-else>

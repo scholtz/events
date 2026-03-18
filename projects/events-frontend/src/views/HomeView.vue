@@ -8,8 +8,9 @@ const eventsStore = useEventsStore()
 
 const mapCenter = computed(() => {
   const firstEvent = eventsStore.filteredEvents[0]
-  if (!firstEvent?.location) return null
-  const { lat, lng } = firstEvent.location
+  if (!firstEvent) return null
+  const lat = Number(firstEvent.latitude)
+  const lng = Number(firstEvent.longitude)
   if (
     !Number.isFinite(lat) ||
     !Number.isFinite(lng) ||
@@ -21,7 +22,7 @@ const mapCenter = computed(() => {
   return {
     lat,
     lng,
-    label: firstEvent.location.name || firstEvent.location.address || firstEvent.title,
+    label: firstEvent.venueName || firstEvent.city || firstEvent.name,
   }
 })
 

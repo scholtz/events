@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { useEventsStore } from '@/stores/events'
-import { useCategoriesStore } from '@/stores/categories'
+import { useDomainsStore } from '@/stores/domains'
 
 const eventsStore = useEventsStore()
-const categories = useCategoriesStore()
+const domainsStore = useDomainsStore()
 </script>
 
 <template>
@@ -21,18 +21,18 @@ const categories = useCategoriesStore()
         />
       </div>
       <div class="form-group">
-        <label class="form-label" for="filter-category">Category</label>
+        <label class="form-label" for="filter-domain">Domain</label>
         <select
-          id="filter-category"
+          id="filter-domain"
           class="form-select"
-          :value="eventsStore.filters.category"
+          :value="eventsStore.filters.domain"
           @change="
-            eventsStore.setFilters({ category: ($event.target as HTMLSelectElement).value })
+            eventsStore.setFilters({ domain: ($event.target as HTMLSelectElement).value })
           "
         >
-          <option value="">All Categories</option>
-          <option v-for="cat in categories.categories" :key="cat.id" :value="cat.slug">
-            {{ cat.name }}
+          <option value="">All Domains</option>
+          <option v-for="d in domainsStore.domains" :key="d.id" :value="d.slug">
+            {{ d.name }}
           </option>
         </select>
       </div>
@@ -57,14 +57,14 @@ const categories = useCategoriesStore()
         />
       </div>
       <div class="form-group">
-        <label class="form-label" for="filter-location">Location</label>
+        <label class="form-label" for="filter-city">City</label>
         <input
-          id="filter-location"
+          id="filter-city"
           class="form-input"
           type="text"
           placeholder="City or venue..."
-          :value="eventsStore.filters.location"
-          @input="eventsStore.setFilters({ location: ($event.target as HTMLInputElement).value })"
+          :value="eventsStore.filters.city"
+          @input="eventsStore.setFilters({ city: ($event.target as HTMLInputElement).value })"
         />
       </div>
       <div class="form-group filter-actions">

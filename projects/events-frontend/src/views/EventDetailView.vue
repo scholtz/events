@@ -2,16 +2,14 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useEventsStore } from '@/stores/events'
-import { useCategoriesStore } from '@/stores/categories'
 
 const route = useRoute()
 const eventsStore = useEventsStore()
-const categories = useCategoriesStore()
 
-const event = computed(() => eventsStore.getEventById(route.params.id as string))
+const event = computed(() => eventsStore.getEventBySlug(route.params.id as string))
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', {
+  return new Date(dateStr).toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
@@ -34,6 +32,32 @@ function hasValidCoords(lat: number, lng: number): boolean {
     !(lat === 0 && lng === 0)
   )
 }
+
+function statusLabel(status: string): string {
+  switch (status) {
+    case 'PUBLISHED':
+      return 'published'
+    case 'PENDING_APPROVAL':
+      return 'pending'
+    case 'REJECTED':
+      return 'rejected'
+    default:
+      return status.toLowerCase()
+  }
+}
+
+function statusBadgeClass(status: string): string {
+  switch (status) {
+    case 'PUBLISHED':
+      return 'badge-success'
+    case 'PENDING_APPROVAL':
+      return 'badge-warning'
+    case 'REJECTED':
+      return 'badge-danger'
+    default:
+      return ''
+  }
+}
 </script>
 
 <template>
@@ -43,22 +67,17 @@ function hasValidCoords(lat: number, lng: number): boolean {
       <div class="event-detail card">
         <div class="event-detail-header">
           <div class="event-detail-meta">
-            <span
-              class="badge"
-              :style="{
-                background:
-                  (categories.getCategoryBySlug(event.category)?.color ?? '#137fec') + '22',
-                color: categories.getCategoryBySlug(event.category)?.color ?? '#137fec',
-              }"
-            >
-              {{ categories.getCategoryBySlug(event.category)?.name ?? event.category }}
+            <span class="badge badge-primary">
+              {{ event.domain?.name ?? 'Event' }}
             </span>
-            <span class="event-status badge" :class="event.status === 'approved' ? 'badge-success' : event.status === 'pending' ? 'badge-warning' : 'badge-danger'">
-              {{ event.status }}
+            <span class="event-status badge" :class="statusBadgeClass(event.status)">
+              {{ statusLabel(event.status) }}
             </span>
           </div>
-          <h1>{{ event.title }}</h1>
-          <p v-if="event.organizer" class="organizer">Organized by {{ event.organizer }}</p>
+          <h1>{{ event.name }}</h1>
+          <p v-if="event.submittedBy" class="organizer">
+            Submitted by {{ event.submittedBy.displayName }}
+          </p>
         </div>
         <div class="event-detail-body">
           <div class="event-info">
@@ -68,9 +87,9 @@ function hasValidCoords(lat: number, lng: number): boolean {
                 Date
               </h3>
               <p>
-                {{ formatDate(event.date) }}
-                <template v-if="event.endDate">
-                  <br /><span class="text-secondary">Until {{ formatDate(event.endDate) }}</span>
+                {{ formatDate(event.startsAtUtc) }}
+                <template v-if="event.endsAtUtc">
+                  <br /><span class="text-secondary">Until {{ formatDate(event.endsAtUtc) }}</span>
                 </template>
               </p>
             </div>
@@ -79,9 +98,9 @@ function hasValidCoords(lat: number, lng: number): boolean {
                 <span class="info-icon">📍</span>
                 Location
               </h3>
-              <p>{{ event.location.name || 'TBD' }}</p>
-              <p v-if="event.location.address" class="text-secondary">
-                {{ event.location.address }}
+              <p>{{ event.venueName || 'TBD' }}</p>
+              <p v-if="event.addressLine1 || event.city" class="text-secondary">
+                {{ [event.addressLine1, event.city, event.countryCode].filter(Boolean).join(', ') }}
               </p>
             </div>
             <div class="info-section">
@@ -92,15 +111,23 @@ function hasValidCoords(lat: number, lng: number): boolean {
               <p class="event-description">{{ event.description }}</p>
             </div>
             <div class="info-section">
-              <a :href="event.link" target="_blank" rel="noopener noreferrer" class="btn btn-primary">
+              <a
+                :href="event.eventUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="btn btn-primary"
+              >
                 Visit Event Page →
               </a>
             </div>
           </div>
-          <div v-if="hasValidCoords(event.location.lat, event.location.lng)" class="event-map">
+          <div
+            v-if="hasValidCoords(Number(event.latitude), Number(event.longitude))"
+            class="event-map"
+          >
             <h3 class="map-heading">Location on Map</h3>
             <iframe
-              :src="mapUrl(event.location.lat, event.location.lng)"
+              :src="mapUrl(Number(event.latitude), Number(event.longitude))"
               title="Event location map"
               loading="lazy"
               sandbox="allow-scripts"

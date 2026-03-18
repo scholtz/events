@@ -12,9 +12,6 @@ export default defineConfig(({ isSsrBuild }) => ({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
-  ssr: {
-    noExternal: ['@supabase/supabase-js'],
-  },
   build: {
     emptyOutDir: true,
     outDir: isSsrBuild ? 'dist/server' : 'dist',

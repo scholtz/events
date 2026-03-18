@@ -2,41 +2,54 @@
 import { ref } from 'vue'
 import { useEventsStore } from '@/stores/events'
 import { useAuthStore } from '@/stores/auth'
-import { useCategoriesStore } from '@/stores/categories'
+import { useDomainsStore } from '@/stores/domains'
 
 const eventsStore = useEventsStore()
 const auth = useAuthStore()
-const categories = useCategoriesStore()
+const domainsStore = useDomainsStore()
 
-const activeTab = ref<'events' | 'categories'>('events')
+const activeTab = ref<'events' | 'domains'>('events')
 
-const newCategory = ref({ name: '', slug: '', description: '', color: '#137fec' })
+const newDomain = ref({ name: '', slug: '', subdomain: '', description: '' })
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', {
+  return new Date(dateStr).toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
   })
 }
 
+function statusLabel(status: string): string {
+  switch (status) {
+    case 'PUBLISHED':
+      return 'published'
+    case 'PENDING_APPROVAL':
+      return 'pending'
+    case 'REJECTED':
+      return 'rejected'
+    default:
+      return status.toLowerCase()
+  }
+}
+
 function statusBadgeClass(status: string): string {
   switch (status) {
-    case 'approved':
+    case 'PUBLISHED':
       return 'badge-success'
-    case 'pending':
+    case 'PENDING_APPROVAL':
       return 'badge-warning'
-    case 'rejected':
+    case 'REJECTED':
       return 'badge-danger'
     default:
       return ''
   }
 }
 
-function addCategory() {
-  if (!newCategory.value.name || !newCategory.value.slug) return
-  categories.addCategory({ ...newCategory.value })
-  newCategory.value = { name: '', slug: '', description: '', color: '#137fec' }
+async function addDomain() {
+  if (!newDomain.value.name || !newDomain.value.slug || !newDomain.value.subdomain) return
+  await domainsStore.upsertDomain({ ...newDomain.value })
+  newDomain.value = { name: '', slug: '', subdomain: '', description: '' }
 }
 </script>
 
@@ -45,7 +58,7 @@ function addCategory() {
     <div class="page-header">
       <div>
         <h1>Admin Panel</h1>
-        <p>Manage events, categories, and platform settings.</p>
+        <p>Manage events, domains, and platform settings.</p>
       </div>
       <div v-if="auth.isAdmin && eventsStore.pendingEvents.length" class="pending-pill">
         <span class="pending-dot"></span>
@@ -63,11 +76,11 @@ function addCategory() {
           <span class="tab-count">{{ eventsStore.allEvents.length }}</span>
         </button>
         <button
-          :class="['tab-btn', { active: activeTab === 'categories' }]"
-          @click="activeTab = 'categories'"
+          :class="['tab-btn', { active: activeTab === 'domains' }]"
+          @click="activeTab = 'domains'"
         >
-          Categories
-          <span class="tab-count">{{ categories.categories.length }}</span>
+          Domains
+          <span class="tab-count">{{ domainsStore.domains.length }}</span>
         </button>
       </div>
 
@@ -77,8 +90,8 @@ function addCategory() {
           <table>
             <thead>
               <tr>
-                <th>Event / Organizer</th>
-                <th>Category</th>
+                <th>Event / Submitter</th>
+                <th>Domain</th>
                 <th>Date</th>
                 <th>Status</th>
                 <th>Actions</th>
@@ -87,42 +100,36 @@ function addCategory() {
             <tbody>
               <tr v-for="event in eventsStore.allEvents" :key="event.id">
                 <td>
-                  <RouterLink :to="`/event/${event.id}`" class="event-link">
-                    {{ event.title }}
+                  <RouterLink :to="`/event/${event.slug}`" class="event-link">
+                    {{ event.name }}
                   </RouterLink>
-                  <div class="text-secondary">{{ event.organizer }}</div>
+                  <div class="text-secondary">{{ event.submittedBy?.displayName }}</div>
                 </td>
                 <td>
                   <span class="category-label">
-                    {{ categories.getCategoryBySlug(event.category)?.name ?? event.category }}
+                    {{ event.domain?.name ?? '—' }}
                   </span>
                 </td>
-                <td class="date-cell">{{ formatDate(event.date) }}</td>
+                <td class="date-cell">{{ formatDate(event.startsAtUtc) }}</td>
                 <td>
                   <span class="badge" :class="statusBadgeClass(event.status)">
-                    {{ event.status }}
+                    {{ statusLabel(event.status) }}
                   </span>
                 </td>
                 <td class="actions-cell">
                   <button
-                    v-if="event.status !== 'approved'"
+                    v-if="event.status !== 'PUBLISHED'"
                     class="btn btn-success btn-sm"
-                    @click="eventsStore.updateEventStatus(event.id, 'approved')"
+                    @click="eventsStore.reviewEvent(event.id, 'PUBLISHED')"
                   >
                     Approve
                   </button>
                   <button
-                    v-if="event.status !== 'rejected'"
+                    v-if="event.status !== 'REJECTED'"
                     class="btn btn-outline btn-sm"
-                    @click="eventsStore.updateEventStatus(event.id, 'rejected')"
+                    @click="eventsStore.reviewEvent(event.id, 'REJECTED')"
                   >
                     Reject
-                  </button>
-                  <button
-                    class="btn btn-danger btn-sm"
-                    @click="eventsStore.deleteEvent(event.id)"
-                  >
-                    Delete
                   </button>
                 </td>
               </tr>
@@ -135,72 +142,74 @@ function addCategory() {
         </div>
       </div>
 
-      <!-- Categories management -->
-      <div v-if="activeTab === 'categories'" class="admin-section">
+      <!-- Domains management -->
+      <div v-if="activeTab === 'domains'" class="admin-section">
         <div class="add-category card">
-          <h3>Add Category</h3>
-          <form class="category-form" @submit.prevent="addCategory">
+          <h3>Add Domain</h3>
+          <form class="category-form" @submit.prevent="addDomain">
             <input
-              v-model="newCategory.name"
+              v-model="newDomain.name"
               class="form-input"
               type="text"
               placeholder="Name"
               required
             />
             <input
-              v-model="newCategory.slug"
+              v-model="newDomain.slug"
               class="form-input"
               type="text"
               placeholder="Slug (e.g. crypto)"
               required
             />
             <input
-              v-model="newCategory.description"
+              v-model="newDomain.subdomain"
+              class="form-input"
+              type="text"
+              placeholder="Subdomain (e.g. crypto)"
+              required
+            />
+            <input
+              v-model="newDomain.description"
               class="form-input"
               type="text"
               placeholder="Description (optional)"
             />
-            <div class="color-field">
-              <input v-model="newCategory.color" class="form-input color-input" type="color" />
-            </div>
-            <button type="submit" class="btn btn-primary">Add Category</button>
+            <button type="submit" class="btn btn-primary">Add Domain</button>
           </form>
         </div>
         <div class="categories-table card">
           <table>
             <thead>
               <tr>
-                <th>Color</th>
+                <th>Status</th>
                 <th>Name</th>
                 <th>Slug</th>
+                <th>Subdomain</th>
                 <th>Description</th>
-                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="cat in categories.categories" :key="cat.id">
+              <tr v-for="d in domainsStore.domains" :key="d.id">
                 <td>
-                  <span class="color-dot" :style="{ background: cat.color }"></span>
+                  <span
+                    class="color-dot"
+                    :style="{ background: d.isActive ? '#4ade80' : '#f87171' }"
+                  ></span>
                 </td>
-                <td>{{ cat.name }}</td>
+                <td>{{ d.name }}</td>
                 <td>
-                  <code class="slug-code">{{ cat.slug }}</code>
+                  <code class="slug-code">{{ d.slug }}</code>
                 </td>
-                <td class="text-secondary">{{ cat.description }}</td>
                 <td>
-                  <button
-                    class="btn btn-danger btn-sm"
-                    @click="categories.deleteCategory(cat.id)"
-                  >
-                    Delete
-                  </button>
+                  <code class="slug-code">{{ d.subdomain }}</code>
                 </td>
+                <td class="text-secondary">{{ d.description }}</td>
               </tr>
             </tbody>
           </table>
-          <div v-if="!categories.categories.length" class="empty-table">
+          <div v-if="!domainsStore.domains.length" class="empty-table">
             <div class="empty-icon">🏷️</div>
-            <p>No categories yet. Add one above.</p>
+            <p>No domains yet. Add one above.</p>
           </div>
         </div>
       </div>
