@@ -9,12 +9,15 @@
 - Reusable components are in `src/components/`, organized by feature (e.g., `layout/`, `events/`).
 - TypeScript type definitions are in `src/types/`.
 - Pinia stores are in `src/stores/`.
+- GraphQL client helper is in `src/lib/graphql.ts`.
 - Global CSS styles and design tokens are in `src/assets/styles/main.css`.
 - Vue Router configuration is in `src/router/index.ts`.
 
 ## Technology and conventions
 - Frontend uses Vue 3 + TypeScript + Vite.
 - Backend uses ASP.NET Core 8, Hot Chocolate GraphQL, Entity Framework Core, and JWT bearer authentication.
+- Frontend communicates with the backend exclusively via GraphQL using a lightweight fetch-based client (`src/lib/graphql.ts`). There is no Supabase dependency.
+- The GraphQL endpoint URL is configured via `VITE_GRAPHQL_URL` environment variable (defaults to `https://events-api.de-4.biatec.io/graphql`).
 - State management uses Pinia with the Composition API (`defineStore` with `setup` function syntax).
 - Routing uses Vue Router 5 with lazy-loaded route components (except the home page).
 - Follow existing formatting conventions from `projects/events-frontend/.prettierrc.json`:
@@ -28,10 +31,29 @@
 - Use CSS custom properties (variables) defined in `main.css` for theming/colors.
 - Prefer semantic HTML elements and accessibility attributes.
 - Use `@/` path alias for imports from the `src` directory.
-- When the frontend needs live event data, prefer the GraphQL contract exposed by `projects/EventsApi` instead of introducing parallel mock-specific shapes.
+
+## GraphQL integration
+- All frontend data fetching uses GraphQL queries and mutations via `gqlRequest()` from `src/lib/graphql.ts`.
+- Frontend types in `src/types/index.ts` are synced with backend entity models (`CatalogEvent`, `EventDomain`, `ApplicationUser`, `AuthPayload`, etc.).
+- Backend status enums use SCREAMING_SNAKE_CASE: `PUBLISHED`, `PENDING_APPROVAL`, `REJECTED`, `DRAFT`.
+- Backend user roles: `ADMIN`, `CONTRIBUTOR`.
+- Key GraphQL operations:
+  - **Queries**: `events`, `eventBySlug(slug)`, `domains`, `domainBySubdomain(subdomain)`, `me`, `myDashboard`, `adminOverview`
+  - **Mutations**: `login(input)`, `registerUser(input)`, `submitEvent(input)`, `updateMyEvent(eventId, input)`, `reviewEvent(eventId, input)`, `upsertDomain(input)`, `updateUserRole(input)`
 - Keep frontend event filtering aligned with backend `events(filter: ...)`, `domainBySubdomain(subdomain: ...)`, `eventBySlug(slug: ...)`, `myDashboard`, and `adminOverview` operations.
 - Domain-specific catalog pages should use the backend `subdomain` and `slug` fields rather than hard-coded frontend routing metadata.
-- Authenticated frontend features should use JWT tokens returned by `registerUser` or `login` and send them as bearer tokens.
+
+## Authentication
+- JWT tokens are obtained via `login` or `registerUser` GraphQL mutations.
+- Tokens are stored in `localStorage` under `auth_token` and `auth_expires` keys.
+- The GraphQL client automatically attaches the JWT token as a Bearer token in the `Authorization` header.
+- Token validation: `checkAuth()` in the auth store verifies the token hasn't expired and calls the `me` query.
+- Logout simply clears localStorage - no server-side session invalidation needed.
+
+## CORS configuration
+- Backend CORS is configured in `appsettings.json` under `Cors.AllowedOrigins`.
+- Production CORS origins are also set via environment variables in the K8s deployment (`Cors__AllowedOrigins__0`, etc.).
+- Allowed origins include: `http://localhost:5173`, `https://events-delta-black.vercel.app`, `https://events-scholtz.vercel.app`.
 
 ## Validate changes
 - Run commands from `projects/events-frontend`:
@@ -50,15 +72,15 @@
 - Focus tests on one area per file: `home.spec.ts`, `auth.spec.ts`, `events.spec.ts`, `vue.spec.ts` (full flow).
 
 ### Always use the shared mock helper
-All tests must set up API mocks **before** calling `page.goto()`. Use `setupMockApi(page, initialState)` from `./helpers/mock-api` to intercept all Supabase auth/rest requests. This keeps tests deterministic and independent of a live backend.
+All tests must set up API mocks **before** calling `page.goto()`. Use `setupMockApi(page, initialState)` from `./helpers/mock-api` to intercept all GraphQL API requests. This keeps tests deterministic and independent of a live backend.
 
 ```ts
-import { setupMockApi, makeTechCategory, makeApprovedEvent } from './helpers/mock-api'
+import { setupMockApi, makeTechDomain, makeApprovedEvent } from './helpers/mock-api'
 
 test('shows events', async ({ page }) => {
   setupMockApi(page, {
-    categories: [makeTechCategory()],
-    events: [makeApprovedEvent({ title: 'My Event' })],
+    domains: [makeTechDomain()],
+    events: [makeApprovedEvent({ name: 'My Event', slug: 'my-event' })],
   })
   await page.goto('/')
   await expect(page.locator('.event-card', { hasText: 'My Event' })).toBeVisible()
@@ -81,13 +103,13 @@ Use Playwright's accessible locators in this order of preference:
 
 ### Test isolation
 - Each test gets its own fresh `MockState` object from `setupMockApi`.
-- Do not share mutable state between tests; rely on the helper factories (`makeAdminUser`, `makeTechCategory`, `makeApprovedEvent`).
+- Do not share mutable state between tests; rely on the helper factories (`makeAdminUser`, `makeTechDomain`, `makeApprovedEvent`).
 - Use `test.describe` blocks to group related tests by page or feature.
 
 ### CI
 - Playwright tests run automatically on every push and PR via `.github/workflows/playwright.yml`.
 - Only Chromium is used in CI to keep pipeline fast. Run all browsers locally if needed.
-- The CI workflow builds the client first (with placeholder Supabase credentials) then runs `npm run test:e2e`.
+- The CI workflow builds the client first then runs `npm run test:e2e`.
 - All tests must pass before a PR can be merged.
 
 ### Running tests locally

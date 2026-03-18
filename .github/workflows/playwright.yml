@@ -39,15 +39,13 @@ jobs:
       - name: Install Playwright browsers (Chromium only for CI speed)
         run: npx playwright install --with-deps chromium
 
-      # Build the client with placeholder Supabase credentials.
+      # Build the client for e2e testing.
       # All API calls are intercepted by page.route() in the tests, so the
-      # credentials only need to be valid enough for @supabase/supabase-js to
-      # initialise without throwing.
+      # GraphQL URL doesn't need to point to a real backend.
       - name: Build client for e2e
         run: npm run build:client
         env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'http://localhost:54321' }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
+          VITE_GRAPHQL_URL: http://localhost:4000/graphql
 
       - name: Run Playwright tests
         run: npm run test:e2e -- --project=chromium
