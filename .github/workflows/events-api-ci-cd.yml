@@ -33,13 +33,13 @@ jobs:
           dotnet-version: 10.x
 
       - name: Restore
-        run: dotnet restore ${{ env.PROJECT_PATH }}/EventsApi.sln
+        run: dotnet restore ${{ env.PROJECT_PATH }}/events.slnx
 
       - name: Build
-        run: dotnet build ${{ env.PROJECT_PATH }}/EventsApi.sln --configuration Release --no-restore
+        run: dotnet build ${{ env.PROJECT_PATH }}/events.slnx --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test ${{ env.PROJECT_PATH }}/EventsApi.sln --configuration Release --no-build
+        run: dotnet test ${{ env.PROJECT_PATH }}/events.slnx --configuration Release --no-build
 
   docker:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
