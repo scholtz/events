@@ -13,6 +13,8 @@ spec:
       labels:
         app: events-api
     spec:
+      imagePullSecrets:
+        - name: regcred
       containers:
         - name: events-api
           image: IMAGE_PLACEHOLDER
