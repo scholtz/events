@@ -9,8 +9,12 @@
 			"path": "./projects/events-frontend"
 		},
 		{
-			"name": "Supabase",
-			"path": "./supabase"
+			"name": "EventsApi",
+			"path": "./projects/EventsApi"
+		},
+		{
+			"name": "EventsApi.Tests",
+			"path": "./projects/EventsApi.Tests"
 		}
 	],
 	"settings": {}
