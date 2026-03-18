@@ -31,8 +31,7 @@ export async function gqlRequest<T>(
   const json: GraphQLResponse<T> = await res.json()
 
   if (json.errors && json.errors.length > 0) {
-    const firstError = json.errors[0]
-    throw new Error(firstError ? firstError.message : 'Unknown GraphQL error')
+    throw new Error(json.errors[0]!.message)
   }
 
   if (!json.data) {
