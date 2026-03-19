@@ -28,6 +28,11 @@ watch(slug, loadDetail)
 const isFavorited = computed(() => event.value ? favoritesStore.isFavorited(event.value.id) : false)
 const favoriting = ref(false)
 
+// Pre-computed numeric lat/lng to avoid repeated Number() calls in template
+const eventLat = computed(() => Number(event.value?.latitude ?? 0))
+const eventLng = computed(() => Number(event.value?.longitude ?? 0))
+const validCoords = computed(() => hasValidCoords(eventLat.value, eventLng.value))
+
 async function handleFavoriteToggle() {
   if (!event.value || !authStore.isAuthenticated) return
   favoriting.value = true
@@ -81,7 +86,7 @@ function googleMapsDirectionsUrl(event: { venueName: string; addressLine1: strin
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`
 }
 
-function interestedLabel(count: number): string {
+function formatInterestedCount(count: number): string {
   if (count === 0) return 'Be the first to save this event'
   if (count === 1) return '1 person interested'
   return `${count} people interested`
@@ -234,13 +239,13 @@ function statusBadgeClass(status: string): string {
           <div class="event-sidebar">
             <!-- Interactive map (when coordinates available) -->
             <div
-              v-if="hasValidCoords(Number(event.latitude), Number(event.longitude))"
+              v-if="validCoords"
               class="event-map"
               aria-label="Event location map"
             >
               <h3 class="map-heading">Location on Map</h3>
               <iframe
-                :src="mapUrl(Number(event.latitude), Number(event.longitude))"
+                :src="mapUrl(eventLat, eventLng)"
                 title="Interactive map showing event location"
                 loading="lazy"
                 sandbox="allow-scripts"
@@ -284,7 +289,7 @@ function statusBadgeClass(status: string): string {
                   <span class="stat-icon" aria-hidden="true">🔖</span>
                   <div class="stat-text">
                     <span class="stat-value">{{ event.interestedCount ?? 0 }}</span>
-                    <span class="stat-label">{{ interestedLabel(event.interestedCount ?? 0) }}</span>
+                    <span class="stat-label">{{ formatInterestedCount(event.interestedCount ?? 0) }}</span>
                   </div>
                 </div>
               </div>
