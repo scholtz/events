@@ -167,10 +167,10 @@ function trendClass(item: EventAnalyticsItem): string {
                 <th scope="col">Event</th>
                 <th scope="col">Status</th>
                 <th scope="col">Date</th>
-                <th scope="col" title="Total number of attendees who saved this event">
+                <th scope="col" class="col-saves" title="Total number of attendees who saved this event">
                   Saves
                 </th>
-                <th scope="col" title="Recent save activity">Momentum</th>
+                <th scope="col" class="col-momentum" title="Recent save activity">Momentum</th>
                 <th scope="col">Actions</th>
               </tr>
             </thead>
@@ -192,12 +192,12 @@ function trendClass(item: EventAnalyticsItem): string {
                   </span>
                 </td>
                 <td class="date-cell">{{ formatDate(item.startsAtUtc) }}</td>
-                <td>
+                <td class="col-saves">
                   <span class="saves-count" :aria-label="`${item.totalInterestedCount} saves`">
                     {{ item.totalInterestedCount }}
                   </span>
                 </td>
-                <td>
+                <td class="col-momentum">
                   <span class="trend-badge" :class="trendClass(item)">
                     {{ trendLabel(item) }}
                   </span>
@@ -370,6 +370,9 @@ th {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   border-bottom: 1px solid var(--color-border);
+}
+
+th[title] {
   cursor: help;
 }
 
@@ -614,10 +617,8 @@ tr:hover td {
     grid-template-columns: repeat(2, 1fr);
   }
 
-  table th:nth-child(4),
-  table td:nth-child(4),
-  table th:nth-child(5),
-  table td:nth-child(5) {
+  .col-saves,
+  .col-momentum {
     display: none;
   }
 }

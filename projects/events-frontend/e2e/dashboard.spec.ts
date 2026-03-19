@@ -185,7 +185,7 @@ test.describe('Organizer analytics dashboard', () => {
     const otherEvent = makeApprovedEvent({
       id: 'ev-other',
       slug: 'other-event',
-      name: 'Someone Elses Event',
+      name: "Someone Else's Event",
       submittedByUserId: 'other-organizer-99',
       submittedBy: { displayName: 'Other Organizer' },
     })
@@ -201,6 +201,6 @@ test.describe('Organizer analytics dashboard', () => {
 
     // Only the organizer's own event should appear in the analytics table
     await expect(page.getByRole('link', { name: 'My Own Event' })).toBeVisible()
-    await expect(page.getByText("Someone Elses Event")).toBeHidden()
+    await expect(page.getByText("Someone Else's Event")).toBeHidden()
   })
 })
