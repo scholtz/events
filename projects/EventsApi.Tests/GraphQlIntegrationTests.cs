@@ -1721,6 +1721,270 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal(1, laterAnalytics.GetProperty("interestedLast7Days").GetInt32());
     }
 
+    // ── Event detail: location, map, and attendee context ──────────────────
+
+    [Fact]
+    public async Task EventBySlug_ReturnsAllLocationFields_ForPublishedEvent()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        const string slug = "location-fields-event";
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("loc@example.com", "Location Organizer");
+            var domain = CreateDomain("Tech", "tech-loc");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+
+            var ev = CreateEvent("Location Fields Event", slug, "Has all location data.",
+                "Grand Venue Hall", "Prague", FirstDayOfNextMonthUtc(), domain, user);
+            // Override to set known coordinates
+            ev.AddressLine1 = "Wenceslas Square 1";
+            ev.CountryCode = "CZ";
+            ev.Latitude = 50.0755m;
+            ev.Longitude = 14.4378m;
+            dbContext.Events.Add(ev);
+        });
+
+        using var document = await ExecuteGraphQlAsync(
+            factory.CreateClient(),
+            """
+            query EventBySlug($slug: String!) {
+              eventBySlug(slug: $slug) {
+                venueName
+                addressLine1
+                city
+                countryCode
+                latitude
+                longitude
+                mapUrl
+                interestedCount
+              }
+            }
+            """,
+            new { slug });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("eventBySlug");
+        Assert.Equal("Grand Venue Hall", result.GetProperty("venueName").GetString());
+        Assert.Equal("Wenceslas Square 1", result.GetProperty("addressLine1").GetString());
+        Assert.Equal("Prague", result.GetProperty("city").GetString());
+        Assert.Equal("CZ", result.GetProperty("countryCode").GetString());
+        Assert.Equal(50.0755m, result.GetProperty("latitude").GetDecimal());
+        Assert.Equal(14.4378m, result.GetProperty("longitude").GetDecimal());
+
+        var mapUrl = result.GetProperty("mapUrl").GetString();
+        Assert.NotNull(mapUrl);
+        Assert.Contains("openstreetmap.org", mapUrl);
+        Assert.Contains("50.0755", mapUrl);
+        Assert.Contains("14.4378", mapUrl);
+
+        // interestedCount starts at zero for a new event with no saves
+        Assert.Equal(0, result.GetProperty("interestedCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task EventBySlug_WithZeroCoordinates_StillReturnsEventWithZeroLatLng()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        const string slug = "zero-coords-event";
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("zerocoords@example.com", "Zero Coords Organizer");
+            var domain = CreateDomain("Tech", "tech-zc");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+
+            var ev = CreateEvent("Zero Coords Event", slug, "No GPS coordinates set.",
+                "Mystery Venue", "Vienna", FirstDayOfNextMonthUtc(), domain, user);
+            // Explicitly override to zero lat/lng (default/unset state)
+            ev.Latitude = 0m;
+            ev.Longitude = 0m;
+            dbContext.Events.Add(ev);
+        });
+
+        using var document = await ExecuteGraphQlAsync(
+            factory.CreateClient(),
+            """
+            query EventBySlug($slug: String!) {
+              eventBySlug(slug: $slug) {
+                slug
+                venueName
+                city
+                latitude
+                longitude
+                mapUrl
+                interestedCount
+              }
+            }
+            """,
+            new { slug });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("eventBySlug");
+        // Event is still returned — the backend does not reject zero-coordinate events
+        Assert.Equal(slug, result.GetProperty("slug").GetString());
+        Assert.Equal("Mystery Venue", result.GetProperty("venueName").GetString());
+        Assert.Equal("Vienna", result.GetProperty("city").GetString());
+        Assert.Equal(0m, result.GetProperty("latitude").GetDecimal());
+        Assert.Equal(0m, result.GetProperty("longitude").GetDecimal());
+        // mapUrl is always computed — frontend decides whether to render the map
+        Assert.NotNull(result.GetProperty("mapUrl").GetString());
+        Assert.Equal(0, result.GetProperty("interestedCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task EventBySlug_ReturnsNull_ForNonPublishedEvent()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        const string pendingSlug = "pending-detail-event";
+        const string rejectedSlug = "rejected-detail-event";
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("nonpub@example.com", "Non-Published Organizer");
+            var domain = CreateDomain("Tech", "tech-np");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+
+            var pending = CreateEvent("Pending Detail Event", pendingSlug, "Pending.",
+                "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, user,
+                status: EventStatus.PendingApproval);
+            var rejected = CreateEvent("Rejected Detail Event", rejectedSlug, "Rejected.",
+                "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, user,
+                status: EventStatus.Rejected);
+
+            dbContext.Events.AddRange(pending, rejected);
+        });
+
+        // Unauthenticated client must not see non-published events
+        using var pendingDocument = await ExecuteGraphQlAsync(
+            factory.CreateClient(),
+            """
+            query EventBySlug($slug: String!) {
+              eventBySlug(slug: $slug) { name }
+            }
+            """,
+            new { slug = pendingSlug });
+
+        Assert.True(
+            pendingDocument.RootElement.GetProperty("data").GetProperty("eventBySlug").ValueKind
+                == System.Text.Json.JsonValueKind.Null,
+            "Pending event should not be accessible via eventBySlug");
+
+        using var rejectedDocument = await ExecuteGraphQlAsync(
+            factory.CreateClient(),
+            """
+            query EventBySlug($slug: String!) {
+              eventBySlug(slug: $slug) { name }
+            }
+            """,
+            new { slug = rejectedSlug });
+
+        Assert.True(
+            rejectedDocument.RootElement.GetProperty("data").GetProperty("eventBySlug").ValueKind
+                == System.Text.Json.JsonValueKind.Null,
+            "Rejected event should not be accessible via eventBySlug");
+    }
+
+    [Fact]
+    public async Task EventBySlug_AllowsUnauthenticatedAccess_AndReturnsInterestedCount()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var attendeeUserId = Guid.Empty;
+        const string slug = "unauth-access-event";
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer = CreateUser("unauth-org@example.com", "Unauth Organizer");
+            var attendee = CreateUser("unauth-att@example.com", "Unauth Attendee");
+            attendeeUserId = attendee.Id;
+
+            var domain = CreateDomain("Tech", "tech-ua");
+            dbContext.Users.AddRange(organizer, attendee);
+            dbContext.Domains.Add(domain);
+
+            var ev = CreateEvent("Unauth Access Event", slug, "Anyone can view.",
+                "Public Venue", "Prague", FirstDayOfNextMonthUtc(), domain, organizer);
+            dbContext.Events.Add(ev);
+            dbContext.FavoriteEvents.Add(
+                new FavoriteEvent { UserId = attendee.Id, EventId = ev.Id, CreatedAtUtc = DateTime.UtcNow });
+        });
+
+        // No Authorization header — unauthenticated request
+        using var document = await ExecuteGraphQlAsync(
+            factory.CreateClient(),
+            """
+            query EventBySlug($slug: String!) {
+              eventBySlug(slug: $slug) {
+                name
+                interestedCount
+              }
+            }
+            """,
+            new { slug });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("eventBySlug");
+        Assert.Equal("Unauth Access Event", result.GetProperty("name").GetString());
+        // interestedCount is a public aggregate — visible without authentication
+        Assert.Equal(1, result.GetProperty("interestedCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task EventBySlug_InterestedCount_DoesNotExposeAttendeeIdentities()
+    {
+        // Privacy assertion: the eventBySlug response must not contain any user PII.
+        // interestedCount is a safe aggregate; attendee emails/ids/names must not leak.
+        await using var factory = new EventsApiWebApplicationFactory();
+        const string slug = "privacy-event";
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer = CreateUser("priv-org@example.com", "Privacy Organizer");
+            var alice = CreateUser("alice-priv@example.com", "Alice Private");
+            var bob = CreateUser("bob-priv@example.com", "Bob Private");
+
+            var domain = CreateDomain("Tech", "tech-priv");
+            dbContext.Users.AddRange(organizer, alice, bob);
+            dbContext.Domains.Add(domain);
+
+            var ev = CreateEvent("Privacy Event", slug, "Testing privacy of attendee data.",
+                "Secure Venue", "Prague", FirstDayOfNextMonthUtc(), domain, organizer);
+            dbContext.Events.Add(ev);
+
+            dbContext.FavoriteEvents.AddRange(
+                new FavoriteEvent { UserId = alice.Id, EventId = ev.Id, CreatedAtUtc = DateTime.UtcNow },
+                new FavoriteEvent { UserId = bob.Id, EventId = ev.Id, CreatedAtUtc = DateTime.UtcNow });
+        });
+
+        using var document = await ExecuteGraphQlAsync(
+            factory.CreateClient(),
+            """
+            query EventBySlug($slug: String!) {
+              eventBySlug(slug: $slug) {
+                name
+                interestedCount
+                submittedBy { displayName }
+              }
+            }
+            """,
+            new { slug });
+
+        var rawJson = document.RootElement.GetRawText();
+
+        // Aggregate count is correct
+        var result = document.RootElement.GetProperty("data").GetProperty("eventBySlug");
+        Assert.Equal(2, result.GetProperty("interestedCount").GetInt32());
+
+        // Attendee PII must not appear anywhere in the response
+        Assert.DoesNotContain("alice-priv@example.com", rawJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("bob-priv@example.com", rawJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Alice Private", rawJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Bob Private", rawJson, StringComparison.OrdinalIgnoreCase);
+
+        // Only the organizer's displayName is present (as submittedBy)
+        Assert.Contains("Privacy Organizer", rawJson, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static DateTime FirstDayOfNextMonthUtc()
     {
         var now = DateTime.UtcNow;

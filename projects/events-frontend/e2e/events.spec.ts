@@ -347,6 +347,160 @@ test.describe('Event detail page', () => {
     }
   })
 
+  test('shows error state with retry button when API call fails', async ({ page }) => {
+    setupMockApi(page)
+    // Override to return a GraphQL error for EventBySlug queries
+    await page.route('**/graphql', async (route, request) => {
+      const body = request.postData() ?? ''
+      if (body.includes('EventBySlug')) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            errors: [{ message: 'Service temporarily unavailable' }],
+          }),
+        })
+        return
+      }
+      await route.fallback()
+    })
+
+    await page.goto('/event/some-event-slug')
+
+    await expect(page.getByRole('heading', { name: 'Unable to load event' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible()
+  })
+
+  test('detail page map and attendee section are visible on mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    const event = makeApprovedEvent({
+      id: 'ev-mobile-map',
+      name: 'Mobile Map Event',
+      slug: 'mobile-map-event',
+      latitude: 50.0755,
+      longitude: 14.4378,
+    })
+    const state = setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [event],
+    })
+    state.favoriteEvents.push({
+      id: 'fav-mob',
+      userId: 'user-x',
+      eventId: event.id,
+      createdAtUtc: new Date().toISOString(),
+    })
+
+    await page.goto(`/event/${event.slug}`)
+
+    // Interactive map visible on mobile
+    await expect(page.locator('iframe[title*="map"]')).toBeVisible()
+    // Attendee context section visible on mobile
+    await expect(page.getByText('1 person interested')).toBeVisible()
+  })
+
+  test('full detail page journey: view location, attendee context, then favorite', async ({ page }) => {
+    const user = makeAdminUser()
+    const event = makeApprovedEvent({
+      id: 'ev-journey',
+      name: 'Journey Event',
+      slug: 'journey-event',
+      latitude: 50.0755,
+      longitude: 14.4378,
+      venueName: 'Journey Hall',
+      addressLine1: 'Journey Street 1',
+      city: 'Prague',
+    })
+    setupMockApi(page, {
+      users: [user],
+      domains: [makeTechDomain()],
+      events: [event],
+    })
+
+    // Inject auth before navigating to detail page
+    await page.goto('/')
+    await page.evaluate(() => {
+      localStorage.setItem('auth_token', 'token-admin-1')
+      localStorage.setItem('auth_expires', new Date(Date.now() + 7200000).toISOString())
+    })
+
+    await page.goto(`/event/${event.slug}`)
+
+    // Verify event name
+    await expect(page.getByRole('heading', { name: 'Journey Event' })).toBeVisible()
+
+    // Verify venue and address in location section
+    await expect(page.getByText('Journey Hall').first()).toBeVisible()
+    await expect(page.getByRole('link', { name: /Get Directions/ })).toBeVisible()
+
+    // Verify interactive map is rendered
+    await expect(page.locator('iframe[title*="map"]')).toBeVisible()
+
+    // Verify attendee context shows zero-state before saving
+    await expect(page.getByText('Be the first to save this event')).toBeVisible()
+
+    // Favorite the event
+    await page.getByRole('button', { name: 'Add to favorites' }).click()
+
+    // Attendee count updates after favoriting
+    await expect(page.getByText('1 person interested')).toBeVisible()
+    // Saved confirmation message appears
+    await expect(page.getByText("✓ You've saved this event")).toBeVisible()
+
+    // Page remains stable — heading still visible
+    await expect(page.getByRole('heading', { name: 'Journey Event' })).toBeVisible()
+  })
+
+  test('attendee section shows only aggregate count, not individual user identities', async ({
+    page,
+  }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-privacy',
+      name: 'Privacy Test Event',
+      slug: 'privacy-test-event',
+    })
+    const state = setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [event],
+    })
+    // Seed users with recognizable names and favorite them
+    const now = new Date().toISOString()
+    state.users.push(
+      {
+        id: 'user-alice',
+        email: 'alice@secret.com',
+        password: 'x',
+        displayName: 'Alice Smith',
+        role: 'CONTRIBUTOR',
+        createdAtUtc: now,
+      },
+      {
+        id: 'user-bob',
+        email: 'bob@secret.com',
+        password: 'x',
+        displayName: 'Bob Jones',
+        role: 'CONTRIBUTOR',
+        createdAtUtc: now,
+      },
+    )
+    state.favoriteEvents.push(
+      { id: 'fav-p1', userId: 'user-alice', eventId: event.id, createdAtUtc: now },
+      { id: 'fav-p2', userId: 'user-bob', eventId: event.id, createdAtUtc: now },
+    )
+
+    await page.goto(`/event/${event.slug}`)
+
+    // Aggregate count is visible
+    await expect(page.getByText('2 people interested')).toBeVisible()
+
+    // Individual user names must NOT appear anywhere on the page
+    await expect(page.getByText('Alice Smith')).not.toBeVisible()
+    await expect(page.getByText('Bob Jones')).not.toBeVisible()
+    // Emails must NOT appear anywhere on the page
+    await expect(page.getByText('alice@secret.com')).not.toBeVisible()
+    await expect(page.getByText('bob@secret.com')).not.toBeVisible()
+  })
+
   test('admin can reject an event from admin panel', async ({ page }) => {
     const admin = makeAdminUser()
     const event = makeApprovedEvent({

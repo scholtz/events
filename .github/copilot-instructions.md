@@ -92,6 +92,55 @@ Every analytics dashboard must have E2E tests covering:
 - All analytics must be aggregate-only — never expose attendee identities, raw attendee lists, or anything that could link a specific person to an event interaction.
 - Document in the PR which metrics are direct counts vs. derived, and confirm no PII is exposed.
 
+## Event detail page quality standards
+
+When implementing or extending the event detail page (`EventDetailView.vue` and `eventBySlug` backend query), always follow these standards to ensure the page is production-ready, privacy-safe, and fully tested.
+
+### Feature completeness for each PR
+
+Every PR that touches the event detail page must deliver a **full vertical slice**: GraphQL resolver changes (if any), frontend view changes, and tests at every level. A PR that only adds tests or only adds UI without corresponding backend or E2E coverage is not complete.
+
+Specifically, the PR diff must include all of the following that are relevant to the change:
+1. Backend: GraphQL query/resolver changes (if schema changes are needed)
+2. Backend: Integration tests (`projects/EventsApi.Tests/GraphQlIntegrationTests.cs`)
+3. Frontend: `EventDetailView.vue` changes
+4. Frontend: Playwright E2E tests (`e2e/events.spec.ts`)
+
+### Backend integration test requirements for event detail
+
+Every backend change that affects `eventBySlug` must have integration tests covering:
+1. **Location fields** — verify all location fields (`venueName`, `addressLine1`, `city`, `countryCode`, `latitude`, `longitude`, `mapUrl`) are returned correctly
+2. **Zero/missing coordinates** — event with `latitude=0, longitude=0` must still be returned; backend does not reject such events; the frontend decides whether to show the map
+3. **Non-published events return null** — `eventBySlug` must return `null` for `PENDING_APPROVAL` and `REJECTED` events to unauthenticated callers
+4. **Unauthenticated public access** — `eventBySlug` works without a JWT token for published events
+5. **interestedCount is aggregate-only** — the raw JSON response must contain no attendee emails, displayNames, or IDs; verify with `Assert.DoesNotContain` checks on the raw JSON string
+6. **interestedCount starts at zero** — a new event with no saves returns `interestedCount: 0`, not null
+
+### Frontend Playwright test requirements for event detail
+
+Every frontend change to the event detail page must have E2E tests covering:
+1. **Map present** — event with valid lat/lng shows an `<iframe>` with a map and an "Open in OpenStreetMap" link
+2. **Map fallback** — event with zero/missing coordinates shows no iframe, shows fallback text and "Search on Google Maps" link
+3. **Attendee section populated** — event with saves shows correct count text ("N people interested")
+4. **Attendee zero-state** — event with no saves shows "Be the first to save this event"
+5. **Sign-in prompt** — unauthenticated user sees "Sign in" link in the attendee section
+6. **Error state** — API failure shows "Unable to load event" heading and "Try again" retry button
+7. **Mobile viewport** — map and attendee section are both visible at 390×844 viewport
+8. **Full journey** — authenticated user visits detail → sees map → sees attendee context → favorites → count updates
+9. **Privacy** — attendee names and emails are absent from the rendered page even when favorites exist
+
+### Privacy rules for event detail
+
+- `interestedCount` on `eventBySlug` is a public aggregate (accessible without authentication). It communicates event momentum without exposing who saved the event.
+- The `eventBySlug` response must never include a list of users who favorited the event. Only the count is permitted.
+- The only user identity visible on the detail page is `submittedBy.displayName` (the organizer), which is intentional and not private.
+
+### Error handling and fallback requirements
+
+- When the API call for `eventBySlug` fails (network error, GraphQL error), the frontend must show a named error state with a retry button — not a blank page or spinner.
+- When coordinates are zero or missing, the frontend must fall back to a textual location presentation with a Google Maps search link — not a broken or empty map section.
+- When `interestedCount` is null or undefined (e.g., from a cached event that didn't fetch the detail fields), the UI must default to 0.
+
 
 - Run commands from `projects/events-frontend`:
   - `npm run lint`
