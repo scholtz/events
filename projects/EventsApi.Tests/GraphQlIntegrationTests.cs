@@ -1262,6 +1262,172 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal(1, publishedAnalytics.GetProperty("totalInterestedCount").GetInt32());
     }
 
+    [Fact]
+    public async Task MyDashboard_RequiresAuthentication_RejectsAnonymousRequest()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        using var client = factory.CreateClient();
+        // No Authorization header — should receive an auth error, not data
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                query MyDashboard {
+                  myDashboard {
+                    totalSubmittedEvents
+                  }
+                }
+                """
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        var errorMessage = errors.ToString();
+        // Hot Chocolate returns AUTH_NOT_AUTHORIZED for unauthenticated access to [Authorize] queries
+        Assert.True(
+            errorMessage.Contains("AUTH_NOT_AUTHORIZED", StringComparison.OrdinalIgnoreCase)
+            || errorMessage.Contains("not authorized", StringComparison.OrdinalIgnoreCase)
+            || errorMessage.Contains("unauthorized", StringComparison.OrdinalIgnoreCase),
+            $"Expected auth error but got: {errorMessage}");
+    }
+
+    [Fact]
+    public async Task MyDashboard_RejectedEvents_AppearInAnalyticsButNotInTotalInterestedCount()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var organizerUserId = Guid.Empty;
+        var attendeeUserId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer = CreateUser("rejected@example.com", "Rejected Organizer");
+            var attendee = CreateUser("attendee-rej@example.com", "Attendee");
+            organizerUserId = organizer.Id;
+            attendeeUserId = attendee.Id;
+
+            var domain = CreateDomain("Tech", "tech-rej");
+            dbContext.Users.AddRange(organizer, attendee);
+            dbContext.Domains.Add(domain);
+
+            var published = CreateEvent("Approved Event", "approved-event-rej", "Approved.",
+                "Venue 1", "Prague", FirstDayOfNextMonthUtc(), domain, organizer,
+                status: EventStatus.Published);
+            var rejected = CreateEvent("Rejected Event", "rejected-event-rej", "Rejected.",
+                "Venue 2", "Prague", FirstDayOfNextMonthUtc(), domain, organizer,
+                status: EventStatus.Rejected);
+
+            dbContext.Events.AddRange(published, rejected);
+
+            // One attendee saved the rejected event
+            dbContext.FavoriteEvents.Add(
+                new FavoriteEvent { UserId = attendee.Id, EventId = rejected.Id, CreatedAtUtc = DateTime.UtcNow });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, organizerUserId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyDashboard {
+              myDashboard {
+                totalSubmittedEvents
+                totalInterestedCount
+                eventAnalytics {
+                  eventName
+                  status
+                  totalInterestedCount
+                }
+              }
+            }
+            """);
+
+        var dashboard = document.RootElement.GetProperty("data").GetProperty("myDashboard");
+        Assert.Equal(2, dashboard.GetProperty("totalSubmittedEvents").GetInt32());
+        // Rejected events are excluded from the headline total
+        Assert.Equal(0, dashboard.GetProperty("totalInterestedCount").GetInt32());
+
+        var analytics = dashboard.GetProperty("eventAnalytics").EnumerateArray().ToArray();
+        Assert.Equal(2, analytics.Length);
+
+        var rejectedAnalytics = analytics.First(a => a.GetProperty("status").GetString() == "REJECTED");
+        // Per-event count is still correct even for rejected events
+        Assert.Equal(1, rejectedAnalytics.GetProperty("totalInterestedCount").GetInt32());
+
+        var publishedAnalytics = analytics.First(a => a.GetProperty("status").GetString() == "PUBLISHED");
+        Assert.Equal(0, publishedAnalytics.GetProperty("totalInterestedCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task MyDashboard_MultipleEvents_AllAppearsInAnalyticsOrderedByStartDate()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var organizerUserId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer = CreateUser("multi-event@example.com", "Multi Organizer");
+            var attendee1 = CreateUser("multi-att1@example.com", "Attendee 1");
+            var attendee2 = CreateUser("multi-att2@example.com", "Attendee 2");
+            organizerUserId = organizer.Id;
+
+            var domain = CreateDomain("Tech", "tech-multi");
+            dbContext.Users.AddRange(organizer, attendee1, attendee2);
+            dbContext.Domains.Add(domain);
+
+            var soonEvent = CreateEvent("Soon Event", "soon-event", "Happening soon.",
+                "Venue 1", "Prague", FirstDayOfNextMonthUtc(), domain, organizer);
+            var laterEvent = CreateEvent("Later Event", "later-event", "Happening later.",
+                "Venue 2", "Prague", FirstDayOfNextMonthUtc().AddMonths(1), domain, organizer);
+
+            dbContext.Events.AddRange(soonEvent, laterEvent);
+
+            // 2 saves for soon event, 1 for later event
+            dbContext.FavoriteEvents.AddRange(
+                new FavoriteEvent { UserId = attendee1.Id, EventId = soonEvent.Id, CreatedAtUtc = DateTime.UtcNow },
+                new FavoriteEvent { UserId = attendee2.Id, EventId = soonEvent.Id, CreatedAtUtc = DateTime.UtcNow },
+                new FavoriteEvent { UserId = attendee1.Id, EventId = laterEvent.Id, CreatedAtUtc = DateTime.UtcNow });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, organizerUserId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyDashboard {
+              myDashboard {
+                totalSubmittedEvents
+                totalInterestedCount
+                eventAnalytics {
+                  eventName
+                  totalInterestedCount
+                  interestedLast7Days
+                }
+              }
+            }
+            """);
+
+        var dashboard = document.RootElement.GetProperty("data").GetProperty("myDashboard");
+        Assert.Equal(2, dashboard.GetProperty("totalSubmittedEvents").GetInt32());
+        Assert.Equal(3, dashboard.GetProperty("totalInterestedCount").GetInt32());
+
+        var analytics = dashboard.GetProperty("eventAnalytics").EnumerateArray().ToArray();
+        Assert.Equal(2, analytics.Length);
+
+        var soonAnalytics = analytics.First(a => a.GetProperty("eventName").GetString() == "Soon Event");
+        Assert.Equal(2, soonAnalytics.GetProperty("totalInterestedCount").GetInt32());
+        Assert.Equal(2, soonAnalytics.GetProperty("interestedLast7Days").GetInt32());
+
+        var laterAnalytics = analytics.First(a => a.GetProperty("eventName").GetString() == "Later Event");
+        Assert.Equal(1, laterAnalytics.GetProperty("totalInterestedCount").GetInt32());
+        Assert.Equal(1, laterAnalytics.GetProperty("interestedLast7Days").GetInt32());
+    }
+
     private static DateTime FirstDayOfNextMonthUtc()
     {
         var now = DateTime.UtcNow;

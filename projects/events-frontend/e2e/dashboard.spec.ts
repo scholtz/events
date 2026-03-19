@@ -6,6 +6,7 @@ import {
   makeApprovedEvent,
   loginAs,
   type MockFavoriteEvent,
+  type MockState,
 } from './helpers/mock-api'
 
 test.describe('Organizer analytics dashboard', () => {
@@ -61,7 +62,7 @@ test.describe('Organizer analytics dashboard', () => {
     await expect(page.locator('td .saves-count', { hasText: '2' }).first()).toBeVisible()
   })
 
-  test('shows momentum trend badge for events with recent saves', async ({ page }) => {
+  test('shows momentum trend badge for events with recent saves (this week)', async ({ page }) => {
     const user = makeAdminUser()
     const domain = makeTechDomain()
     const event = makeApprovedEvent({
@@ -94,7 +95,42 @@ test.describe('Organizer analytics dashboard', () => {
     await expect(page.locator('.trend--active')).toContainText('this week')
   })
 
-  test('shows quiet trend badge when no saves in last 7 days', async ({ page }) => {
+  test('shows momentum trend badge for events with saves in last 30 days (this month)', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-month-1',
+      slug: 'month-event-1',
+      name: 'Monthly Trend Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    const state = setupMockApi(page, {
+      users: [user],
+      domains: [domain],
+      events: [event],
+    })
+
+    // Save between 7 and 30 days ago (no activity in last 7 days)
+    state.favoriteEvents.push({
+      id: 'fav-month-1',
+      userId: 'attendee-2',
+      eventId: event.id,
+      createdAtUtc: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(), // 15 days ago
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Should show "this month" trend badge (saves in last 30 but not last 7)
+    await expect(page.locator('.trend--recent')).toBeVisible()
+    await expect(page.locator('.trend--recent')).toContainText('this month')
+  })
+
+  test('shows quiet trend badge when no saves in last 30 days', async ({ page }) => {
     const user = makeAdminUser()
     const domain = makeTechDomain()
     const event = makeApprovedEvent({
@@ -170,6 +206,42 @@ test.describe('Organizer analytics dashboard', () => {
     await expect(page.getByRole('link', { name: 'Log In' })).toBeVisible()
   })
 
+  test('shows error state with retry button when API fails', async ({ page }) => {
+    const user = makeAdminUser()
+
+    // Set up mock but override the MyDashboard query to fail
+    const state = setupMockApi(page, {
+      users: [user],
+      domains: [makeTechDomain()],
+    })
+
+    // Inject a broken-auth token so MyDashboard returns an error
+    // We do this by making the mock return an error after login
+    let dashboardCallCount = 0
+    page.route('**/graphql', async (route) => {
+      const body = JSON.parse(route.request().postData() || '{}')
+      if ((body.query || '').includes('MyDashboard')) {
+        dashboardCallCount++
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Server error loading dashboard' }] }),
+        })
+        return
+      }
+      // Pass through other requests
+      await route.fallback()
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Error state should be displayed
+    await expect(page.locator('.error-message')).toBeVisible()
+    // Retry button should be present
+    await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible()
+  })
+
   test('dashboard only shows events belonging to the current organizer', async ({ page }) => {
     const organizer = makeAdminUser()
     const domain = makeTechDomain()
@@ -202,5 +274,45 @@ test.describe('Organizer analytics dashboard', () => {
     // Only the organizer's own event should appear in the analytics table
     await expect(page.getByRole('link', { name: 'My Own Event' })).toBeVisible()
     await expect(page.getByText("Someone Else's Event")).toBeHidden()
+  })
+
+  test('total saves KPI reflects aggregate count across all published events', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+
+    const event1 = makeApprovedEvent({
+      id: 'ev-kpi-1',
+      slug: 'kpi-event-1',
+      name: 'KPI Event One',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+    const event2 = makeApprovedEvent({
+      id: 'ev-kpi-2',
+      slug: 'kpi-event-2',
+      name: 'KPI Event Two',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    const state = setupMockApi(page, {
+      users: [user],
+      domains: [domain],
+      events: [event1, event2],
+    })
+
+    // 3 saves across two events
+    state.favoriteEvents.push(
+      { id: 'fav-kpi-1', userId: 'u1', eventId: event1.id, createdAtUtc: new Date().toISOString() },
+      { id: 'fav-kpi-2', userId: 'u2', eventId: event1.id, createdAtUtc: new Date().toISOString() },
+      { id: 'fav-kpi-3', userId: 'u1', eventId: event2.id, createdAtUtc: new Date().toISOString() },
+    )
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // KPI card "Total Saves" should show 3
+    const savesCard = page.locator('.stat-card', { has: page.locator('.stat-label', { hasText: 'Total Saves' }) })
+    await expect(savesCard.locator('.stat-number--primary')).toContainText('3')
   })
 })
