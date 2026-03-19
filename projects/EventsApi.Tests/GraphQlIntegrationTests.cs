@@ -630,6 +630,238 @@ public sealed class GraphQlIntegrationTests
             Longitude = 14.4378m
         };
 
+    [Fact]
+    public async Task FavoriteEvents_CanBeFavoritedListedAndUnfavorited()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var otherUserId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("favorite@example.com", "Favorite User");
+            var otherUser = CreateUser("other@example.com", "Other User");
+            userId = user.Id;
+            otherUserId = otherUser.Id;
+
+            var domain = CreateDomain("Tech", "tech");
+            dbContext.Users.AddRange(user, otherUser);
+            dbContext.Domains.Add(domain);
+
+            var catalogEvent = CreateEvent(
+                "Prague Tech Summit",
+                "prague-tech-summit",
+                "A great tech event.",
+                "Prague Congress Centre",
+                "Prague",
+                FirstDayOfNextMonthUtc(),
+                domain,
+                user);
+            eventId = catalogEvent.Id;
+            dbContext.Events.Add(catalogEvent);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        // Favorite the event
+        using var favoriteDocument = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation FavoriteEvent($eventId: UUID!) {
+              favoriteEvent(eventId: $eventId) {
+                id
+                eventId
+                userId
+                createdAtUtc
+              }
+            }
+            """,
+            new { eventId });
+
+        var favoriteData = favoriteDocument.RootElement
+            .GetProperty("data")
+            .GetProperty("favoriteEvent");
+
+        Assert.Equal(eventId.ToString(), favoriteData.GetProperty("eventId").GetString());
+        Assert.Equal(userId.ToString(), favoriteData.GetProperty("userId").GetString());
+
+        // Favoriting the same event again should return the existing favorite (idempotent)
+        using var duplicateFavoriteDocument = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation FavoriteEvent($eventId: UUID!) {
+              favoriteEvent(eventId: $eventId) {
+                id
+                eventId
+              }
+            }
+            """,
+            new { eventId });
+
+        var duplicateFavoriteId = duplicateFavoriteDocument.RootElement
+            .GetProperty("data")
+            .GetProperty("favoriteEvent")
+            .GetProperty("id")
+            .GetString();
+
+        var originalFavoriteId = favoriteData.GetProperty("id").GetString();
+        Assert.Equal(originalFavoriteId, duplicateFavoriteId);
+
+        // List favorites for the user
+        using var listDocument = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyFavoriteEvents {
+              myFavoriteEvents {
+                id
+                name
+                slug
+                domain { slug }
+              }
+            }
+            """);
+
+        var favorites = listDocument.RootElement
+            .GetProperty("data")
+            .GetProperty("myFavoriteEvents")
+            .EnumerateArray()
+            .ToArray();
+
+        var favorite = Assert.Single(favorites);
+        Assert.Equal("Prague Tech Summit", favorite.GetProperty("name").GetString());
+        Assert.Equal("prague-tech-summit", favorite.GetProperty("slug").GetString());
+
+        // Other user should not see this user's favorites
+        using var otherClient = factory.CreateClient();
+        otherClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, otherUserId));
+
+        using var otherListDocument = await ExecuteGraphQlAsync(
+            otherClient,
+            """
+            query MyFavoriteEvents {
+              myFavoriteEvents { id }
+            }
+            """);
+
+        Assert.Empty(
+            otherListDocument.RootElement
+                .GetProperty("data")
+                .GetProperty("myFavoriteEvents")
+                .EnumerateArray());
+
+        // Unfavorite the event
+        using var unfavoriteDocument = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation UnfavoriteEvent($eventId: UUID!) {
+              unfavoriteEvent(eventId: $eventId)
+            }
+            """,
+            new { eventId });
+
+        Assert.True(
+            unfavoriteDocument.RootElement
+                .GetProperty("data")
+                .GetProperty("unfavoriteEvent")
+                .GetBoolean());
+
+        // List should now be empty
+        using var emptyListDocument = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyFavoriteEvents {
+              myFavoriteEvents { id }
+            }
+            """);
+
+        Assert.Empty(
+            emptyListDocument.RootElement
+                .GetProperty("data")
+                .GetProperty("myFavoriteEvents")
+                .EnumerateArray());
+    }
+
+    [Fact]
+    public async Task FavoriteEvent_ReturnsError_WhenEventNotFound()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("noevt@example.com", "No Event User");
+            userId = user.Id;
+            dbContext.Users.Add(user);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation FavoriteEvent($eventId: UUID!) {
+                  favoriteEvent(eventId: $eventId) { id }
+                }
+                """,
+            variables = new { eventId = Guid.NewGuid() }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        Assert.Contains("EVENT_NOT_FOUND", errors.ToString());
+    }
+
+    [Fact]
+    public async Task UnfavoriteEvent_ReturnsError_WhenFavoriteNotFound()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("unfav@example.com", "Unfav User");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "tech");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+
+            var catalogEvent = CreateEvent(
+                "Some Event",
+                "some-event",
+                "An event.",
+                "Venue",
+                "Prague",
+                FirstDayOfNextMonthUtc(),
+                domain,
+                user);
+            eventId = catalogEvent.Id;
+            dbContext.Events.Add(catalogEvent);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation UnfavoriteEvent($eventId: UUID!) {
+                  unfavoriteEvent(eventId: $eventId)
+                }
+                """,
+            variables = new { eventId }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        Assert.Contains("FAVORITE_NOT_FOUND", errors.ToString());
+    }
+
     private static DateTime FirstDayOfNextMonthUtc()
     {
         var now = DateTime.UtcNow;

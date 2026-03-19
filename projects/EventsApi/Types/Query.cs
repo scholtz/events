@@ -159,6 +159,35 @@ public sealed class Query
             .ToListAsync(cancellationToken);
 
     [Authorize]
+    public async Task<IReadOnlyList<CatalogEvent>> GetMyFavoriteEventsAsync(
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var currentUserId = claimsPrincipal.GetRequiredUserId();
+        var favoriteEventIds = await dbContext.FavoriteEvents
+            .AsNoTracking()
+            .Where(f => f.UserId == currentUserId)
+            .OrderByDescending(f => f.CreatedAtUtc)
+            .Select(f => f.EventId)
+            .ToListAsync(cancellationToken);
+
+        var events = await dbContext.Events
+            .AsNoTracking()
+            .Include(e => e.Domain)
+            .Include(e => e.SubmittedBy)
+            .Where(e => favoriteEventIds.Contains(e.Id))
+            .ToListAsync(cancellationToken);
+
+        // Preserve the order of favorites (most recently favorited first)
+        return favoriteEventIds
+            .Select(id => events.FirstOrDefault(e => e.Id == id))
+            .Where(e => e is not null)
+            .Cast<CatalogEvent>()
+            .ToList();
+    }
+
+    [Authorize]
     public async Task<DashboardOverview> GetMyDashboardAsync(
         ClaimsPrincipal claimsPrincipal,
         [Service] AppDbContext dbContext,

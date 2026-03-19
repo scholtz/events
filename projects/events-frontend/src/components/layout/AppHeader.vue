@@ -14,6 +14,7 @@ const auth = useAuthStore()
       <nav class="nav-links">
         <RouterLink to="/">Browse</RouterLink>
         <RouterLink to="/submit">Submit Event</RouterLink>
+        <RouterLink v-if="auth.isAuthenticated" to="/favorites">Saved</RouterLink>
         <RouterLink v-if="auth.isAuthenticated" to="/dashboard">Dashboard</RouterLink>
         <RouterLink v-if="auth.isAdmin" to="/admin">Admin</RouterLink>
       </nav>

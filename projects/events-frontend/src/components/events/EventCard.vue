@@ -1,11 +1,18 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { formatEventPrice } from '@/stores/events'
+import { useFavoritesStore } from '@/stores/favorites'
+import { useAuthStore } from '@/stores/auth'
 import type { CatalogEvent } from '@/types'
 
 const props = defineProps<{
   event: CatalogEvent
 }>()
+
+const favoritesStore = useFavoritesStore()
+const authStore = useAuthStore()
+
+const favoriting = ref(false)
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('en-US', {
@@ -28,6 +35,18 @@ const locationSummary = computed(() => {
 })
 
 const priceSummary = computed(() => formatEventPrice(props.event))
+
+const isFavorited = computed(() => favoritesStore.isFavorited(props.event.id))
+
+async function handleFavoriteToggle() {
+  if (!authStore.isAuthenticated) return
+  favoriting.value = true
+  try {
+    await favoritesStore.toggleFavorite(props.event.id)
+  } finally {
+    favoriting.value = false
+  }
+}
 </script>
 
 <template>
@@ -37,7 +56,20 @@ const priceSummary = computed(() => formatEventPrice(props.event))
         <span class="badge badge-primary">
           {{ event.domain?.name ?? 'Event' }}
         </span>
-        <span class="event-date">{{ formatDate(event.startsAtUtc) }}</span>
+        <div class="event-meta-right">
+          <span class="event-date">{{ formatDate(event.startsAtUtc) }}</span>
+          <button
+            v-if="authStore.isAuthenticated"
+            class="favorite-btn"
+            :class="{ 'is-favorited': isFavorited }"
+            :aria-label="isFavorited ? 'Remove from favorites' : 'Add to favorites'"
+            :aria-pressed="isFavorited"
+            :disabled="favoriting"
+            @click.prevent="handleFavoriteToggle"
+          >
+            {{ isFavorited ? '★' : '☆' }}
+          </button>
+        </div>
       </div>
 
       <h3 class="event-title">
@@ -115,6 +147,12 @@ const priceSummary = computed(() => formatEventPrice(props.event))
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
+}
+
+.event-meta-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .event-date {
@@ -197,5 +235,31 @@ const priceSummary = computed(() => formatEventPrice(props.event))
 
 .btn-ghost:hover {
   text-decoration: underline;
+}
+
+.favorite-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 1.125rem;
+  color: var(--color-text-secondary);
+  padding: 0.125rem 0.25rem;
+  line-height: 1;
+  transition: color 0.15s, transform 0.1s;
+  border-radius: var(--radius-sm);
+}
+
+.favorite-btn:hover:not(:disabled) {
+  color: var(--color-warning, #f59e0b);
+  transform: scale(1.15);
+}
+
+.favorite-btn.is-favorited {
+  color: var(--color-warning, #f59e0b);
+}
+
+.favorite-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>

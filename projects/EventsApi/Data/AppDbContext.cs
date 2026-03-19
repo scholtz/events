@@ -9,6 +9,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<EventDomain> Domains => Set<EventDomain>();
     public DbSet<CatalogEvent> Events => Set<CatalogEvent>();
     public DbSet<SavedSearch> SavedSearches => Set<SavedSearch>();
+    public DbSet<FavoriteEvent> FavoriteEvents => Set<FavoriteEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -78,6 +79,21 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasOne(savedSearch => savedSearch.User)
                 .WithMany(user => user.SavedSearches)
                 .HasForeignKey(savedSearch => savedSearch.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<FavoriteEvent>(entity =>
+        {
+            entity.HasIndex(favorite => new { favorite.UserId, favorite.EventId }).IsUnique();
+
+            entity.HasOne(favorite => favorite.User)
+                .WithMany(user => user.FavoriteEvents)
+                .HasForeignKey(favorite => favorite.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(favorite => favorite.Event)
+                .WithMany()
+                .HasForeignKey(favorite => favorite.EventId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }

@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, watch } from 'vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppFooter from '@/components/layout/AppFooter.vue'
 import { useEventsStore } from '@/stores/events'
 import { useDomainsStore } from '@/stores/domains'
 import { useAuthStore } from '@/stores/auth'
+import { useFavoritesStore } from '@/stores/favorites'
 
 const eventsStore = useEventsStore()
 const domainsStore = useDomainsStore()
 const authStore = useAuthStore()
+const favoritesStore = useFavoritesStore()
 
 onMounted(async () => {
   await Promise.all([
@@ -16,7 +18,21 @@ onMounted(async () => {
     domainsStore.fetchDomains(),
     authStore.checkAuth(),
   ])
+  if (authStore.isAuthenticated) {
+    await favoritesStore.fetchFavoriteEvents()
+  }
 })
+
+watch(
+  () => authStore.isAuthenticated,
+  (isAuthenticated) => {
+    if (isAuthenticated) {
+      favoritesStore.fetchFavoriteEvents()
+    } else {
+      favoritesStore.clearFavorites()
+    }
+  },
+)
 </script>
 
 <template>
