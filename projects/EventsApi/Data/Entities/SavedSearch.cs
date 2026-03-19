@@ -20,6 +20,7 @@ public sealed class SavedSearch
     public decimal? PriceMin { get; set; }
     public decimal? PriceMax { get; set; }
     public EventSortOption SortBy { get; set; } = EventSortOption.Upcoming;
+    public AttendanceMode? AttendanceMode { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
 }

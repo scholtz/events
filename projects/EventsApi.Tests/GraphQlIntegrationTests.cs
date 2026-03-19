@@ -725,6 +725,80 @@ public sealed class GraphQlIntegrationTests
                 .EnumerateArray());
     }
 
+    [Fact]
+    public async Task SavedSearch_PersistsAndRestoresAttendanceMode()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("mode-search@example.com", "Mode Search User");
+            userId = user.Id;
+            dbContext.Users.Add(user);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        // Save a search with attendanceMode = ONLINE
+        using var createDocument = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation SaveSearch($input: SavedSearchInput!) {
+              saveSearch(input: $input) {
+                id
+                name
+                attendanceMode
+              }
+            }
+            """,
+            new
+            {
+                input = new
+                {
+                    name = "Online Events Only",
+                    filter = new
+                    {
+                        attendanceMode = "ONLINE"
+                    }
+                }
+            });
+
+        var savedSearch = createDocument.RootElement
+            .GetProperty("data")
+            .GetProperty("saveSearch");
+
+        Assert.Equal("Online Events Only", savedSearch.GetProperty("name").GetString());
+        Assert.Equal("ONLINE", savedSearch.GetProperty("attendanceMode").GetString());
+
+        var savedSearchId = savedSearch.GetProperty("id").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(savedSearchId));
+
+        // Verify it round-trips via the list query
+        using var listDocument = await ExecuteGraphQlAsync(
+            client,
+            """
+            query SavedSearches {
+              mySavedSearches {
+                id
+                name
+                attendanceMode
+              }
+            }
+            """);
+
+        var savedSearches = listDocument.RootElement
+            .GetProperty("data")
+            .GetProperty("mySavedSearches")
+            .EnumerateArray()
+            .ToArray();
+
+        var restored = Assert.Single(savedSearches);
+        Assert.Equal("Online Events Only", restored.GetProperty("name").GetString());
+        Assert.Equal("ONLINE", restored.GetProperty("attendanceMode").GetString());
+    }
+
     private static async Task SeedAsync(EventsApiWebApplicationFactory factory, Action<AppDbContext> seedAction)
     {
         using var scope = factory.Services.CreateScope();

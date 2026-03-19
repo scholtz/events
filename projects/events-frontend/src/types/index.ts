@@ -133,6 +133,7 @@ export interface SavedSearch {
   priceMin: number | null
   priceMax: number | null
   sortBy: EventSortOption
+  attendanceMode: AttendanceMode | null
   createdAtUtc: string
   updatedAtUtc: string
 }

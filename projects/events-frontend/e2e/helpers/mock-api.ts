@@ -77,6 +77,7 @@ export type MockSavedSearch = {
   priceMin: number | null
   priceMax: number | null
   sortBy: 'UPCOMING' | 'NEWEST' | 'RELEVANCE'
+  attendanceMode: 'IN_PERSON' | 'ONLINE' | 'HYBRID' | null
   createdAtUtc: string
   updatedAtUtc: string
   userId: string
@@ -318,6 +319,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         priceMin: filter.priceMin ?? null,
         priceMax: filter.priceMax ?? null,
         sortBy: filter.sortBy ?? 'UPCOMING',
+        attendanceMode: filter.attendanceMode ?? null,
         createdAtUtc: new Date().toISOString(),
         updatedAtUtc: new Date().toISOString(),
       }

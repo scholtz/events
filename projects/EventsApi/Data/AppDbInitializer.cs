@@ -195,6 +195,7 @@ public sealed class AppDbInitializer(
                     "PriceMin" TEXT NULL,
                     "PriceMax" TEXT NULL,
                     "SortBy" TEXT NOT NULL,
+                    "AttendanceMode" TEXT NULL,
                     "CreatedAtUtc" TEXT NOT NULL,
                     "UpdatedAtUtc" TEXT NOT NULL,
                     CONSTRAINT "FK_SavedSearches_Users_UserId" FOREIGN KEY ("UserId") REFERENCES "Users" ("Id") ON DELETE CASCADE
@@ -202,6 +203,10 @@ public sealed class AppDbInitializer(
                 CREATE INDEX "IX_SavedSearches_UserId" ON "SavedSearches" ("UserId");
                 """,
                 cancellationToken);
+        }
+        else
+        {
+            await EnsureSavedSearchColumnAsync("AttendanceMode", cancellationToken);
         }
 
         if (!await TableExistsAsync("FavoriteEvents", cancellationToken))
@@ -221,6 +226,22 @@ public sealed class AppDbInitializer(
                 """,
                 cancellationToken);
         }
+    }
+
+    private async Task EnsureSavedSearchColumnAsync(string columnName, CancellationToken cancellationToken)
+    {
+        if (await TableColumnExistsAsync("SavedSearches", columnName, cancellationToken))
+        {
+            return;
+        }
+
+        var commandText = columnName switch
+        {
+            "AttendanceMode" => """ALTER TABLE "SavedSearches" ADD COLUMN "AttendanceMode" TEXT NULL;""",
+            _ => throw new InvalidOperationException($"Unsupported saved-search column '{columnName}'.")
+        };
+
+        await _dbContext.Database.ExecuteSqlRawAsync(commandText, cancellationToken);
     }
 
     private async Task EnsureEventColumnAsync(string columnName, CancellationToken cancellationToken)

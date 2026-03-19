@@ -43,6 +43,7 @@ public sealed class AppDbInitializerTests
             var savedSearchColumns = await GetTableColumnsAsync(verificationContext, "SavedSearches");
             Assert.Equal("TEXT", savedSearchColumns["PriceMin"]);
             Assert.Equal("TEXT", savedSearchColumns["PriceMax"]);
+            Assert.Contains("AttendanceMode", savedSearchColumns.Keys);
 
             var eventColumns = await GetTableColumnsAsync(verificationContext, "Events");
             Assert.Contains("IsFree", eventColumns.Keys);

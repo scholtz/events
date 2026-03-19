@@ -5,7 +5,7 @@
  * URL direct navigation, and result-count display.
  */
 import { expect, test } from '@playwright/test'
-import { makeApprovedEvent, makeTechDomain, setupMockApi } from './helpers/mock-api'
+import { makeAdminUser, makeApprovedEvent, makeTechDomain, setupMockApi } from './helpers/mock-api'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -648,5 +648,59 @@ test.describe('Mobile viewport discovery', () => {
     await expect(
       page.locator('.event-card', { hasText: 'Hybrid Conference' }).locator('.badge-mode'),
     ).toContainText('Hybrid')
+  })
+
+  test('saved search with attendance mode rehydrates filter correctly', async ({ page }) => {
+    const admin = makeAdminUser()
+    setupMockApi(page, {
+      users: [admin],
+      currentUserId: admin.id,
+      currentToken: `token-${admin.id}`,
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-online',
+          name: 'Online Workshop',
+          slug: 'online-workshop',
+          attendanceMode: 'ONLINE',
+        }),
+        makeApprovedEvent({
+          id: 'e-inperson',
+          name: 'In-Person Meetup',
+          slug: 'in-person-meetup',
+          attendanceMode: 'IN_PERSON',
+        }),
+      ],
+    })
+
+    await page.addInitScript(
+      ({ token }) => {
+        localStorage.setItem('auth_token', token)
+        localStorage.setItem('auth_expires', new Date(Date.now() + 60 * 60 * 1000).toISOString())
+      },
+      { token: `token-${admin.id}` },
+    )
+
+    // Navigate with mode=online filter active
+    await page.goto('/?mode=online')
+    await expect(page.locator('.event-card', { hasText: 'Online Workshop' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'In-Person Meetup' })).toBeHidden()
+
+    // Save the search
+    await page.getByLabel('Preset name').fill('Online Events')
+    await page.getByRole('button', { name: 'Save current search' }).click()
+    const savedSearchButton = page.locator('.saved-search-apply', { hasText: 'Online Events' })
+    await expect(savedSearchButton).toBeVisible()
+
+    // Clear all filters — both events should be visible
+    await page.getByRole('button', { name: 'Clear all' }).click()
+    await expect(page.locator('.event-card', { hasText: 'In-Person Meetup' })).toBeVisible()
+
+    // Apply the saved search — URL should restore ?mode=online and filter should re-activate
+    await savedSearchButton.click()
+    await expect(page).toHaveURL(/mode=online/)
+    await expect(page.locator('.event-card', { hasText: 'Online Workshop' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'In-Person Meetup' })).toBeHidden()
+    await expect(page.locator('.filter-chip', { hasText: 'Mode: Online' })).toBeVisible()
   })
 })

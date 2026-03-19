@@ -274,7 +274,8 @@ public sealed class Mutation
             IsFree = input.Filter?.IsFree,
             PriceMin = input.Filter?.PriceMin,
             PriceMax = input.Filter?.PriceMax,
-            SortBy = input.Filter?.SortBy ?? EventSortOption.Upcoming
+            SortBy = input.Filter?.SortBy ?? EventSortOption.Upcoming,
+            AttendanceMode = input.Filter?.AttendanceMode
         };
 
         dbContext.SavedSearches.Add(savedSearch);
