@@ -174,6 +174,9 @@ public sealed class AppDbInitializer(
 
         if (!await TableExistsAsync("SavedSearches", cancellationToken))
         {
+            // EF Core maps SQLite decimal columns to TEXT when using EnsureCreated().
+            // Keep the manual bootstrap table aligned so saved-search prices round-trip
+            // consistently for both fresh databases and upgraded existing databases.
             await _dbContext.Database.ExecuteSqlRawAsync(
                 """
                 CREATE TABLE "SavedSearches" (

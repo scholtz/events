@@ -162,6 +162,14 @@ public sealed class GraphQlIntegrationTests
             await QueryEventNamesAsync(client, new { isFree = true, priceMax = 200m, sortBy = "UPCOMING" }));
 
         Assert.Equal(
+            ["Free Prague Meetup"],
+            await QueryEventNamesAsync(client, new { isFree = true, priceMin = 50m, sortBy = "UPCOMING" }));
+
+        Assert.Equal(
+            ["Free Prague Meetup"],
+            await QueryEventNamesAsync(client, new { isFree = true, priceMin = 50m, priceMax = 200m, sortBy = "UPCOMING" }));
+
+        Assert.Equal(
             ["Budget Prague Meetup", "Premium Prague Summit"],
             await QueryEventNamesAsync(client, new { isFree = false, priceMax = 200m, sortBy = "UPCOMING" }));
 
@@ -184,6 +192,10 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal(
             ["Budget Prague Meetup"],
             await QueryEventNamesAsync(client, new { isFree = false, priceMax = 30m, sortBy = "UPCOMING" }));
+
+        Assert.Equal(
+            ["Budget Prague Meetup", "Premium Prague Summit"],
+            await QueryEventNamesAsync(client, new { priceMin = 1m, priceMax = 200m, sortBy = "UPCOMING" }));
 
         Assert.Empty(
             await QueryEventNamesAsync(client, new { priceMax = -1m, sortBy = "UPCOMING" }));

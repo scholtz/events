@@ -254,7 +254,7 @@ public sealed class Query
     {
         return isFreeFilter switch
         {
-            true => query.Where(catalogEvent => catalogEvent.IsFree && 0m >= priceMin),
+            true => query.Where(catalogEvent => catalogEvent.IsFree),
             false => query.Where(catalogEvent =>
                 !catalogEvent.IsFree
                 && catalogEvent.PriceAmount.HasValue
