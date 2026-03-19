@@ -51,6 +51,9 @@ export type MockEvent = {
   publishedAtUtc: string | null
   adminNotes: string | null
   status: 'DRAFT' | 'PENDING_APPROVAL' | 'PUBLISHED' | 'REJECTED'
+  isFree: boolean
+  priceAmount: number | null
+  currencyCode: string
   domainId: string
   domain: { id: string; name: string; slug: string }
   submittedByUserId: string
@@ -60,10 +63,28 @@ export type MockEvent = {
   mapUrl: string
 }
 
+export type MockSavedSearch = {
+  id: string
+  name: string
+  searchText: string | null
+  domainSlug: string | null
+  locationText: string | null
+  startsFromUtc: string | null
+  startsToUtc: string | null
+  isFree: boolean | null
+  priceMin: number | null
+  priceMax: number | null
+  sortBy: 'UPCOMING' | 'NEWEST' | 'RELEVANCE'
+  createdAtUtc: string
+  updatedAtUtc: string
+  userId: string
+}
+
 export type MockState = {
   users: MockUser[]
   domains: MockDomain[]
   events: MockEvent[]
+  savedSearches: MockSavedSearch[]
   currentUserId: string | null
   currentToken: string | null
 }
@@ -78,6 +99,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
     users: initial?.users ?? [],
     domains: initial?.domains ?? [],
     events: initial?.events ?? [],
+    savedSearches: initial?.savedSearches ?? [],
     currentUserId: initial?.currentUserId ?? null,
     currentToken: initial?.currentToken ?? null,
   }
@@ -191,9 +213,9 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         .replace(/[^a-z0-9-]/g, '')
       const domain = state.domains.find((d) => d.slug === input.domainSlug)
       const submitter = state.users.find((u) => u.id === state.currentUserId)
-      const newEvent: MockEvent = {
-        id: `event-${state.events.length + 1}`,
-        name: input.name,
+        const newEvent: MockEvent = {
+          id: `event-${state.events.length + 1}`,
+          name: input.name,
         slug,
         description: input.description,
         eventUrl: input.eventUrl,
@@ -207,12 +229,15 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         endsAtUtc: input.endsAtUtc || input.startsAtUtc,
         submittedAtUtc: new Date().toISOString(),
         updatedAtUtc: new Date().toISOString(),
-        publishedAtUtc: null,
-        adminNotes: null,
-        status: 'PENDING_APPROVAL',
-        domainId: domain?.id ?? 'dom-1',
-        domain: domain
-          ? { id: domain.id, name: domain.name, slug: domain.slug }
+          publishedAtUtc: null,
+          adminNotes: null,
+          status: 'PENDING_APPROVAL',
+          isFree: input.isFree ?? true,
+          priceAmount: input.isFree === false ? (input.priceAmount ?? null) : 0,
+          currencyCode: input.currencyCode || 'EUR',
+          domainId: domain?.id ?? 'dom-1',
+          domain: domain
+            ? { id: domain.id, name: domain.name, slug: domain.slug }
           : { id: 'dom-1', name: 'Default', slug: 'default' },
         submittedByUserId: state.currentUserId ?? '',
         submittedBy: { displayName: submitter?.displayName ?? 'Unknown' },
@@ -265,6 +290,45 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       return
     }
 
+    if (query.includes('mutation') && query.includes('SaveSearch')) {
+      const input = variables.input || {}
+      const filter = input.filter || {}
+      const savedSearch: MockSavedSearch = {
+        id: `saved-${state.savedSearches.length + 1}`,
+        userId: state.currentUserId ?? 'user-1',
+        name: input.name,
+        searchText: filter.searchText ?? null,
+        domainSlug: filter.domainSlug ?? null,
+        locationText: filter.locationText ?? null,
+        startsFromUtc: filter.startsFromUtc ?? null,
+        startsToUtc: filter.startsToUtc ?? null,
+        isFree: filter.isFree ?? null,
+        priceMin: filter.priceMin ?? null,
+        priceMax: filter.priceMax ?? null,
+        sortBy: filter.sortBy ?? 'UPCOMING',
+        createdAtUtc: new Date().toISOString(),
+        updatedAtUtc: new Date().toISOString(),
+      }
+      state.savedSearches.unshift(savedSearch)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { saveSearch: savedSearch } }),
+      })
+      return
+    }
+
+    if (query.includes('mutation') && query.includes('DeleteSavedSearch')) {
+      const savedSearchId = variables.savedSearchId
+      state.savedSearches = state.savedSearches.filter((savedSearch) => savedSearch.id !== savedSearchId)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { deleteSavedSearch: true } }),
+      })
+      return
+    }
+
     // ── Queries ──
     if (query.includes('query') && query.includes('Me')) {
       const user = state.users.find((u) => u.id === state.currentUserId)
@@ -294,11 +358,33 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       return
     }
 
+    if (query.includes('query') && query.includes('DiscoveryEvents')) {
+      const filteredEvents = filterEventsForDiscovery(state.events, variables.filter)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { events: filteredEvents } }),
+      })
+      return
+    }
+
     if (query.includes('query') && query.includes('Events')) {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({ data: { events: state.events } }),
+      })
+      return
+    }
+
+    if (query.includes('query') && query.includes('SavedSearches')) {
+      const savedSearches = state.savedSearches.filter(
+        (savedSearch) => savedSearch.userId === state.currentUserId,
+      )
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { mySavedSearches: savedSearches } }),
       })
       return
     }
@@ -369,6 +455,9 @@ export function makeApprovedEvent(overrides: Partial<MockEvent> = {}): MockEvent
     publishedAtUtc: new Date().toISOString(),
     adminNotes: null,
     status: 'PUBLISHED',
+    isFree: true,
+    priceAmount: 0,
+    currencyCode: 'EUR',
     domainId: 'dom-tech',
     domain: { id: 'dom-tech', name: 'Technology', slug: 'technology' },
     submittedByUserId: 'admin-1',
@@ -394,3 +483,99 @@ export async function loginAs(page: Page, user: MockUser): Promise<void> {
   await page.waitForURL(/\/dashboard$/)
 }
 
+function filterEventsForDiscovery(events: MockEvent[], filter?: Record<string, unknown>) {
+  const normalizedSearch = String(filter?.searchText || '')
+    .trim()
+    .toLowerCase()
+  const normalizedLocation = String(filter?.locationText || '')
+    .trim()
+    .toLowerCase()
+  const domainSlug = String(filter?.domainSlug || '').trim()
+  const startsFromUtc = String(filter?.startsFromUtc || '').trim()
+  const startsToUtc = String(filter?.startsToUtc || '').trim()
+  const isFree = typeof filter?.isFree === 'boolean' ? filter.isFree : null
+  const priceMin = typeof filter?.priceMin === 'number' ? filter.priceMin : null
+  const priceMax = typeof filter?.priceMax === 'number' ? filter.priceMax : null
+  const sortBy = String(filter?.sortBy || 'UPCOMING')
+
+  return [...events]
+    .filter((event) => event.status === 'PUBLISHED')
+    .filter((event) => {
+      if (
+        normalizedSearch &&
+        !`${event.name} ${event.description} ${event.venueName} ${event.city} ${event.addressLine1}`
+          .toLowerCase()
+          .includes(normalizedSearch)
+      ) {
+        return false
+      }
+
+      if (domainSlug && event.domain.slug !== domainSlug) {
+        return false
+      }
+
+      if (
+        normalizedLocation &&
+        !`${event.venueName} ${event.city} ${event.addressLine1}`
+          .toLowerCase()
+          .includes(normalizedLocation)
+      ) {
+        return false
+      }
+
+      if (startsFromUtc && event.startsAtUtc < startsFromUtc) {
+        return false
+      }
+
+      if (startsToUtc && event.startsAtUtc > startsToUtc) {
+        return false
+      }
+
+      if (typeof isFree === 'boolean' && event.isFree !== isFree) {
+        return false
+      }
+
+      const effectivePrice = event.isFree ? 0 : (event.priceAmount ?? 0)
+      if (typeof priceMin === 'number' && effectivePrice < priceMin) {
+        return false
+      }
+
+      if (typeof priceMax === 'number' && effectivePrice > priceMax) {
+        return false
+      }
+
+      return true
+    })
+    .sort((left, right) => sortDiscoveryEvents(left, right, sortBy, normalizedSearch))
+}
+
+function sortDiscoveryEvents(
+  left: MockEvent,
+  right: MockEvent,
+  sortBy: string,
+  normalizedSearch: string,
+) {
+  if (sortBy === 'NEWEST') {
+    return right.submittedAtUtc.localeCompare(left.submittedAtUtc)
+  }
+
+  if (sortBy === 'RELEVANCE' && normalizedSearch) {
+    const leftScore = relevanceScore(left, normalizedSearch)
+    const rightScore = relevanceScore(right, normalizedSearch)
+    if (leftScore !== rightScore) return rightScore - leftScore
+  }
+
+  return left.startsAtUtc.localeCompare(right.startsAtUtc)
+}
+
+function relevanceScore(event: MockEvent, normalizedSearch: string) {
+  let score = 0
+  const name = event.name.toLowerCase()
+  const description = event.description.toLowerCase()
+
+  if (name.startsWith(normalizedSearch)) score += 3
+  if (name.includes(normalizedSearch)) score += 2
+  if (description.includes(normalizedSearch)) score += 1
+
+  return score
+}

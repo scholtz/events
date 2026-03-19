@@ -1,9 +1,11 @@
+using System.Data;
 using EventsApi.Configuration;
 using EventsApi.Data.Entities;
 using EventsApi.Utilities;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Microsoft.Data.Sqlite;
 
 namespace EventsApi.Data;
 
@@ -19,6 +21,7 @@ public sealed class AppDbInitializer(
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         await _dbContext.Database.EnsureCreatedAsync(cancellationToken);
+        await EnsureSchemaAsync(cancellationToken);
 
         if (!await _dbContext.Domains.AnyAsync(cancellationToken))
         {
@@ -123,6 +126,9 @@ public sealed class AppDbInitializer(
                 ReviewedByUserId = admin.Id,
                 DomainId = cryptoDomain.Id,
                 Status = EventStatus.Published,
+                IsFree = false,
+                PriceAmount = 129m,
+                CurrencyCode = "EUR",
                 PublishedAtUtc = DateTime.UtcNow,
                 AdminNotes = "Seeded example for Prague crypto discovery."
             },
@@ -144,6 +150,8 @@ public sealed class AppDbInitializer(
                 ReviewedByUserId = admin.Id,
                 DomainId = aiDomain.Id,
                 Status = EventStatus.Published,
+                IsFree = true,
+                CurrencyCode = "EUR",
                 PublishedAtUtc = DateTime.UtcNow,
                 AdminNotes = "Seeded example for AI catalog."
             }
@@ -151,5 +159,107 @@ public sealed class AppDbInitializer(
 
         _dbContext.Events.AddRange(events);
         await _dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task EnsureSchemaAsync(CancellationToken cancellationToken)
+    {
+        if (!_dbContext.Database.IsSqlite())
+        {
+            return;
+        }
+
+        await EnsureEventColumnAsync("IsFree", cancellationToken);
+        await EnsureEventColumnAsync("PriceAmount", cancellationToken);
+        await EnsureEventColumnAsync("CurrencyCode", cancellationToken);
+
+        if (!await TableExistsAsync("SavedSearches", cancellationToken))
+        {
+            // EF Core maps SQLite decimal columns to TEXT when using EnsureCreated().
+            // Keep the manual bootstrap table aligned so saved-search prices round-trip
+            // consistently for both fresh databases and upgraded existing databases.
+            await _dbContext.Database.ExecuteSqlRawAsync(
+                """
+                CREATE TABLE "SavedSearches" (
+                    "Id" TEXT NOT NULL CONSTRAINT "PK_SavedSearches" PRIMARY KEY,
+                    "UserId" TEXT NOT NULL,
+                    "Name" TEXT NOT NULL,
+                    "SearchText" TEXT NULL,
+                    "DomainSlug" TEXT NULL,
+                    "LocationText" TEXT NULL,
+                    "StartsFromUtc" TEXT NULL,
+                    "StartsToUtc" TEXT NULL,
+                    "IsFree" INTEGER NULL,
+                    "PriceMin" TEXT NULL,
+                    "PriceMax" TEXT NULL,
+                    "SortBy" TEXT NOT NULL,
+                    "CreatedAtUtc" TEXT NOT NULL,
+                    "UpdatedAtUtc" TEXT NOT NULL,
+                    CONSTRAINT "FK_SavedSearches_Users_UserId" FOREIGN KEY ("UserId") REFERENCES "Users" ("Id") ON DELETE CASCADE
+                );
+                CREATE INDEX "IX_SavedSearches_UserId" ON "SavedSearches" ("UserId");
+                """,
+                cancellationToken);
+        }
+    }
+
+    private async Task EnsureEventColumnAsync(string columnName, CancellationToken cancellationToken)
+    {
+        if (await TableColumnExistsAsync("Events", columnName, cancellationToken))
+        {
+            return;
+        }
+
+        var commandText = columnName switch
+        {
+            "IsFree" => """ALTER TABLE "Events" ADD COLUMN "IsFree" INTEGER NOT NULL DEFAULT 1;""",
+            "PriceAmount" => """ALTER TABLE "Events" ADD COLUMN "PriceAmount" TEXT NULL;""",
+            "CurrencyCode" => """ALTER TABLE "Events" ADD COLUMN "CurrencyCode" TEXT NOT NULL DEFAULT 'EUR';""",
+            _ => throw new InvalidOperationException($"Unsupported event column '{columnName}'.")
+        };
+
+        await _dbContext.Database.ExecuteSqlRawAsync(commandText, cancellationToken);
+    }
+
+    private async Task<bool> TableExistsAsync(string tableName, CancellationToken cancellationToken)
+    {
+        var connection = (SqliteConnection)_dbContext.Database.GetDbConnection();
+        if (connection.State != ConnectionState.Open)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = $name LIMIT 1;";
+        command.Parameters.AddWithValue("$name", tableName);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return result is not null;
+    }
+
+    private async Task<bool> TableColumnExistsAsync(string tableName, string columnName, CancellationToken cancellationToken)
+    {
+        var connection = (SqliteConnection)_dbContext.Database.GetDbConnection();
+        if (connection.State != ConnectionState.Open)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = tableName switch
+        {
+            "Events" => """PRAGMA table_info("Events");""",
+            "SavedSearches" => """PRAGMA table_info("SavedSearches");""",
+            _ => throw new InvalidOperationException($"Unsupported schema table '{tableName}'.")
+        };
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            if (string.Equals(reader.GetString(1), columnName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

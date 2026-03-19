@@ -19,6 +19,7 @@ test.describe('Submit event form', () => {
     await expect(page.getByLabel('Description *')).toBeVisible()
     await expect(page.getByLabel('Domain *')).toBeVisible()
     await expect(page.getByLabel('Start Date *')).toBeVisible()
+    await expect(page.getByLabel('Free event')).toBeVisible()
     await expect(page.getByLabel('Website / Registration URL *')).toBeVisible()
   })
 
@@ -85,6 +86,7 @@ test.describe('Event detail page', () => {
     await expect(page.getByRole('heading', { name: 'Detail Page Summit' })).toBeVisible()
     await expect(page.getByText('Submitted by Detail Organizers')).toBeVisible()
     await expect(page.getByText('A great event you should attend.')).toBeVisible()
+    await expect(page.getByText('Free')).toBeVisible()
     await expect(page.getByRole('link', { name: /Visit Event Page/ })).toBeVisible()
   })
 

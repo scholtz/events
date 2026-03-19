@@ -2,7 +2,7 @@
  * Home page and navigation tests.
  */
 import { expect, test } from '@playwright/test'
-import { makeApprovedEvent, makeTechDomain, setupMockApi } from './helpers/mock-api'
+import { makeAdminUser, makeApprovedEvent, makeTechDomain, setupMockApi } from './helpers/mock-api'
 
 test.describe('Home page', () => {
   test('shows hero heading and submit CTA', async ({ page }) => {
@@ -20,8 +20,8 @@ test.describe('Home page', () => {
     })
     await page.goto('/')
 
-    // Hero stat shows count of published events
-    await expect(page.getByText('Events Listed')).toBeVisible()
+    // Hero stat shows count of matching published events
+    await expect(page.getByText('Matching Events')).toBeVisible()
   })
 
   test('shows empty state when no published events exist', async ({ page }) => {
@@ -29,7 +29,7 @@ test.describe('Home page', () => {
     await page.goto('/')
 
     await expect(page.getByRole('heading', { name: 'No events found' })).toBeVisible()
-    await expect(page.getByText('Try adjusting your search criteria')).toBeVisible()
+    await expect(page.getByText('No events are available yet.')).toBeVisible()
   })
 
   test('shows event cards for published events', async ({ page }) => {
@@ -73,7 +73,7 @@ test.describe('Home page', () => {
     })
     await page.goto('/')
 
-    await page.locator('.event-card', { hasText: 'Detail Link Event' }).click()
+    await page.locator('.event-card', { hasText: 'Detail Link Event' }).getByRole('link', { name: 'View details' }).click()
     await expect(page).toHaveURL(/\/event\/detail-link-event$/)
   })
 })
@@ -116,7 +116,7 @@ test.describe('Event filters', () => {
     await expect(select.getByRole('option', { name: 'Technology' })).toBeAttached()
   })
 
-  test('city filter narrows results', async ({ page }) => {
+  test('location filter narrows results', async ({ page }) => {
     const event = makeApprovedEvent({
       name: 'Prague Summit',
       slug: 'prague-summit',
@@ -132,12 +132,12 @@ test.describe('Event filters', () => {
     // Event visible before filter
     await expect(page.locator('.event-card', { hasText: 'Prague Summit' })).toBeVisible()
 
-    // Filter by non-matching city
-    await page.getByLabel('City').fill('Berlin')
+    // Filter by non-matching location
+    await page.getByLabel('Location').fill('Berlin')
     await expect(page.getByRole('heading', { name: 'No events found' })).toBeVisible()
 
-    // Filter by matching city
-    await page.getByLabel('City').fill('Prague')
+    // Filter by matching location
+    await page.getByLabel('Location').fill('Prague')
     await expect(page.locator('.event-card', { hasText: 'Prague Summit' })).toBeVisible()
   })
 
@@ -176,10 +176,68 @@ test.describe('Event filters', () => {
     })
     await page.goto('/')
 
-    await page.getByLabel('Search').fill('no-match-xyz')
+    await page.getByLabel('Keyword').fill('no-match-xyz')
     await expect(page.getByRole('heading', { name: 'No events found' })).toBeVisible()
 
-    await page.getByRole('button', { name: 'Clear' }).click()
+    await page.getByRole('button', { name: 'Clear all' }).click()
     await expect(page.locator('.event-card', { hasText: 'Clearable Event' })).toBeVisible()
+  })
+
+  test('route query sync and saved searches work together', async ({ page }) => {
+    const admin = makeAdminUser()
+    setupMockApi(page, {
+      users: [admin],
+      currentUserId: admin.id,
+      currentToken: `token-${admin.id}`,
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'paid-prague',
+          name: 'Prague Paid Summit',
+          slug: 'prague-paid-summit',
+          city: 'Prague',
+          venueName: 'Prague Hall',
+          isFree: false,
+          priceAmount: 89,
+        }),
+        makeApprovedEvent({
+          id: 'free-brno',
+          name: 'Brno Free Meetup',
+          slug: 'brno-free-meetup',
+          city: 'Brno',
+          venueName: 'Brno Hub',
+          isFree: true,
+          priceAmount: 0,
+        }),
+      ],
+    })
+    await page.addInitScript(
+      ({ token }) => {
+        localStorage.setItem('auth_token', token)
+        localStorage.setItem('auth_expires', new Date(Date.now() + 60 * 60 * 1000).toISOString())
+      },
+      { token: `token-${admin.id}` },
+    )
+
+    await page.goto('/?location=Prague&price=paid&sort=newest')
+
+    await expect(page.getByLabel('Location')).toHaveValue('Prague')
+    await expect(page.getByLabel('Price', { exact: true })).toHaveValue('PAID')
+    await expect(page.getByLabel('Sort by')).toHaveValue('NEWEST')
+    await expect(page.locator('.event-card', { hasText: 'Prague Paid Summit' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Brno Free Meetup' })).toBeHidden()
+
+    await page.getByLabel('Preset name').fill('Paid Prague')
+    await page.getByRole('button', { name: 'Save current search' }).click()
+    const savedSearchButton = page.locator('.saved-search-apply', { hasText: 'Paid Prague' })
+    await expect(savedSearchButton).toBeVisible()
+
+    await page.getByRole('button', { name: 'Clear all' }).click()
+    await expect(page.locator('.event-card', { hasText: 'Brno Free Meetup' })).toBeVisible()
+
+    await savedSearchButton.click()
+    await expect(page).toHaveURL(/location=Prague/)
+    await expect(page.locator('.event-card', { hasText: 'Prague Paid Summit' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Brno Free Meetup' })).toBeHidden()
   })
 })

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
+import { formatEventPrice } from '@/stores/events'
 import { useEventsStore } from '@/stores/events'
 
 const route = useRoute()
@@ -111,6 +112,13 @@ function statusBadgeClass(status: string): string {
               <p class="event-description">{{ event.description }}</p>
             </div>
             <div class="info-section">
+              <h3 class="info-label">
+                <span class="info-icon">💳</span>
+                Pricing
+              </h3>
+              <p>{{ formatEventPrice(event) }}</p>
+            </div>
+            <div class="info-section">
               <a
                 :href="event.eventUrl"
                 target="_blank"
@@ -132,6 +140,14 @@ function statusBadgeClass(status: string): string {
               loading="lazy"
               sandbox="allow-scripts"
             ></iframe>
+            <a
+              :href="event.mapUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="map-link"
+            >
+              Open in OpenStreetMap ↗
+            </a>
           </div>
         </div>
       </div>
@@ -258,6 +274,11 @@ function statusBadgeClass(status: string): string {
   height: 320px;
   border: 0;
   border-radius: var(--radius-md);
+}
+
+.map-link {
+  font-size: 0.875rem;
+  color: var(--color-primary);
 }
 
 .empty-state {

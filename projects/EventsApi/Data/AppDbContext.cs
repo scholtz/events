@@ -8,6 +8,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<ApplicationUser> Users => Set<ApplicationUser>();
     public DbSet<EventDomain> Domains => Set<EventDomain>();
     public DbSet<CatalogEvent> Events => Set<CatalogEvent>();
+    public DbSet<SavedSearch> SavedSearches => Set<SavedSearch>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -45,6 +46,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(catalogEvent => catalogEvent.AdminNotes).HasMaxLength(1000);
             entity.Property(catalogEvent => catalogEvent.Latitude).HasPrecision(9, 6);
             entity.Property(catalogEvent => catalogEvent.Longitude).HasPrecision(9, 6);
+            entity.Property(catalogEvent => catalogEvent.CurrencyCode).HasMaxLength(8);
+            entity.Property(catalogEvent => catalogEvent.PriceAmount).HasPrecision(10, 2);
 
             entity.HasOne(catalogEvent => catalogEvent.Domain)
                 .WithMany(domain => domain.Events)
@@ -60,6 +63,22 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .WithMany(user => user.ReviewedEvents)
                 .HasForeignKey(catalogEvent => catalogEvent.ReviewedByUserId)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<SavedSearch>(entity =>
+        {
+            entity.Property(savedSearch => savedSearch.Name).HasMaxLength(160);
+            entity.Property(savedSearch => savedSearch.SearchText).HasMaxLength(200);
+            entity.Property(savedSearch => savedSearch.DomainSlug).HasMaxLength(120);
+            entity.Property(savedSearch => savedSearch.LocationText).HasMaxLength(200);
+            entity.Property(savedSearch => savedSearch.PriceMin).HasPrecision(10, 2);
+            entity.Property(savedSearch => savedSearch.PriceMax).HasPrecision(10, 2);
+            entity.Property(savedSearch => savedSearch.SortBy).HasConversion<string>().HasMaxLength(32);
+
+            entity.HasOne(savedSearch => savedSearch.User)
+                .WithMany(user => user.SavedSearches)
+                .HasForeignKey(savedSearch => savedSearch.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

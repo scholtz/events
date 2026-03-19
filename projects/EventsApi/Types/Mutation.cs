@@ -92,6 +92,9 @@ public sealed class Mutation
             AddressLine1 = input.AddressLine1.Trim(),
             City = input.City.Trim(),
             CountryCode = input.CountryCode.Trim().ToUpperInvariant(),
+            IsFree = input.IsFree,
+            PriceAmount = NormalizePriceAmount(input),
+            CurrencyCode = NormalizeCurrencyCode(input.CurrencyCode),
             Latitude = input.Latitude,
             Longitude = input.Longitude,
             StartsAtUtc = EnsureUtc(input.StartsAtUtc),
@@ -146,6 +149,9 @@ public sealed class Mutation
         catalogEvent.AddressLine1 = input.AddressLine1.Trim();
         catalogEvent.City = input.City.Trim();
         catalogEvent.CountryCode = input.CountryCode.Trim().ToUpperInvariant();
+        catalogEvent.IsFree = input.IsFree;
+        catalogEvent.PriceAmount = NormalizePriceAmount(input);
+        catalogEvent.CurrencyCode = NormalizeCurrencyCode(input.CurrencyCode);
         catalogEvent.Latitude = input.Latitude;
         catalogEvent.Longitude = input.Longitude;
         catalogEvent.StartsAtUtc = EnsureUtc(input.StartsAtUtc);
@@ -242,6 +248,60 @@ public sealed class Mutation
         return user;
     }
 
+    [Authorize]
+    public async Task<SavedSearch> SaveSearchAsync(
+        SavedSearchInput input,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(input.Name))
+        {
+            throw CreateError("Saved search name is required.", "INVALID_SAVED_SEARCH");
+        }
+
+        var savedSearch = new SavedSearch
+        {
+            UserId = claimsPrincipal.GetRequiredUserId(),
+            Name = input.Name.Trim(),
+            SearchText = NormalizeOptionalValue(input.Filter?.SearchText),
+            DomainSlug = NormalizeOptionalValue(input.Filter?.DomainSlug),
+            LocationText = NormalizeOptionalValue(input.Filter?.LocationText ?? input.Filter?.City),
+            StartsFromUtc = input.Filter?.StartsFromUtc is null ? null : EnsureUtc(input.Filter.StartsFromUtc.Value),
+            StartsToUtc = input.Filter?.StartsToUtc is null ? null : EnsureUtc(input.Filter.StartsToUtc.Value),
+            IsFree = input.Filter?.IsFree,
+            PriceMin = input.Filter?.PriceMin,
+            PriceMax = input.Filter?.PriceMax,
+            SortBy = input.Filter?.SortBy ?? EventSortOption.Upcoming
+        };
+
+        dbContext.SavedSearches.Add(savedSearch);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return savedSearch;
+    }
+
+    [Authorize]
+    public async Task<bool> DeleteSavedSearchAsync(
+        Guid savedSearchId,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var savedSearch = await dbContext.SavedSearches.SingleOrDefaultAsync(
+            candidate => candidate.Id == savedSearchId,
+            cancellationToken)
+            ?? throw CreateError("Saved search was not found.", "SAVED_SEARCH_NOT_FOUND");
+
+        if (savedSearch.UserId != claimsPrincipal.GetRequiredUserId())
+        {
+            throw CreateError("You can only delete your own saved searches.", "FORBIDDEN");
+        }
+
+        dbContext.SavedSearches.Remove(savedSearch);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     private static AuthPayload CreateAuthPayload(ApplicationUser user, JwtTokenService jwtTokenService)
     {
         var session = jwtTokenService.CreateSession(user);
@@ -280,10 +340,37 @@ public sealed class Mutation
         {
             throw CreateError("Event URL must be an absolute URL.", "INVALID_EVENT_URL");
         }
+
+        if (input.PriceAmount is not null && input.PriceAmount < 0)
+        {
+            throw CreateError("Event price cannot be negative.", "INVALID_EVENT_PRICE");
+        }
+
+        if (!input.IsFree && input.PriceAmount is null)
+        {
+            throw CreateError("Paid events require a valid non-negative price.", "INVALID_EVENT_PRICE");
+        }
     }
 
     private static DateTime EnsureUtc(DateTime value)
         => value.Kind == DateTimeKind.Utc ? value : value.ToUniversalTime();
+
+    private static decimal? NormalizePriceAmount(EventSubmissionInput input)
+    {
+        if (input.IsFree)
+        {
+            return 0m;
+        }
+
+        return input.PriceAmount
+            ?? throw new InvalidOperationException("Paid events require a validated price amount.");
+    }
+
+    private static string NormalizeCurrencyCode(string? currencyCode)
+        => string.IsNullOrWhiteSpace(currencyCode) ? "EUR" : currencyCode.Trim().ToUpperInvariant();
+
+    private static string? NormalizeOptionalValue(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static GraphQLException CreateError(string message, string code)
         => new(ErrorBuilder.New().SetMessage(message).SetCode(code).Build());

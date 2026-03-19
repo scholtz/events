@@ -4,6 +4,11 @@ export type UserRole = 'CONTRIBUTOR' | 'ADMIN'
 /** Matches backend EventStatus enum */
 export type EventStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'PUBLISHED' | 'REJECTED'
 
+/** Matches backend EventSortOption enum */
+export type EventSortOption = 'UPCOMING' | 'NEWEST' | 'RELEVANCE'
+
+export type EventPriceFilter = 'ALL' | 'FREE' | 'PAID'
+
 /** Matches backend ApplicationUser entity */
 export interface User {
   id: string
@@ -51,6 +56,9 @@ export interface CatalogEvent {
   publishedAtUtc: string | null
   adminNotes: string | null
   status: EventStatus
+  isFree: boolean
+  priceAmount: number | null
+  currencyCode: string
   domainId: string
   domain: EventDomain
   submittedByUserId: string
@@ -86,5 +94,25 @@ export interface EventFilters {
   domain: string
   dateFrom: string
   dateTo: string
-  city: string
+  location: string
+  priceType: EventPriceFilter
+  priceMin: string
+  priceMax: string
+  sortBy: EventSortOption
+}
+
+export interface SavedSearch {
+  id: string
+  name: string
+  searchText: string | null
+  domainSlug: string | null
+  locationText: string | null
+  startsFromUtc: string | null
+  startsToUtc: string | null
+  isFree: boolean | null
+  priceMin: number | null
+  priceMax: number | null
+  sortBy: EventSortOption
+  createdAtUtc: string
+  updatedAtUtc: string
 }
