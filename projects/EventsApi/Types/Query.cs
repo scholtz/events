@@ -90,14 +90,20 @@ public sealed class Query
         {
             var priceMin = filter.PriceMin.Value;
             query = query.Where(catalogEvent =>
-                (catalogEvent.IsFree ? 0m : catalogEvent.PriceAmount ?? decimal.MaxValue) >= priceMin);
+                (catalogEvent.IsFree && 0m >= priceMin)
+                || (!catalogEvent.IsFree
+                    && catalogEvent.PriceAmount.HasValue
+                    && catalogEvent.PriceAmount.Value >= priceMin));
         }
 
         if (filter?.PriceMax is not null)
         {
             var priceMax = filter.PriceMax.Value;
             query = query.Where(catalogEvent =>
-                (catalogEvent.IsFree ? 0m : catalogEvent.PriceAmount ?? decimal.MaxValue) <= priceMax);
+                (catalogEvent.IsFree && 0m <= priceMax)
+                || (!catalogEvent.IsFree
+                    && catalogEvent.PriceAmount.HasValue
+                    && catalogEvent.PriceAmount.Value <= priceMax));
         }
 
         return await ApplySorting(query, filter?.SortBy, normalizedSearchText).ToListAsync(cancellationToken);

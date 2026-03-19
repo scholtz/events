@@ -10,6 +10,7 @@ const domainsStore = useDomainsStore()
 
 const submitting = ref(false)
 const submitted = ref(false)
+const submissionError = ref('')
 
   const form = reactive({
     name: '',
@@ -32,7 +33,17 @@ const submitted = ref(false)
 async function handleSubmit() {
   if (!form.name || !form.description || !form.domainSlug || !form.startsAtUtc || !form.eventUrl)
     return
+
+  const parsedPrice = Number.parseFloat(form.priceAmount)
+  if (!form.isFree) {
+    if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+      submissionError.value = 'Please enter a valid non-negative price for paid events.'
+      return
+    }
+  }
+
   submitting.value = true
+  submissionError.value = ''
   try {
     await eventsStore.submitEvent({
       domainSlug: form.domainSlug,
@@ -44,7 +55,7 @@ async function handleSubmit() {
       city: form.city,
       countryCode: form.countryCode || 'CZ',
       isFree: form.isFree,
-      priceAmount: form.isFree ? 0 : parseFloat(form.priceAmount) || 0,
+      priceAmount: form.isFree ? 0 : parsedPrice,
       currencyCode: form.currencyCode || 'EUR',
       latitude: parseFloat(form.latitude) || 0,
       longitude: parseFloat(form.longitude) || 0,
@@ -55,6 +66,9 @@ async function handleSubmit() {
     })
     submitted.value = true
     setTimeout(() => router.push('/dashboard'), 1500)
+  } catch (error) {
+    submissionError.value =
+      error instanceof Error ? error.message : 'We could not submit the event right now.'
   } finally {
     submitting.value = false
   }
@@ -270,6 +284,8 @@ async function handleSubmit() {
           </div>
         </fieldset>
 
+        <p v-if="submissionError" class="submit-error" role="alert">{{ submissionError }}</p>
+
         <div class="form-actions">
           <RouterLink to="/" class="btn btn-ghost">Cancel</RouterLink>
           <button type="submit" class="btn btn-primary" :disabled="submitting">
@@ -372,6 +388,12 @@ async function handleSubmit() {
   gap: 0.75rem;
   padding: 1.25rem 1.5rem;
   border-top: 1px solid var(--color-border);
+}
+
+.submit-error {
+  color: var(--color-danger);
+  font-size: 0.875rem;
+  padding: 0 1.5rem;
 }
 
 .form-checkbox {

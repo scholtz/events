@@ -127,12 +127,8 @@ function getQueryValue(value: LocationQuery[string] | undefined): string {
   return value ?? ''
 }
 
-function trimOrEmpty(value: string): string {
-  return value.trim()
-}
-
 export function formatEventPrice(event: Pick<CatalogEvent, 'isFree' | 'priceAmount' | 'currencyCode'>): string {
-  if (event.isFree) return 'Free'
+  if (event.isFree || event.priceAmount === 0) return 'Free'
   if (typeof event.priceAmount === 'number') {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -192,12 +188,14 @@ export const useEventsStore = defineStore('events', () => {
   const hasActiveFilters = computed(() => !areEventFiltersEqual(filters.value, createDefaultEventFilters()))
   const activeFilterChips = computed(() => {
     const chips: Array<{ key: string; label: string }> = []
+    const trimmedSearch = filters.value.search.trim()
+    const trimmedLocation = filters.value.location.trim()
 
-    if (trimOrEmpty(filters.value.search)) chips.push({ key: 'search', label: `Keyword: ${trimOrEmpty(filters.value.search)}` })
+    if (trimmedSearch) chips.push({ key: 'search', label: `Keyword: ${trimmedSearch}` })
     if (filters.value.domain) chips.push({ key: 'domain', label: `Domain: ${filters.value.domain}` })
     if (filters.value.dateFrom) chips.push({ key: 'dateFrom', label: `From: ${filters.value.dateFrom}` })
     if (filters.value.dateTo) chips.push({ key: 'dateTo', label: `To: ${filters.value.dateTo}` })
-    if (trimOrEmpty(filters.value.location)) chips.push({ key: 'location', label: `Location: ${trimOrEmpty(filters.value.location)}` })
+    if (trimmedLocation) chips.push({ key: 'location', label: `Location: ${trimmedLocation}` })
     if (filters.value.priceType === 'FREE') chips.push({ key: 'priceType', label: 'Price: Free' })
     if (filters.value.priceType === 'PAID') chips.push({ key: 'priceType', label: 'Price: Paid' })
     if (filters.value.priceMin) chips.push({ key: 'priceMin', label: `Min price: ${filters.value.priceMin}` })

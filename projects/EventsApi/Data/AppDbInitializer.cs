@@ -1,3 +1,4 @@
+using System.Data;
 using EventsApi.Configuration;
 using EventsApi.Data.Entities;
 using EventsApi.Utilities;
@@ -219,7 +220,7 @@ public sealed class AppDbInitializer(
     private async Task<bool> TableExistsAsync(string tableName, CancellationToken cancellationToken)
     {
         var connection = (SqliteConnection)_dbContext.Database.GetDbConnection();
-        if (connection.State != System.Data.ConnectionState.Open)
+        if (connection.State != ConnectionState.Open)
         {
             await connection.OpenAsync(cancellationToken);
         }
@@ -234,13 +235,18 @@ public sealed class AppDbInitializer(
     private async Task<bool> TableColumnExistsAsync(string tableName, string columnName, CancellationToken cancellationToken)
     {
         var connection = (SqliteConnection)_dbContext.Database.GetDbConnection();
-        if (connection.State != System.Data.ConnectionState.Open)
+        if (connection.State != ConnectionState.Open)
         {
             await connection.OpenAsync(cancellationToken);
         }
 
         await using var command = connection.CreateCommand();
-        command.CommandText = $"PRAGMA table_info(\"{tableName}\");";
+        command.CommandText = tableName switch
+        {
+            "Events" => """PRAGMA table_info("Events");""",
+            "SavedSearches" => """PRAGMA table_info("SavedSearches");""",
+            _ => throw new InvalidOperationException($"Unsupported schema table '{tableName}'.")
+        };
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
 
         while (await reader.ReadAsync(cancellationToken))

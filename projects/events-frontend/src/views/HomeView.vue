@@ -4,7 +4,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import {
   areEventFiltersEqual,
-  createDefaultEventFilters,
   eventFiltersFromQuery,
   eventFiltersToQuery,
   useEventsStore,
@@ -106,9 +105,6 @@ const emptyStateMessage = computed(() => {
   return 'Try broadening your filters or clearing a few constraints to see more events.'
 })
 
-const hasDefaultDiscoveryState = computed(() =>
-  areEventFiltersEqual(eventsStore.filters, createDefaultEventFilters()),
-)
 </script>
 
 <template>
@@ -203,7 +199,7 @@ const hasDefaultDiscoveryState = computed(() =>
               Open in OpenStreetMap ↗
             </a>
           </div>
-          <p v-else-if="hasDefaultDiscoveryState" class="map-empty">
+          <p v-else-if="!eventsStore.hasActiveFilters" class="map-empty">
             Events with location data will appear here as soon as they match your discovery view.
           </p>
           <p v-else class="map-empty">Adjust your filters to find results with map context.</p>

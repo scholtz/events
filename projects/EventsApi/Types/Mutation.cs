@@ -341,14 +341,14 @@ public sealed class Mutation
             throw CreateError("Event URL must be an absolute URL.", "INVALID_EVENT_URL");
         }
 
-        if (!input.IsFree && (input.PriceAmount is null || input.PriceAmount < 0))
+        if (input.PriceAmount is not null && input.PriceAmount < 0)
         {
-            throw CreateError("Paid events require a valid non-negative price.", "INVALID_EVENT_PRICE");
+            throw CreateError("Event price cannot be negative.", "INVALID_EVENT_PRICE");
         }
 
-        if (input.IsFree && input.PriceAmount is not null && input.PriceAmount < 0)
+        if (!input.IsFree && input.PriceAmount is null)
         {
-            throw CreateError("Free events cannot have a negative price.", "INVALID_EVENT_PRICE");
+            throw CreateError("Paid events require a valid non-negative price.", "INVALID_EVENT_PRICE");
         }
     }
 
@@ -356,7 +356,15 @@ public sealed class Mutation
         => value.Kind == DateTimeKind.Utc ? value : value.ToUniversalTime();
 
     private static decimal? NormalizePriceAmount(EventSubmissionInput input)
-        => input.IsFree ? 0m : input.PriceAmount;
+    {
+        if (input.IsFree)
+        {
+            return 0m;
+        }
+
+        return input.PriceAmount
+            ?? throw new InvalidOperationException("Paid events require a validated price amount.");
+    }
 
     private static string NormalizeCurrencyCode(string? currencyCode)
         => string.IsNullOrWhiteSpace(currencyCode) ? "EUR" : currencyCode.Trim().ToUpperInvariant();
