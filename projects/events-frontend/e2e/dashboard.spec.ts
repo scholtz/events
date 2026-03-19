@@ -6,7 +6,6 @@ import {
   makeApprovedEvent,
   loginAs,
   type MockFavoriteEvent,
-  type MockState,
 } from './helpers/mock-api'
 
 test.describe('Organizer analytics dashboard', () => {
@@ -210,18 +209,18 @@ test.describe('Organizer analytics dashboard', () => {
     const user = makeAdminUser()
 
     // Set up mock but override the MyDashboard query to fail
-    const state = setupMockApi(page, {
+    setupMockApi(page, {
       users: [user],
       domains: [makeTechDomain()],
     })
 
     // Inject a broken-auth token so MyDashboard returns an error
     // We do this by making the mock return an error after login
-    let dashboardCallCount = 0
+    let _dashboardCallCount = 0
     page.route('**/graphql', async (route) => {
       const body = JSON.parse(route.request().postData() || '{}')
       if ((body.query || '').includes('MyDashboard')) {
-        dashboardCallCount++
+        _dashboardCallCount++
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
