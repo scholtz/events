@@ -129,6 +129,7 @@ public sealed class AppDbInitializer(
                 IsFree = false,
                 PriceAmount = 129m,
                 CurrencyCode = "EUR",
+                AttendanceMode = AttendanceMode.InPerson,
                 PublishedAtUtc = DateTime.UtcNow,
                 AdminNotes = "Seeded example for Prague crypto discovery."
             },
@@ -152,6 +153,7 @@ public sealed class AppDbInitializer(
                 Status = EventStatus.Published,
                 IsFree = true,
                 CurrencyCode = "EUR",
+                AttendanceMode = AttendanceMode.Online,
                 PublishedAtUtc = DateTime.UtcNow,
                 AdminNotes = "Seeded example for AI catalog."
             }
@@ -171,6 +173,7 @@ public sealed class AppDbInitializer(
         await EnsureEventColumnAsync("IsFree", cancellationToken);
         await EnsureEventColumnAsync("PriceAmount", cancellationToken);
         await EnsureEventColumnAsync("CurrencyCode", cancellationToken);
+        await EnsureEventColumnAsync("AttendanceMode", cancellationToken);
 
         if (!await TableExistsAsync("SavedSearches", cancellationToken))
         {
@@ -232,6 +235,7 @@ public sealed class AppDbInitializer(
             "IsFree" => """ALTER TABLE "Events" ADD COLUMN "IsFree" INTEGER NOT NULL DEFAULT 1;""",
             "PriceAmount" => """ALTER TABLE "Events" ADD COLUMN "PriceAmount" TEXT NULL;""",
             "CurrencyCode" => """ALTER TABLE "Events" ADD COLUMN "CurrencyCode" TEXT NOT NULL DEFAULT 'EUR';""",
+            "AttendanceMode" => """ALTER TABLE "Events" ADD COLUMN "AttendanceMode" TEXT NOT NULL DEFAULT 'InPerson';""",
             _ => throw new InvalidOperationException($"Unsupported event column '{columnName}'.")
         };
 

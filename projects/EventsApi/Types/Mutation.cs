@@ -95,6 +95,7 @@ public sealed class Mutation
             IsFree = input.IsFree,
             PriceAmount = NormalizePriceAmount(input),
             CurrencyCode = NormalizeCurrencyCode(input.CurrencyCode),
+            AttendanceMode = input.AttendanceMode,
             Latitude = input.Latitude,
             Longitude = input.Longitude,
             StartsAtUtc = EnsureUtc(input.StartsAtUtc),
@@ -152,6 +153,7 @@ public sealed class Mutation
         catalogEvent.IsFree = input.IsFree;
         catalogEvent.PriceAmount = NormalizePriceAmount(input);
         catalogEvent.CurrencyCode = NormalizeCurrencyCode(input.CurrencyCode);
+        catalogEvent.AttendanceMode = input.AttendanceMode;
         catalogEvent.Latitude = input.Latitude;
         catalogEvent.Longitude = input.Longitude;
         catalogEvent.StartsAtUtc = EnsureUtc(input.StartsAtUtc);

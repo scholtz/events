@@ -3,6 +3,7 @@ import type { LocationQuery, LocationQueryRaw } from 'vue-router'
 import { defineStore } from 'pinia'
 import { gqlRequest } from '@/lib/graphql'
 import type {
+  AttendanceMode,
   CatalogEvent,
   EventFilters,
   EventPriceFilter,
@@ -16,6 +17,7 @@ const EVENT_FIELDS = `
   latitude longitude startsAtUtc endsAtUtc
   submittedAtUtc updatedAtUtc publishedAtUtc
   adminNotes status isFree priceAmount currencyCode domainId mapUrl
+  attendanceMode
   domain { id name slug }
   submittedBy { displayName }
 `
@@ -39,6 +41,7 @@ export function createDefaultEventFilters(): EventFilters {
     priceMin: '',
     priceMax: '',
     sortBy: DEFAULT_SORT,
+    attendanceMode: '',
   }
 }
 
@@ -54,6 +57,7 @@ export function buildDiscoveryFilterInput(filters: EventFilters): Record<string,
   if (filters.priceType === 'PAID') filter.isFree = false
   if (filters.priceMin) filter.priceMin = Number(filters.priceMin)
   if (filters.priceMax) filter.priceMax = Number(filters.priceMax)
+  if (filters.attendanceMode) filter.attendanceMode = filters.attendanceMode
   filter.sortBy = filters.sortBy
 
   return Object.keys(filter).length ? filter : undefined
@@ -71,6 +75,7 @@ export function eventFiltersToQuery(filters: EventFilters): LocationQueryRaw {
   if (filters.priceMin) query.minPrice = filters.priceMin
   if (filters.priceMax) query.maxPrice = filters.priceMax
   if (filters.sortBy !== DEFAULT_SORT) query.sort = filters.sortBy.toLowerCase()
+  if (filters.attendanceMode) query.mode = filters.attendanceMode.toLowerCase().replace('_', '-')
 
   return query
 }
@@ -93,6 +98,11 @@ export function eventFiltersFromQuery(query: LocationQuery): EventFilters {
   const sort = getQueryValue(query.sort).toUpperCase()
   if (sort === 'NEWEST' || sort === 'RELEVANCE') {
     filters.sortBy = sort
+  }
+
+  const mode = getQueryValue(query.mode).toUpperCase().replace('-', '_')
+  if (mode === 'IN_PERSON' || mode === 'ONLINE' || mode === 'HYBRID') {
+    filters.attendanceMode = mode as AttendanceMode
   }
 
   return filters
@@ -123,7 +133,8 @@ export function areEventFiltersEqual(left: EventFilters, right: EventFilters): b
     left.priceType === right.priceType &&
     left.priceMin === right.priceMin &&
     left.priceMax === right.priceMax &&
-    left.sortBy === right.sortBy
+    left.sortBy === right.sortBy &&
+    left.attendanceMode === right.attendanceMode
   )
 }
 
@@ -209,6 +220,9 @@ export const useEventsStore = defineStore('events', () => {
     if (filters.value.priceMin) chips.push({ key: 'priceMin', label: `Min price: ${filters.value.priceMin}` })
     if (filters.value.priceMax) chips.push({ key: 'priceMax', label: `Max price: ${filters.value.priceMax}` })
     if (filters.value.sortBy !== DEFAULT_SORT) chips.push({ key: 'sortBy', label: `Sort: ${filters.value.sortBy.toLowerCase()}` })
+    if (filters.value.attendanceMode === 'IN_PERSON') chips.push({ key: 'attendanceMode', label: 'Mode: In Person' })
+    if (filters.value.attendanceMode === 'ONLINE') chips.push({ key: 'attendanceMode', label: 'Mode: Online' })
+    if (filters.value.attendanceMode === 'HYBRID') chips.push({ key: 'attendanceMode', label: 'Mode: Hybrid' })
 
     return chips
   })
@@ -258,6 +272,7 @@ export const useEventsStore = defineStore('events', () => {
     longitude: number
     startsAtUtc: string
     endsAtUtc: string
+    attendanceMode?: 'IN_PERSON' | 'ONLINE' | 'HYBRID'
   }) {
     const data = await gqlRequest<{ submitEvent: CatalogEvent }>(
       `mutation SubmitEvent($input: EventSubmissionInput!) {

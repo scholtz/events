@@ -49,6 +49,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(catalogEvent => catalogEvent.Longitude).HasPrecision(9, 6);
             entity.Property(catalogEvent => catalogEvent.CurrencyCode).HasMaxLength(8);
             entity.Property(catalogEvent => catalogEvent.PriceAmount).HasPrecision(10, 2);
+            entity.Property(catalogEvent => catalogEvent.AttendanceMode).HasConversion<string>().HasMaxLength(32);
 
             entity.HasOne(catalogEvent => catalogEvent.Domain)
                 .WithMany(domain => domain.Events)

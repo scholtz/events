@@ -810,7 +810,8 @@ public sealed class GraphQlIntegrationTests
         bool isFree = true,
         decimal? priceAmount = 0m,
         DateTime? submittedAtUtc = null,
-        EventStatus status = EventStatus.Published)
+        EventStatus status = EventStatus.Published,
+        AttendanceMode attendanceMode = AttendanceMode.InPerson)
         => new()
         {
             Name = name,
@@ -834,7 +835,8 @@ public sealed class GraphQlIntegrationTests
             PriceAmount = isFree ? 0m : priceAmount,
             CurrencyCode = "EUR",
             Latitude = 50.0755m,
-            Longitude = 14.4378m
+            Longitude = 14.4378m,
+            AttendanceMode = attendanceMode
         };
 
     [Fact]
@@ -1983,6 +1985,151 @@ public sealed class GraphQlIntegrationTests
 
         // Only the organizer's displayName is present (as submittedBy)
         Assert.Contains("Privacy Organizer", rawJson, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task EventsQuery_AttendanceModeFilter_IsolatesEventsByMode()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("attendance@example.com", "Attendance User");
+            var tech = CreateDomain("Tech", "tech-attendance");
+            var nextMonth = FirstDayOfNextMonthUtc();
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(tech);
+            dbContext.Events.AddRange(
+                CreateEvent("In-Person Workshop", "in-person-workshop", "Hands-on in person.", "Venue A", "Prague", nextMonth, tech, user, attendanceMode: AttendanceMode.InPerson),
+                CreateEvent("Online Webinar", "online-webinar", "Remote stream.", "Virtual", "Online", nextMonth.AddDays(1), tech, user, attendanceMode: AttendanceMode.Online),
+                CreateEvent("Hybrid Conference", "hybrid-conference", "Both modes.", "Big Hall", "Prague", nextMonth.AddDays(2), tech, user, attendanceMode: AttendanceMode.Hybrid));
+        });
+
+        using var client = factory.CreateClient();
+
+        var inPersonEvents = await QueryEventNamesAsync(client, new { attendanceMode = "IN_PERSON" });
+        Assert.Equal(["In-Person Workshop"], inPersonEvents);
+
+        var onlineEvents = await QueryEventNamesAsync(client, new { attendanceMode = "ONLINE" });
+        Assert.Equal(["Online Webinar"], onlineEvents);
+
+        var hybridEvents = await QueryEventNamesAsync(client, new { attendanceMode = "HYBRID" });
+        Assert.Equal(["Hybrid Conference"], hybridEvents);
+    }
+
+    [Fact]
+    public async Task EventsQuery_AttendanceModeFilter_ReturnsAllWhenNotSpecified()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("att-all@example.com", "Attendance All");
+            var tech = CreateDomain("Tech", "tech-att-all");
+            var nextMonth = FirstDayOfNextMonthUtc();
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(tech);
+            dbContext.Events.AddRange(
+                CreateEvent("Event A", "event-a-att", "Desc.", "Venue", "Prague", nextMonth, tech, user, attendanceMode: AttendanceMode.InPerson),
+                CreateEvent("Event B", "event-b-att", "Desc.", "Virtual", "Online", nextMonth.AddDays(1), tech, user, attendanceMode: AttendanceMode.Online),
+                CreateEvent("Event C", "event-c-att", "Desc.", "Hall", "Prague", nextMonth.AddDays(2), tech, user, attendanceMode: AttendanceMode.Hybrid));
+        });
+
+        using var client = factory.CreateClient();
+
+        // No attendance mode filter — all 3 events are returned
+        var allEvents = await QueryEventNamesAsync(client, new { sortBy = "UPCOMING" });
+        Assert.Equal(3, allEvents.Length);
+    }
+
+    [Fact]
+    public async Task EventsQuery_AttendanceModeAndPriceFilter_CombineCorrectly()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("att-price@example.com", "Att Price User");
+            var tech = CreateDomain("Tech", "tech-att-price");
+            var nextMonth = FirstDayOfNextMonthUtc();
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(tech);
+            dbContext.Events.AddRange(
+                CreateEvent("Free In-Person", "free-in-person", "Free workshop.", "Venue A", "Prague", nextMonth, tech, user, isFree: true, priceAmount: 0m, attendanceMode: AttendanceMode.InPerson),
+                CreateEvent("Paid In-Person", "paid-in-person", "Premium workshop.", "Venue B", "Prague", nextMonth.AddDays(1), tech, user, isFree: false, priceAmount: 99m, attendanceMode: AttendanceMode.InPerson),
+                CreateEvent("Free Online", "free-online", "Free webinar.", "Virtual", "Online", nextMonth.AddDays(2), tech, user, isFree: true, priceAmount: 0m, attendanceMode: AttendanceMode.Online));
+        });
+
+        using var client = factory.CreateClient();
+
+        // Free + InPerson combination
+        var freeInPerson = await QueryEventNamesAsync(client, new { isFree = true, attendanceMode = "IN_PERSON" });
+        Assert.Equal(["Free In-Person"], freeInPerson);
+
+        // Paid + InPerson combination
+        var paidInPerson = await QueryEventNamesAsync(client, new { isFree = false, attendanceMode = "IN_PERSON" });
+        Assert.Equal(["Paid In-Person"], paidInPerson);
+
+        // Online only (free)
+        var freeOnline = await QueryEventNamesAsync(client, new { isFree = true, attendanceMode = "ONLINE" });
+        Assert.Equal(["Free Online"], freeOnline);
+    }
+
+    [Fact]
+    public async Task EventSubmission_AttendanceModeIsStoredAndReturnedCorrectly()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("submit-att@example.com", "Submit Att");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "tech-submit-att");
+            dbContext.Users.AddRange(user);
+            dbContext.Domains.Add(domain);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        var nextMonth = FirstDayOfNextMonthUtc();
+
+        using var submitDocument = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation SubmitEvent($input: EventSubmissionInput!) {
+              submitEvent(input: $input) {
+                name
+                attendanceMode
+              }
+            }
+            """,
+            new
+            {
+                input = new
+                {
+                    domainSlug = "tech-submit-att",
+                    name = "Hybrid Hackathon",
+                    description = "A hybrid hackathon event.",
+                    eventUrl = "https://events.example.com/hybrid-hackathon",
+                    venueName = "Hub",
+                    addressLine1 = "Somewhere 1",
+                    city = "Prague",
+                    countryCode = "CZ",
+                    isFree = true,
+                    latitude = 50.075,
+                    longitude = 14.437,
+                    startsAtUtc = nextMonth,
+                    endsAtUtc = nextMonth.AddHours(6),
+                    attendanceMode = "HYBRID"
+                }
+            });
+
+        var submittedEvent = submitDocument.RootElement.GetProperty("data").GetProperty("submitEvent");
+        Assert.Equal("Hybrid Hackathon", submittedEvent.GetProperty("name").GetString());
+        Assert.Equal("HYBRID", submittedEvent.GetProperty("attendanceMode").GetString());
     }
 
     private static DateTime FirstDayOfNextMonthUtc()

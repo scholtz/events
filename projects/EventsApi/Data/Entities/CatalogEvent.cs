@@ -25,6 +25,7 @@ public sealed class CatalogEvent
     public bool IsFree { get; set; } = true;
     public decimal? PriceAmount { get; set; }
     public string CurrencyCode { get; set; } = "EUR";
+    public AttendanceMode AttendanceMode { get; set; } = AttendanceMode.InPerson;
     public Guid DomainId { get; set; }
     public EventDomain Domain { get; set; } = null!;
     public Guid SubmittedByUserId { get; set; }
