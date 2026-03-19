@@ -89,21 +89,13 @@ public sealed class Query
         if (filter?.PriceMin is not null)
         {
             var priceMin = filter.PriceMin.Value;
-            query = query.Where(catalogEvent =>
-                (catalogEvent.IsFree && 0m >= priceMin)
-                || (!catalogEvent.IsFree
-                    && catalogEvent.PriceAmount.HasValue
-                    && catalogEvent.PriceAmount.Value >= priceMin));
+            query = ApplyMinimumPriceFilter(query, filter?.IsFree, priceMin);
         }
 
         if (filter?.PriceMax is not null)
         {
             var priceMax = filter.PriceMax.Value;
-            query = query.Where(catalogEvent =>
-                (catalogEvent.IsFree && 0m <= priceMax)
-                || (!catalogEvent.IsFree
-                    && catalogEvent.PriceAmount.HasValue
-                    && catalogEvent.PriceAmount.Value <= priceMax));
+            query = ApplyMaximumPriceFilter(query, filter?.IsFree, priceMax);
         }
 
         return await ApplySorting(query, filter?.SortBy, normalizedSearchText).ToListAsync(cancellationToken);
@@ -254,4 +246,44 @@ public sealed class Query
 
     private static string? NormalizeFilterValue(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToLowerInvariant();
+
+    private static IQueryable<CatalogEvent> ApplyMinimumPriceFilter(
+        IQueryable<CatalogEvent> query,
+        bool? isFreeFilter,
+        decimal priceMin)
+    {
+        return isFreeFilter switch
+        {
+            true => query.Where(catalogEvent => catalogEvent.IsFree && 0m >= priceMin),
+            false => query.Where(catalogEvent =>
+                !catalogEvent.IsFree
+                && catalogEvent.PriceAmount.HasValue
+                && catalogEvent.PriceAmount.Value >= priceMin),
+            null => query.Where(catalogEvent =>
+                (catalogEvent.IsFree && 0m >= priceMin)
+                || (!catalogEvent.IsFree
+                    && catalogEvent.PriceAmount.HasValue
+                    && catalogEvent.PriceAmount.Value >= priceMin))
+        };
+    }
+
+    private static IQueryable<CatalogEvent> ApplyMaximumPriceFilter(
+        IQueryable<CatalogEvent> query,
+        bool? isFreeFilter,
+        decimal priceMax)
+    {
+        return isFreeFilter switch
+        {
+            true => query.Where(catalogEvent => catalogEvent.IsFree && 0m <= priceMax),
+            false => query.Where(catalogEvent =>
+                !catalogEvent.IsFree
+                && catalogEvent.PriceAmount.HasValue
+                && catalogEvent.PriceAmount.Value <= priceMax),
+            null => query.Where(catalogEvent =>
+                (catalogEvent.IsFree && 0m <= priceMax)
+                || (!catalogEvent.IsFree
+                    && catalogEvent.PriceAmount.HasValue
+                    && catalogEvent.PriceAmount.Value <= priceMax))
+        };
+    }
 }

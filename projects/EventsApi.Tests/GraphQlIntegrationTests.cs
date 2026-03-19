@@ -108,6 +108,138 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task EventsQuery_PriceFiltering_RespectsIsFreeAcrossFreePaidAndMixedCatalogs()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("pricing@example.com", "Pricing");
+            var crypto = CreateDomain("Crypto", "crypto");
+            var eventDate = FirstDayOfNextMonthUtc();
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(crypto);
+            dbContext.Events.AddRange(
+                CreateEvent(
+                    "Free Prague Meetup",
+                    "free-prague-meetup",
+                    "A free event in Prague.",
+                    "Venue 1",
+                    "Prague",
+                    eventDate,
+                    crypto,
+                    user,
+                    isFree: true,
+                    priceAmount: 0m),
+                CreateEvent(
+                    "Budget Prague Meetup",
+                    "budget-prague-meetup",
+                    "A paid budget event in Prague.",
+                    "Venue 2",
+                    "Prague",
+                    eventDate.AddDays(1),
+                    crypto,
+                    user,
+                    isFree: false,
+                    priceAmount: 25m),
+                CreateEvent(
+                    "Premium Prague Summit",
+                    "premium-prague-summit",
+                    "A premium paid event in Prague.",
+                    "Venue 3",
+                    "Prague",
+                    eventDate.AddDays(2),
+                    crypto,
+                    user,
+                    isFree: false,
+                    priceAmount: 120m));
+        });
+
+        using var client = factory.CreateClient();
+
+        Assert.Equal(
+            ["Free Prague Meetup"],
+            await QueryEventNamesAsync(client, new { isFree = true, priceMax = 200m, sortBy = "UPCOMING" }));
+
+        Assert.Equal(
+            ["Budget Prague Meetup", "Premium Prague Summit"],
+            await QueryEventNamesAsync(client, new { isFree = false, priceMax = 200m, sortBy = "UPCOMING" }));
+
+        Assert.Equal(
+            ["Free Prague Meetup", "Budget Prague Meetup", "Premium Prague Summit"],
+            await QueryEventNamesAsync(client, new { priceMax = 200m, sortBy = "UPCOMING" }));
+
+        Assert.Equal(
+            ["Budget Prague Meetup", "Premium Prague Summit"],
+            await QueryEventNamesAsync(client, new { priceMin = 1m, sortBy = "UPCOMING" }));
+
+        Assert.Equal(
+            ["Free Prague Meetup", "Budget Prague Meetup"],
+            await QueryEventNamesAsync(client, new { priceMax = 30m, sortBy = "UPCOMING" }));
+
+        Assert.Equal(
+            ["Budget Prague Meetup"],
+            await QueryEventNamesAsync(client, new { priceMin = 20m, priceMax = 30m, sortBy = "UPCOMING" }));
+
+        Assert.Equal(
+            ["Budget Prague Meetup"],
+            await QueryEventNamesAsync(client, new { isFree = false, priceMax = 30m, sortBy = "UPCOMING" }));
+    }
+
+    [Fact]
+    public async Task EventsQuery_PriceFiltering_ExcludesFreeEventsFromPaidOnlyRanges()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("paid-only@example.com", "Paid Only");
+            var crypto = CreateDomain("Crypto", "crypto");
+            var eventDate = FirstDayOfNextMonthUtc();
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(crypto);
+            dbContext.Events.AddRange(
+                CreateEvent(
+                    "Free Crypto Breakfast",
+                    "free-crypto-breakfast",
+                    "Free breakfast.",
+                    "Venue 1",
+                    "Prague",
+                    eventDate,
+                    crypto,
+                    user,
+                    isFree: true,
+                    priceAmount: 0m),
+                CreateEvent(
+                    "Paid Crypto Workshop",
+                    "paid-crypto-workshop",
+                    "Paid workshop.",
+                    "Venue 2",
+                    "Prague",
+                    eventDate.AddDays(1),
+                    crypto,
+                    user,
+                    isFree: false,
+                    priceAmount: 80m));
+        });
+
+        using var client = factory.CreateClient();
+
+        Assert.Equal(
+            ["Paid Crypto Workshop"],
+            await QueryEventNamesAsync(
+                client,
+                new
+                {
+                    searchText = "crypto",
+                    locationText = "prague",
+                    isFree = false,
+                    priceMax = 200m,
+                    sortBy = "UPCOMING"
+                }));
+    }
+
+    [Fact]
     public async Task EventsQuery_SupportsUpcomingNewestAndRelevanceSorts()
     {
         await using var factory = new EventsApiWebApplicationFactory();
@@ -411,6 +543,20 @@ public sealed class GraphQlIntegrationTests
             .EnumerateArray()
             .Select(catalogEvent => catalogEvent.GetProperty("name").GetString()!)
             .ToArray();
+
+    private static async Task<string[]> QueryEventNamesAsync(HttpClient client, object filter)
+    {
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query Events($filter: EventFilterInput) {
+              events(filter: $filter) { name }
+            }
+            """,
+            new { filter });
+
+        return GetEventNames(document);
+    }
 
     private static ApplicationUser CreateUser(string email, string displayName)
         => new()
