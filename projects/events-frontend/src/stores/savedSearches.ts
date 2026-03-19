@@ -16,6 +16,7 @@ const SAVED_SEARCH_FIELDS = `
   priceMin
   priceMax
   sortBy
+  attendanceMode
   createdAtUtc
   updatedAtUtc
 `

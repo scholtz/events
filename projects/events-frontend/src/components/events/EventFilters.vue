@@ -111,6 +111,9 @@ function clearFilterChip(key: string) {
     case 'sortBy':
       eventsStore.setFilters({ sortBy: 'UPCOMING' })
       break
+    case 'attendanceMode':
+      eventsStore.setFilters({ attendanceMode: '' })
+      break
   }
 }
 </script>
@@ -163,6 +166,29 @@ function clearFilterChip(key: string) {
           :value="locationInput"
           @input="onLocationInput(($event.target as HTMLInputElement).value)"
         />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="filter-attendance-mode">Mode</label>
+        <select
+          id="filter-attendance-mode"
+          class="form-select"
+          :value="eventsStore.filters.attendanceMode"
+          @change="
+            eventsStore.setFilters({
+              attendanceMode: ($event.target as HTMLSelectElement).value as
+                | 'IN_PERSON'
+                | 'ONLINE'
+                | 'HYBRID'
+                | '',
+            })
+          "
+        >
+          <option value="">Any mode</option>
+          <option value="IN_PERSON">In Person</option>
+          <option value="ONLINE">Online</option>
+          <option value="HYBRID">Hybrid</option>
+        </select>
       </div>
 
       <div class="form-group">

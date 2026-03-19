@@ -36,6 +36,17 @@ const locationSummary = computed(() => {
 
 const priceSummary = computed(() => formatEventPrice(props.event))
 
+const attendanceModeLabel = computed(() => {
+  switch (props.event.attendanceMode) {
+    case 'ONLINE':
+      return 'Online'
+    case 'HYBRID':
+      return 'Hybrid'
+    default:
+      return 'In Person'
+  }
+})
+
 const isFavorited = computed(() => favoritesStore.isFavorited(props.event.id))
 
 async function handleFavoriteToggle() {
@@ -57,6 +68,7 @@ async function handleFavoriteToggle() {
           {{ event.domain?.name ?? 'Event' }}
         </span>
         <div class="event-meta-right">
+          <span class="badge badge-mode">{{ attendanceModeLabel }}</span>
           <span class="event-date">{{ formatDate(event.startsAtUtc) }}</span>
           <button
             v-if="authStore.isAuthenticated"
@@ -153,6 +165,16 @@ async function handleFavoriteToggle() {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+.badge-mode {
+  font-size: 0.6875rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(19, 127, 236, 0.12);
+  color: var(--color-primary);
+  font-weight: 600;
+  letter-spacing: 0.03em;
 }
 
 .event-date {

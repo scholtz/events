@@ -1,3 +1,6 @@
+/** Matches backend AttendanceMode enum */
+export type AttendanceMode = 'IN_PERSON' | 'ONLINE' | 'HYBRID'
+
 /** Matches backend ApplicationUserRole enum */
 export type UserRole = 'CONTRIBUTOR' | 'ADMIN'
 
@@ -67,6 +70,7 @@ export interface CatalogEvent {
   reviewedBy: { displayName: string } | null
   mapUrl: string
   interestedCount: number
+  attendanceMode: AttendanceMode
 }
 
 /** Matches backend DashboardOverview response */
@@ -114,6 +118,7 @@ export interface EventFilters {
   priceMin: string
   priceMax: string
   sortBy: EventSortOption
+  attendanceMode: AttendanceMode | ''
 }
 
 export interface SavedSearch {
@@ -128,6 +133,7 @@ export interface SavedSearch {
   priceMin: number | null
   priceMax: number | null
   sortBy: EventSortOption
+  attendanceMode: AttendanceMode | null
   createdAtUtc: string
   updatedAtUtc: string
 }

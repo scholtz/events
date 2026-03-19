@@ -16,6 +16,7 @@ public sealed class EventFilterInput
     public decimal? PriceMax { get; init; }
     public EventSortOption? SortBy { get; init; }
     public EventStatus? Status { get; init; }
+    public AttendanceMode? AttendanceMode { get; init; }
 }
 
 public sealed class RegisterUserInput
@@ -48,6 +49,7 @@ public sealed class EventSubmissionInput
     public decimal Longitude { get; init; }
     public DateTime StartsAtUtc { get; init; }
     public DateTime EndsAtUtc { get; init; }
+    public AttendanceMode AttendanceMode { get; init; } = AttendanceMode.InPerson;
 }
 
 public sealed class SavedSearchInput

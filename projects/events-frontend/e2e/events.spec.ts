@@ -23,6 +23,39 @@ test.describe('Submit event form', () => {
     await expect(page.getByLabel('Website / Registration URL *')).toBeVisible()
   })
 
+  test('attendance mode field renders with correct options', async ({ page }) => {
+    setupMockApi(page, { domains: [makeTechDomain()] })
+    await page.goto('/submit')
+
+    const modeSelect = page.getByLabel('Attendance Mode')
+    await expect(modeSelect).toBeVisible()
+    await expect(modeSelect.getByRole('option', { name: 'In Person' })).toBeAttached()
+    await expect(modeSelect.getByRole('option', { name: 'Online' })).toBeAttached()
+    await expect(modeSelect.getByRole('option', { name: 'Hybrid' })).toBeAttached()
+    // Default is In Person
+    await expect(modeSelect).toHaveValue('IN_PERSON')
+  })
+
+  test('can select online attendance mode and submit', async ({ page }) => {
+    const admin = makeAdminUser()
+    const state = setupMockApi(page, { users: [admin], domains: [makeTechDomain()] })
+    state.currentUserId = admin.id
+
+    await page.goto('/submit')
+
+    await page.getByLabel('Event Title *').fill('Online Webinar')
+    await page.getByLabel('Description *').fill('A fully remote event.')
+    await page.getByLabel('Domain *').selectOption('technology')
+    await page.getByLabel('Start Date *').fill('2026-06-01')
+    await page.getByLabel('Website / Registration URL *').fill('https://example.com')
+    await page.getByLabel('Attendance Mode').selectOption('ONLINE')
+
+    await expect(page.getByLabel('Attendance Mode')).toHaveValue('ONLINE')
+
+    await page.getByRole('button', { name: 'Submit Event' }).click()
+    await expect(page.getByRole('heading', { name: 'Event Submitted!' })).toBeVisible()
+  })
+
   test('shows domain options from API', async ({ page }) => {
     setupMockApi(page, { domains: [makeTechDomain()] })
     await page.goto('/submit')
@@ -499,6 +532,46 @@ test.describe('Event detail page', () => {
     // Emails must NOT appear anywhere on the page
     await expect(page.getByText('alice@secret.com')).not.toBeVisible()
     await expect(page.getByText('bob@secret.com')).not.toBeVisible()
+  })
+
+  test('event detail page shows attendance mode badge', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-badge-online',
+      name: 'Online Summit',
+      slug: 'online-summit',
+      attendanceMode: 'ONLINE',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await expect(page.getByRole('heading', { name: 'Online Summit' })).toBeVisible()
+    await expect(page.locator('.badge-mode')).toContainText('Online')
+  })
+
+  test('event detail page shows In Person badge by default', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-badge-inperson',
+      name: 'In-Person Workshop',
+      slug: 'in-person-workshop',
+      attendanceMode: 'IN_PERSON',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await expect(page.locator('.badge-mode')).toContainText('In Person')
+  })
+
+  test('event detail page shows Hybrid badge', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-badge-hybrid',
+      name: 'Hybrid Conference',
+      slug: 'hybrid-conference',
+      attendanceMode: 'HYBRID',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await expect(page.locator('.badge-mode')).toContainText('Hybrid')
   })
 
   test('admin can reject an event from admin panel', async ({ page }) => {

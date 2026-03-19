@@ -12,23 +12,24 @@ const submitting = ref(false)
 const submitted = ref(false)
 const submissionError = ref('')
 
-  const form = reactive({
-    name: '',
-    description: '',
-    domainSlug: '',
+const form = reactive({
+  name: '',
+  description: '',
+  domainSlug: '',
   startsAtUtc: '',
   endsAtUtc: '',
   venueName: '',
   addressLine1: '',
-    city: '',
-    countryCode: 'CZ',
-    isFree: true,
-    priceAmount: '',
-    currencyCode: 'EUR',
-    latitude: '',
-    longitude: '',
-    eventUrl: '',
-  })
+  city: '',
+  countryCode: 'CZ',
+  isFree: true,
+  priceAmount: '',
+  currencyCode: 'EUR',
+  latitude: '',
+  longitude: '',
+  eventUrl: '',
+  attendanceMode: 'IN_PERSON',
+})
 
 async function handleSubmit() {
   if (!form.name || !form.description || !form.domainSlug || !form.startsAtUtc || !form.eventUrl)
@@ -63,6 +64,7 @@ async function handleSubmit() {
       endsAtUtc: form.endsAtUtc
         ? new Date(form.endsAtUtc).toISOString()
         : new Date(form.startsAtUtc).toISOString(),
+      attendanceMode: form.attendanceMode as 'IN_PERSON' | 'ONLINE' | 'HYBRID',
     })
     submitted.value = true
     setTimeout(() => router.push('/dashboard'), 1500)
@@ -140,6 +142,16 @@ async function handleSubmit() {
                 type="text"
                 placeholder="CZ"
               />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="event-attendance-mode">Attendance Mode</label>
+              <select id="event-attendance-mode" v-model="form.attendanceMode" class="form-select">
+                <option value="IN_PERSON">In Person</option>
+                <option value="ONLINE">Online</option>
+                <option value="HYBRID">Hybrid</option>
+              </select>
             </div>
           </div>
         </fieldset>

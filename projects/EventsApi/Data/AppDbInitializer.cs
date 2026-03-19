@@ -129,6 +129,7 @@ public sealed class AppDbInitializer(
                 IsFree = false,
                 PriceAmount = 129m,
                 CurrencyCode = "EUR",
+                AttendanceMode = AttendanceMode.InPerson,
                 PublishedAtUtc = DateTime.UtcNow,
                 AdminNotes = "Seeded example for Prague crypto discovery."
             },
@@ -152,6 +153,7 @@ public sealed class AppDbInitializer(
                 Status = EventStatus.Published,
                 IsFree = true,
                 CurrencyCode = "EUR",
+                AttendanceMode = AttendanceMode.Online,
                 PublishedAtUtc = DateTime.UtcNow,
                 AdminNotes = "Seeded example for AI catalog."
             }
@@ -171,6 +173,7 @@ public sealed class AppDbInitializer(
         await EnsureEventColumnAsync("IsFree", cancellationToken);
         await EnsureEventColumnAsync("PriceAmount", cancellationToken);
         await EnsureEventColumnAsync("CurrencyCode", cancellationToken);
+        await EnsureEventColumnAsync("AttendanceMode", cancellationToken);
 
         if (!await TableExistsAsync("SavedSearches", cancellationToken))
         {
@@ -192,6 +195,7 @@ public sealed class AppDbInitializer(
                     "PriceMin" TEXT NULL,
                     "PriceMax" TEXT NULL,
                     "SortBy" TEXT NOT NULL,
+                    "AttendanceMode" TEXT NULL,
                     "CreatedAtUtc" TEXT NOT NULL,
                     "UpdatedAtUtc" TEXT NOT NULL,
                     CONSTRAINT "FK_SavedSearches_Users_UserId" FOREIGN KEY ("UserId") REFERENCES "Users" ("Id") ON DELETE CASCADE
@@ -199,6 +203,10 @@ public sealed class AppDbInitializer(
                 CREATE INDEX "IX_SavedSearches_UserId" ON "SavedSearches" ("UserId");
                 """,
                 cancellationToken);
+        }
+        else
+        {
+            await EnsureSavedSearchColumnAsync("AttendanceMode", cancellationToken);
         }
 
         if (!await TableExistsAsync("FavoriteEvents", cancellationToken))
@@ -220,6 +228,22 @@ public sealed class AppDbInitializer(
         }
     }
 
+    private async Task EnsureSavedSearchColumnAsync(string columnName, CancellationToken cancellationToken)
+    {
+        if (await TableColumnExistsAsync("SavedSearches", columnName, cancellationToken))
+        {
+            return;
+        }
+
+        var commandText = columnName switch
+        {
+            "AttendanceMode" => """ALTER TABLE "SavedSearches" ADD COLUMN "AttendanceMode" TEXT NULL;""",
+            _ => throw new InvalidOperationException($"Unsupported saved-search column '{columnName}'.")
+        };
+
+        await _dbContext.Database.ExecuteSqlRawAsync(commandText, cancellationToken);
+    }
+
     private async Task EnsureEventColumnAsync(string columnName, CancellationToken cancellationToken)
     {
         if (await TableColumnExistsAsync("Events", columnName, cancellationToken))
@@ -232,6 +256,7 @@ public sealed class AppDbInitializer(
             "IsFree" => """ALTER TABLE "Events" ADD COLUMN "IsFree" INTEGER NOT NULL DEFAULT 1;""",
             "PriceAmount" => """ALTER TABLE "Events" ADD COLUMN "PriceAmount" TEXT NULL;""",
             "CurrencyCode" => """ALTER TABLE "Events" ADD COLUMN "CurrencyCode" TEXT NOT NULL DEFAULT 'EUR';""",
+            "AttendanceMode" => """ALTER TABLE "Events" ADD COLUMN "AttendanceMode" TEXT NOT NULL DEFAULT 'InPerson';""",
             _ => throw new InvalidOperationException($"Unsupported event column '{columnName}'.")
         };
 

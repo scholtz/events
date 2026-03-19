@@ -98,6 +98,11 @@ public sealed class Query
             query = ApplyMaximumPriceFilter(query, filter?.IsFree, priceMax);
         }
 
+        if (filter?.AttendanceMode is not null)
+        {
+            query = query.Where(catalogEvent => catalogEvent.AttendanceMode == filter.AttendanceMode.Value);
+        }
+
         return await ApplySorting(query, filter?.SortBy, normalizedSearchText).ToListAsync(cancellationToken);
     }
 
