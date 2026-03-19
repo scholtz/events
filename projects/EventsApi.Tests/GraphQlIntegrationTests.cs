@@ -184,6 +184,9 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal(
             ["Budget Prague Meetup"],
             await QueryEventNamesAsync(client, new { isFree = false, priceMax = 30m, sortBy = "UPCOMING" }));
+
+        Assert.Empty(
+            await QueryEventNamesAsync(client, new { priceMax = -1m, sortBy = "UPCOMING" }));
     }
 
     [Fact]
