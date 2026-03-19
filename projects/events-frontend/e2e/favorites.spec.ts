@@ -206,4 +206,69 @@ test.describe('Favorites', () => {
     await expect(page.getByRole('heading', { name: /Upcoming/ })).toBeVisible()
     await expect(page.locator('.favorite-item', { hasText: 'Future Summit' })).toBeVisible()
   })
+
+  test('favorite state persists after page reload', async ({ page }) => {
+    const admin = makeAdminUser()
+    const event = makeApprovedEvent({ name: 'Cool Summit', slug: 'cool-summit' })
+    const state = setupMockApi(page, {
+      users: [admin],
+      domains: [makeTechDomain()],
+      events: [event],
+    })
+
+    // Pre-seed a favorite
+    state.favoriteEvents = [
+      {
+        id: 'fav-1',
+        userId: admin.id,
+        eventId: event.id,
+        createdAtUtc: new Date().toISOString(),
+      },
+    ]
+    state.currentUserId = admin.id
+    state.currentToken = `token-${admin.id}`
+
+    await loginAs(page, admin)
+    await page.goto('/favorites')
+
+    // Verify the event appears in favorites
+    await expect(page.locator('.favorite-item', { hasText: 'Cool Summit' })).toBeVisible()
+
+    // Reload the page
+    await page.reload()
+
+    // Favorite should still be there after reload
+    await expect(page.locator('.favorite-item', { hasText: 'Cool Summit' })).toBeVisible()
+  })
+
+  test('favorite button works correctly on mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+
+    const admin = makeAdminUser()
+    setupMockApi(page, {
+      users: [admin],
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ name: 'Mobile Summit', slug: 'mobile-summit' })],
+    })
+
+    await loginAs(page, admin)
+    await page.goto('/')
+
+    // Favorite button should be visible on mobile
+    const favoriteBtn = page.getByRole('button', { name: 'Add to favorites' })
+    await expect(favoriteBtn).toBeVisible()
+
+    // Click to favorite
+    await favoriteBtn.click()
+
+    // Button should update to show favorited state
+    await expect(page.getByRole('button', { name: 'Remove from favorites' })).toBeVisible()
+
+    // Navigate to favorites on mobile
+    await page.getByRole('link', { name: 'Saved' }).click()
+    await page.waitForURL(/\/favorites$/)
+
+    // Event should appear in favorites
+    await expect(page.locator('.favorite-item', { hasText: 'Mobile Summit' })).toBeVisible()
+  })
 })

@@ -1070,6 +1070,92 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task MyFavoriteEvents_RequiresAuthentication_RejectsAnonymousRequest()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        using var client = factory.CreateClient();
+        // No Authorization header — should receive an auth error, not data
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                query MyFavoriteEvents {
+                  myFavoriteEvents { id }
+                }
+                """
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        var errorMessage = errors.ToString();
+        Assert.True(
+            errorMessage.Contains("AUTH_NOT_AUTHORIZED", StringComparison.OrdinalIgnoreCase)
+            || errorMessage.Contains("not authorized", StringComparison.OrdinalIgnoreCase)
+            || errorMessage.Contains("unauthorized", StringComparison.OrdinalIgnoreCase),
+            $"Expected auth error but got: {errorMessage}");
+    }
+
+    [Fact]
+    public async Task FavoriteEvent_RequiresAuthentication_RejectsAnonymousRequest()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        using var client = factory.CreateClient();
+        // No Authorization header
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation FavoriteEvent($eventId: UUID!) {
+                  favoriteEvent(eventId: $eventId) { id }
+                }
+                """,
+            variables = new { eventId = Guid.NewGuid() }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        var errorMessage = errors.ToString();
+        Assert.True(
+            errorMessage.Contains("AUTH_NOT_AUTHORIZED", StringComparison.OrdinalIgnoreCase)
+            || errorMessage.Contains("not authorized", StringComparison.OrdinalIgnoreCase)
+            || errorMessage.Contains("unauthorized", StringComparison.OrdinalIgnoreCase),
+            $"Expected auth error but got: {errorMessage}");
+    }
+
+    [Fact]
+    public async Task UnfavoriteEvent_RequiresAuthentication_RejectsAnonymousRequest()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        using var client = factory.CreateClient();
+        // No Authorization header
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation UnfavoriteEvent($eventId: UUID!) {
+                  unfavoriteEvent(eventId: $eventId)
+                }
+                """,
+            variables = new { eventId = Guid.NewGuid() }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        var errorMessage = errors.ToString();
+        Assert.True(
+            errorMessage.Contains("AUTH_NOT_AUTHORIZED", StringComparison.OrdinalIgnoreCase)
+            || errorMessage.Contains("not authorized", StringComparison.OrdinalIgnoreCase)
+            || errorMessage.Contains("unauthorized", StringComparison.OrdinalIgnoreCase),
+            $"Expected auth error but got: {errorMessage}");
+    }
+
+    [Fact]
     public async Task EventBySlug_ReturnsInterestedCount_ReflectingFavoriteCount()
     {
         await using var factory = new EventsApiWebApplicationFactory();
