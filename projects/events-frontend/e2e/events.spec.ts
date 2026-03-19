@@ -200,16 +200,20 @@ test.describe('Event detail page', () => {
       id: 'ev-attendee',
       name: 'Attendee Context Event',
       slug: 'attendee-context-event',
-      interestedCount: 7,
     })
-    setupMockApi(page, {
+    const state = setupMockApi(page, {
       domains: [makeTechDomain()],
       events: [event],
     })
+    // Seed 2 favorites so the dynamic count returns "2 people interested"
+    state.favoriteEvents.push(
+      { id: 'fav-a', userId: 'user-a', eventId: event.id, createdAtUtc: new Date().toISOString() },
+      { id: 'fav-b', userId: 'user-b', eventId: event.id, createdAtUtc: new Date().toISOString() },
+    )
 
     await page.goto(`/event/${event.slug}`)
 
-    await expect(page.getByText('7 people interested')).toBeVisible()
+    await expect(page.getByText('2 people interested')).toBeVisible()
   })
 
   test('shows zero-state attendee message when no one is interested', async ({ page }) => {
@@ -263,6 +267,84 @@ test.describe('Event detail page', () => {
 
     await expect(page.getByRole('link', { name: /Sign in/ })).toBeVisible()
     await expect(page.getByText(/to save this event and show your interest/)).toBeVisible()
+  })
+
+  test('interest count updates after favoriting on detail page', async ({ page }) => {
+    const user = makeAdminUser()
+    const event = makeApprovedEvent({
+      id: 'ev-count-update',
+      name: 'Count Update Event',
+      slug: 'count-update-event',
+    })
+    setupMockApi(page, {
+      users: [user],
+      domains: [makeTechDomain()],
+      events: [event],
+    })
+
+    // Navigate to home first so mock routes are active, then inject auth into localStorage
+    // so checkAuth() succeeds on the subsequent page.goto without going through login flow
+    await page.goto('/')
+    await page.evaluate(() => {
+      localStorage.setItem('auth_token', 'token-admin-1')
+      localStorage.setItem('auth_expires', new Date(Date.now() + 7200000).toISOString())
+    })
+
+    await page.goto(`/event/${event.slug}`)
+
+    // Initially shows zero-state message
+    await expect(page.getByText('Be the first to save this event')).toBeVisible()
+
+    // Save the event - button uses aria-label "Add to favorites"
+    await page.getByRole('button', { name: 'Add to favorites' }).click()
+
+    // After toggle, EventBySlug is re-fetched — the mock computes count from favoriteEvents
+    await expect(page.getByText('1 person interested')).toBeVisible()
+
+    // Unsave the event
+    await page.getByRole('button', { name: 'Remove from favorites' }).click()
+
+    // Count should drop back to zero-state
+    await expect(page.getByText('Be the first to save this event')).toBeVisible()
+  })
+
+  test('favorites list query does not request interestedCount', async ({ page }) => {
+    const user = makeAdminUser()
+    const event = makeApprovedEvent({ id: 'ev-fav-fields', slug: 'fav-fields-event' })
+    const state = setupMockApi(page, {
+      users: [user],
+      domains: [makeTechDomain()],
+      events: [event],
+    })
+    state.favoriteEvents.push({
+      id: 'fav-1',
+      userId: user.id,
+      eventId: event.id,
+      createdAtUtc: new Date().toISOString(),
+    })
+
+    // Register an interceptor AFTER setupMockApi so it runs first (Playwright LIFO order)
+    // and can record the request body before calling route.fallback() to the mock handler
+    const capturedBodies: string[] = []
+    await page.route('**/graphql', async (route, request) => {
+      const body = request.postData() ?? ''
+      if (body.includes('MyFavoriteEvents')) {
+        capturedBodies.push(body)
+      }
+      await route.fallback()
+    })
+
+    await loginAs(page, user)
+    await page.goto('/favorites')
+
+    // The favorites list should render
+    await expect(page.getByRole('heading', { name: 'Saved Events' })).toBeVisible()
+
+    // The MyFavoriteEvents query must NOT request interestedCount
+    expect(capturedBodies.length).toBeGreaterThan(0)
+    for (const body of capturedBodies) {
+      expect(body).not.toContain('interestedCount')
+    }
   })
 
   test('admin can reject an event from admin panel', async ({ page }) => {

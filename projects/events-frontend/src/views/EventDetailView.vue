@@ -38,6 +38,8 @@ async function handleFavoriteToggle() {
   favoriting.value = true
   try {
     await favoritesStore.toggleFavorite(event.value.id)
+    // Refresh the detail to pick up the updated interestedCount from the server
+    await eventsStore.fetchEventBySlug(slug.value)
   } finally {
     favoriting.value = false
   }

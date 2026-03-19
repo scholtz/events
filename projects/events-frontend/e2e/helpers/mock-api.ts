@@ -438,11 +438,20 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
     if (query.includes('query') && query.includes('EventBySlug')) {
       const slug = variables.slug
       const found = state.events.find((e) => e.slug === slug && e.status === 'PUBLISHED') ?? null
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ data: { eventBySlug: found } }),
-      })
+      if (found) {
+        const interestedCount = state.favoriteEvents.filter((f) => f.eventId === found.id).length
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: { eventBySlug: { ...found, interestedCount } } }),
+        })
+      } else {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: { eventBySlug: null } }),
+        })
+      }
       return
     }
 

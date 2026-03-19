@@ -32,7 +32,6 @@ const EVENT_FIELDS = `
   reviewedByUserId
   reviewedBy { displayName }
   mapUrl
-  interestedCount
 `
 
 export const useFavoritesStore = defineStore('favorites', () => {
