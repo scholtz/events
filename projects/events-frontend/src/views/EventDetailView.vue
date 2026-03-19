@@ -120,6 +120,17 @@ function statusBadgeClass(status: string): string {
       return ''
   }
 }
+
+function attendanceModeLabel(mode: string | undefined): string {
+  switch (mode) {
+    case 'ONLINE':
+      return 'Online'
+    case 'HYBRID':
+      return 'Hybrid'
+    default:
+      return 'In Person'
+  }
+}
 </script>
 
 <template>
@@ -152,6 +163,7 @@ function statusBadgeClass(status: string): string {
             <span class="badge badge-primary">
               {{ event.domain?.name ?? 'Event' }}
             </span>
+            <span class="badge badge-mode">{{ attendanceModeLabel(event.attendanceMode) }}</span>
             <span class="event-status badge" :class="statusBadgeClass(event.status)">
               {{ statusLabel(event.status) }}
             </span>
@@ -361,6 +373,16 @@ function statusBadgeClass(status: string): string {
   align-items: center;
   gap: 0.5rem;
   margin-bottom: 0.875rem;
+}
+
+.badge-mode {
+  font-size: 0.6875rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(19, 127, 236, 0.12);
+  color: var(--color-primary);
+  font-weight: 600;
+  letter-spacing: 0.03em;
 }
 
 .event-detail-header h1 {
