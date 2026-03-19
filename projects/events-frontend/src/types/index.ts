@@ -66,6 +66,7 @@ export interface CatalogEvent {
   reviewedByUserId: string | null
   reviewedBy: { displayName: string } | null
   mapUrl: string
+  interestedCount: number
 }
 
 /** Matches backend DashboardOverview response */

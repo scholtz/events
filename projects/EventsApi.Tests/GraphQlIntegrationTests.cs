@@ -862,6 +862,121 @@ public sealed class GraphQlIntegrationTests
         Assert.Contains("FAVORITE_NOT_FOUND", errors.ToString());
     }
 
+    [Fact]
+    public async Task EventBySlug_ReturnsInterestedCount_ReflectingFavoriteCount()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var otherUserId = Guid.Empty;
+        var eventId = Guid.Empty;
+        const string slug = "interested-count-event";
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("counter1@example.com", "Counter One");
+            var otherUser = CreateUser("counter2@example.com", "Counter Two");
+            userId = user.Id;
+            otherUserId = otherUser.Id;
+
+            var domain = CreateDomain("Tech", "tech-ic");
+            dbContext.Users.AddRange(user, otherUser);
+            dbContext.Domains.Add(domain);
+
+            var catalogEvent = CreateEvent(
+                "Interested Count Event",
+                slug,
+                "Testing interested count.",
+                "Some Venue",
+                "Prague",
+                FirstDayOfNextMonthUtc(),
+                domain,
+                user);
+            eventId = catalogEvent.Id;
+            dbContext.Events.Add(catalogEvent);
+        });
+
+        using var client = factory.CreateClient();
+
+        // Initially zero interested
+        using var initialDocument = await ExecuteGraphQlAsync(
+            client,
+            """
+            query EventBySlug($slug: String!) {
+              eventBySlug(slug: $slug) {
+                name
+                interestedCount
+              }
+            }
+            """,
+            new { slug });
+
+        var initialEvent = initialDocument.RootElement
+            .GetProperty("data")
+            .GetProperty("eventBySlug");
+
+        Assert.Equal("Interested Count Event", initialEvent.GetProperty("name").GetString());
+        Assert.Equal(0, initialEvent.GetProperty("interestedCount").GetInt32());
+
+        // User 1 favorites the event
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+        await ExecuteGraphQlAsync(client, """
+            mutation FavoriteEvent($eventId: UUID!) {
+              favoriteEvent(eventId: $eventId) { id }
+            }
+            """, new { eventId });
+
+        // User 2 favorites the event
+        using var otherClient = factory.CreateClient();
+        otherClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, otherUserId));
+        await ExecuteGraphQlAsync(otherClient, """
+            mutation FavoriteEvent($eventId: UUID!) {
+              favoriteEvent(eventId: $eventId) { id }
+            }
+            """, new { eventId });
+
+        // interestedCount should now be 2
+        using var afterFavoriteDocument = await ExecuteGraphQlAsync(
+            factory.CreateClient(),
+            """
+            query EventBySlug($slug: String!) {
+              eventBySlug(slug: $slug) {
+                interestedCount
+              }
+            }
+            """,
+            new { slug });
+
+        Assert.Equal(2, afterFavoriteDocument.RootElement
+            .GetProperty("data")
+            .GetProperty("eventBySlug")
+            .GetProperty("interestedCount")
+            .GetInt32());
+
+        // After unfavoriting, count decreases
+        await ExecuteGraphQlAsync(client, """
+            mutation UnfavoriteEvent($eventId: UUID!) {
+              unfavoriteEvent(eventId: $eventId)
+            }
+            """, new { eventId });
+
+        using var afterUnfavoriteDocument = await ExecuteGraphQlAsync(
+            factory.CreateClient(),
+            """
+            query EventBySlug($slug: String!) {
+              eventBySlug(slug: $slug) {
+                interestedCount
+              }
+            }
+            """,
+            new { slug });
+
+        Assert.Equal(1, afterUnfavoriteDocument.RootElement
+            .GetProperty("data")
+            .GetProperty("eventBySlug")
+            .GetProperty("interestedCount")
+            .GetInt32());
+    }
+
     private static DateTime FirstDayOfNextMonthUtc()
     {
         var now = DateTime.UtcNow;

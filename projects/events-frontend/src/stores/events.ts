@@ -20,6 +20,11 @@ const EVENT_FIELDS = `
   submittedBy { displayName }
 `
 
+const DETAIL_EVENT_FIELDS = `
+  ${EVENT_FIELDS}
+  interestedCount
+`
+
 const DEFAULT_SORT: EventSortOption = 'UPCOMING'
 const DEFAULT_PRICE_TYPE: EventPriceFilter = 'ALL'
 
@@ -143,9 +148,12 @@ export function formatEventPrice(event: Pick<CatalogEvent, 'isFree' | 'priceAmou
 export const useEventsStore = defineStore('events', () => {
   const events = ref<CatalogEvent[]>([])
   const discoveryEvents = ref<CatalogEvent[]>([])
+  const detailEvent = ref<CatalogEvent | null>(null)
   const loading = ref(false)
   const discoveryLoading = ref(false)
   const discoveryError = ref('')
+  const detailLoading = ref(false)
+  const detailError = ref('')
 
   const filters = ref<EventFilters>(createDefaultEventFilters())
 
@@ -213,6 +221,27 @@ export const useEventsStore = defineStore('events', () => {
     return [...discoveryEvents.value, ...events.value].find((event) => event.id === id)
   }
 
+  async function fetchEventBySlug(slug: string): Promise<CatalogEvent | null> {
+    detailLoading.value = true
+    detailError.value = ''
+    try {
+      const data = await gqlRequest<{ eventBySlug: CatalogEvent | null }>(
+        `query EventBySlug($slug: String!) {
+          eventBySlug(slug: $slug) { ${DETAIL_EVENT_FIELDS} }
+        }`,
+        { slug },
+      )
+      detailEvent.value = data.eventBySlug
+      return data.eventBySlug
+    } catch (error) {
+      detailError.value = error instanceof Error ? error.message : 'Unable to load event.'
+      detailEvent.value = null
+      return null
+    } finally {
+      detailLoading.value = false
+    }
+  }
+
   async function submitEvent(input: {
     domainSlug: string
     name: string
@@ -267,9 +296,12 @@ export const useEventsStore = defineStore('events', () => {
   return {
     events,
     discoveryEvents,
+    detailEvent,
     loading,
     discoveryLoading,
     discoveryError,
+    detailLoading,
+    detailError,
     filters,
     allEvents,
     pendingEvents,
@@ -279,6 +311,7 @@ export const useEventsStore = defineStore('events', () => {
     getEventById,
     fetchEvents,
     fetchDiscoveryEvents,
+    fetchEventBySlug,
     submitEvent,
     reviewEvent,
     setFilters,

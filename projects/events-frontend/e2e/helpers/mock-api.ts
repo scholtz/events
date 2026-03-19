@@ -61,6 +61,7 @@ export type MockEvent = {
   reviewedByUserId: string | null
   reviewedBy: { displayName: string } | null
   mapUrl: string
+  interestedCount: number
 }
 
 export type MockSavedSearch = {
@@ -253,6 +254,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         reviewedByUserId: null,
         reviewedBy: null,
         mapUrl: '',
+        interestedCount: 0,
       }
       state.events.unshift(newEvent)
       await route.fulfill({
@@ -433,6 +435,26 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       return
     }
 
+    if (query.includes('query') && query.includes('EventBySlug')) {
+      const slug = variables.slug
+      const found = state.events.find((e) => e.slug === slug && e.status === 'PUBLISHED') ?? null
+      if (found) {
+        const interestedCount = state.favoriteEvents.filter((f) => f.eventId === found.id).length
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: { eventBySlug: { ...found, interestedCount } } }),
+        })
+      } else {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: { eventBySlug: null } }),
+        })
+      }
+      return
+    }
+
     if (query.includes('query') && query.includes('DiscoveryEvents')) {
       const filteredEvents = filterEventsForDiscovery(state.events, variables.filter)
       await route.fulfill({
@@ -540,6 +562,7 @@ export function makeApprovedEvent(overrides: Partial<MockEvent> = {}): MockEvent
     reviewedByUserId: null,
     reviewedBy: null,
     mapUrl: 'https://www.openstreetmap.org/?mlat=50.0755&mlon=14.4378#map=15/50.0755/14.4378',
+    interestedCount: 0,
     ...overrides,
   }
 }

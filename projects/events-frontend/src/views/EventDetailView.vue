@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { formatEventPrice } from '@/stores/events'
 import { useEventsStore } from '@/stores/events'
@@ -11,16 +11,35 @@ const eventsStore = useEventsStore()
 const favoritesStore = useFavoritesStore()
 const authStore = useAuthStore()
 
-const event = computed(() => eventsStore.getEventBySlug(route.params.id as string))
+const slug = computed(() => route.params.id as string)
+
+// Start with cached version from store, then refresh with full detail (including interestedCount)
+const cachedEvent = computed(() => eventsStore.getEventBySlug(slug.value))
+const event = computed(() => eventsStore.detailEvent ?? cachedEvent.value ?? null)
+const loading = computed(() => eventsStore.detailLoading && !cachedEvent.value)
+
+async function loadDetail() {
+  await eventsStore.fetchEventBySlug(slug.value)
+}
+
+onMounted(loadDetail)
+watch(slug, loadDetail)
 
 const isFavorited = computed(() => event.value ? favoritesStore.isFavorited(event.value.id) : false)
 const favoriting = ref(false)
+
+// Pre-computed numeric lat/lng to avoid repeated Number() calls in template
+const eventLat = computed(() => Number(event.value?.latitude ?? 0))
+const eventLng = computed(() => Number(event.value?.longitude ?? 0))
+const validCoords = computed(() => hasValidCoords(eventLat.value, eventLng.value))
 
 async function handleFavoriteToggle() {
   if (!event.value || !authStore.isAuthenticated) return
   favoriting.value = true
   try {
     await favoritesStore.toggleFavorite(event.value.id)
+    // Refresh the detail to pick up the updated interestedCount from the server
+    await eventsStore.fetchEventBySlug(slug.value)
   } finally {
     favoriting.value = false
   }
@@ -32,6 +51,14 @@ function formatDate(dateStr: string): string {
     month: 'long',
     day: 'numeric',
     year: 'numeric',
+  })
+}
+
+function formatTime(dateStr: string): string {
+  return new Date(dateStr).toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: 'short',
   })
 }
 
@@ -49,6 +76,22 @@ function hasValidCoords(lat: number, lng: number): boolean {
     Math.abs(lng) <= 180 &&
     !(lat === 0 && lng === 0)
   )
+}
+
+function googleMapsDirectionsUrl(event: { venueName: string; addressLine1: string; city: string; countryCode: string; latitude: number; longitude: number }): string {
+  if (hasValidCoords(Number(event.latitude), Number(event.longitude))) {
+    return `https://www.google.com/maps/dir/?api=1&destination=${event.latitude},${event.longitude}`
+  }
+  const address = [event.venueName, event.addressLine1, event.city, event.countryCode]
+    .filter(Boolean)
+    .join(', ')
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`
+}
+
+function formatInterestedCount(count: number): string {
+  if (count === 0) return 'Be the first to save this event'
+  if (count === 1) return '1 person interested'
+  return `${count} people interested`
 }
 
 function statusLabel(status: string): string {
@@ -80,7 +123,27 @@ function statusBadgeClass(status: string): string {
 
 <template>
   <div class="container event-detail-view">
-    <template v-if="event">
+    <!-- Loading skeleton -->
+    <template v-if="loading">
+      <div class="skeleton-back"></div>
+      <div class="card skeleton-card">
+        <div class="skeleton-header">
+          <div class="skeleton-line skeleton-badge"></div>
+          <div class="skeleton-line skeleton-title"></div>
+          <div class="skeleton-line skeleton-sub"></div>
+        </div>
+        <div class="skeleton-body">
+          <div class="skeleton-col">
+            <div class="skeleton-line"></div>
+            <div class="skeleton-line skeleton-short"></div>
+            <div class="skeleton-line"></div>
+            <div class="skeleton-line skeleton-short"></div>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <template v-else-if="event">
       <RouterLink to="/" class="back-link">← Back to events</RouterLink>
       <div class="event-detail card">
         <div class="event-detail-header">
@@ -111,42 +174,58 @@ function statusBadgeClass(status: string): string {
         </div>
         <div class="event-detail-body">
           <div class="event-info">
+            <!-- Date & Time -->
             <div class="info-section">
               <h3 class="info-label">
-                <span class="info-icon">📅</span>
-                Date
+                <span class="info-icon" aria-hidden="true">📅</span>
+                Date &amp; Time
               </h3>
-              <p>
-                {{ formatDate(event.startsAtUtc) }}
-                <template v-if="event.endsAtUtc">
-                  <br /><span class="text-secondary">Until {{ formatDate(event.endsAtUtc) }}</span>
-                </template>
-              </p>
+              <p>{{ formatDate(event.startsAtUtc) }}</p>
+              <p class="text-secondary">{{ formatTime(event.startsAtUtc) }}</p>
+              <template v-if="event.endsAtUtc">
+                <p class="text-secondary">Until {{ formatDate(event.endsAtUtc) }}, {{ formatTime(event.endsAtUtc) }}</p>
+              </template>
             </div>
+
+            <!-- Location / Venue -->
             <div class="info-section">
               <h3 class="info-label">
-                <span class="info-icon">📍</span>
-                Location
+                <span class="info-icon" aria-hidden="true">📍</span>
+                Venue &amp; Location
               </h3>
-              <p>{{ event.venueName || 'TBD' }}</p>
-              <p v-if="event.addressLine1 || event.city" class="text-secondary">
+              <p class="venue-name">{{ event.venueName || 'TBD' }}</p>
+              <p v-if="event.addressLine1 || event.city" class="text-secondary venue-address">
                 {{ [event.addressLine1, event.city, event.countryCode].filter(Boolean).join(', ') }}
               </p>
+              <a
+                :href="googleMapsDirectionsUrl(event)"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="directions-link"
+              >
+                🗺️ Get Directions ↗
+              </a>
             </div>
+
+            <!-- About -->
             <div class="info-section">
               <h3 class="info-label">
-                <span class="info-icon">📝</span>
+                <span class="info-icon" aria-hidden="true">📝</span>
                 About
               </h3>
               <p class="event-description">{{ event.description }}</p>
             </div>
+
+            <!-- Pricing -->
             <div class="info-section">
               <h3 class="info-label">
-                <span class="info-icon">💳</span>
+                <span class="info-icon" aria-hidden="true">💳</span>
                 Pricing
               </h3>
               <p>{{ formatEventPrice(event) }}</p>
             </div>
+
+            <!-- CTA -->
             <div class="info-section">
               <a
                 :href="event.eventUrl"
@@ -158,29 +237,80 @@ function statusBadgeClass(status: string): string {
               </a>
             </div>
           </div>
-          <div
-            v-if="hasValidCoords(Number(event.latitude), Number(event.longitude))"
-            class="event-map"
-          >
-            <h3 class="map-heading">Location on Map</h3>
-            <iframe
-              :src="mapUrl(Number(event.latitude), Number(event.longitude))"
-              title="Event location map"
-              loading="lazy"
-              sandbox="allow-scripts"
-            ></iframe>
-            <a
-              :href="event.mapUrl"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="map-link"
+
+          <div class="event-sidebar">
+            <!-- Interactive map (when coordinates available) -->
+            <div
+              v-if="validCoords"
+              class="event-map"
+              aria-label="Event location map"
             >
-              Open in OpenStreetMap ↗
-            </a>
+              <h3 class="map-heading">Location on Map</h3>
+              <iframe
+                :src="mapUrl(eventLat, eventLng)"
+                title="Interactive map showing event location"
+                loading="lazy"
+                sandbox="allow-scripts"
+              ></iframe>
+              <a
+                :href="event.mapUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="map-link"
+              >
+                Open in OpenStreetMap ↗
+              </a>
+            </div>
+
+            <!-- Location fallback (when no coordinates) -->
+            <div v-else class="event-map location-fallback" aria-label="Event location">
+              <h3 class="map-heading">Location</h3>
+              <div class="location-fallback-content">
+                <span class="location-icon" aria-hidden="true">📍</span>
+                <div>
+                  <p class="venue-name">{{ event.venueName || 'Venue TBD' }}</p>
+                  <p v-if="event.city" class="text-secondary">{{ [event.city, event.countryCode].filter(Boolean).join(', ') }}</p>
+                  <p v-else class="text-secondary">Location details not available yet</p>
+                </div>
+              </div>
+              <a
+                :href="googleMapsDirectionsUrl(event)"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="map-link"
+              >
+                Search on Google Maps ↗
+              </a>
+            </div>
+
+            <!-- Attendee context -->
+            <div class="attendee-context" aria-label="Event interest summary">
+              <h3 class="map-heading">Community Interest</h3>
+              <div class="attendee-stats">
+                <div class="stat-item">
+                  <span class="stat-icon" aria-hidden="true">🔖</span>
+                  <div class="stat-text">
+                    <span class="stat-value">{{ event.interestedCount ?? 0 }}</span>
+                    <span class="stat-label">{{ formatInterestedCount(event.interestedCount ?? 0) }}</span>
+                  </div>
+                </div>
+              </div>
+              <p v-if="!authStore.isAuthenticated" class="attendee-cta">
+                <RouterLink to="/login" class="link-subtle">Sign in</RouterLink>
+                to save this event and show your interest.
+              </p>
+              <p v-else-if="!isFavorited" class="attendee-cta">
+                Save this event to show your interest.
+              </p>
+              <p v-else class="attendee-cta attendee-cta--saved">
+                ✓ You've saved this event
+              </p>
+            </div>
           </div>
         </div>
       </div>
     </template>
+
     <div v-else class="empty-state card">
       <div class="empty-icon">🔍</div>
       <h2>Event not found</h2>
@@ -252,6 +382,12 @@ function statusBadgeClass(status: string): string {
   border-right: 1px solid var(--color-border);
 }
 
+.event-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
 .info-label {
   display: flex;
   align-items: center;
@@ -283,11 +419,38 @@ function statusBadgeClass(status: string): string {
   font-size: 0.875rem !important;
 }
 
+.venue-name {
+  font-weight: 500;
+}
+
+.venue-address {
+  margin-top: 0.125rem;
+}
+
+.directions-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--color-primary);
+  font-weight: 500;
+  text-decoration: none;
+  transition: opacity 0.15s;
+}
+
+.directions-link:hover {
+  opacity: 0.8;
+  text-decoration: none;
+}
+
+/* Map section */
 .event-map {
   padding: 2rem;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .map-heading {
@@ -300,7 +463,7 @@ function statusBadgeClass(status: string): string {
 
 .event-map iframe {
   width: 100%;
-  height: 320px;
+  height: 240px;
   border: 0;
   border-radius: var(--radius-md);
 }
@@ -308,8 +471,110 @@ function statusBadgeClass(status: string): string {
 .map-link {
   font-size: 0.875rem;
   color: var(--color-primary);
+  text-decoration: none;
 }
 
+.map-link:hover {
+  text-decoration: underline;
+}
+
+/* Location fallback */
+.location-fallback-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: var(--color-surface-raised, var(--color-surface));
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.location-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+}
+
+.location-fallback-content .venue-name {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.location-fallback-content .text-secondary {
+  font-size: 0.8125rem !important;
+  margin-top: 0.125rem;
+}
+
+/* Attendee context */
+.attendee-context {
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.attendee-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  background: var(--color-surface-raised, var(--color-surface));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.stat-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.stat-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.stat-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-text);
+  line-height: 1;
+}
+
+.stat-label {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+}
+
+.attendee-cta {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.attendee-cta--saved {
+  color: var(--color-success, #22c55e);
+  font-weight: 500;
+}
+
+.link-subtle {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.link-subtle:hover {
+  text-decoration: underline;
+}
+
+/* Empty state */
 .empty-state {
   padding: 4rem 2rem;
   text-align: center;
@@ -333,6 +598,7 @@ function statusBadgeClass(status: string): string {
   max-width: 320px;
 }
 
+/* Favorite button */
 .favorite-btn {
   display: inline-flex;
   align-items: center;
@@ -364,6 +630,69 @@ function statusBadgeClass(status: string): string {
   cursor: not-allowed;
 }
 
+/* Loading skeleton */
+.skeleton-back {
+  height: 1.25rem;
+  width: 120px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised, var(--color-surface));
+  margin-bottom: 1rem;
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+.skeleton-card {
+  overflow: hidden;
+}
+
+.skeleton-header {
+  padding: 2rem;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.skeleton-body {
+  padding: 2rem;
+}
+
+.skeleton-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.skeleton-line {
+  height: 1rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised, var(--color-surface));
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+.skeleton-badge {
+  width: 80px;
+  height: 1.25rem;
+}
+
+.skeleton-title {
+  width: 60%;
+  height: 2rem;
+}
+
+.skeleton-sub {
+  width: 40%;
+}
+
+.skeleton-short {
+  width: 50%;
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Responsive */
 @media (max-width: 900px) {
   .event-detail-body {
     grid-template-columns: 1fr;
@@ -371,6 +700,10 @@ function statusBadgeClass(status: string): string {
 
   .event-info {
     border-right: none;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .event-map {
     border-bottom: 1px solid var(--color-border);
   }
 }
@@ -382,6 +715,15 @@ function statusBadgeClass(status: string): string {
 
   .event-detail-header h1 {
     font-size: 1.5rem;
+  }
+
+  .event-info {
+    padding: 1.5rem;
+  }
+
+  .event-map,
+  .attendee-context {
+    padding: 1.5rem;
   }
 }
 </style>
