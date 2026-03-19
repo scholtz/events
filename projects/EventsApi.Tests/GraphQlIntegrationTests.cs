@@ -977,6 +977,291 @@ public sealed class GraphQlIntegrationTests
             .GetInt32());
     }
 
+    [Fact]
+    public async Task MyDashboard_ReturnsAnalyticsWithCorrectInterestedCounts()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var organizerUserId = Guid.Empty;
+        var attendeeUserId1 = Guid.Empty;
+        var attendeeUserId2 = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer = CreateUser("analytics@example.com", "Organizer");
+            var attendee1 = CreateUser("attendee1@example.com", "Attendee One");
+            var attendee2 = CreateUser("attendee2@example.com", "Attendee Two");
+            organizerUserId = organizer.Id;
+            attendeeUserId1 = attendee1.Id;
+            attendeeUserId2 = attendee2.Id;
+
+            var domain = CreateDomain("Tech", "tech-analytics");
+            dbContext.Users.AddRange(organizer, attendee1, attendee2);
+            dbContext.Domains.Add(domain);
+
+            var catalogEvent = CreateEvent(
+                "Analytics Test Event",
+                "analytics-test-event",
+                "Testing analytics.",
+                "Some Venue",
+                "Prague",
+                FirstDayOfNextMonthUtc(),
+                domain,
+                organizer);
+            eventId = catalogEvent.Id;
+            dbContext.Events.Add(catalogEvent);
+
+            // Two users save the event
+            dbContext.FavoriteEvents.AddRange(
+                new FavoriteEvent { UserId = attendee1.Id, EventId = catalogEvent.Id, CreatedAtUtc = DateTime.UtcNow.AddDays(-2) },
+                new FavoriteEvent { UserId = attendee2.Id, EventId = catalogEvent.Id, CreatedAtUtc = DateTime.UtcNow.AddDays(-20) });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, organizerUserId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyDashboard {
+              myDashboard {
+                totalSubmittedEvents
+                publishedEvents
+                totalInterestedCount
+                eventAnalytics {
+                  eventId
+                  eventName
+                  eventSlug
+                  status
+                  totalInterestedCount
+                  interestedLast7Days
+                  interestedLast30Days
+                }
+              }
+            }
+            """);
+
+        var dashboard = document.RootElement.GetProperty("data").GetProperty("myDashboard");
+        Assert.Equal(1, dashboard.GetProperty("totalSubmittedEvents").GetInt32());
+        Assert.Equal(1, dashboard.GetProperty("publishedEvents").GetInt32());
+        Assert.Equal(2, dashboard.GetProperty("totalInterestedCount").GetInt32());
+
+        var analytics = dashboard.GetProperty("eventAnalytics").EnumerateArray().ToArray();
+        var item = Assert.Single(analytics);
+        Assert.Equal("analytics-test-event", item.GetProperty("eventSlug").GetString());
+        Assert.Equal("PUBLISHED", item.GetProperty("status").GetString());
+        Assert.Equal(2, item.GetProperty("totalInterestedCount").GetInt32());
+        // Only 1 save within last 7 days
+        Assert.Equal(1, item.GetProperty("interestedLast7Days").GetInt32());
+        // Both saves within last 30 days
+        Assert.Equal(2, item.GetProperty("interestedLast30Days").GetInt32());
+    }
+
+    [Fact]
+    public async Task MyDashboard_ReturnsZeroAnalytics_ForNewEventWithNoSaves()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var organizerUserId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer = CreateUser("zero-analytics@example.com", "Zero Organizer");
+            organizerUserId = organizer.Id;
+
+            var domain = CreateDomain("Tech", "tech-zero");
+            dbContext.Users.Add(organizer);
+            dbContext.Domains.Add(domain);
+
+            dbContext.Events.Add(CreateEvent(
+                "New Unsaved Event",
+                "new-unsaved-event",
+                "No one has saved this yet.",
+                "Venue",
+                "Prague",
+                FirstDayOfNextMonthUtc(),
+                domain,
+                organizer));
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, organizerUserId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyDashboard {
+              myDashboard {
+                totalSubmittedEvents
+                totalInterestedCount
+                eventAnalytics {
+                  totalInterestedCount
+                  interestedLast7Days
+                  interestedLast30Days
+                }
+              }
+            }
+            """);
+
+        var dashboard = document.RootElement.GetProperty("data").GetProperty("myDashboard");
+        Assert.Equal(1, dashboard.GetProperty("totalSubmittedEvents").GetInt32());
+        Assert.Equal(0, dashboard.GetProperty("totalInterestedCount").GetInt32());
+
+        var analytics = dashboard.GetProperty("eventAnalytics").EnumerateArray().ToArray();
+        var item = Assert.Single(analytics);
+        Assert.Equal(0, item.GetProperty("totalInterestedCount").GetInt32());
+        Assert.Equal(0, item.GetProperty("interestedLast7Days").GetInt32());
+        Assert.Equal(0, item.GetProperty("interestedLast30Days").GetInt32());
+    }
+
+    [Fact]
+    public async Task MyDashboard_OnlyReturnsCurrentOrganizerEvents_NotOtherOrganizers()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var organizer1UserId = Guid.Empty;
+        var organizer2UserId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer1 = CreateUser("org1@example.com", "Organizer One");
+            var organizer2 = CreateUser("org2@example.com", "Organizer Two");
+            organizer1UserId = organizer1.Id;
+            organizer2UserId = organizer2.Id;
+
+            var domain = CreateDomain("Tech", "tech-isolation");
+            dbContext.Users.AddRange(organizer1, organizer2);
+            dbContext.Domains.Add(domain);
+
+            dbContext.Events.AddRange(
+                CreateEvent("Org1 Event", "org1-event", "Event by organizer 1.", "Venue 1", "Prague",
+                    FirstDayOfNextMonthUtc(), domain, organizer1),
+                CreateEvent("Org2 Event", "org2-event", "Event by organizer 2.", "Venue 2", "Brno",
+                    FirstDayOfNextMonthUtc(), domain, organizer2));
+        });
+
+        using var client1 = factory.CreateClient();
+        client1.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, organizer1UserId));
+
+        using var document1 = await ExecuteGraphQlAsync(
+            client1,
+            """
+            query MyDashboard {
+              myDashboard {
+                totalSubmittedEvents
+                managedEvents { name }
+                eventAnalytics { eventName }
+              }
+            }
+            """);
+
+        var dashboard1 = document1.RootElement.GetProperty("data").GetProperty("myDashboard");
+        Assert.Equal(1, dashboard1.GetProperty("totalSubmittedEvents").GetInt32());
+
+        var managedEvents1 = dashboard1.GetProperty("managedEvents").EnumerateArray().ToArray();
+        Assert.Single(managedEvents1);
+        Assert.Equal("Org1 Event", managedEvents1[0].GetProperty("name").GetString());
+
+        var analytics1 = dashboard1.GetProperty("eventAnalytics").EnumerateArray().ToArray();
+        Assert.Single(analytics1);
+        Assert.Equal("Org1 Event", analytics1[0].GetProperty("eventName").GetString());
+
+        // Organizer 2 sees only their own events
+        using var client2 = factory.CreateClient();
+        client2.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, organizer2UserId));
+
+        using var document2 = await ExecuteGraphQlAsync(
+            client2,
+            """
+            query MyDashboard {
+              myDashboard {
+                totalSubmittedEvents
+                eventAnalytics { eventName }
+              }
+            }
+            """);
+
+        var dashboard2 = document2.RootElement.GetProperty("data").GetProperty("myDashboard");
+        Assert.Equal(1, dashboard2.GetProperty("totalSubmittedEvents").GetInt32());
+
+        var analytics2 = dashboard2.GetProperty("eventAnalytics").EnumerateArray().ToArray();
+        Assert.Single(analytics2);
+        Assert.Equal("Org2 Event", analytics2[0].GetProperty("eventName").GetString());
+    }
+
+    [Fact]
+    public async Task MyDashboard_TotalInterestedCount_OnlyCountsPublishedEvents()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var organizerUserId = Guid.Empty;
+        var attendeeUserId = Guid.Empty;
+        var publishedEventId = Guid.Empty;
+        var pendingEventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer = CreateUser("pub-vs-pending@example.com", "Pub Organizer");
+            var attendee = CreateUser("attendee-pub@example.com", "Attendee");
+            organizerUserId = organizer.Id;
+            attendeeUserId = attendee.Id;
+
+            var domain = CreateDomain("Tech", "tech-pub-pending");
+            dbContext.Users.AddRange(organizer, attendee);
+            dbContext.Domains.Add(domain);
+
+            var published = CreateEvent("Published Event", "published-event-dashboard", "Published.",
+                "Venue 1", "Prague", FirstDayOfNextMonthUtc(), domain, organizer, status: EventStatus.Published);
+            var pending = CreateEvent("Pending Event", "pending-event-dashboard", "Pending.",
+                "Venue 2", "Prague", FirstDayOfNextMonthUtc(), domain, organizer, status: EventStatus.PendingApproval);
+
+            publishedEventId = published.Id;
+            pendingEventId = pending.Id;
+            dbContext.Events.AddRange(published, pending);
+
+            // Attendee saves both
+            dbContext.FavoriteEvents.AddRange(
+                new FavoriteEvent { UserId = attendee.Id, EventId = published.Id, CreatedAtUtc = DateTime.UtcNow },
+                new FavoriteEvent { UserId = attendee.Id, EventId = pending.Id, CreatedAtUtc = DateTime.UtcNow });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, organizerUserId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyDashboard {
+              myDashboard {
+                totalInterestedCount
+                eventAnalytics {
+                  eventSlug
+                  status
+                  totalInterestedCount
+                }
+              }
+            }
+            """);
+
+        var dashboard = document.RootElement.GetProperty("data").GetProperty("myDashboard");
+        // totalInterestedCount only counts published events
+        Assert.Equal(1, dashboard.GetProperty("totalInterestedCount").GetInt32());
+
+        var analytics = dashboard.GetProperty("eventAnalytics").EnumerateArray()
+            .OrderBy(a => a.GetProperty("eventSlug").GetString())
+            .ToArray();
+
+        Assert.Equal(2, analytics.Length);
+
+        var pendingAnalytics = analytics.First(a => a.GetProperty("status").GetString() == "PENDING_APPROVAL");
+        Assert.Equal(1, pendingAnalytics.GetProperty("totalInterestedCount").GetInt32());
+
+        var publishedAnalytics = analytics.First(a => a.GetProperty("status").GetString() == "PUBLISHED");
+        Assert.Equal(1, publishedAnalytics.GetProperty("totalInterestedCount").GetInt32());
+    }
+
     private static DateTime FirstDayOfNextMonthUtc()
     {
         var now = DateTime.UtcNow;

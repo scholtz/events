@@ -201,6 +201,48 @@ public sealed class Query
             .OrderByDescending(catalogEvent => catalogEvent.StartsAtUtc)
             .ToListAsync(cancellationToken);
 
+        var managedEventIds = managedEvents.Select(e => e.Id).ToList();
+
+        var now = DateTime.UtcNow;
+        var cutoff7Days = now.AddDays(-7);
+        var cutoff30Days = now.AddDays(-30);
+
+        // Load favorite/save timestamps for all managed events in one query
+        var favoriteCounts = await dbContext.FavoriteEvents
+            .AsNoTracking()
+            .Where(f => managedEventIds.Contains(f.EventId))
+            .GroupBy(f => f.EventId)
+            .Select(g => new
+            {
+                EventId = g.Key,
+                Total = g.Count(),
+                Last7Days = g.Count(f => f.CreatedAtUtc >= cutoff7Days),
+                Last30Days = g.Count(f => f.CreatedAtUtc >= cutoff30Days),
+            })
+            .ToListAsync(cancellationToken);
+
+        var favoriteCountsByEventId = favoriteCounts.ToDictionary(x => x.EventId);
+
+        var eventAnalytics = managedEvents
+            .Select(e =>
+            {
+                var counts = favoriteCountsByEventId.TryGetValue(e.Id, out var c) ? c : null;
+                return new EventAnalyticsItem(
+                    EventId: e.Id,
+                    EventName: e.Name,
+                    EventSlug: e.Slug,
+                    Status: e.Status,
+                    TotalInterestedCount: counts?.Total ?? 0,
+                    InterestedLast7Days: counts?.Last7Days ?? 0,
+                    InterestedLast30Days: counts?.Last30Days ?? 0,
+                    StartsAtUtc: e.StartsAtUtc);
+            })
+            .ToList();
+
+        var totalInterestedCount = eventAnalytics
+            .Where(a => a.Status == EventStatus.Published)
+            .Sum(a => a.TotalInterestedCount);
+
         var availableDomains = await dbContext.Domains
             .AsNoTracking()
             .Where(domain => domain.IsActive)
@@ -211,7 +253,9 @@ public sealed class Query
             TotalSubmittedEvents: managedEvents.Count,
             PublishedEvents: managedEvents.Count(catalogEvent => catalogEvent.Status == EventStatus.Published),
             PendingApprovalEvents: managedEvents.Count(catalogEvent => catalogEvent.Status == EventStatus.PendingApproval),
+            TotalInterestedCount: totalInterestedCount,
             ManagedEvents: managedEvents,
+            EventAnalytics: eventAnalytics,
             AvailableDomains: availableDomains);
     }
 

@@ -407,6 +407,61 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       return
     }
 
+    if (query.includes('query') && query.includes('MyDashboard')) {
+      const managedEvents = state.events.filter((e) => e.submittedByUserId === state.currentUserId)
+      const now = Date.now()
+      const cutoff7Days = now - 7 * 24 * 60 * 60 * 1000
+      const cutoff30Days = now - 30 * 24 * 60 * 60 * 1000
+
+      const eventAnalytics = managedEvents.map((e) => {
+        const allFavs = state.favoriteEvents.filter((f) => f.eventId === e.id)
+        const total = allFavs.length
+        const last7 = allFavs.filter(
+          (f) => new Date(f.createdAtUtc).getTime() >= cutoff7Days,
+        ).length
+        const last30 = allFavs.filter(
+          (f) => new Date(f.createdAtUtc).getTime() >= cutoff30Days,
+        ).length
+        return {
+          eventId: e.id,
+          eventName: e.name,
+          eventSlug: e.slug,
+          status: e.status,
+          totalInterestedCount: total,
+          interestedLast7Days: last7,
+          interestedLast30Days: last30,
+          startsAtUtc: e.startsAtUtc,
+        }
+      })
+
+      const totalInterestedCount = eventAnalytics
+        .filter((a) => a.status === 'PUBLISHED')
+        .reduce((sum, a) => sum + a.totalInterestedCount, 0)
+
+      const overview = {
+        totalSubmittedEvents: managedEvents.length,
+        publishedEvents: managedEvents.filter((e) => e.status === 'PUBLISHED').length,
+        pendingApprovalEvents: managedEvents.filter((e) => e.status === 'PENDING_APPROVAL').length,
+        totalInterestedCount,
+        managedEvents: managedEvents.map((e) => ({
+          id: e.id,
+          name: e.name,
+          slug: e.slug,
+          status: e.status,
+          startsAtUtc: e.startsAtUtc,
+          domain: e.domain,
+        })),
+        eventAnalytics,
+        availableDomains: state.domains.filter((d) => d.isActive),
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { myDashboard: overview } }),
+      })
+      return
+    }
+
     if (query.includes('query') && query.includes('Me')) {
       const user = state.users.find((u) => u.id === state.currentUserId)
       if (!user) {

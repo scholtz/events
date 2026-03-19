@@ -172,7 +172,7 @@ test.describe('Event detail page', () => {
     await page.goto(`/event/${event.slug}`)
 
     // No map iframe in fallback mode
-    await expect(page.locator('iframe')).not.toBeVisible()
+    await expect(page.locator('iframe')).toBeHidden()
     // Fallback shows venue and directions link
     await expect(page.getByRole('link', { name: /Search on Google Maps/ })).toBeVisible()
   })
