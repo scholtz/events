@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { savedSearchToFilters, useEventsStore } from '@/stores/events'
 import { useDomainsStore } from '@/stores/domains'
@@ -13,6 +13,46 @@ const savedSearchesStore = useSavedSearchesStore()
 
 const savedSearchName = ref('')
 const savingSearch = ref(false)
+
+// Local refs that hold the raw input values for the two free-text fields.
+// Changes are debounced before being committed to the store so that the
+// discovery query is not re-fired on every keystroke.
+const searchInput = ref(eventsStore.filters.search)
+const locationInput = ref(eventsStore.filters.location)
+
+// Keep local inputs in sync when the store is updated externally
+// (e.g. when "Clear all" is pressed or a saved search is applied).
+watch(
+  () => eventsStore.filters.search,
+  (v) => {
+    searchInput.value = v
+  },
+)
+watch(
+  () => eventsStore.filters.location,
+  (v) => {
+    locationInput.value = v
+  },
+)
+
+let searchDebounceTimer: ReturnType<typeof setTimeout> | undefined
+let locationDebounceTimer: ReturnType<typeof setTimeout> | undefined
+
+function onSearchInput(value: string) {
+  searchInput.value = value
+  clearTimeout(searchDebounceTimer)
+  searchDebounceTimer = setTimeout(() => {
+    eventsStore.setFilters({ search: value })
+  }, 300)
+}
+
+function onLocationInput(value: string) {
+  locationInput.value = value
+  clearTimeout(locationDebounceTimer)
+  locationDebounceTimer = setTimeout(() => {
+    eventsStore.setFilters({ location: value })
+  }, 300)
+}
 
 const canSaveSearch = computed(
   () =>
@@ -93,8 +133,8 @@ function clearFilterChip(key: string) {
           class="form-input"
           type="text"
           placeholder="Search events, topics, or venues"
-          :value="eventsStore.filters.search"
-          @input="eventsStore.setFilters({ search: ($event.target as HTMLInputElement).value })"
+          :value="searchInput"
+          @input="onSearchInput(($event.target as HTMLInputElement).value)"
         />
       </div>
 
@@ -120,8 +160,8 @@ function clearFilterChip(key: string) {
           class="form-input"
           type="text"
           placeholder="Prague, venue, or address"
-          :value="eventsStore.filters.location"
-          @input="eventsStore.setFilters({ location: ($event.target as HTMLInputElement).value })"
+          :value="locationInput"
+          @input="onLocationInput(($event.target as HTMLInputElement).value)"
         />
       </div>
 
