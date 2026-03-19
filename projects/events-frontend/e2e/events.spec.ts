@@ -134,6 +134,137 @@ test.describe('Event detail page', () => {
     await expect(page.getByText('123 Main St, Prague, CZ')).toBeVisible()
   })
 
+  test('shows interactive map when coordinates are available', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-map',
+      name: 'Map Event',
+      slug: 'map-event',
+      latitude: 50.0755,
+      longitude: 14.4378,
+    })
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [event],
+    })
+
+    await page.goto(`/event/${event.slug}`)
+
+    await expect(page.locator('iframe[title*="map"]')).toBeVisible()
+    await expect(page.getByRole('link', { name: /Open in OpenStreetMap/ })).toBeVisible()
+  })
+
+  test('shows location fallback when coordinates are zero/unavailable', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-nocoords',
+      name: 'No Coords Event',
+      slug: 'no-coords-event',
+      latitude: 0,
+      longitude: 0,
+      venueName: 'Mystery Venue',
+      city: 'Vienna',
+      countryCode: 'AT',
+    })
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [event],
+    })
+
+    await page.goto(`/event/${event.slug}`)
+
+    // No map iframe in fallback mode
+    await expect(page.locator('iframe')).not.toBeVisible()
+    // Fallback shows venue and directions link
+    await expect(page.getByRole('link', { name: /Search on Google Maps/ })).toBeVisible()
+  })
+
+  test('shows get directions link on event detail page', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-directions',
+      name: 'Directions Event',
+      slug: 'directions-event',
+      latitude: 50.0755,
+      longitude: 14.4378,
+    })
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [event],
+    })
+
+    await page.goto(`/event/${event.slug}`)
+
+    await expect(page.getByRole('link', { name: /Get Directions/ })).toBeVisible()
+  })
+
+  test('shows attendee context section with interested count', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-attendee',
+      name: 'Attendee Context Event',
+      slug: 'attendee-context-event',
+      interestedCount: 7,
+    })
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [event],
+    })
+
+    await page.goto(`/event/${event.slug}`)
+
+    await expect(page.getByText('7 people interested')).toBeVisible()
+  })
+
+  test('shows zero-state attendee message when no one is interested', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-zero-interest',
+      name: 'Zero Interest Event',
+      slug: 'zero-interest-event',
+      interestedCount: 0,
+    })
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [event],
+    })
+
+    await page.goto(`/event/${event.slug}`)
+
+    await expect(page.getByText('Be the first to save this event')).toBeVisible()
+  })
+
+  test('shows time alongside date on event detail page', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-time',
+      name: 'Time Display Event',
+      slug: 'time-display-event',
+      startsAtUtc: '2026-06-15T14:00:00Z',
+    })
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [event],
+    })
+
+    await page.goto(`/event/${event.slug}`)
+
+    // The date section heading should now say "Date & Time"
+    await expect(page.getByRole('heading', { name: /Date/i }).or(page.getByText('Date & Time'))).toBeVisible()
+  })
+
+  test('shows sign-in prompt for attendee context when unauthenticated', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-auth-cta',
+      name: 'Auth CTA Event',
+      slug: 'auth-cta-event',
+      interestedCount: 3,
+    })
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [event],
+    })
+
+    await page.goto(`/event/${event.slug}`)
+
+    await expect(page.getByRole('link', { name: /Sign in/ })).toBeVisible()
+    await expect(page.getByText(/to save this event and show your interest/)).toBeVisible()
+  })
+
   test('admin can reject an event from admin panel', async ({ page }) => {
     const admin = makeAdminUser()
     const event = makeApprovedEvent({

@@ -78,7 +78,8 @@ builder.Services
     .AddGraphQLServer()
     .AddAuthorization()
     .AddQueryType<Query>()
-    .AddMutationType<Mutation>();
+    .AddMutationType<Mutation>()
+    .AddTypeExtension<CatalogEventExtension>();
 
 var app = builder.Build();
 
