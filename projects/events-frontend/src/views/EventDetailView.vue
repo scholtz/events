@@ -17,6 +17,7 @@ const slug = computed(() => route.params.id as string)
 const cachedEvent = computed(() => eventsStore.getEventBySlug(slug.value))
 const event = computed(() => eventsStore.detailEvent ?? cachedEvent.value ?? null)
 const loading = computed(() => eventsStore.detailLoading && !cachedEvent.value)
+const detailError = computed(() => eventsStore.detailError)
 
 async function loadDetail() {
   await eventsStore.fetchEventBySlug(slug.value)
@@ -310,6 +311,13 @@ function statusBadgeClass(status: string): string {
         </div>
       </div>
     </template>
+
+    <div v-else-if="detailError" class="empty-state card" role="alert">
+      <div class="empty-icon">⚠️</div>
+      <h2>Unable to load event</h2>
+      <p>{{ detailError }}</p>
+      <button class="btn btn-primary" @click="loadDetail">Try again</button>
+    </div>
 
     <div v-else class="empty-state card">
       <div class="empty-icon">🔍</div>
