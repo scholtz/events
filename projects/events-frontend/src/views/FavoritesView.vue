@@ -8,15 +8,15 @@ import type { CatalogEvent } from '@/types'
 const favoritesStore = useFavoritesStore()
 const authStore = useAuthStore()
 
-const now = new Date()
+const upcomingFavorites = computed(() => {
+  const now = new Date()
+  return favoritesStore.favoriteEvents.filter((e) => new Date(e.startsAtUtc) >= now)
+})
 
-const upcomingFavorites = computed(() =>
-  favoritesStore.favoriteEvents.filter((e) => new Date(e.startsAtUtc) >= now),
-)
-
-const pastFavorites = computed(() =>
-  favoritesStore.favoriteEvents.filter((e) => new Date(e.startsAtUtc) < now),
-)
+const pastFavorites = computed(() => {
+  const now = new Date()
+  return favoritesStore.favoriteEvents.filter((e) => new Date(e.startsAtUtc) < now)
+})
 
 onMounted(async () => {
   if (authStore.isAuthenticated) {
@@ -158,6 +158,7 @@ async function handleUnfavorite(eventId: string) {
                 </RouterLink>
               </h3>
               <p class="favorite-location">📍 {{ locationSummary(event) }}</p>
+              <p class="favorite-price">💳 {{ formatEventPrice(event) }}</p>
               <div class="favorite-actions">
                 <RouterLink :to="`/event/${event.slug}`" class="btn btn-outline btn-sm">
                   View details

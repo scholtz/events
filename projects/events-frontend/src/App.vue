@@ -19,7 +19,9 @@ onMounted(async () => {
     authStore.checkAuth(),
   ])
   if (authStore.isAuthenticated) {
-    await favoritesStore.fetchFavoriteEvents()
+    favoritesStore.fetchFavoriteEvents().catch(() => {
+      // Non-critical: favorites will be unavailable until the user navigates to /favorites
+    })
   }
 })
 

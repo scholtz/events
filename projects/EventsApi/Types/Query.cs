@@ -180,10 +180,10 @@ public sealed class Query
             .ToListAsync(cancellationToken);
 
         // Preserve the order of favorites (most recently favorited first)
+        var eventsById = events.ToDictionary(e => e.Id);
         return favoriteEventIds
-            .Select(id => events.FirstOrDefault(e => e.Id == id))
-            .Where(e => e is not null)
-            .Cast<CatalogEvent>()
+            .Where(id => eventsById.ContainsKey(id))
+            .Select(id => eventsById[id])
             .ToList();
     }
 
