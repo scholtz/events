@@ -142,13 +142,52 @@ Every frontend change to the event detail page must have E2E tests covering:
 - When `interestedCount` is null or undefined (e.g., from a cached event that didn't fetch the detail fields), the UI must default to 0.
 
 
-- Run commands from `projects/events-frontend`:
-  - `npm run lint`
-  - `npm run build`
-- E2E tests use Playwright via `npm run test:e2e` (requires Playwright browsers to be installed).
-- Run backend validation from `projects/EventsApi` when backend files or frontend GraphQL integrations change:
-  - `dotnet build events.slnx`
-  - `dotnet test events.slnx`
+## HotChocolate v15 input type requirements
+
+When writing backend integration tests or adding new fields to GraphQL input types, follow these rules to avoid 400 Bad Request errors:
+
+- **Non-nullable fields with C# defaults are still required in GraphQL variables.** HotChocolate v15 requires all non-nullable input fields to be explicitly provided in request variables, even if the C# class has a default value (e.g., `= "EUR"`). Always include these fields in integration test mutations: `countryCode`, `currencyCode`, `isFree`, `attendanceMode`, etc.
+- Use `decimal` literals (e.g., `50.075m`) for `decimal` fields in test variables to avoid type inference issues.
+- When a test mutation returns a 400, modify `ExecuteGraphQlAsync` to capture the response body in the exception — the body tells you exactly which field is missing or invalid. The shared helper already does this (throws `"HTTP 400: {body}"`).
+- Enum values in GraphQL variables are represented as strings using SCREAMING_SNAKE_CASE (e.g., `"HYBRID"`, `"IN_PERSON"`, `"UPCOMING"`). This matches HotChocolate's default enum naming convention.
+
+## Event attendance mode
+
+The `AttendanceMode` enum (`IN_PERSON`, `ONLINE`, `HYBRID`) is a first-class field on `CatalogEvent`:
+- Stored as a string via EF Core `HasConversion<string>()` on the `Events` table.
+- Exposed in `EventFilterInput.AttendanceMode?` for server-side filtering.
+- Exposed in `EventSubmissionInput.AttendanceMode` (default: `InPerson`) for event creation/update.
+- Serialized to URL as `?mode=in-person`, `?mode=online`, `?mode=hybrid`.
+- Every `MockEvent` in E2E tests includes `attendanceMode: 'IN_PERSON' | 'ONLINE' | 'HYBRID'` (default: `'IN_PERSON'`).
+- `filterEventsForDiscovery` in `mock-api.ts` filters by `attendanceMode` to keep E2E tests deterministic.
+
+## Advanced event discovery quality standards
+
+When implementing or extending the event discovery feature, always deliver a full vertical slice and follow these standards:
+
+### URL-state synchronization
+- Every filter must have a corresponding URL query parameter that is kept in sync via the router.
+- Filter state must be restored correctly on page reload and back/forward navigation.
+- URL params use lowercase/hyphenated values: `?price=free`, `?sort=newest`, `?mode=in-person`, `?mode=hybrid`.
+- Active filters are shown as removable chips (`.filter-chip`) and a "Clear all" button appears when any filter is active.
+
+### Backend filter completeness checklist
+Every new filter dimension added to `EventFilterInput` must:
+1. Have a server-side `WHERE` clause in `Query.GetEventsAsync`
+2. Be included in `SavedSearch` entity and `SavedSearchInput` if it's a persistent filter
+3. Have integration tests covering: per-value isolation, no-filter returns all, combination with other filters, and empty result set
+4. Be documented in the GraphQL schema comment
+
+### Frontend filter completeness checklist
+Every new filter dimension must:
+1. Be added to `EventFilters` interface in `src/types/index.ts`
+2. Be serialized/deserialized in `eventFiltersToQuery` / `eventFiltersFromQuery` in `events.ts`
+3. Produce an active chip entry in `activeFilterChips` (cleared via `clearFilterChip`)
+4. Have a corresponding UI control in `EventFilters.vue` with accessible `<label>` and `id`
+5. Be included in `areEventFiltersEqual` and `createDefaultEventFilters`
+6. Be passed to `buildDiscoveryFilterInput` for the GraphQL query
+7. Have `attendanceMode` (and any new field) in `MockEvent` and `makeApprovedEvent` in the E2E mock helper
+8. Have E2E tests in `discovery.spec.ts` covering: URL direct navigation, chip display, chip removal, and URL update on change
 
 ## Playwright E2E testing
 

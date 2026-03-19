@@ -62,6 +62,7 @@ export type MockEvent = {
   reviewedBy: { displayName: string } | null
   mapUrl: string
   interestedCount: number
+  attendanceMode: 'IN_PERSON' | 'ONLINE' | 'HYBRID'
 }
 
 export type MockSavedSearch = {
@@ -618,6 +619,7 @@ export function makeApprovedEvent(overrides: Partial<MockEvent> = {}): MockEvent
     reviewedBy: null,
     mapUrl: 'https://www.openstreetmap.org/?mlat=50.0755&mlon=14.4378#map=15/50.0755/14.4378',
     interestedCount: 0,
+    attendanceMode: 'IN_PERSON',
     ...overrides,
   }
 }
@@ -650,6 +652,7 @@ function filterEventsForDiscovery(events: MockEvent[], filter?: Record<string, u
   const priceMin = typeof filter?.priceMin === 'number' ? filter.priceMin : null
   const priceMax = typeof filter?.priceMax === 'number' ? filter.priceMax : null
   const sortBy = String(filter?.sortBy || 'UPCOMING')
+  const attendanceMode = typeof filter?.attendanceMode === 'string' ? filter.attendanceMode : null
 
   return [...events]
     .filter((event) => event.status === 'PUBLISHED')
@@ -694,6 +697,10 @@ function filterEventsForDiscovery(events: MockEvent[], filter?: Record<string, u
       }
 
       if (typeof priceMax === 'number' && effectivePrice > priceMax) {
+        return false
+      }
+
+      if (attendanceMode && event.attendanceMode !== attendanceMode) {
         return false
       }
 

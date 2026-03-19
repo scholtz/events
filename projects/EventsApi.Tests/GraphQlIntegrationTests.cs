@@ -747,7 +747,12 @@ public sealed class GraphQlIntegrationTests
     private static async Task<JsonDocument> ExecuteGraphQlAsync(HttpClient client, string query, object? variables = null)
     {
         var response = await client.PostAsJsonAsync("/graphql", new { query, variables });
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync();
+            throw new Xunit.Sdk.XunitException(
+                $"HTTP {(int)response.StatusCode} ({response.ReasonPhrase}): {body}");
+        }
 
         var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
         if (document.RootElement.TryGetProperty("errors", out var errors))
@@ -2119,8 +2124,9 @@ public sealed class GraphQlIntegrationTests
                     city = "Prague",
                     countryCode = "CZ",
                     isFree = true,
-                    latitude = 50.075,
-                    longitude = 14.437,
+                    currencyCode = "EUR",
+                    latitude = 50.075m,
+                    longitude = 14.437m,
                     startsAtUtc = nextMonth,
                     endsAtUtc = nextMonth.AddHours(6),
                     attendanceMode = "HYBRID"

@@ -404,3 +404,173 @@ test.describe('Domain filter', () => {
     await expect(page.locator('.event-card', { hasText: 'Crypto Event' })).toBeHidden()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Attendance mode filter
+// ---------------------------------------------------------------------------
+
+test.describe('Attendance mode filter', () => {
+  test('IN_PERSON filter shows only in-person events', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-in-person',
+          name: 'In-Person Workshop',
+          slug: 'in-person-workshop',
+          attendanceMode: 'IN_PERSON',
+        }),
+        makeApprovedEvent({
+          id: 'e-online',
+          name: 'Online Webinar',
+          slug: 'online-webinar',
+          attendanceMode: 'ONLINE',
+        }),
+        makeApprovedEvent({
+          id: 'e-hybrid',
+          name: 'Hybrid Conference',
+          slug: 'hybrid-conference',
+          attendanceMode: 'HYBRID',
+        }),
+      ],
+    })
+    await page.goto('/?mode=in-person')
+
+    await expect(page.locator('.event-card', { hasText: 'In-Person Workshop' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Online Webinar' })).toBeHidden()
+    await expect(page.locator('.event-card', { hasText: 'Hybrid Conference' })).toBeHidden()
+    await expect(page.locator('.filter-chip', { hasText: /mode/i })).toBeVisible()
+  })
+
+  test('ONLINE filter shows only online events', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-in-person',
+          name: 'In-Person Workshop',
+          slug: 'in-person-workshop',
+          attendanceMode: 'IN_PERSON',
+        }),
+        makeApprovedEvent({
+          id: 'e-online',
+          name: 'Online Webinar',
+          slug: 'online-webinar',
+          attendanceMode: 'ONLINE',
+        }),
+      ],
+    })
+    await page.goto('/?mode=online')
+
+    await expect(page.locator('.event-card', { hasText: 'Online Webinar' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'In-Person Workshop' })).toBeHidden()
+    await expect(page.locator('.filter-chip', { hasText: /mode/i })).toBeVisible()
+  })
+
+  test('HYBRID filter shows only hybrid events', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-in-person',
+          name: 'In-Person Workshop',
+          slug: 'in-person-workshop',
+          attendanceMode: 'IN_PERSON',
+        }),
+        makeApprovedEvent({
+          id: 'e-hybrid',
+          name: 'Hybrid Summit',
+          slug: 'hybrid-summit',
+          attendanceMode: 'HYBRID',
+        }),
+      ],
+    })
+    await page.goto('/?mode=hybrid')
+
+    await expect(page.locator('.event-card', { hasText: 'Hybrid Summit' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'In-Person Workshop' })).toBeHidden()
+  })
+
+  test('attendance mode chip is restored from URL on reload', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-online',
+          name: 'Online Webinar',
+          slug: 'online-webinar',
+          attendanceMode: 'ONLINE',
+        }),
+      ],
+    })
+    await page.goto('/?mode=online')
+
+    // The Mode select should reflect the URL param
+    await expect(page.locator('select#filter-attendance-mode')).toHaveValue('ONLINE')
+    await expect(page.locator('.event-card', { hasText: 'Online Webinar' })).toBeVisible()
+  })
+
+  test('removing attendance mode chip restores all events', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-in-person',
+          name: 'In-Person Workshop',
+          slug: 'in-person-workshop',
+          attendanceMode: 'IN_PERSON',
+        }),
+        makeApprovedEvent({
+          id: 'e-online',
+          name: 'Online Webinar',
+          slug: 'online-webinar',
+          attendanceMode: 'ONLINE',
+        }),
+      ],
+    })
+    await page.goto('/?mode=online')
+
+    await expect(page.locator('.event-card', { hasText: 'In-Person Workshop' })).toBeHidden()
+
+    // Click the mode chip to remove the filter
+    await page.locator('.filter-chip', { hasText: /mode/i }).click()
+
+    await expect(page.locator('.event-card', { hasText: 'In-Person Workshop' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Online Webinar' })).toBeVisible()
+  })
+
+  test('event card displays attendance mode badge', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-online',
+          name: 'Online Webinar',
+          slug: 'online-webinar',
+          attendanceMode: 'ONLINE',
+        }),
+      ],
+    })
+    await page.goto('/')
+
+    await expect(page.locator('.event-card', { hasText: 'Online Webinar' }).locator('.badge-mode')).toContainText('Online')
+  })
+
+  test('mode filter changes update the URL query string', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-hybrid',
+          name: 'Hybrid Event',
+          slug: 'hybrid-event',
+          attendanceMode: 'HYBRID',
+        }),
+      ],
+    })
+    await page.goto('/')
+
+    await page.locator('select#filter-attendance-mode').selectOption('HYBRID')
+    await expect(page).toHaveURL(/mode=hybrid/, { timeout: 2000 })
+  })
+})
