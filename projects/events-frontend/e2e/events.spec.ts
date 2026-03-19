@@ -527,11 +527,11 @@ test.describe('Event detail page', () => {
     await expect(page.getByText('2 people interested')).toBeVisible()
 
     // Individual user names must NOT appear anywhere on the page
-    await expect(page.getByText('Alice Smith')).not.toBeVisible()
-    await expect(page.getByText('Bob Jones')).not.toBeVisible()
+    await expect(page.getByText('Alice Smith')).toBeHidden()
+    await expect(page.getByText('Bob Jones')).toBeHidden()
     // Emails must NOT appear anywhere on the page
-    await expect(page.getByText('alice@secret.com')).not.toBeVisible()
-    await expect(page.getByText('bob@secret.com')).not.toBeVisible()
+    await expect(page.getByText('alice@secret.com')).toBeHidden()
+    await expect(page.getByText('bob@secret.com')).toBeHidden()
   })
 
   test('event detail page shows attendance mode badge', async ({ page }) => {
@@ -572,6 +572,138 @@ test.describe('Event detail page', () => {
     await page.goto(`/event/${event.slug}`)
 
     await expect(page.locator('.badge-mode')).toContainText('Hybrid')
+  })
+
+  test('add to calendar button is visible on event detail page', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-cal-btn',
+      name: 'Calendar Button Event',
+      slug: 'calendar-button-event',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await expect(page.getByRole('button', { name: /Add to calendar/i })).toBeVisible()
+  })
+
+  test('add to calendar menu opens and shows all provider options', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-cal-menu',
+      name: 'Calendar Menu Event',
+      slug: 'calendar-menu-event',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await page.getByRole('button', { name: /Add to calendar/i }).click()
+
+    await expect(page.getByRole('menuitem', { name: /Download .ics file/i })).toBeVisible()
+    await expect(page.getByRole('menuitem', { name: /Google Calendar/i })).toBeVisible()
+    await expect(page.getByRole('menuitem', { name: /Outlook/i })).toBeVisible()
+  })
+
+  test('Google Calendar link points to calendar.google.com', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-gcal',
+      name: 'Google Cal Event',
+      slug: 'google-cal-event',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await page.getByRole('button', { name: /Add to calendar/i }).click()
+
+    const googleLink = page.getByRole('menuitem', { name: /Google Calendar/i })
+    const href = await googleLink.getAttribute('href')
+    expect(href).toContain('calendar.google.com')
+    expect(href).toContain('Google+Cal+Event')
+  })
+
+  test('Outlook link points to outlook.live.com', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-outlook',
+      name: 'Outlook Event',
+      slug: 'outlook-event',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await page.getByRole('button', { name: /Add to calendar/i }).click()
+
+    const outlookLink = page.getByRole('menuitem', { name: /Outlook/i })
+    const href = await outlookLink.getAttribute('href')
+    expect(href).toContain('outlook.live.com')
+    expect(href).toContain('Outlook+Event')
+  })
+
+  test('ICS download triggers a file download', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-ics-dl',
+      name: 'ICS Download Event',
+      slug: 'ics-download-event',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: /Add to calendar/i }).click().then(async () => {
+        await page.getByRole('menuitem', { name: /Download .ics file/i }).click()
+      }),
+    ])
+
+    expect(download.suggestedFilename()).toBe('ics-download-event.ics')
+  })
+
+  test('calendar button shows confirmation after ICS download', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-ics-confirm',
+      name: 'ICS Confirm Event',
+      slug: 'ics-confirm-event',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: /Add to calendar/i }).click().then(async () => {
+        await page.getByRole('menuitem', { name: /Download .ics file/i }).click()
+      }),
+    ])
+
+    await expect(page.getByRole('button', { name: /Added to calendar/i })).toBeVisible()
+  })
+
+  test('add to calendar button is visible on mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    const event = makeApprovedEvent({
+      id: 'ev-cal-mobile',
+      name: 'Mobile Calendar Event',
+      slug: 'mobile-calendar-event',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await expect(page.getByRole('button', { name: /Add to calendar/i })).toBeVisible()
+  })
+
+  test('online event Google Calendar link includes event URL as location', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-online-cal',
+      name: 'Online Webinar',
+      slug: 'online-webinar',
+      attendanceMode: 'ONLINE',
+      eventUrl: 'https://webinar.example.com/join',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await page.getByRole('button', { name: /Add to calendar/i }).click()
+
+    const googleLink = page.getByRole('menuitem', { name: /Google Calendar/i })
+    const href = await googleLink.getAttribute('href')
+    // For online events, location should be the event URL
+    expect(href).toContain('webinar.example.com')
   })
 
   test('admin can reject an event from admin panel', async ({ page }) => {
