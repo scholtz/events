@@ -400,6 +400,213 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task EventsQuery_KeywordOnly_MatchesNameDescriptionAndVenue()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("kw@example.com", "KW User");
+            var tech = CreateDomain("Tech", "tech");
+            var nextMonth = FirstDayOfNextMonthUtc();
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(tech);
+            dbContext.Events.AddRange(
+                CreateEvent(
+                    "Tech Summit Prague",
+                    "tech-summit-prague",
+                    "A summit about cloud technology.",
+                    "Congress Centre",
+                    "Prague",
+                    nextMonth,
+                    tech,
+                    user),
+                CreateEvent(
+                    "Builders Meetup",
+                    "builders-meetup",
+                    "Connect with fellow blockchain builders.",
+                    "Blockchain Lounge",
+                    "Brno",
+                    nextMonth.AddDays(1),
+                    tech,
+                    user),
+                CreateEvent(
+                    "General Workshop",
+                    "general-workshop",
+                    "A workshop on various topics.",
+                    "Coworking Hub",
+                    "Prague",
+                    nextMonth.AddDays(2),
+                    tech,
+                    user));
+        });
+
+        using var client = factory.CreateClient();
+
+        // Match by name
+        Assert.Equal(
+            ["Tech Summit Prague"],
+            await QueryEventNamesAsync(client, new { searchText = "Tech Summit" }));
+
+        // Match by description keyword
+        Assert.Equal(
+            ["Builders Meetup"],
+            await QueryEventNamesAsync(client, new { searchText = "blockchain" }));
+
+        // Match by venue name
+        Assert.Equal(
+            ["General Workshop"],
+            await QueryEventNamesAsync(client, new { searchText = "Coworking" }));
+    }
+
+    [Fact]
+    public async Task EventsQuery_CityFilter_MatchesExactCityOnly()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("city@example.com", "City User");
+            var tech = CreateDomain("Tech", "tech");
+            var nextMonth = FirstDayOfNextMonthUtc();
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(tech);
+            dbContext.Events.AddRange(
+                CreateEvent("Prague Meetup", "prague-meetup", "In Prague.", "Venue A", "Prague", nextMonth, tech, user),
+                CreateEvent("Brno Meetup", "brno-meetup", "In Brno.", "Venue B", "Brno", nextMonth.AddDays(1), tech, user),
+                CreateEvent("Prague-Brno Mix", "prague-brno-mix", "In Prague.", "Venue C", "Prague", nextMonth.AddDays(2), tech, user));
+        });
+
+        using var client = factory.CreateClient();
+
+        var pragueMeetups = await QueryEventNamesAsync(client, new { city = "Prague" });
+        Assert.Equal(["Prague Meetup", "Prague-Brno Mix"], pragueMeetups);
+
+        var brnoMeetups = await QueryEventNamesAsync(client, new { city = "Brno" });
+        Assert.Equal(["Brno Meetup"], brnoMeetups);
+    }
+
+    [Fact]
+    public async Task EventsQuery_DateRangeEdgeCases_IncludeBoundaryDates()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var boundary = FirstDayOfNextMonthUtc();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("dates@example.com", "Dates User");
+            var tech = CreateDomain("Tech", "tech");
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(tech);
+            dbContext.Events.AddRange(
+                CreateEvent("Boundary Event", "boundary-event", "Starts exactly on boundary.", "Venue", "Prague", boundary, tech, user),
+                CreateEvent("Before Boundary", "before-boundary", "Starts one second before.", "Venue", "Prague", boundary.AddSeconds(-1), tech, user),
+                CreateEvent("After Boundary", "after-boundary", "Starts one day after.", "Venue", "Prague", boundary.AddDays(1), tech, user));
+        });
+
+        using var client = factory.CreateClient();
+
+        // Boundary start date: should include the event that starts exactly on it
+        var fromBoundary = await QueryEventNamesAsync(client, new { startsFromUtc = boundary });
+        Assert.Contains("Boundary Event", fromBoundary);
+        Assert.DoesNotContain("Before Boundary", fromBoundary);
+
+        // Boundary end date: should include the event that starts exactly on it
+        var toBoundary = await QueryEventNamesAsync(client, new { startsToUtc = boundary });
+        Assert.Contains("Boundary Event", toBoundary);
+        Assert.Contains("Before Boundary", toBoundary);
+        Assert.DoesNotContain("After Boundary", toBoundary);
+
+        // Exact day window: only the boundary event
+        var exactDay = await QueryEventNamesAsync(client, new { startsFromUtc = boundary, startsToUtc = boundary });
+        Assert.Equal(["Boundary Event"], exactDay);
+    }
+
+    [Fact]
+    public async Task EventsQuery_LocationText_MatchesCityVenueAndAddress()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("loc@example.com", "Loc User");
+            var tech = CreateDomain("Tech", "tech");
+            var nextMonth = FirstDayOfNextMonthUtc();
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(tech);
+            dbContext.Events.AddRange(
+                CreateEvent(
+                    "Prague City Match",
+                    "prague-city-match",
+                    "Event matched by city.",
+                    "Some Venue",
+                    "Prague",
+                    nextMonth,
+                    tech,
+                    user),
+                CreateEvent(
+                    "Venue Name Match",
+                    "venue-name-match",
+                    "Event matched by venue.",
+                    "Innovation Hub",
+                    "Brno",
+                    nextMonth.AddDays(1),
+                    tech,
+                    user),
+                CreateEvent(
+                    "No Location Match",
+                    "no-location-match",
+                    "Event without matching location.",
+                    "Unrelated Place",
+                    "Ostrava",
+                    nextMonth.AddDays(2),
+                    tech,
+                    user));
+        });
+
+        using var client = factory.CreateClient();
+
+        // Matches by city
+        Assert.Contains("Prague City Match", await QueryEventNamesAsync(client, new { locationText = "Prague" }));
+
+        // Matches by venue name (fuzzy)
+        Assert.Contains("Venue Name Match", await QueryEventNamesAsync(client, new { locationText = "Innovation" }));
+
+        // No match
+        var noMatch = await QueryEventNamesAsync(client, new { locationText = "Nonexistent City XYZ" });
+        Assert.Empty(noMatch);
+    }
+
+    [Fact]
+    public async Task EventsQuery_DomainSlugFilter_IsolatesEventsByDomain()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("domain@example.com", "Domain User");
+            var tech = CreateDomain("Tech", "tech");
+            var crypto = CreateDomain("Crypto", "crypto");
+            var nextMonth = FirstDayOfNextMonthUtc();
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.AddRange(tech, crypto);
+            dbContext.Events.AddRange(
+                CreateEvent("Tech Event A", "tech-event-a", "Tech desc.", "Venue", "Prague", nextMonth, tech, user),
+                CreateEvent("Tech Event B", "tech-event-b", "Tech desc.", "Venue", "Brno", nextMonth.AddDays(1), tech, user),
+                CreateEvent("Crypto Event", "crypto-event", "Crypto desc.", "Venue", "Prague", nextMonth, crypto, user));
+        });
+
+        using var client = factory.CreateClient();
+
+        var techEvents = await QueryEventNamesAsync(client, new { domainSlug = "tech" });
+        Assert.Equal(["Tech Event A", "Tech Event B"], techEvents);
+
+        var cryptoEvents = await QueryEventNamesAsync(client, new { domainSlug = "crypto" });
+        Assert.Equal(["Crypto Event"], cryptoEvents);
+    }
+
+    [Fact]
     public async Task SavedSearches_CanBeCreatedListedAndDeleted()
     {
         await using var factory = new EventsApiWebApplicationFactory();
