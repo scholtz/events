@@ -200,6 +200,24 @@ public sealed class AppDbInitializer(
                 """,
                 cancellationToken);
         }
+
+        if (!await TableExistsAsync("FavoriteEvents", cancellationToken))
+        {
+            await _dbContext.Database.ExecuteSqlRawAsync(
+                """
+                CREATE TABLE "FavoriteEvents" (
+                    "Id" TEXT NOT NULL CONSTRAINT "PK_FavoriteEvents" PRIMARY KEY,
+                    "UserId" TEXT NOT NULL,
+                    "EventId" TEXT NOT NULL,
+                    "CreatedAtUtc" TEXT NOT NULL,
+                    CONSTRAINT "FK_FavoriteEvents_Users_UserId" FOREIGN KEY ("UserId") REFERENCES "Users" ("Id") ON DELETE CASCADE,
+                    CONSTRAINT "FK_FavoriteEvents_Events_EventId" FOREIGN KEY ("EventId") REFERENCES "Events" ("Id") ON DELETE CASCADE
+                );
+                CREATE UNIQUE INDEX "IX_FavoriteEvents_UserId_EventId" ON "FavoriteEvents" ("UserId", "EventId");
+                CREATE INDEX "IX_FavoriteEvents_EventId" ON "FavoriteEvents" ("EventId");
+                """,
+                cancellationToken);
+        }
     }
 
     private async Task EnsureEventColumnAsync(string columnName, CancellationToken cancellationToken)

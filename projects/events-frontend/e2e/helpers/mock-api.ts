@@ -80,11 +80,19 @@ export type MockSavedSearch = {
   userId: string
 }
 
+export type MockFavoriteEvent = {
+  id: string
+  userId: string
+  eventId: string
+  createdAtUtc: string
+}
+
 export type MockState = {
   users: MockUser[]
   domains: MockDomain[]
   events: MockEvent[]
   savedSearches: MockSavedSearch[]
+  favoriteEvents: MockFavoriteEvent[]
   currentUserId: string | null
   currentToken: string | null
 }
@@ -100,6 +108,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
     domains: initial?.domains ?? [],
     events: initial?.events ?? [],
     savedSearches: initial?.savedSearches ?? [],
+    favoriteEvents: initial?.favoriteEvents ?? [],
     currentUserId: initial?.currentUserId ?? null,
     currentToken: initial?.currentToken ?? null,
   }
@@ -329,7 +338,73 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       return
     }
 
+    if (query.includes('mutation') && query.includes('UnfavoriteEvent')) {
+      const eventId = variables.eventId
+      const index = state.favoriteEvents.findIndex(
+        (f) => f.eventId === eventId && f.userId === state.currentUserId,
+      )
+      if (index === -1) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Favorite was not found.', extensions: { code: 'FAVORITE_NOT_FOUND' } }] }),
+        })
+        return
+      }
+      state.favoriteEvents.splice(index, 1)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { unfavoriteEvent: true } }),
+      })
+      return
+    }
+
+    if (query.includes('mutation') && query.includes('FavoriteEvent')) {
+      const eventId = variables.eventId
+      const existing = state.favoriteEvents.find(
+        (f) => f.eventId === eventId && f.userId === state.currentUserId,
+      )
+      if (existing) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: { favoriteEvent: existing } }),
+        })
+        return
+      }
+      const newFavorite: MockFavoriteEvent = {
+        id: `fav-${state.favoriteEvents.length + 1}`,
+        userId: state.currentUserId ?? '',
+        eventId,
+        createdAtUtc: new Date().toISOString(),
+      }
+      state.favoriteEvents.push(newFavorite)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { favoriteEvent: newFavorite } }),
+      })
+      return
+    }
+
     // ── Queries ──
+    if (query.includes('query') && query.includes('MyFavoriteEvents')) {
+      const userFavorites = state.favoriteEvents.filter(
+        (f) => f.userId === state.currentUserId,
+      )
+      const favoriteEventIds = userFavorites.map((f) => f.eventId)
+      const favoriteEventsData = favoriteEventIds
+        .map((id) => state.events.find((e) => e.id === id))
+        .filter((e): e is MockEvent => e !== undefined)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { myFavoriteEvents: favoriteEventsData } }),
+      })
+      return
+    }
+
     if (query.includes('query') && query.includes('Me')) {
       const user = state.users.find((u) => u.id === state.currentUserId)
       if (!user) {

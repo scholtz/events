@@ -116,3 +116,11 @@ export interface SavedSearch {
   createdAtUtc: string
   updatedAtUtc: string
 }
+
+/** Matches backend FavoriteEvent entity */
+export interface FavoriteEvent {
+  id: string
+  userId: string
+  eventId: string
+  createdAtUtc: string
+}

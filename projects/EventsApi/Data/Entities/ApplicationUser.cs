@@ -22,4 +22,7 @@ public sealed class ApplicationUser
 
     [GraphQLIgnore]
     public List<SavedSearch> SavedSearches { get; set; } = [];
+
+    [GraphQLIgnore]
+    public List<FavoriteEvent> FavoriteEvents { get; set; } = [];
 }

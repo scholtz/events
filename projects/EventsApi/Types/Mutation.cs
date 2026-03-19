@@ -302,6 +302,57 @@ public sealed class Mutation
         return true;
     }
 
+    [Authorize]
+    public async Task<FavoriteEvent> FavoriteEventAsync(
+        Guid eventId,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var currentUserId = claimsPrincipal.GetRequiredUserId();
+
+        var catalogEvent = await dbContext.Events.SingleOrDefaultAsync(e => e.Id == eventId, cancellationToken)
+            ?? throw CreateError("Event was not found.", "EVENT_NOT_FOUND");
+
+        var existing = await dbContext.FavoriteEvents.SingleOrDefaultAsync(
+            f => f.UserId == currentUserId && f.EventId == eventId,
+            cancellationToken);
+
+        if (existing is not null)
+        {
+            return existing;
+        }
+
+        var favorite = new FavoriteEvent
+        {
+            UserId = currentUserId,
+            EventId = eventId
+        };
+
+        dbContext.FavoriteEvents.Add(favorite);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return favorite;
+    }
+
+    [Authorize]
+    public async Task<bool> UnfavoriteEventAsync(
+        Guid eventId,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var currentUserId = claimsPrincipal.GetRequiredUserId();
+
+        var favorite = await dbContext.FavoriteEvents.SingleOrDefaultAsync(
+            f => f.UserId == currentUserId && f.EventId == eventId,
+            cancellationToken)
+            ?? throw CreateError("Favorite was not found.", "FAVORITE_NOT_FOUND");
+
+        dbContext.FavoriteEvents.Remove(favorite);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     private static AuthPayload CreateAuthPayload(ApplicationUser user, JwtTokenService jwtTokenService)
     {
         var session = jwtTokenService.CreateSession(user);

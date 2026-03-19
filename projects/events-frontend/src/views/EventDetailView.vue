@@ -1,13 +1,30 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { formatEventPrice } from '@/stores/events'
 import { useEventsStore } from '@/stores/events'
+import { useFavoritesStore } from '@/stores/favorites'
+import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
 const eventsStore = useEventsStore()
+const favoritesStore = useFavoritesStore()
+const authStore = useAuthStore()
 
 const event = computed(() => eventsStore.getEventBySlug(route.params.id as string))
+
+const isFavorited = computed(() => event.value ? favoritesStore.isFavorited(event.value.id) : false)
+const favoriting = ref(false)
+
+async function handleFavoriteToggle() {
+  if (!event.value || !authStore.isAuthenticated) return
+  favoriting.value = true
+  try {
+    await favoritesStore.toggleFavorite(event.value.id)
+  } finally {
+    favoriting.value = false
+  }
+}
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('en-US', {
@@ -74,6 +91,18 @@ function statusBadgeClass(status: string): string {
             <span class="event-status badge" :class="statusBadgeClass(event.status)">
               {{ statusLabel(event.status) }}
             </span>
+            <button
+              v-if="authStore.isAuthenticated"
+              class="favorite-btn"
+              :class="{ 'is-favorited': isFavorited }"
+              :aria-label="isFavorited ? 'Remove from favorites' : 'Add to favorites'"
+              :aria-pressed="isFavorited"
+              :disabled="favoriting"
+              @click="handleFavoriteToggle"
+            >
+              <span aria-hidden="true">{{ isFavorited ? '★' : '☆' }}</span>
+              {{ isFavorited ? 'Saved' : 'Save event' }}
+            </button>
           </div>
           <h1>{{ event.name }}</h1>
           <p v-if="event.submittedBy" class="organizer">
@@ -302,6 +331,37 @@ function statusBadgeClass(status: string): string {
 .empty-state p {
   color: var(--color-text-secondary);
   max-width: 320px;
+}
+
+.favorite-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 0.375rem 0.75rem;
+  transition: all 0.15s;
+}
+
+.favorite-btn:hover:not(:disabled) {
+  border-color: var(--color-warning, #f59e0b);
+  color: var(--color-warning, #f59e0b);
+}
+
+.favorite-btn.is-favorited {
+  border-color: var(--color-warning, #f59e0b);
+  color: var(--color-warning, #f59e0b);
+  background: color-mix(in srgb, var(--color-warning, #f59e0b) 10%, transparent);
+}
+
+.favorite-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 @media (max-width: 900px) {
