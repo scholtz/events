@@ -574,3 +574,79 @@ test.describe('Attendance mode filter', () => {
     await expect(page).toHaveURL(/mode=hybrid/, { timeout: 2000 })
   })
 })
+
+// ---------------------------------------------------------------------------
+// Mobile viewport discovery
+// ---------------------------------------------------------------------------
+
+test.describe('Mobile viewport discovery', () => {
+  test('attendance mode filter control is visible on mobile', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-in-person',
+          name: 'In-Person Workshop',
+          slug: 'in-person-workshop',
+          attendanceMode: 'IN_PERSON',
+        }),
+        makeApprovedEvent({
+          id: 'e-online',
+          name: 'Online Webinar',
+          slug: 'online-webinar',
+          attendanceMode: 'ONLINE',
+        }),
+      ],
+    })
+    await page.goto('/')
+
+    // Mode select should be visible at mobile width
+    await expect(page.locator('select#filter-attendance-mode')).toBeVisible()
+  })
+
+  test('attendance mode filter works on mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-in-person',
+          name: 'In-Person Workshop',
+          slug: 'in-person-workshop',
+          attendanceMode: 'IN_PERSON',
+        }),
+        makeApprovedEvent({
+          id: 'e-online',
+          name: 'Online Webinar',
+          slug: 'online-webinar',
+          attendanceMode: 'ONLINE',
+        }),
+      ],
+    })
+    await page.goto('/?mode=online')
+
+    await expect(page.locator('.event-card', { hasText: 'Online Webinar' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'In-Person Workshop' })).toBeHidden()
+  })
+
+  test('event cards show attendance mode badge on mobile', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-hybrid',
+          name: 'Hybrid Conference',
+          slug: 'hybrid-conference',
+          attendanceMode: 'HYBRID',
+        }),
+      ],
+    })
+    await page.goto('/')
+
+    await expect(
+      page.locator('.event-card', { hasText: 'Hybrid Conference' }).locator('.badge-mode'),
+    ).toContainText('Hybrid')
+  })
+})

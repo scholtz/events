@@ -120,6 +120,7 @@ export function savedSearchToFilters(savedSearch: SavedSearch): EventFilters {
     priceMin: savedSearch.priceMin?.toString() ?? '',
     priceMax: savedSearch.priceMax?.toString() ?? '',
     sortBy: savedSearch.sortBy ?? DEFAULT_SORT,
+    attendanceMode: '',
   }
 }
 

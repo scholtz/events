@@ -2138,6 +2138,108 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal("HYBRID", submittedEvent.GetProperty("attendanceMode").GetString());
     }
 
+    [Fact]
+    public async Task EventBySlug_ReturnsAttendanceMode_ForPublishedEvent()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        const string slug = "online-event-slug";
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("slug-att@example.com", "Slug Att User");
+            var domain = CreateDomain("Tech", "tech-slug-att");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.Add(CreateEvent(
+                "Online Event", slug, "A fully online event.", "Virtual", "Online",
+                FirstDayOfNextMonthUtc(), domain, user,
+                attendanceMode: AttendanceMode.Online));
+        });
+
+        using var document = await ExecuteGraphQlAsync(
+            factory.CreateClient(),
+            """
+            query EventBySlug($slug: String!) {
+              eventBySlug(slug: $slug) {
+                name
+                attendanceMode
+              }
+            }
+            """,
+            new { slug });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("eventBySlug");
+        Assert.Equal("Online Event", result.GetProperty("name").GetString());
+        Assert.Equal("ONLINE", result.GetProperty("attendanceMode").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateMyEvent_AttendanceModeIsUpdatedCorrectly()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("update-att@example.com", "Update Att User");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "tech-update-att");
+            dbContext.Users.AddRange(user);
+            dbContext.Domains.Add(domain);
+
+            var ev = CreateEvent(
+                "Original In-Person Event", "original-in-person", "Original description.",
+                "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, user,
+                attendanceMode: AttendanceMode.InPerson);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        var nextMonth = FirstDayOfNextMonthUtc();
+
+        using var updateDocument = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation UpdateMyEvent($eventId: UUID!, $input: EventSubmissionInput!) {
+              updateMyEvent(eventId: $eventId, input: $input) {
+                name
+                attendanceMode
+              }
+            }
+            """,
+            new
+            {
+                eventId,
+                input = new
+                {
+                    domainSlug = "tech-update-att",
+                    name = "Updated Hybrid Event",
+                    description = "Now a hybrid event.",
+                    eventUrl = "https://events.example.com/updated",
+                    venueName = "Hub",
+                    addressLine1 = "Somewhere 1",
+                    city = "Prague",
+                    countryCode = "CZ",
+                    isFree = true,
+                    currencyCode = "EUR",
+                    latitude = 50.075m,
+                    longitude = 14.437m,
+                    startsAtUtc = nextMonth,
+                    endsAtUtc = nextMonth.AddHours(6),
+                    attendanceMode = "HYBRID"
+                }
+            });
+
+        var updatedEvent = updateDocument.RootElement.GetProperty("data").GetProperty("updateMyEvent");
+        Assert.Equal("Updated Hybrid Event", updatedEvent.GetProperty("name").GetString());
+        Assert.Equal("HYBRID", updatedEvent.GetProperty("attendanceMode").GetString());
+    }
+
     private static DateTime FirstDayOfNextMonthUtc()
     {
         var now = DateTime.UtcNow;
