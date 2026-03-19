@@ -39,7 +39,7 @@ export interface CalendarEventInput {
  * treat the event correctly regardless of the user's local time zone.
  */
 function toIcsDate(isoUtc: string): string {
-  return isoUtc.replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z').replace(/Z$/, 'Z')
+  return isoUtc.replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z')
 }
 
 /**
