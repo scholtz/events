@@ -171,7 +171,7 @@ test.describe('Favorites', () => {
 
     await page.goto('/')
 
-    await expect(page.getByRole('link', { name: 'Saved' })).not.toBeVisible()
+    await expect(page.getByRole('link', { name: 'Saved' })).toBeHidden()
   })
 
   test('favorited events are grouped as upcoming on favorites page', async ({ page }) => {

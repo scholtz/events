@@ -74,8 +74,22 @@ export interface DashboardOverview {
   totalSubmittedEvents: number
   publishedEvents: number
   pendingApprovalEvents: number
+  totalInterestedCount: number
   managedEvents: CatalogEvent[]
+  eventAnalytics: EventAnalyticsItem[]
   availableDomains: EventDomain[]
+}
+
+/** Matches backend EventAnalyticsItem response */
+export interface EventAnalyticsItem {
+  eventId: string
+  eventName: string
+  eventSlug: string
+  status: EventStatus
+  totalInterestedCount: number
+  interestedLast7Days: number
+  interestedLast30Days: number
+  startsAtUtc: string
 }
 
 /** Matches backend AdminOverview response */

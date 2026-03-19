@@ -55,7 +55,44 @@
 - Production CORS origins are also set via environment variables in the K8s deployment (`Cors__AllowedOrigins__0`, etc.).
 - Allowed origins include: `http://localhost:5173`, `https://events-delta-black.vercel.app`, `https://events-scholtz.vercel.app`.
 
-## Validate changes
+## Organizer analytics quality standards
+
+When implementing organizer-facing analytics features, always follow these quality standards to prevent shipping incomplete or misleading work:
+
+### Analytics data integrity
+- Every metric must be trustworthy. If a value is approximate, delayed, or derived from a subset, state it clearly in both the UI and the PR description.
+- `totalInterestedCount` in `DashboardOverview` must only aggregate **published** events — never pending, rejected, or draft events. Rejected/pending events still appear in `eventAnalytics` with their own counts for organizer context, but must not inflate the headline KPI.
+- Trend windows (7-day, 30-day) must use server-side `DateTime.UtcNow` cutoffs computed at query time, not cached values. Test boundary conditions explicitly.
+
+### Authorization requirements
+- All analytics queries must be protected with `[Authorize]`. Unauthenticated requests must return `AUTH_NOT_AUTHORIZED` errors, not empty data. Add an integration test that explicitly verifies this.
+- Organizer analytics must be scoped to the requesting user's own events (`SubmittedByUserId == currentUserId`). Cross-organizer data leakage must be covered by an explicit isolation test.
+
+### Backend test requirements for analytics features
+Every analytics query must have integration tests covering:
+1. Correct aggregate counts with realistic seed data
+2. Zero/empty state (new event with no activity returns 0 counts, not null)
+3. Organizer isolation (organizer A cannot see organizer B's data)
+4. Status-specific rules (e.g., published-only headline totals)
+5. Unauthenticated access returns an auth error
+6. REJECTED/PENDING events — define explicitly what they contribute to each metric
+
+### Frontend test requirements for analytics features
+Every analytics dashboard must have E2E tests covering:
+1. KPI card values match expected data
+2. All trend badge variants: "this week" (last 7 days), "this month" (last 30 days), "No recent saves" (none)
+3. Low-data guidance state (published events but zero saves)
+4. Empty state (no events at all)
+5. Error state (API failure shows error message + retry button)
+6. Unauthenticated gate (sign-in prompt, no data shown)
+7. Organizer data isolation (other organizers' events not visible)
+8. Aggregate KPI correctness (total across multiple events)
+
+### Privacy
+- All analytics must be aggregate-only — never expose attendee identities, raw attendee lists, or anything that could link a specific person to an event interaction.
+- Document in the PR which metrics are direct counts vs. derived, and confirm no PII is exposed.
+
+
 - Run commands from `projects/events-frontend`:
   - `npm run lint`
   - `npm run build`
