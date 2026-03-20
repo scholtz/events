@@ -4,11 +4,13 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import {
   areEventFiltersEqual,
+  createDefaultEventFilters,
   eventFiltersFromQuery,
   eventFiltersToQuery,
   useEventsStore,
 } from '@/stores/events'
 import { useSavedSearchesStore } from '@/stores/savedSearches'
+import { useDiscoveryAnalytics } from '@/composables/useDiscoveryAnalytics'
 import EventCard from '@/components/events/EventCard.vue'
 import EventFilters from '@/components/events/EventFilters.vue'
 
@@ -17,6 +19,7 @@ const router = useRouter()
 const authStore = useAuthStore()
 const eventsStore = useEventsStore()
 const savedSearchesStore = useSavedSearchesStore()
+const { trackSearch, trackFilterChange, trackFilterClear } = useDiscoveryAnalytics()
 
 const syncingFromRoute = ref(false)
 
@@ -64,7 +67,7 @@ watch(
 
 watch(
   () => ({ ...eventsStore.filters }),
-  async (filters) => {
+  async (filters, oldFilters) => {
     if (syncingFromRoute.value) return
 
     const nextQuery = eventFiltersToQuery(filters)
@@ -76,6 +79,23 @@ watch(
     }
 
     await eventsStore.fetchDiscoveryEvents()
+
+    // Emit analytics only when a user-driven filter change occurred
+    if (!oldFilters || areEventFiltersEqual(filters, oldFilters)) return
+
+    const resultCount = eventsStore.discoveryEvents.length
+    const activeFilterCount = eventsStore.activeFilterChips.length
+
+    if (areEventFiltersEqual(filters, createDefaultEventFilters())) {
+      // All filters were cleared (e.g. "Clear all" was pressed)
+      trackFilterClear(resultCount)
+    } else if (filters.search !== oldFilters.search) {
+      // Keyword specifically changed → SEARCH action
+      trackSearch(activeFilterCount, resultCount)
+    } else {
+      // Other filter changed (domain, date, location, price, mode, sort)
+      trackFilterChange(activeFilterCount, resultCount)
+    }
   },
   { deep: true },
 )

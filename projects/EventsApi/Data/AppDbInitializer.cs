@@ -244,6 +244,24 @@ public sealed class AppDbInitializer(
                 """,
                 cancellationToken);
         }
+
+        if (!await TableExistsAsync("DiscoveryAnalyticsActions", cancellationToken))
+        {
+            await _dbContext.Database.ExecuteSqlRawAsync(
+                """
+                CREATE TABLE "DiscoveryAnalyticsActions" (
+                    "Id" TEXT NOT NULL CONSTRAINT "PK_DiscoveryAnalyticsActions" PRIMARY KEY,
+                    "ActionType" TEXT NOT NULL,
+                    "EventSlug" TEXT NULL,
+                    "ActiveFilterCount" INTEGER NOT NULL,
+                    "ResultCount" INTEGER NULL,
+                    "TriggeredAtUtc" TEXT NOT NULL
+                );
+                CREATE INDEX "IX_DiscoveryAnalyticsActions_ActionType" ON "DiscoveryAnalyticsActions" ("ActionType");
+                CREATE INDEX "IX_DiscoveryAnalyticsActions_TriggeredAtUtc" ON "DiscoveryAnalyticsActions" ("TriggeredAtUtc");
+                """,
+                cancellationToken);
+        }
     }
 
     private async Task EnsureSavedSearchColumnAsync(string columnName, CancellationToken cancellationToken)

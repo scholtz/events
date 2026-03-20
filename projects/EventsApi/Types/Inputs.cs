@@ -94,3 +94,23 @@ public sealed class TrackCalendarActionInput
     public Guid EventId { get; init; }
     public required string Provider { get; init; }
 }
+
+/// <summary>
+/// Input for recording a discovery interaction (search, filter change, result click, filter clear).
+/// No personal data is collected — only aggregate, anonymous product signals.
+/// Accepted action types: SEARCH, FILTER_CHANGE, FILTER_CLEAR, RESULT_CLICK.
+/// </summary>
+public sealed class TrackDiscoveryActionInput
+{
+    /// <summary>Type of interaction: SEARCH, FILTER_CHANGE, FILTER_CLEAR, or RESULT_CLICK.</summary>
+    public required string ActionType { get; init; }
+
+    /// <summary>For RESULT_CLICK: the public slug of the event opened. Null for other action types.</summary>
+    public string? EventSlug { get; init; }
+
+    /// <summary>Number of filters active when the interaction occurred.</summary>
+    public int ActiveFilterCount { get; init; }
+
+    /// <summary>Number of results visible at the time of the interaction. Null for RESULT_CLICK.</summary>
+    public int? ResultCount { get; init; }
+}

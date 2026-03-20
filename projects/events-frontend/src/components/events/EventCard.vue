@@ -3,6 +3,8 @@ import { computed, ref } from 'vue'
 import { formatEventPrice } from '@/stores/events'
 import { useFavoritesStore } from '@/stores/favorites'
 import { useAuthStore } from '@/stores/auth'
+import { useDiscoveryAnalytics } from '@/composables/useDiscoveryAnalytics'
+import { useEventsStore } from '@/stores/events'
 import type { CatalogEvent } from '@/types'
 
 const props = defineProps<{
@@ -11,6 +13,8 @@ const props = defineProps<{
 
 const favoritesStore = useFavoritesStore()
 const authStore = useAuthStore()
+const eventsStore = useEventsStore()
+const { trackResultClick } = useDiscoveryAnalytics()
 
 const favoriting = ref(false)
 
@@ -49,6 +53,10 @@ const attendanceModeLabel = computed(() => {
 
 const isFavorited = computed(() => favoritesStore.isFavorited(props.event.id))
 
+function handleResultClick() {
+  trackResultClick(props.event.slug, eventsStore.activeFilterChips.length)
+}
+
 async function handleFavoriteToggle() {
   if (!authStore.isAuthenticated) return
   favoriting.value = true
@@ -85,7 +93,7 @@ async function handleFavoriteToggle() {
       </div>
 
       <h3 class="event-title">
-        <RouterLink :to="`/event/${event.slug}`" class="event-title-link">
+        <RouterLink :to="`/event/${event.slug}`" class="event-title-link" @click="handleResultClick">
           {{ event.name }}
         </RouterLink>
       </h3>
@@ -108,7 +116,7 @@ async function handleFavoriteToggle() {
       </dl>
 
       <div class="event-actions">
-        <RouterLink :to="`/event/${event.slug}`" class="btn btn-primary btn-sm">View details</RouterLink>
+        <RouterLink :to="`/event/${event.slug}`" class="btn btn-primary btn-sm" @click="handleResultClick">View details</RouterLink>
         <a
           :href="event.eventUrl"
           target="_blank"

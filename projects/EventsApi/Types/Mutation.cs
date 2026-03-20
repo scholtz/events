@@ -404,6 +404,33 @@ public sealed class Mutation
         return true;
     }
 
+    public async Task<bool> TrackDiscoveryActionAsync(
+        TrackDiscoveryActionInput input,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var normalizedActionType = input.ActionType?.Trim().ToUpperInvariant() ?? string.Empty;
+        if (normalizedActionType is not ("SEARCH" or "FILTER_CHANGE" or "FILTER_CLEAR" or "RESULT_CLICK"))
+        {
+            throw CreateError(
+                "ActionType must be one of: SEARCH, FILTER_CHANGE, FILTER_CLEAR, RESULT_CLICK.",
+                "INVALID_DISCOVERY_ACTION_TYPE");
+        }
+
+        var action = new DiscoveryAnalyticsAction
+        {
+            ActionType = normalizedActionType,
+            EventSlug = string.IsNullOrWhiteSpace(input.EventSlug) ? null : input.EventSlug.Trim(),
+            ActiveFilterCount = Math.Max(0, input.ActiveFilterCount),
+            ResultCount = input.ResultCount.HasValue ? Math.Max(0, input.ResultCount.Value) : null,
+            TriggeredAtUtc = DateTime.UtcNow,
+        };
+
+        dbContext.DiscoveryAnalyticsActions.Add(action);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     private static AuthPayload CreateAuthPayload(ApplicationUser user, JwtTokenService jwtTokenService)
     {
         var session = jwtTokenService.CreateSession(user);

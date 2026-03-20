@@ -433,6 +433,27 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       return
     }
 
+    if (query.includes('mutation') && query.includes('TrackDiscoveryAction')) {
+      const input = variables.input || {}
+      const actionType = (input.actionType as string)?.toUpperCase() ?? ''
+      if (!['SEARCH', 'FILTER_CHANGE', 'FILTER_CLEAR', 'RESULT_CLICK'].includes(actionType)) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            errors: [{ message: 'ActionType must be one of: SEARCH, FILTER_CHANGE, FILTER_CLEAR, RESULT_CLICK.', extensions: { code: 'INVALID_DISCOVERY_ACTION_TYPE' } }],
+          }),
+        })
+        return
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { trackDiscoveryAction: true } }),
+      })
+      return
+    }
+
     // ── Queries ──
     if (query.includes('query') && query.includes('MyFavoriteEvents')) {
       const userFavorites = state.favoriteEvents.filter(

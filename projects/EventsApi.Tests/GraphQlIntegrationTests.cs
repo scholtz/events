@@ -3189,6 +3189,122 @@ public sealed class GraphQlIntegrationTests
         Assert.Contains("INVALID_TIMEZONE", errors.ToString());
     }
 
+    [Fact]
+    public async Task TrackDiscoveryAction_RecordsSearchAndFilterActions()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        using var client = factory.CreateClient();
+
+        // Track a SEARCH action
+        using var searchResponse = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation TrackDiscoveryAction($input: TrackDiscoveryActionInput!) {
+              trackDiscoveryAction(input: $input)
+            }
+            """,
+            new
+            {
+                input = new
+                {
+                    actionType = "SEARCH",
+                    activeFilterCount = 1,
+                    resultCount = 5
+                }
+            });
+
+        Assert.True(searchResponse.RootElement.GetProperty("data").GetProperty("trackDiscoveryAction").GetBoolean());
+
+        // Track a FILTER_CHANGE action
+        using var filterResponse = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation TrackDiscoveryAction($input: TrackDiscoveryActionInput!) {
+              trackDiscoveryAction(input: $input)
+            }
+            """,
+            new
+            {
+                input = new
+                {
+                    actionType = "FILTER_CHANGE",
+                    activeFilterCount = 3,
+                    resultCount = 2
+                }
+            });
+
+        Assert.True(filterResponse.RootElement.GetProperty("data").GetProperty("trackDiscoveryAction").GetBoolean());
+
+        // Track a FILTER_CLEAR action
+        using var clearResponse = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation TrackDiscoveryAction($input: TrackDiscoveryActionInput!) {
+              trackDiscoveryAction(input: $input)
+            }
+            """,
+            new
+            {
+                input = new
+                {
+                    actionType = "FILTER_CLEAR",
+                    activeFilterCount = 0,
+                    resultCount = 10
+                }
+            });
+
+        Assert.True(clearResponse.RootElement.GetProperty("data").GetProperty("trackDiscoveryAction").GetBoolean());
+
+        // Track a RESULT_CLICK action
+        using var clickResponse = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation TrackDiscoveryAction($input: TrackDiscoveryActionInput!) {
+              trackDiscoveryAction(input: $input)
+            }
+            """,
+            new
+            {
+                input = new
+                {
+                    actionType = "RESULT_CLICK",
+                    eventSlug = "my-event-slug",
+                    activeFilterCount = 2
+                }
+            });
+
+        Assert.True(clickResponse.RootElement.GetProperty("data").GetProperty("trackDiscoveryAction").GetBoolean());
+    }
+
+    [Fact]
+    public async Task TrackDiscoveryAction_RejectsInvalidActionType()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation TrackDiscoveryAction($input: TrackDiscoveryActionInput!) {
+                  trackDiscoveryAction(input: $input)
+                }
+                """,
+            variables = new
+            {
+                input = new
+                {
+                    actionType = "INVALID_TYPE",
+                    activeFilterCount = 0
+                }
+            }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        Assert.Contains("INVALID_DISCOVERY_ACTION_TYPE", errors.ToString());
+    }
+
     private static DateTime FirstDayOfNextMonthUtc()
     {
         var now = DateTime.UtcNow;
