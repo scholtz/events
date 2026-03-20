@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { formatEventPrice } from '@/stores/events'
 import { useEventsStore } from '@/stores/events'
 import { useFavoritesStore } from '@/stores/favorites'
 import { useAuthStore } from '@/stores/auth'
+import { buildGoogleCalendarUrl, buildOutlookCalendarUrl, downloadIcs, eventToCalendarInput } from '@/composables/useCalendar'
 
 const route = useRoute()
 const eventsStore = useEventsStore()
@@ -131,6 +132,42 @@ function attendanceModeLabel(mode: string | undefined): string {
       return 'In Person'
   }
 }
+
+// ── Add to calendar ──────────────────────────────────────────────────────────
+const calendarMenuOpen = ref(false)
+const calendarAdded = ref(false)
+let calendarConfirmTimer: ReturnType<typeof setTimeout> | undefined
+
+onUnmounted(() => {
+  clearTimeout(calendarConfirmTimer)
+})
+
+function toggleCalendarMenu() {
+  calendarMenuOpen.value = !calendarMenuOpen.value
+}
+
+function closeCalendarMenu() {
+  calendarMenuOpen.value = false
+}
+
+function handleDownloadIcs() {
+  if (!event.value) return
+  downloadIcs(event.value)
+  calendarAdded.value = true
+  closeCalendarMenu()
+  clearTimeout(calendarConfirmTimer)
+  calendarConfirmTimer = setTimeout(() => {
+    calendarAdded.value = false
+  }, 3000)
+}
+
+const googleCalendarUrl = computed(() =>
+  event.value ? buildGoogleCalendarUrl(eventToCalendarInput(event.value)) : '#',
+)
+
+const outlookCalendarUrl = computed(() =>
+  event.value ? buildOutlookCalendarUrl(eventToCalendarInput(event.value)) : '#',
+)
 </script>
 
 <template>
@@ -248,6 +285,60 @@ function attendanceModeLabel(mode: string | undefined): string {
               >
                 Visit Event Page →
               </a>
+
+              <!-- Add to calendar -->
+              <div class="calendar-action" @keydown.escape="closeCalendarMenu">
+                <button
+                  class="btn btn-outline calendar-btn"
+                  :aria-expanded="calendarMenuOpen"
+                  aria-haspopup="menu"
+                  :aria-label="calendarAdded ? 'Added to calendar' : 'Add to calendar'"
+                  @click="toggleCalendarMenu"
+                >
+                  <span aria-hidden="true">📅</span>
+                  {{ calendarAdded ? 'Added to calendar ✓' : 'Add to calendar' }}
+                  <span aria-hidden="true" class="chevron">▾</span>
+                </button>
+
+                <div
+                  v-if="calendarMenuOpen"
+                  class="calendar-menu"
+                  role="menu"
+                  aria-label="Calendar options"
+                  @click.stop
+                >
+                  <button
+                    class="calendar-menu-item"
+                    role="menuitem"
+                    @click="handleDownloadIcs"
+                  >
+                    <span aria-hidden="true">⬇</span>
+                    Download .ics file
+                  </button>
+                  <a
+                    :href="googleCalendarUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="calendar-menu-item"
+                    role="menuitem"
+                    @click="closeCalendarMenu"
+                  >
+                    <span aria-hidden="true">🗓</span>
+                    Google Calendar
+                  </a>
+                  <a
+                    :href="outlookCalendarUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="calendar-menu-item"
+                    role="menuitem"
+                    @click="closeCalendarMenu"
+                  >
+                    <span aria-hidden="true">📆</span>
+                    Outlook
+                  </a>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -754,6 +845,69 @@ function attendanceModeLabel(mode: string | undefined): string {
   .event-map,
   .attendee-context {
     padding: 1.5rem;
+  }
+}
+
+/* Add to calendar */
+.calendar-action {
+  position: relative;
+  display: inline-block;
+}
+
+.calendar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.chevron {
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
+.calendar-menu {
+  position: absolute;
+  top: calc(100% + 0.375rem);
+  left: 0;
+  z-index: 10;
+  min-width: 200px;
+  background: var(--color-surface-raised, var(--color-surface));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+.calendar-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.625rem 1rem;
+  background: transparent;
+  border: none;
+  color: var(--color-text);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  text-align: left;
+  transition: background 0.1s;
+  font-family: inherit;
+}
+
+.calendar-menu-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  text-decoration: none;
+}
+
+.info-section .calendar-action {
+  margin-top: 0.75rem;
+}
+
+@media (max-width: 480px) {
+  .calendar-menu {
+    min-width: 180px;
   }
 }
 </style>
