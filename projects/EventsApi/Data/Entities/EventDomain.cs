@@ -16,10 +16,10 @@ public sealed class EventDomain
     public Guid? CreatedByUserId { get; set; }
     public ApplicationUser? CreatedBy { get; set; }
 
-    // ── Style / design customisation ─────────────────────────────────────
-    /// <summary>CSS hex colour for the primary brand colour, e.g. "#137fec".</summary>
+    // ── Style / design customization ──────────────────────────────────────
+    /// <summary>CSS hex color for the primary brand color, e.g. "#137fec".</summary>
     public string? PrimaryColor { get; set; }
-    /// <summary>CSS hex colour for the accent/secondary colour.</summary>
+    /// <summary>CSS hex color for the accent/secondary color.</summary>
     public string? AccentColor { get; set; }
     /// <summary>Absolute URL to the domain logo image.</summary>
     public string? LogoUrl { get; set; }

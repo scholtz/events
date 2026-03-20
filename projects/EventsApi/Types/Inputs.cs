@@ -90,9 +90,9 @@ public sealed class DomainAdministratorInput
 public sealed class UpdateDomainStyleInput
 {
     public Guid DomainId { get; init; }
-    /// <summary>CSS hex colour for the primary brand colour, e.g. "#137fec".</summary>
+    /// <summary>CSS hex color for the primary brand color, e.g. "#137fec".</summary>
     public string? PrimaryColor { get; init; }
-    /// <summary>CSS hex colour for the accent/secondary colour.</summary>
+    /// <summary>CSS hex color for the accent/secondary color.</summary>
     public string? AccentColor { get; init; }
     /// <summary>Absolute URL to the domain logo image.</summary>
     public string? LogoUrl { get; init; }
