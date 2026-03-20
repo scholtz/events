@@ -150,9 +150,9 @@ test.describe('Organizer analytics dashboard', () => {
     await loginAs(page, user)
     await page.waitForURL(/\/dashboard$/)
 
-    // Should show "No recent saves" for event with no activity
-    await expect(page.locator('.trend--quiet')).toBeVisible()
-    await expect(page.locator('.trend--quiet')).toContainText('No recent saves')
+    // Should show "No recent saves" for event with no activity (saves momentum column)
+    await expect(page.locator('.col-momentum .trend--quiet')).toBeVisible()
+    await expect(page.locator('.col-momentum .trend--quiet')).toContainText('No recent saves')
   })
 
   test('shows low-data guidance when no saves exist for published events', async ({ page }) => {

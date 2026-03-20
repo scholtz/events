@@ -41,9 +41,13 @@ async function dispatchAnalyticsEvent(event: CalendarAnalyticsEvent): Promise<vo
   // Map frontend lowercase provider to backend SCREAMING_SNAKE_CASE
   const provider = event.provider.toUpperCase()
 
-  await gqlRequest<{ trackCalendarAction: boolean }>(TRACK_CALENDAR_ACTION_MUTATION, {
-    input: { eventId: event.eventId, provider },
-  })
+  try {
+    await gqlRequest<{ trackCalendarAction: boolean }>(TRACK_CALENDAR_ACTION_MUTATION, {
+      input: { eventId: event.eventId, provider },
+    })
+  } catch {
+    // Silently swallow analytics failures — never degrade the user experience
+  }
 }
 
 /**
