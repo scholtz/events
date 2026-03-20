@@ -228,10 +228,26 @@ public sealed class Query
 
         var favoriteCountsByEventId = favoriteCounts.ToDictionary(x => x.EventId);
 
+        // Load calendar analytics for all managed events in one query
+        var calendarActions = await dbContext.CalendarAnalyticsActions
+            .AsNoTracking()
+            .Where(a => managedEventIds.Contains(a.EventId))
+            .Select(a => new { a.EventId, a.Provider, a.TriggeredAtUtc })
+            .ToListAsync(cancellationToken);
+
+        var calendarActionsByEventId = calendarActions
+            .GroupBy(a => a.EventId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
         var eventAnalytics = managedEvents
             .Select(e =>
             {
                 var counts = favoriteCountsByEventId.TryGetValue(e.Id, out var c) ? c : null;
+                var calActions = calendarActionsByEventId.TryGetValue(e.Id, out var ca) ? ca : [];
+                var providerBreakdown = calActions
+                    .GroupBy(a => a.Provider)
+                    .Select(g => new CalendarProviderCount(g.Key, g.Count()))
+                    .ToList();
                 return new EventAnalyticsItem(
                     EventId: e.Id,
                     EventName: e.Name,
@@ -240,13 +256,21 @@ public sealed class Query
                     TotalInterestedCount: counts?.Total ?? 0,
                     InterestedLast7Days: counts?.Last7Days ?? 0,
                     InterestedLast30Days: counts?.Last30Days ?? 0,
-                    StartsAtUtc: e.StartsAtUtc);
+                    StartsAtUtc: e.StartsAtUtc,
+                    TotalCalendarActions: calActions.Count,
+                    CalendarActionsLast7Days: calActions.Count(a => a.TriggeredAtUtc >= cutoff7Days),
+                    CalendarActionsLast30Days: calActions.Count(a => a.TriggeredAtUtc >= cutoff30Days),
+                    CalendarActionsByProvider: providerBreakdown);
             })
             .ToList();
 
         var totalInterestedCount = eventAnalytics
             .Where(a => a.Status == EventStatus.Published)
             .Sum(a => a.TotalInterestedCount);
+
+        var totalCalendarActions = eventAnalytics
+            .Where(a => a.Status == EventStatus.Published)
+            .Sum(a => a.TotalCalendarActions);
 
         var availableDomains = await dbContext.Domains
             .AsNoTracking()
@@ -259,6 +283,7 @@ public sealed class Query
             PublishedEvents: managedEvents.Count(catalogEvent => catalogEvent.Status == EventStatus.Published),
             PendingApprovalEvents: managedEvents.Count(catalogEvent => catalogEvent.Status == EventStatus.PendingApproval),
             TotalInterestedCount: totalInterestedCount,
+            TotalCalendarActions: totalCalendarActions,
             ManagedEvents: managedEvents,
             EventAnalytics: eventAnalytics,
             AvailableDomains: availableDomains);

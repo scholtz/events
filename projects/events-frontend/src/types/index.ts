@@ -81,9 +81,16 @@ export interface DashboardOverview {
   publishedEvents: number
   pendingApprovalEvents: number
   totalInterestedCount: number
+  totalCalendarActions: number
   managedEvents: CatalogEvent[]
   eventAnalytics: EventAnalyticsItem[]
   availableDomains: EventDomain[]
+}
+
+/** Matches backend CalendarProviderCount response */
+export interface CalendarProviderCount {
+  provider: string
+  count: number
 }
 
 /** Matches backend EventAnalyticsItem response */
@@ -96,6 +103,10 @@ export interface EventAnalyticsItem {
   interestedLast7Days: number
   interestedLast30Days: number
   startsAtUtc: string
+  totalCalendarActions: number
+  calendarActionsLast7Days: number
+  calendarActionsLast30Days: number
+  calendarActionsByProvider: CalendarProviderCount[]
 }
 
 /** Matches backend AdminOverview response */

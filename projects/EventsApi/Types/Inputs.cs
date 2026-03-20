@@ -84,3 +84,13 @@ public sealed class UpdateUserRoleInput
     public Guid UserId { get; init; }
     public ApplicationUserRole Role { get; init; }
 }
+
+/// <summary>
+/// Input for recording an add-to-calendar action.
+/// Accepted providers: ICS, GOOGLE, OUTLOOK.
+/// </summary>
+public sealed class TrackCalendarActionInput
+{
+    public Guid EventId { get; init; }
+    public required string Provider { get; init; }
+}

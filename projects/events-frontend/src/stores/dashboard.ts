@@ -10,12 +10,15 @@ const DASHBOARD_QUERY = `
       publishedEvents
       pendingApprovalEvents
       totalInterestedCount
+      totalCalendarActions
       managedEvents {
         id name slug status startsAtUtc domain { id name slug }
       }
       eventAnalytics {
         eventId eventName eventSlug status
         totalInterestedCount interestedLast7Days interestedLast30Days
+        totalCalendarActions calendarActionsLast7Days calendarActionsLast30Days
+        calendarActionsByProvider { provider count }
         startsAtUtc
       }
       availableDomains { id name slug subdomain description isActive createdAtUtc }

@@ -12,11 +12,9 @@
  *
  * Privacy: no personal data (user ID, email, IP) is collected here.  Only
  * aggregate product-usage signals are captured.
- *
- * Extension point: replace `dispatchAnalyticsEvent` with a real analytics
- * transport (e.g. POST to /api/analytics, send to a tracking service) when
- * the backend infrastructure is ready.
  */
+
+import { gqlRequest } from '@/lib/graphql'
 
 export type CalendarProvider = 'ics' | 'google' | 'outlook'
 
@@ -27,19 +25,25 @@ export interface CalendarAnalyticsEvent {
   triggeredAtUtc: string
 }
 
+const TRACK_CALENDAR_ACTION_MUTATION = `
+  mutation TrackCalendarAction($input: TrackCalendarActionInput!) {
+    trackCalendarAction(input: $input)
+  }
+`
+
 /**
- * Dispatch an add-to-calendar analytics event.
+ * Dispatch an add-to-calendar analytics event via the GraphQL API.
  *
- * Currently logs to the console in development and is a no-op in production
- * until a real analytics transport is wired in.  The function is async and
- * fire-and-forget — callers MUST NOT await it in the UI event handler.
+ * The function is async and fire-and-forget — callers MUST NOT await it in
+ * the UI event handler.  Failures are silently swallowed.
  */
 async function dispatchAnalyticsEvent(event: CalendarAnalyticsEvent): Promise<void> {
-  // TODO: replace this stub with a real analytics transport.
-  // Example: await fetch('/api/analytics/calendar-action', { method: 'POST', body: JSON.stringify(event) })
-  if (import.meta.env.DEV) {
-    console.debug('[calendar-analytics]', event)
-  }
+  // Map frontend lowercase provider to backend SCREAMING_SNAKE_CASE
+  const provider = event.provider.toUpperCase()
+
+  await gqlRequest<{ trackCalendarAction: boolean }>(TRACK_CALENDAR_ACTION_MUTATION, {
+    input: { eventId: event.eventId, provider },
+  })
 }
 
 /**
