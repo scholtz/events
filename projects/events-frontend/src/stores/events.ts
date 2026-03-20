@@ -18,7 +18,7 @@ const EVENT_FIELDS = `
   submittedAtUtc updatedAtUtc publishedAtUtc
   adminNotes status isFree priceAmount currencyCode domainId mapUrl
   attendanceMode timezone
-  domain { id name slug }
+  domain { id name slug subdomain }
   submittedBy { displayName }
 `
 

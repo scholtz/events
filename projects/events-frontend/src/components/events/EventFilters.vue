@@ -13,6 +13,7 @@ const savedSearchesStore = useSavedSearchesStore()
 
 const savedSearchName = ref('')
 const savingSearch = ref(false)
+const filtersExpanded = ref(false)
 
 // Local refs that hold the raw input values for the two free-text fields.
 // Changes are debounced before being committed to the store so that the
@@ -123,12 +124,19 @@ function clearFilterChip(key: string) {
     <div class="filters-header">
       <div>
         <h2>Advanced discovery</h2>
-        <p>Combine keyword, timing, location, domain, and price filters in one search.</p>
+        <p v-if="filtersExpanded">
+          Combine keyword, timing, location, domain, and price filters in one search.
+        </p>
       </div>
-      <button class="btn btn-outline" @click="eventsStore.clearFilters()">Clear all</button>
+      <div class="filters-header-actions">
+        <button class="btn btn-outline" @click="eventsStore.clearFilters()">Clear all</button>
+        <button class="btn btn-outline toggle-filters-btn" @click="filtersExpanded = !filtersExpanded">
+          {{ filtersExpanded ? 'Hide filters' : 'Show filters' }}
+        </button>
+      </div>
     </div>
 
-    <div class="filters-grid">
+    <div v-show="filtersExpanded" class="filters-grid">
       <div class="form-group filter-search">
         <label class="form-label" for="filter-search">Keyword</label>
         <input
@@ -297,7 +305,7 @@ function clearFilterChip(key: string) {
       </button>
     </div>
 
-    <div class="saved-searches card-section">
+    <div v-show="filtersExpanded" class="saved-searches card-section">
       <div class="saved-searches-header">
         <div>
           <h3>Saved searches</h3>
@@ -373,6 +381,16 @@ function clearFilterChip(key: string) {
   justify-content: space-between;
   gap: 1rem;
   align-items: flex-start;
+}
+
+.filters-header-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.toggle-filters-btn {
+  white-space: nowrap;
 }
 
 .filters-header h2,

@@ -18,6 +18,23 @@ const { trackResultClick } = useDiscoveryAnalytics()
 
 const favoriting = ref(false)
 
+function domainUrl(event: CatalogEvent): string {
+  const subdomain = event.domain?.subdomain
+  if (!subdomain) return '/'
+  const hostname = typeof window !== 'undefined' ? window.location.hostname : ''
+  // In development on localhost, link to /?domain=slug instead
+  if (hostname === 'localhost' || /^\d+\.\d+\.\d+\.\d+$/.test(hostname)) {
+    return `/?domain=${event.domain.slug}`
+  }
+  // Build subdomain URL: e.g. https://tech.events.biatec.io
+  const parts = hostname.split('.')
+  // Remove existing subdomain prefix if present (4+ parts means there's already a subdomain)
+  const baseParts = parts.length > 3 ? parts.slice(1) : parts
+  const baseDomain = baseParts.join('.')
+  const protocol = typeof window !== 'undefined' ? window.location.protocol : 'https:'
+  return `${protocol}//${subdomain}.${baseDomain}/`
+}
+
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('en-US', {
     month: 'short',
@@ -72,9 +89,9 @@ async function handleFavoriteToggle() {
   <article class="event-card card">
     <div class="event-card-body">
       <div class="event-meta">
-        <span class="badge badge-primary">
+        <a :href="domainUrl(event)" class="badge badge-primary domain-link">
           {{ event.domain?.name ?? 'Event' }}
-        </span>
+        </a>
         <div class="event-meta-right">
           <span class="badge badge-mode">{{ attendanceModeLabel }}</span>
           <span class="event-date">{{ formatDate(event.startsAtUtc) }}</span>
@@ -183,6 +200,17 @@ async function handleFavoriteToggle() {
   color: var(--color-primary);
   font-weight: 600;
   letter-spacing: 0.03em;
+}
+
+.domain-link {
+  text-decoration: none;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.domain-link:hover {
+  opacity: 0.8;
+  text-decoration: none;
 }
 
 .event-date {
