@@ -271,4 +271,52 @@ test.describe('Favorites', () => {
     // Event should appear in favorites
     await expect(page.locator('.favorite-item', { hasText: 'Mobile Summit' })).toBeVisible()
   })
+
+  test('attendance mode badge is shown for each saved event', async ({ page }) => {
+    const admin = makeAdminUser()
+    const onlineEvent = makeApprovedEvent({
+      id: 'ev-online',
+      name: 'Online Summit',
+      slug: 'online-summit',
+      attendanceMode: 'ONLINE',
+      startsAtUtc: '2030-07-01T09:00:00Z',
+      endsAtUtc: '2030-07-01T17:00:00Z',
+    })
+    const hybridEvent = makeApprovedEvent({
+      id: 'ev-hybrid',
+      name: 'Hybrid Summit',
+      slug: 'hybrid-summit',
+      attendanceMode: 'HYBRID',
+      startsAtUtc: '2030-08-01T09:00:00Z',
+      endsAtUtc: '2030-08-01T17:00:00Z',
+    })
+    const inPersonEvent = makeApprovedEvent({
+      id: 'ev-inperson',
+      name: 'In-Person Summit',
+      slug: 'inperson-summit',
+      attendanceMode: 'IN_PERSON',
+      startsAtUtc: '2030-09-01T09:00:00Z',
+      endsAtUtc: '2030-09-01T17:00:00Z',
+    })
+    const state = setupMockApi(page, {
+      users: [admin],
+      domains: [makeTechDomain()],
+      events: [onlineEvent, hybridEvent, inPersonEvent],
+    })
+
+    state.favoriteEvents = [
+      { id: 'fav-1', userId: admin.id, eventId: onlineEvent.id, createdAtUtc: new Date().toISOString() },
+      { id: 'fav-2', userId: admin.id, eventId: hybridEvent.id, createdAtUtc: new Date().toISOString() },
+      { id: 'fav-3', userId: admin.id, eventId: inPersonEvent.id, createdAtUtc: new Date().toISOString() },
+    ]
+    state.currentUserId = admin.id
+    state.currentToken = `token-${admin.id}`
+
+    await loginAs(page, admin)
+    await page.goto('/favorites')
+
+    await expect(page.locator('.favorite-item', { hasText: 'Online Summit' }).locator('.badge-mode')).toContainText('Online')
+    await expect(page.locator('.favorite-item', { hasText: 'Hybrid Summit' }).locator('.badge-mode')).toContainText('Hybrid')
+    await expect(page.locator('.favorite-item', { hasText: 'In-Person Summit' }).locator('.badge-mode')).toContainText('In Person')
+  })
 })
