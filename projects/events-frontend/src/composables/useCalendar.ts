@@ -116,8 +116,8 @@ export function eventToCalendarInput(event: CatalogEvent): CalendarEventInput {
     // For online events, the URL is already the location — no need to repeat in description
   } else if (isHybrid && event.eventUrl) {
     description += `\n\nJoin online: ${event.eventUrl}`
-  }
-  if (event.eventUrl) {
+    description += `\n\nEvent page: ${event.eventUrl}`
+  } else if (event.eventUrl) {
     description += `\n\nEvent page: ${event.eventUrl}`
   }
   description = description.trim()

@@ -16,4 +16,8 @@ export default defineConfig(({ isSsrBuild }) => ({
     emptyOutDir: true,
     outDir: isSsrBuild ? 'dist/server' : 'dist',
   },
+  test: {
+    environment: 'node',
+    include: ['src/**/*.{test,spec}.ts'],
+  },
 }))
