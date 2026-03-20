@@ -473,6 +473,38 @@ test.describe('Domain filter', () => {
     await expect(page.locator('.event-card', { hasText: 'Tech Event' })).toBeVisible()
     await expect(page.locator('.event-card', { hasText: 'Crypto Event' })).toBeHidden()
   })
+
+  test('subdomain page shows a visible link back to the main all-events page', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain(), makeCryptoDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-tech',
+          name: 'Tech Event',
+          slug: 'tech-event',
+          domain: { id: 'dom-tech', name: 'Technology', slug: 'technology', subdomain: 'tech' },
+          domainId: 'dom-tech',
+        }),
+        makeApprovedEvent({
+          id: 'e-crypto',
+          name: 'Crypto Event',
+          slug: 'crypto-event',
+          domain: { id: 'dom-crypto', name: 'Crypto', slug: 'crypto', subdomain: 'crypto' },
+          domainId: 'dom-crypto',
+        }),
+      ],
+    })
+
+    await page.goto('/?domain=crypto')
+
+    await expect(page.getByRole('heading', { name: 'Crypto Events' })).toBeVisible()
+    const allEventsLink = page.getByRole('link', { name: 'All events on events.localhost' })
+    await expect(allEventsLink).toBeVisible()
+
+    await allEventsLink.click()
+    await expect(page).toHaveURL(/\/$/)
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Discover Events')
+  })
 })
 
 // ---------------------------------------------------------------------------

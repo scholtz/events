@@ -11,7 +11,7 @@ import {
 } from '@/stores/events'
 import { useSavedSearchesStore } from '@/stores/savedSearches'
 import { useDiscoveryAnalytics } from '@/composables/useDiscoveryAnalytics'
-import { useSubdomain } from '@/composables/useSubdomain'
+import { buildMainSiteUrl, formatMainSiteHost, useSubdomain } from '@/composables/useSubdomain'
 import EventCard from '@/components/events/EventCard.vue'
 import EventFilters from '@/components/events/EventFilters.vue'
 
@@ -22,6 +22,8 @@ const eventsStore = useEventsStore()
 const savedSearchesStore = useSavedSearchesStore()
 const { trackSearch, trackFilterChange, trackFilterClear } = useDiscoveryAnalytics()
 const { activeDomain, isSubdomainView } = useSubdomain()
+const mainSiteUrl = computed(() => buildMainSiteUrl())
+const mainSiteHost = computed(() => formatMainSiteHost())
 
 const syncingFromRoute = ref(false)
 
@@ -138,9 +140,14 @@ const emptyStateMessage = computed(() => {
 <template>
   <div class="home-view">
     <section v-if="isSubdomainView && activeDomain" class="subdomain-header">
-      <div class="container">
-        <h1>{{ activeDomain.name }} Events</h1>
-        <p v-if="activeDomain.description">{{ activeDomain.description }}</p>
+      <div class="container subdomain-header-content">
+        <div>
+          <h1>{{ activeDomain.name }} Events</h1>
+          <p v-if="activeDomain.description">{{ activeDomain.description }}</p>
+        </div>
+        <a :href="mainSiteUrl" class="main-site-link">
+          All events on {{ mainSiteHost }}
+        </a>
       </div>
     </section>
     <section v-else class="hero">
@@ -269,6 +276,24 @@ const emptyStateMessage = computed(() => {
 .subdomain-header p {
   color: var(--color-text-secondary);
   font-size: 0.9375rem;
+}
+
+.subdomain-header-content {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.main-site-link {
+  flex-shrink: 0;
+  color: var(--color-primary);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.main-site-link:hover {
+  text-decoration: underline;
 }
 
 .hero-content {
@@ -460,6 +485,11 @@ const emptyStateMessage = computed(() => {
 }
 
 @media (max-width: 640px) {
+  .subdomain-header-content {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
   .hero-text h1 {
     font-size: 2rem;
   }
