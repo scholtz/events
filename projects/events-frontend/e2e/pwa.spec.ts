@@ -6,19 +6,29 @@
  *  2. The offline banner appears when the network is blocked and no cached data
  *     is available, and disappears when connectivity is restored.
  *  3. The discovery page still loads normally when online.
- *  4. Previously visited event details show a graceful fallback when the
- *     network is blocked (no SW cache in test environment).
- *  5. The update prompt (`.update-banner`) is hidden during a normal online
+ *  4. The service worker caches GraphQL query responses in IDB and serves them
+ *     when the network becomes unavailable (production build only).
+ *  5. Previously visited event details show a graceful fallback when the
+ *     network is blocked and no IDB cache is available.
+ *  6. The update prompt (`.update-banner`) is hidden during a normal online
  *     session (it only shows when `updateAvailable` becomes true at runtime).
- *  6. The offline banner and update prompt are accessible via ARIA attributes.
- *  7. Key UI is still functional on a mobile viewport.
+ *  7. The offline banner and update prompt are accessible via ARIA attributes.
+ *  8. Key UI is still functional on a mobile viewport.
  *
- * Note on service-worker behaviour in tests:
- *  Playwright tests run against the preview/dev server.  Service workers are
- *  not fully exercised in this environment (they are production-only).  Instead
- *  we test the observable UI behaviour that the usePwa composable drives:
- *  - offline/online state detection via window.navigator.onLine
- *  - route-level GraphQL failure falls back to cached-or-error UX
+ * ## Service-worker caching tests (CI / production build)
+ *
+ * The "SW caches GraphQL responses in IDB" test requires the production build
+ * served by `vite preview` because the service worker (`dist/sw.js`) is only
+ * generated during `npm run build:client`.  In dev mode (`vite dev`) no SW is
+ * built, so the test is skipped automatically.
+ *
+ * How it works:
+ *  - `page.route()` intercepts ALL network requests, including the SW's
+ *    internal `fetch()` calls.  So the mock API responses are visible to the
+ *    SW and get stored in IDB.
+ *  - After the SW takes control, GraphQL is blocked.  The SW detects the
+ *    network failure and falls back to IDB, serving the previously cached
+ *    response without any degradation to the UI.
  */
 
 import { expect, test } from '@playwright/test'
@@ -107,6 +117,161 @@ test.describe('PWA online experience', () => {
 
     // The update banner should not be visible when no SW update is pending
     await expect(page.locator('.update-banner')).toBeHidden()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Service-worker GraphQL caching (production build only)
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('PWA service worker caching', () => {
+  /**
+   * Verifies the full SW offline-cache flow for discovery data:
+   *
+   *  1. Load the app → SW installs, clientsClaim() makes it take control.
+   *  2. Reload → SW intercepts the GraphQL POST fetch, calls the network
+   *     (Playwright's page.route mock), and writes the response to IDB.
+   *  3. Block GraphQL (new page.route takes precedence).
+   *  4. Reload → SW intercepts, network fails, SW serves from IDB.
+   *  5. Discovery cards are still visible from cached data.
+   *
+   * This test is skipped in dev mode because the SW is only built during
+   * `npm run build:client` (CI runs `npm run build:client && npm run preview`).
+   */
+  test('discovery data is served from IDB when network fails after first visit', async ({
+    page,
+  }) => {
+    // Skip in dev mode where no SW is built.
+    // In CI the server is the Vite preview of the production build.
+    test.skip(
+      !process.env.CI,
+      'Requires production build (dist/sw.js). Run with CI=true or npm run build:client && npm run preview.',
+    )
+
+    const eventName = 'SW IDB Cached Event'
+    const event = makeApprovedEvent({ name: eventName, slug: 'sw-idb-cached' })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+
+    // ── Visit 1: page loads, SW installs and activates (clientsClaim) ──
+    await page.goto('/')
+    await expect(page.locator('.event-card', { hasText: eventName })).toBeVisible()
+
+    // Wait for the SW to take control of the page.
+    // clientsClaim() in src/sw.ts makes the activated SW immediately claim
+    // all existing clients, so navigator.serviceWorker.controller becomes
+    // non-null shortly after the activate event.
+    await page.waitForFunction(
+      () => navigator.serviceWorker?.controller !== null,
+      { timeout: 10_000 },
+    )
+
+    // ── Visit 2: SW is in control and intercepts the GraphQL fetch ──
+    // The SW calls fetch(request) internally; Playwright's page.route mock
+    // handles that sub-request and returns the mock JSON.  The SW writes
+    // the response to IDB before returning it to the app.
+    await page.reload()
+    await expect(page.locator('.event-card', { hasText: eventName })).toBeVisible()
+
+    // Verify the IDB cache was populated.
+    const cacheEntries = await page.evaluate(async (): Promise<number> => {
+      return new Promise((resolve) => {
+        const req = indexedDB.open('gql-network-cache', 1)
+        req.onsuccess = () => {
+          const db = req.result
+          if (!db.objectStoreNames.contains('responses')) {
+            resolve(0)
+            return
+          }
+          const tx = db.transaction('responses', 'readonly')
+          const countReq = tx.objectStore('responses').count()
+          countReq.onsuccess = () => resolve(countReq.result)
+          countReq.onerror = () => resolve(0)
+        }
+        req.onerror = () => resolve(0)
+      })
+    })
+    // At least the events query (and possibly the domains query) should be cached
+    expect(cacheEntries).toBeGreaterThan(0)
+
+    // ── Block GraphQL (simulates the network being unavailable) ──
+    // Routes are evaluated LIFO in Playwright, so this abort handler takes
+    // precedence over the mock route registered by setupMockApi above.
+    await page.route('**/graphql', (route) => route.abort())
+
+    // ── Visit 3: SW serves from IDB, no live network needed ──
+    await page.reload()
+
+    // The event cards should still be visible, served entirely from IDB cache
+    await expect(page.locator('.event-card', { hasText: eventName })).toBeVisible({ timeout: 10_000 })
+  })
+
+  /**
+   * Verifies that GraphQL mutations are NEVER cached by the SW.
+   * After logging in (mutation), the login mutation response must not be
+   * stored in IDB.  We check the IDB count before and after a mutation call
+   * and verify it did not increase.
+   *
+   * This test is skipped in dev mode (same reason as above).
+   */
+  test('mutations are not cached in IDB', async ({ page }) => {
+    test.skip(
+      !process.env.CI,
+      'Requires production build (dist/sw.js).',
+    )
+
+    setupMockApi(page, { domains: [makeTechDomain()] })
+
+    // Load once to install SW
+    await page.goto('/')
+    await page.waitForFunction(
+      () => navigator.serviceWorker?.controller !== null,
+      { timeout: 10_000 },
+    )
+    await page.reload()
+
+    // Count IDB entries before mutation
+    const countBefore = await page.evaluate(async (): Promise<number> => {
+      return new Promise((resolve) => {
+        const req = indexedDB.open('gql-network-cache', 1)
+        req.onsuccess = () => {
+          const db = req.result
+          if (!db.objectStoreNames.contains('responses')) { resolve(0); return }
+          const tx = db.transaction('responses', 'readonly')
+          const c = tx.objectStore('responses').count()
+          c.onsuccess = () => resolve(c.result)
+          c.onerror = () => resolve(0)
+        }
+        req.onerror = () => resolve(0)
+      })
+    })
+
+    // Navigate to login page and submit a mutation (Login)
+    await page.goto('/login')
+    await page.getByLabel('Email').fill('admin@example.com')
+    await page.getByLabel('Password').fill('password')
+    // Wait for the mutation response to complete before checking IDB
+    const responseWait = page.waitForResponse((r) => r.url().includes('graphql'))
+    await page.getByRole('button', { name: 'Login' }).click()
+    await responseWait
+
+    // Count IDB entries after mutation
+    const countAfter = await page.evaluate(async (): Promise<number> => {
+      return new Promise((resolve) => {
+        const req = indexedDB.open('gql-network-cache', 1)
+        req.onsuccess = () => {
+          const db = req.result
+          if (!db.objectStoreNames.contains('responses')) { resolve(0); return }
+          const tx = db.transaction('responses', 'readonly')
+          const c = tx.objectStore('responses').count()
+          c.onsuccess = () => resolve(c.result)
+          c.onerror = () => resolve(0)
+        }
+        req.onerror = () => resolve(0)
+      })
+    })
+
+    // The mutation response must NOT have been added to IDB
+    expect(countAfter).toBe(countBefore)
   })
 })
 

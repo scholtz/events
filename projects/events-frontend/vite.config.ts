@@ -19,50 +19,17 @@ export default defineConfig(({ isSsrBuild }) => ({
             // in src/composables/usePwa.ts, so disable auto-injection here.
             registerType: 'prompt',
             injectRegister: null,
-            // Use workbox for proven, bounded caching strategies.
-            workbox: {
-              // Cache the app shell (HTML entry, JS/CSS bundles, fonts).
+            // injectManifest mode: we supply a custom src/sw.ts that workbox
+            // compiles and injects the precache manifest into.  This is
+            // required because our GraphQL caching strategy uses IDB (POST
+            // responses cannot be stored in the Cache Storage API, which only
+            // supports GET responses).
+            strategies: 'injectManifest',
+            srcDir: 'src',
+            filename: 'sw.ts',
+            injectManifest: {
+              // Glob patterns for assets to precache (app shell).
               globPatterns: ['**/*.{js,css,html,ico,svg,woff2}'],
-              // Limit runtime cache sizes to avoid unbounded storage growth.
-              runtimeCaching: [
-                {
-                  // GraphQL API: network-first so users always get fresh data;
-                  // fall back to cache when offline. TTL is 1 hour so cached
-                  // discovery results are clearly bounded and not stale forever.
-                  urlPattern: ({ url }) => url.pathname === '/graphql',
-                  handler: 'NetworkFirst',
-                  options: {
-                    cacheName: 'graphql-cache',
-                    networkTimeoutSeconds: 5,
-                    expiration: {
-                      maxEntries: 50,
-                      maxAgeSeconds: 60 * 60, // 1 hour
-                    },
-                    cacheableResponse: { statuses: [0, 200] },
-                  },
-                },
-                {
-                  // Google Fonts stylesheets – stale-while-revalidate so the
-                  // page loads even offline after the first visit.
-                  urlPattern: /^https:\/\/fonts\.googleapis\.com/,
-                  handler: 'StaleWhileRevalidate',
-                  options: {
-                    cacheName: 'google-fonts-stylesheets',
-                    expiration: { maxEntries: 4, maxAgeSeconds: 60 * 60 * 24 * 7 },
-                  },
-                },
-                {
-                  // Google Fonts files (woff2) – cache-first because font
-                  // binaries are content-addressed and never change for a URL.
-                  urlPattern: /^https:\/\/fonts\.gstatic\.com/,
-                  handler: 'CacheFirst',
-                  options: {
-                    cacheName: 'google-fonts-webfonts',
-                    expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 },
-                    cacheableResponse: { statuses: [0, 200] },
-                  },
-                },
-              ],
             },
             manifest: {
               name: 'Events Platform',
