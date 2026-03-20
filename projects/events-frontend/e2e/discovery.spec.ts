@@ -339,6 +339,73 @@ test.describe('URL-persisted filter state', () => {
     // Filter input reflects the URL value
     await expect(page.getByLabel('Location')).toHaveValue('Prague')
   })
+
+  test('browser back/forward navigation restores filter state correctly', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-free', name: 'Free Meetup', slug: 'free-meetup', isFree: true, priceAmount: 0 }),
+        makeApprovedEvent({
+          id: 'e-paid',
+          name: 'Paid Conference',
+          slug: 'paid-conference',
+          isFree: false,
+          priceAmount: 99,
+        }),
+      ],
+    })
+
+    // Start on unfiltered home page — both events visible
+    await page.goto('/')
+    await expect(page.locator('.event-card', { hasText: 'Free Meetup' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Paid Conference' })).toBeVisible()
+
+    // Navigate to a filtered URL (free only)
+    await page.goto('/?price=free')
+    await expect(page.locator('.event-card', { hasText: 'Free Meetup' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Paid Conference' })).toBeHidden()
+    await expect(page.locator('.filter-chip', { hasText: 'Price: Free' })).toBeVisible()
+
+    // Go back — both events should be visible again (no price filter)
+    await page.goBack()
+    await expect(page).not.toHaveURL(/price=/)
+    await expect(page.locator('.event-card', { hasText: 'Free Meetup' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Paid Conference' })).toBeVisible()
+    await expect(page.locator('.filter-chip')).toHaveCount(0)
+
+    // Go forward — filter is restored
+    await page.goForward()
+    await expect(page).toHaveURL(/price=free/)
+    await expect(page.locator('.event-card', { hasText: 'Free Meetup' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Paid Conference' })).toBeHidden()
+    await expect(page.locator('.filter-chip', { hasText: 'Price: Free' })).toBeVisible()
+  })
+
+  test('navigating to event detail and back preserves the active filter', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-prague', name: 'Prague Summit', slug: 'prague-summit', city: 'Prague' }),
+        makeApprovedEvent({ id: 'e-brno', name: 'Brno Meetup', slug: 'brno-meetup', city: 'Brno' }),
+      ],
+    })
+
+    // Navigate to filtered list
+    await page.goto('/?location=Prague')
+    await expect(page.locator('.event-card', { hasText: 'Prague Summit' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Brno Meetup' })).toBeHidden()
+
+    // Click through to event detail
+    await page.locator('.event-card', { hasText: 'Prague Summit' }).getByRole('link', { name: 'View details' }).click()
+    await expect(page).toHaveURL(/\/event\/prague-summit$/)
+
+    // Go back — filtered list should be restored
+    await page.goBack()
+    await expect(page).toHaveURL(/location=Prague/)
+    await expect(page.locator('.event-card', { hasText: 'Prague Summit' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Brno Meetup' })).toBeHidden()
+    await expect(page.locator('.filter-chip', { hasText: /location/i })).toBeVisible()
+  })
 })
 
 // ---------------------------------------------------------------------------
