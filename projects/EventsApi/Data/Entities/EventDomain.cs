@@ -12,6 +12,23 @@ public sealed class EventDomain
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
+    /// <summary>Who first created this domain/tag. Null for legacy seed data.</summary>
+    public Guid? CreatedByUserId { get; set; }
+    public ApplicationUser? CreatedBy { get; set; }
+
+    // ── Style / design customisation ─────────────────────────────────────
+    /// <summary>CSS hex colour for the primary brand colour, e.g. "#137fec".</summary>
+    public string? PrimaryColor { get; set; }
+    /// <summary>CSS hex colour for the accent/secondary colour.</summary>
+    public string? AccentColor { get; set; }
+    /// <summary>Absolute URL to the domain logo image.</summary>
+    public string? LogoUrl { get; set; }
+    /// <summary>Absolute URL to the domain banner/hero image.</summary>
+    public string? BannerUrl { get; set; }
+
     [GraphQLIgnore]
     public List<CatalogEvent> Events { get; set; } = [];
+
+    [GraphQLIgnore]
+    public List<DomainAdministrator> Administrators { get; set; } = [];
 }

@@ -201,6 +201,7 @@ public sealed class Mutation
     [Authorize(Policy = Policies.Admin)]
     public async Task<EventDomain> UpsertDomainAsync(
         DomainInput input,
+        ClaimsPrincipal claimsPrincipal,
         [Service] AppDbContext dbContext,
         CancellationToken cancellationToken)
     {
@@ -220,10 +221,19 @@ public sealed class Mutation
                 Slug = slug,
                 Subdomain = subdomain,
                 Description = input.Description?.Trim(),
-                IsActive = input.IsActive
+                IsActive = input.IsActive,
+                CreatedByUserId = claimsPrincipal.GetRequiredUserId()
             };
 
             dbContext.Domains.Add(existingDomain);
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            // The creator automatically becomes the first domain administrator
+            dbContext.DomainAdministrators.Add(new DomainAdministrator
+            {
+                DomainId = existingDomain.Id,
+                UserId = claimsPrincipal.GetRequiredUserId()
+            });
         }
         else
         {
@@ -260,6 +270,103 @@ public sealed class Mutation
         user.Role = input.Role;
         await dbContext.SaveChangesAsync(cancellationToken);
         return user;
+    }
+
+    /// <summary>
+    /// Adds a user as an administrator of a domain/tag.
+    /// Only global admins or existing domain administrators can call this.
+    /// </summary>
+    [Authorize]
+    public async Task<DomainAdministrator> AddDomainAdministratorAsync(
+        DomainAdministratorInput input,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        await EnsureDomainAdminOrGlobalAdminAsync(input.DomainId, claimsPrincipal, dbContext, cancellationToken);
+
+        var domain = await dbContext.Domains.SingleOrDefaultAsync(d => d.Id == input.DomainId, cancellationToken)
+            ?? throw CreateError("Domain was not found.", "DOMAIN_NOT_FOUND");
+
+        var user = await dbContext.Users.SingleOrDefaultAsync(u => u.Id == input.UserId, cancellationToken)
+            ?? throw CreateError("User was not found.", "USER_NOT_FOUND");
+
+        var existing = await dbContext.DomainAdministrators.SingleOrDefaultAsync(
+            da => da.DomainId == input.DomainId && da.UserId == input.UserId,
+            cancellationToken);
+
+        if (existing is not null)
+        {
+            return existing;
+        }
+
+        var domainAdmin = new DomainAdministrator
+        {
+            DomainId = domain.Id,
+            UserId = user.Id
+        };
+
+        dbContext.DomainAdministrators.Add(domainAdmin);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return domainAdmin;
+    }
+
+    /// <summary>
+    /// Removes a user from the administrators of a domain/tag.
+    /// Only global admins or existing domain administrators can call this.
+    /// </summary>
+    [Authorize]
+    public async Task<bool> RemoveDomainAdministratorAsync(
+        DomainAdministratorInput input,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        await EnsureDomainAdminOrGlobalAdminAsync(input.DomainId, claimsPrincipal, dbContext, cancellationToken);
+
+        var existing = await dbContext.DomainAdministrators.SingleOrDefaultAsync(
+            da => da.DomainId == input.DomainId && da.UserId == input.UserId,
+            cancellationToken)
+            ?? throw CreateError("Domain administrator assignment was not found.", "DOMAIN_ADMIN_NOT_FOUND");
+
+        dbContext.DomainAdministrators.Remove(existing);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    /// <summary>
+    /// Updates the visual style/branding of a domain.
+    /// Only global admins or domain administrators can call this.
+    /// </summary>
+    [Authorize]
+    public async Task<EventDomain> UpdateDomainStyleAsync(
+        UpdateDomainStyleInput input,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        await EnsureDomainAdminOrGlobalAdminAsync(input.DomainId, claimsPrincipal, dbContext, cancellationToken);
+
+        var domain = await dbContext.Domains.SingleOrDefaultAsync(d => d.Id == input.DomainId, cancellationToken)
+            ?? throw CreateError("Domain was not found.", "DOMAIN_NOT_FOUND");
+
+        if (input.LogoUrl is not null && !string.IsNullOrWhiteSpace(input.LogoUrl) && !Uri.TryCreate(input.LogoUrl, UriKind.Absolute, out _))
+        {
+            throw CreateError("Logo URL must be an absolute URL.", "INVALID_LOGO_URL");
+        }
+
+        if (input.BannerUrl is not null && !string.IsNullOrWhiteSpace(input.BannerUrl) && !Uri.TryCreate(input.BannerUrl, UriKind.Absolute, out _))
+        {
+            throw CreateError("Banner URL must be an absolute URL.", "INVALID_BANNER_URL");
+        }
+
+        domain.PrimaryColor = NormalizeOptionalValue(input.PrimaryColor);
+        domain.AccentColor = NormalizeOptionalValue(input.AccentColor);
+        domain.LogoUrl = NormalizeOptionalValue(input.LogoUrl);
+        domain.BannerUrl = NormalizeOptionalValue(input.BannerUrl);
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return domain;
     }
 
     [Authorize]
@@ -534,6 +641,34 @@ public sealed class Mutation
 
     private static GraphQLException CreateError(string message, string code)
         => new(ErrorBuilder.New().SetMessage(message).SetCode(code).Build());
+
+    /// <summary>
+    /// Verifies the calling user is either a global admin or a domain administrator
+    /// for the given domain.  Throws FORBIDDEN if neither.
+    /// </summary>
+    private static async Task EnsureDomainAdminOrGlobalAdminAsync(
+        Guid domainId,
+        ClaimsPrincipal claimsPrincipal,
+        AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        if (claimsPrincipal.IsAdmin())
+        {
+            return;
+        }
+
+        var currentUserId = claimsPrincipal.GetRequiredUserId();
+        var isDomainAdmin = await dbContext.DomainAdministrators.AnyAsync(
+            da => da.DomainId == domainId && da.UserId == currentUserId,
+            cancellationToken);
+
+        if (!isDomainAdmin)
+        {
+            throw CreateError(
+                "You must be a global administrator or a domain administrator to perform this action.",
+                "FORBIDDEN");
+        }
+    }
 
     private static async Task<string> BuildUniqueEventSlugAsync(
         AppDbContext dbContext,

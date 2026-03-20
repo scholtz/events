@@ -79,6 +79,27 @@ public sealed class DomainInput
     public bool IsActive { get; init; } = true;
 }
 
+/// <summary>Input for adding or removing a domain administrator.</summary>
+public sealed class DomainAdministratorInput
+{
+    public Guid DomainId { get; init; }
+    public Guid UserId { get; init; }
+}
+
+/// <summary>Input for updating a domain's visual style/branding.</summary>
+public sealed class UpdateDomainStyleInput
+{
+    public Guid DomainId { get; init; }
+    /// <summary>CSS hex colour for the primary brand colour, e.g. "#137fec".</summary>
+    public string? PrimaryColor { get; init; }
+    /// <summary>CSS hex colour for the accent/secondary colour.</summary>
+    public string? AccentColor { get; init; }
+    /// <summary>Absolute URL to the domain logo image.</summary>
+    public string? LogoUrl { get; init; }
+    /// <summary>Absolute URL to the domain banner/hero image.</summary>
+    public string? BannerUrl { get; init; }
+}
+
 public sealed class UpdateUserRoleInput
 {
     public Guid UserId { get; init; }

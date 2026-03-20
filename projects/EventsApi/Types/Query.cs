@@ -142,6 +142,43 @@ public sealed class Query
                 domain => domain.Subdomain == subdomain.Trim().ToLowerInvariant() && domain.IsActive,
                 cancellationToken);
 
+    /// <summary>
+    /// Returns the administrators assigned to a domain/tag.
+    /// Available to global admins and domain administrators.
+    /// </summary>
+    [Authorize]
+    public async Task<IReadOnlyList<DomainAdministrator>> GetDomainAdministratorsAsync(
+        Guid domainId,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        if (!claimsPrincipal.IsAdmin())
+        {
+            var currentUserId = claimsPrincipal.GetRequiredUserId();
+            var isDomainAdmin = await dbContext.DomainAdministrators.AnyAsync(
+                da => da.DomainId == domainId && da.UserId == currentUserId,
+                cancellationToken);
+
+            if (!isDomainAdmin)
+            {
+                throw new GraphQLException(
+                    ErrorBuilder.New()
+                        .SetMessage("You must be a global administrator or a domain administrator to view this.")
+                        .SetCode("FORBIDDEN")
+                        .Build());
+            }
+        }
+
+        return await dbContext.DomainAdministrators
+            .AsNoTracking()
+            .Include(da => da.User)
+            .Include(da => da.Domain)
+            .Where(da => da.DomainId == domainId)
+            .OrderBy(da => da.User.DisplayName)
+            .ToListAsync(cancellationToken);
+    }
+
     [Authorize]
     public async Task<ApplicationUser> GetMeAsync(
         ClaimsPrincipal claimsPrincipal,
