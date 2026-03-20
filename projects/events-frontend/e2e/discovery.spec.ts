@@ -1382,7 +1382,7 @@ test.describe('Discovery analytics instrumentation', () => {
 
     const analyticsRequest = waitForDiscoveryAnalytics(page, 'RESULT_CLICK')
     await page.locator('.event-card', { hasText: 'Clickable Event' }).getByRole('link', { name: 'View details' }).click()
-    await analyticsRequest
+    expect(await analyticsRequest).toBeDefined()
   })
 
   test('RESULT_CLICK fires even when active filters are applied', async ({ page }) => {
@@ -1396,7 +1396,7 @@ test.describe('Discovery analytics instrumentation', () => {
 
     const analyticsRequest = waitForDiscoveryAnalytics(page, 'RESULT_CLICK')
     await page.locator('.event-card', { hasText: 'Online Workshop' }).getByRole('link', { name: 'View details' }).click()
-    await analyticsRequest
+    expect(await analyticsRequest).toBeDefined()
   })
 
   test('SEARCH fires when keyword filter is typed', async ({ page }) => {
@@ -1410,7 +1410,7 @@ test.describe('Discovery analytics instrumentation', () => {
 
     const analyticsRequest = waitForDiscoveryAnalytics(page, 'SEARCH')
     await page.getByLabel('Keyword').fill('summit')
-    await analyticsRequest
+    expect(await analyticsRequest).toBeDefined()
   })
 
   test('FILTER_CHANGE fires when attendance mode select is changed', async ({ page }) => {
@@ -1426,7 +1426,7 @@ test.describe('Discovery analytics instrumentation', () => {
 
     const analyticsRequest = waitForDiscoveryAnalytics(page, 'FILTER_CHANGE')
     await page.locator('select#filter-attendance-mode').selectOption('ONLINE')
-    await analyticsRequest
+    expect(await analyticsRequest).toBeDefined()
   })
 
   test('FILTER_CLEAR fires when "Clear all" is clicked with active filters', async ({ page }) => {
@@ -1441,6 +1441,6 @@ test.describe('Discovery analytics instrumentation', () => {
 
     const analyticsRequest = waitForDiscoveryAnalytics(page, 'FILTER_CLEAR')
     await page.getByRole('button', { name: 'Clear all' }).click()
-    await analyticsRequest
+    expect(await analyticsRequest).toBeDefined()
   })
 })

@@ -155,6 +155,9 @@ const emptyStateMessage = computed(() => {
 
   if (filterCount === 1) {
     const chip = chips[0]
+    if (!chip) {
+      return 'Try broadening your filters or clearing a few constraints to see more events.'
+    }
     if (chip.key === 'location') {
       return `No events found in "${filters.location}". Try a different city or remove the location filter.`
     }
