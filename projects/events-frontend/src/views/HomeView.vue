@@ -12,7 +12,6 @@ import {
 import { useSavedSearchesStore } from '@/stores/savedSearches'
 import { useDiscoveryAnalytics } from '@/composables/useDiscoveryAnalytics'
 import { buildMainSiteUrl, formatMainSiteHost, useSubdomain } from '@/composables/useSubdomain'
-import { useSubdomain } from '@/composables/useSubdomain'
 import { usePwa } from '@/composables/usePwa'
 import EventCard from '@/components/events/EventCard.vue'
 import EventFilters from '@/components/events/EventFilters.vue'
