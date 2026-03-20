@@ -98,6 +98,80 @@ test.describe('Submit event form', () => {
     await page.getByRole('link', { name: 'Cancel' }).click()
     await expect(page).toHaveURL(/\/$/)
   })
+  test('timezone field is present in submit form', async ({ page }) => {
+    setupMockApi(page, { domains: [makeTechDomain()] })
+    await page.goto('/submit')
+
+    const timezoneInput = page.getByLabel(/Timezone/i)
+    await expect(timezoneInput).toBeVisible()
+    await expect(timezoneInput).toHaveAttribute('placeholder', 'e.g., Europe/Prague')
+  })
+
+  test('can enter a timezone and submit event', async ({ page }) => {
+    const admin = makeAdminUser()
+    const state = setupMockApi(page, { users: [admin], domains: [makeTechDomain()] })
+    state.currentUserId = admin.id
+
+    await page.goto('/submit')
+
+    await page.getByLabel('Event Title *').fill('Prague Summit with TZ')
+    await page.getByLabel('Description *').fill('An event with a timezone.')
+    await page.getByLabel('Domain *').selectOption('technology')
+    await page.getByLabel('Start Date *').fill('2026-09-01')
+    await page.getByLabel('Website / Registration URL *').fill('https://example.com')
+    await page.getByLabel(/Timezone/i).fill('Europe/Prague')
+
+    await expect(page.getByLabel(/Timezone/i)).toHaveValue('Europe/Prague')
+
+    await page.getByRole('button', { name: 'Submit Event' }).click()
+    await expect(page.getByRole('heading', { name: 'Event Submitted!' })).toBeVisible()
+  })
+
+  test('timezone value is sent in the submit mutation', async ({ page }) => {
+    const admin = makeAdminUser()
+    const state = setupMockApi(page, { users: [admin], domains: [makeTechDomain()] })
+    state.currentUserId = admin.id
+
+    const capturedBodies: string[] = []
+    await page.route('**/graphql', async (route, request) => {
+      const body = request.postData() ?? ''
+      if (body.includes('SubmitEvent')) capturedBodies.push(body)
+      await route.fallback()
+    })
+
+    await page.goto('/submit')
+
+    await page.getByLabel('Event Title *').fill('London Conference')
+    await page.getByLabel('Description *').fill('An event in London.')
+    await page.getByLabel('Domain *').selectOption('technology')
+    await page.getByLabel('Start Date *').fill('2026-10-01')
+    await page.getByLabel('Website / Registration URL *').fill('https://example.com')
+    await page.getByLabel(/Timezone/i).fill('Europe/London')
+
+    await page.getByRole('button', { name: 'Submit Event' }).click()
+    await expect(page.getByRole('heading', { name: 'Event Submitted!' })).toBeVisible()
+
+    expect(capturedBodies.length).toBeGreaterThan(0)
+    expect(capturedBodies[0]).toContain('Europe/London')
+  })
+
+  test('submitting without timezone omits the field gracefully', async ({ page }) => {
+    const admin = makeAdminUser()
+    const state = setupMockApi(page, { users: [admin], domains: [makeTechDomain()] })
+    state.currentUserId = admin.id
+
+    await page.goto('/submit')
+
+    await page.getByLabel('Event Title *').fill('No Timezone Event')
+    await page.getByLabel('Description *').fill('No timezone provided.')
+    await page.getByLabel('Domain *').selectOption('technology')
+    await page.getByLabel('Start Date *').fill('2026-08-01')
+    await page.getByLabel('Website / Registration URL *').fill('https://example.com')
+    // Intentionally leave timezone blank
+
+    await page.getByRole('button', { name: 'Submit Event' }).click()
+    await expect(page.getByRole('heading', { name: 'Event Submitted!' })).toBeVisible()
+  })
 })
 
 test.describe('Event detail page', () => {
