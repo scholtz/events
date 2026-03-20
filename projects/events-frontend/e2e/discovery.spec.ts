@@ -1096,3 +1096,351 @@ test.describe('Results summary', () => {
     await expect(page.locator('.results-summary')).toContainText('1 event available')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Contextual empty-state guidance
+// ---------------------------------------------------------------------------
+
+test.describe('Contextual empty-state guidance', () => {
+  test('single location filter shows city-specific hint', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-1', name: 'Prague Event', slug: 'prague-event', city: 'Prague' })],
+    })
+    await page.goto('/?location=Berlin')
+
+    await expect(page.getByRole('heading', { name: 'No events found' })).toBeVisible()
+    await expect(page.locator('.empty-state')).toContainText('"Berlin"')
+    await expect(page.locator('.empty-state')).toContainText('location')
+  })
+
+  test('single keyword filter shows keyword-specific hint', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-1', name: 'Prague Event', slug: 'prague-event' })],
+    })
+    await page.goto('/?q=nonexistent-xyz')
+
+    await expect(page.getByRole('heading', { name: 'No events found' })).toBeVisible()
+    await expect(page.locator('.empty-state')).toContainText('"nonexistent-xyz"')
+  })
+
+  test('single attendance mode filter shows mode-specific hint', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-1', name: 'In-Person Only', slug: 'in-person-only', attendanceMode: 'IN_PERSON' }),
+      ],
+    })
+    await page.goto('/?mode=online')
+
+    await expect(page.getByRole('heading', { name: 'No events found' })).toBeVisible()
+    await expect(page.locator('.empty-state')).toContainText('online')
+  })
+
+  test('multiple active filters show the multi-filter removal hint', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-1', name: 'Prague Summit', slug: 'prague-summit', city: 'Prague' })],
+    })
+    await page.goto('/?location=Berlin&mode=online')
+
+    await expect(page.getByRole('heading', { name: 'No events found' })).toBeVisible()
+    await expect(page.locator('.empty-state')).toContainText('active filters')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Subdomain catalog + additional filtering
+// ---------------------------------------------------------------------------
+
+test.describe('Subdomain catalog + additional filtering', () => {
+  test('subdomain page scopes events to domain and supports additional filters', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain(), makeCryptoDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-tech-online',
+          name: 'Tech Online Summit',
+          slug: 'tech-online-summit',
+          attendanceMode: 'ONLINE',
+          domain: { id: 'dom-tech', name: 'Technology', slug: 'technology', subdomain: 'tech' },
+          domainId: 'dom-tech',
+        }),
+        makeApprovedEvent({
+          id: 'e-tech-in-person',
+          name: 'Tech In-Person Workshop',
+          slug: 'tech-in-person-workshop',
+          attendanceMode: 'IN_PERSON',
+          domain: { id: 'dom-tech', name: 'Technology', slug: 'technology', subdomain: 'tech' },
+          domainId: 'dom-tech',
+        }),
+        makeApprovedEvent({
+          id: 'e-crypto-online',
+          name: 'Crypto Online Meetup',
+          slug: 'crypto-online-meetup',
+          attendanceMode: 'ONLINE',
+          domain: { id: 'dom-crypto', name: 'Crypto', slug: 'crypto', subdomain: 'crypto' },
+          domainId: 'dom-crypto',
+        }),
+      ],
+    })
+
+    // Simulate tech subdomain view with an additional ONLINE filter
+    await page.goto('/?subdomain=tech&domain=technology&mode=online')
+
+    // Subdomain header visible
+    await expect(page.getByRole('heading', { name: 'Technology Events' })).toBeVisible()
+
+    // Only the tech+online event should show
+    await expect(page.locator('.event-card', { hasText: 'Tech Online Summit' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Tech In-Person Workshop' })).toBeHidden()
+    // Crypto event is excluded even though it is online (domain scope preserved)
+    await expect(page.locator('.event-card', { hasText: 'Crypto Online Meetup' })).toBeHidden()
+
+    // Mode chip is visible for the additional filter
+    await expect(page.locator('.filter-chip', { hasText: /mode/i })).toBeVisible()
+    // "All events" link back to main site is present
+    await expect(page.getByRole('link', { name: /All events on events\.localhost/i })).toBeVisible()
+  })
+
+  test('removing the additional filter in subdomain view still shows all domain events', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-tech-online',
+          name: 'Tech Online Summit',
+          slug: 'tech-online-summit',
+          attendanceMode: 'ONLINE',
+          domain: { id: 'dom-tech', name: 'Technology', slug: 'technology', subdomain: 'tech' },
+          domainId: 'dom-tech',
+        }),
+        makeApprovedEvent({
+          id: 'e-tech-in-person',
+          name: 'Tech In-Person Workshop',
+          slug: 'tech-in-person-workshop',
+          attendanceMode: 'IN_PERSON',
+          domain: { id: 'dom-tech', name: 'Technology', slug: 'technology', subdomain: 'tech' },
+          domainId: 'dom-tech',
+        }),
+      ],
+    })
+
+    await page.goto('/?subdomain=tech&domain=technology&mode=online')
+    await expect(page.locator('.event-card', { hasText: 'Tech In-Person Workshop' })).toBeHidden()
+
+    // Click the mode chip to remove just the mode filter
+    await page.locator('.filter-chip', { hasText: /mode/i }).click()
+
+    // Both tech events are now visible (domain scope still active via subdomain)
+    await expect(page.locator('.event-card', { hasText: 'Tech Online Summit' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Tech In-Person Workshop' })).toBeVisible()
+    // Subdomain header should still be showing
+    await expect(page.getByRole('heading', { name: 'Technology Events' })).toBeVisible()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Multi-filter saved search full restoration
+// ---------------------------------------------------------------------------
+
+test.describe('Multi-filter saved search full restoration', () => {
+  test('saved search with keyword + location + mode + price fully restores all filters', async ({
+    page,
+  }) => {
+    const admin = makeAdminUser()
+    setupMockApi(page, {
+      users: [admin],
+      currentUserId: admin.id,
+      currentToken: `token-${admin.id}`,
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-match',
+          name: 'Prague Free Online Summit',
+          slug: 'prague-free-online-summit',
+          city: 'Prague',
+          isFree: true,
+          priceAmount: 0,
+          attendanceMode: 'ONLINE',
+        }),
+        makeApprovedEvent({
+          id: 'e-no-match-1',
+          name: 'Berlin Paid Conf',
+          slug: 'berlin-paid-conf',
+          city: 'Berlin',
+          isFree: false,
+          priceAmount: 100,
+          attendanceMode: 'IN_PERSON',
+        }),
+        makeApprovedEvent({
+          id: 'e-no-match-2',
+          name: 'Prague Paid In-Person Event',
+          slug: 'prague-paid-in-person',
+          city: 'Prague',
+          isFree: false,
+          priceAmount: 50,
+          attendanceMode: 'IN_PERSON',
+        }),
+      ],
+    })
+    await page.addInitScript(
+      ({ token }) => {
+        localStorage.setItem('auth_token', token)
+        localStorage.setItem('auth_expires', new Date(Date.now() + 60 * 60 * 1000).toISOString())
+      },
+      { token: `token-${admin.id}` },
+    )
+
+    // Navigate with all 4 filter types active
+    await page.goto('/?q=summit&location=Prague&mode=online&price=free')
+
+    // Only the matching event should be visible
+    await expect(page.locator('.event-card', { hasText: 'Prague Free Online Summit' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Berlin Paid Conf' })).toBeHidden()
+    await expect(page.locator('.event-card', { hasText: 'Prague Paid In-Person Event' })).toBeHidden()
+
+    // Expand advanced filters to access saved search form
+    await page.getByRole('button', { name: 'More filters' }).click()
+
+    // Verify all filter controls reflect the URL parameters
+    await expect(page.getByLabel('Keyword')).toHaveValue('summit')
+    await expect(page.getByLabel('Location')).toHaveValue('Prague')
+    await expect(page.locator('select#filter-attendance-mode')).toHaveValue('ONLINE')
+    await expect(page.getByLabel('Price', { exact: true })).toHaveValue('FREE')
+
+    // Save the search
+    await page.getByLabel('Preset name').fill('Prague Free Online Summit Search')
+    await page.getByRole('button', { name: 'Save current search' }).click()
+    const savedSearchButton = page.locator('.saved-search-apply', {
+      hasText: 'Prague Free Online Summit Search',
+    })
+    await expect(savedSearchButton).toBeVisible()
+
+    // Clear all filters — all events should now be visible
+    await page.getByRole('button', { name: 'Clear all' }).click()
+    await expect(page.locator('.event-card', { hasText: 'Berlin Paid Conf' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Prague Paid In-Person Event' })).toBeVisible()
+
+    // Apply the saved search
+    await savedSearchButton.click()
+
+    // URL should be fully restored
+    await expect(page).toHaveURL(/q=summit/)
+    await expect(page).toHaveURL(/location=Prague/)
+    await expect(page).toHaveURL(/mode=online/)
+    await expect(page).toHaveURL(/price=free/)
+
+    // Results should be filtered correctly again
+    await expect(page.locator('.event-card', { hasText: 'Prague Free Online Summit' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Berlin Paid Conf' })).toBeHidden()
+    await expect(page.locator('.event-card', { hasText: 'Prague Paid In-Person Event' })).toBeHidden()
+
+    // All four filter chips should be visible
+    await expect(page.locator('.filter-chip', { hasText: /keyword/i })).toBeVisible()
+    await expect(page.locator('.filter-chip', { hasText: /location/i })).toBeVisible()
+    await expect(page.locator('.filter-chip', { hasText: /mode/i })).toBeVisible()
+    await expect(page.locator('.filter-chip', { hasText: /price/i })).toBeVisible()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Discovery analytics instrumentation
+// ---------------------------------------------------------------------------
+
+test.describe('Discovery analytics instrumentation', () => {
+  /** Helper that waits for a TrackDiscoveryAction mutation with the given actionType. */
+  function waitForDiscoveryAnalytics(page: import('@playwright/test').Page, actionType: string) {
+    return page.waitForRequest(
+      (req) => {
+        if (!req.url().includes('graphql') || req.method() !== 'POST') return false
+        try {
+          const body = JSON.parse(req.postData() || '{}') as { query?: string; variables?: { input?: { actionType?: string } } }
+          return (
+            (body.query ?? '').includes('TrackDiscoveryAction') &&
+            body.variables?.input?.actionType === actionType
+          )
+        } catch {
+          return false
+        }
+      },
+      { timeout: 4000 },
+    )
+  }
+
+  test('RESULT_CLICK fires when an event card title link is clicked', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-click', name: 'Clickable Event', slug: 'clickable-event' }),
+      ],
+    })
+    await page.goto('/')
+
+    const analyticsRequest = waitForDiscoveryAnalytics(page, 'RESULT_CLICK')
+    await page.locator('.event-card', { hasText: 'Clickable Event' }).getByRole('link', { name: 'View details' }).click()
+    await analyticsRequest
+  })
+
+  test('RESULT_CLICK fires even when active filters are applied', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-online', name: 'Online Workshop', slug: 'online-workshop', attendanceMode: 'ONLINE' }),
+      ],
+    })
+    await page.goto('/?mode=online')
+
+    const analyticsRequest = waitForDiscoveryAnalytics(page, 'RESULT_CLICK')
+    await page.locator('.event-card', { hasText: 'Online Workshop' }).getByRole('link', { name: 'View details' }).click()
+    await analyticsRequest
+  })
+
+  test('SEARCH fires when keyword filter is typed', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-1', name: 'Tech Summit', slug: 'tech-summit' }),
+      ],
+    })
+    await page.goto('/')
+
+    const analyticsRequest = waitForDiscoveryAnalytics(page, 'SEARCH')
+    await page.getByLabel('Keyword').fill('summit')
+    await analyticsRequest
+  })
+
+  test('FILTER_CHANGE fires when attendance mode select is changed', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-1', name: 'Online Webinar', slug: 'online-webinar', attendanceMode: 'ONLINE' }),
+      ],
+    })
+    await page.goto('/')
+
+    await page.getByRole('button', { name: 'More filters' }).click()
+
+    const analyticsRequest = waitForDiscoveryAnalytics(page, 'FILTER_CHANGE')
+    await page.locator('select#filter-attendance-mode').selectOption('ONLINE')
+    await analyticsRequest
+  })
+
+  test('FILTER_CLEAR fires when "Clear all" is clicked with active filters', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-1', name: 'Prague Summit', slug: 'prague-summit', city: 'Prague' }),
+        makeApprovedEvent({ id: 'e-2', name: 'Online Workshop', slug: 'online-workshop', attendanceMode: 'ONLINE' }),
+      ],
+    })
+    await page.goto('/?mode=online')
+
+    const analyticsRequest = waitForDiscoveryAnalytics(page, 'FILTER_CLEAR')
+    await page.getByRole('button', { name: 'Clear all' }).click()
+    await analyticsRequest
+  })
+})
