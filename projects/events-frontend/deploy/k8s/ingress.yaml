@@ -4,13 +4,13 @@ metadata:
   name: events-frontend
   namespace: events-frontend
   annotations:
-    cert-manager.io/cluster-issuer: "letsencrypt"
+    cert-manager.io/cluster-issuer: 'letsencrypt-dns'
 spec:
   ingressClassName: nginx
   tls:
     - hosts:
         - events.biatec.io
-        - "*.events.biatec.io"
+        - '*.events.biatec.io'
       secretName: tls-events.biatec.io
   rules:
     - host: events.biatec.io
@@ -23,7 +23,7 @@ spec:
                 name: events-frontend
                 port:
                   number: 80
-    - host: "*.events.biatec.io"
+    - host: '*.events.biatec.io'
       http:
         paths:
           - path: /
