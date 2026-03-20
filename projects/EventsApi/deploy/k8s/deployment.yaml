@@ -53,6 +53,8 @@ spec:
               value: http://localhost:5173
             - name: Cors__AllowedOrigins__3
               value: https://events.biatec.io
+            - name: Cors__AllowedOrigins__4
+              value: https://*.events.biatec.io
           readinessProbe:
             httpGet:
               path: /healthz

@@ -29,7 +29,53 @@ builder.Services.AddCors(options =>
             return;
         }
 
-        policy.WithOrigins(allowedOrigins).AllowAnyHeader().AllowAnyMethod();
+        // Separate exact origins from wildcard patterns (e.g. "https://*.events.biatec.io").
+        // Wildcard entries use SetIsOriginAllowed so that every category subdomain
+        // passes the CORS preflight check without listing each one individually.
+        var exactOrigins = allowedOrigins.Where(o => !o.Contains('*')).ToArray();
+        var wildcardSuffixes = allowedOrigins
+            .Where(o => o.StartsWith("https://*.", StringComparison.Ordinal)
+                     || o.StartsWith("http://*.", StringComparison.Ordinal))
+            .Select(o =>
+            {
+                if (!Uri.TryCreate(o.Replace("*.", ""), UriKind.Absolute, out var uri))
+                    return ((string Scheme, string HostSuffix, int Port)?)null;
+                return (Scheme: uri.Scheme, HostSuffix: "." + uri.Host, Port: uri.Port);
+            })
+            .Where(entry => entry is not null)
+            .Select(entry => entry!.Value)
+            .ToArray();
+
+        if (wildcardSuffixes.Length == 0)
+        {
+            // No wildcard patterns — keep the simple exact-match path.
+            policy.WithOrigins(exactOrigins).AllowAnyHeader().AllowAnyMethod();
+            return;
+        }
+
+        policy
+            .SetIsOriginAllowed(origin =>
+            {
+                if (exactOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase))
+                    return true;
+
+                if (!Uri.TryCreate(origin, UriKind.Absolute, out var originUri))
+                    return false;
+
+                foreach (var (scheme, hostSuffix, port) in wildcardSuffixes)
+                {
+                    if (string.Equals(originUri.Scheme, scheme, StringComparison.OrdinalIgnoreCase)
+                        && originUri.Port == port
+                        && originUri.Host.EndsWith(hostSuffix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            })
+            .AllowAnyHeader()
+            .AllowAnyMethod();
     });
 });
 
