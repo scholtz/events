@@ -309,6 +309,130 @@ test.describe('PWA offline experience', () => {
     await expect(page).toHaveURL(/\/event\/cached-event$/)
     await expect(page.getByRole('heading', { name: 'Cached Event' })).toBeVisible()
   })
+
+  test('cached-results-notice is shown when offline and events are already loaded', async ({
+    page,
+  }) => {
+    const event = makeApprovedEvent({ name: 'Cached Discovery Event', slug: 'cached-discovery' })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto('/')
+
+    // Wait for events to load while online
+    await expect(page.locator('.event-card', { hasText: 'Cached Discovery Event' })).toBeVisible()
+
+    // Simulate going offline
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false })
+      window.dispatchEvent(new Event('offline'))
+    })
+
+    // The app-level offline banner should appear
+    await expect(page.locator('.offline-banner')).toBeVisible()
+
+    // The previously loaded events should still be visible (served from store memory)
+    await expect(page.locator('.event-card', { hasText: 'Cached Discovery Event' })).toBeVisible()
+
+    // The cached-results-notice should appear above the events grid
+    const notice = page.locator('.cached-results-notice')
+    await expect(notice).toBeVisible()
+    await expect(notice).toContainText('last online visit')
+    await expect(notice).toHaveAttribute('role', 'status')
+    await expect(notice).toHaveAttribute('aria-live', 'polite')
+  })
+
+  test('cached-results-notice disappears when connectivity is restored', async ({ page }) => {
+    const event = makeApprovedEvent({ name: 'Restore Test Event', slug: 'restore-test' })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto('/')
+    await expect(page.locator('.event-card', { hasText: 'Restore Test Event' })).toBeVisible()
+
+    // Go offline
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false })
+      window.dispatchEvent(new Event('offline'))
+    })
+    await expect(page.locator('.cached-results-notice')).toBeVisible()
+
+    // Come back online
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true })
+      window.dispatchEvent(new Event('online'))
+    })
+    await expect(page.locator('.cached-results-notice')).toBeHidden()
+  })
+
+  test('offline discovery error state shows offline-specific message when no cached data', async ({
+    page,
+  }) => {
+    // Spoof navigator.onLine=false BEFORE page initialization so usePwa() reads
+    // isOffline=true on mount and the error state shows offline-specific copy.
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false })
+    })
+    // Block GraphQL so the discovery request fails (no cached data from SW either)
+    await page.route('**/graphql', (route) => route.abort())
+    await page.goto('/')
+
+    // The error state should show offline-specific copy, not the generic API error
+    await expect(page.getByRole('heading', { name: "You're offline" })).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator('.error-state')).toContainText('Connect to the internet')
+    // Retry button still present
+    await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible()
+  })
+
+  test('event detail stale-data-notice is shown when offline and event is loaded', async ({
+    page,
+  }) => {
+    const event = makeApprovedEvent({ name: 'Stale Detail Event', slug: 'stale-detail' })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto('/')
+    await expect(page.locator('.event-card', { hasText: 'Stale Detail Event' })).toBeVisible()
+
+    // Navigate to event detail while online
+    await page.locator('.event-card', { hasText: 'Stale Detail Event' }).getByRole('link', { name: 'View details' }).click()
+    await expect(page).toHaveURL(/\/event\/stale-detail$/)
+    await expect(page.getByRole('heading', { name: 'Stale Detail Event' })).toBeVisible()
+
+    // The stale-data-notice should NOT be shown while online
+    await expect(page.locator('.stale-data-notice')).toBeHidden()
+
+    // Go offline
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false })
+      window.dispatchEvent(new Event('offline'))
+    })
+
+    // Now the stale-data-notice should appear with appropriate message
+    const notice = page.locator('.stale-data-notice')
+    await expect(notice).toBeVisible()
+    await expect(notice).toContainText('last online visit')
+    await expect(notice).toHaveAttribute('role', 'status')
+    await expect(notice).toHaveAttribute('aria-live', 'polite')
+
+    // The event content is still visible
+    await expect(page.getByRole('heading', { name: 'Stale Detail Event' })).toBeVisible()
+  })
+
+  test('stale-data-notice disappears when connectivity is restored on event detail', async ({
+    page,
+  }) => {
+    const event = makeApprovedEvent({ name: 'Reconnect Event', slug: 'reconnect-event' })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto('/event/reconnect-event')
+    await expect(page.getByRole('heading', { name: 'Reconnect Event' })).toBeVisible()
+
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false })
+      window.dispatchEvent(new Event('offline'))
+    })
+    await expect(page.locator('.stale-data-notice')).toBeVisible()
+
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true })
+      window.dispatchEvent(new Event('online'))
+    })
+    await expect(page.locator('.stale-data-notice')).toBeHidden()
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -388,5 +512,95 @@ test.describe('PWA mobile viewport', () => {
 
     // Verify filters / primary CTA are still accessible below the banner
     await expect(page.getByLabel('Keyword')).toBeVisible()
+  })
+
+  test('cached-results-notice and event cards are both visible on mobile viewport', async ({
+    page,
+  }) => {
+    const event = makeApprovedEvent({ name: 'Mobile Cached Event', slug: 'mobile-cached' })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto('/')
+    await expect(page.locator('.event-card', { hasText: 'Mobile Cached Event' })).toBeVisible()
+
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false })
+      window.dispatchEvent(new Event('offline'))
+    })
+
+    await expect(page.locator('.cached-results-notice')).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Mobile Cached Event' })).toBeVisible()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Online regression: discovery filters and favorites must keep working normally
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('PWA online regression – discovery and favorites unaffected', () => {
+  test('keyword filter works while online and produces matching results', async ({ page }) => {
+    const alpha = makeApprovedEvent({ name: 'Alpha Conference', slug: 'alpha-conf' })
+    const beta = makeApprovedEvent({ name: 'Beta Workshop', slug: 'beta-workshop' })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [alpha, beta] })
+    await page.goto('/')
+
+    await expect(page.locator('.event-card', { hasText: 'Alpha Conference' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Beta Workshop' })).toBeVisible()
+
+    // Type a keyword — the mock filters by searchText
+    await page.getByLabel('Keyword').fill('Alpha')
+    await page.getByLabel('Keyword').press('Enter')
+    await expect(page).toHaveURL(/[?&]q=Alpha/)
+
+    await expect(page.locator('.event-card', { hasText: 'Alpha Conference' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Beta Workshop' })).toBeHidden()
+
+    // Offline banner must NOT appear during a normal online session
+    await expect(page.locator('.offline-banner')).toBeHidden()
+    await expect(page.locator('.cached-results-notice')).toBeHidden()
+  })
+
+  test('filter chips appear and can be cleared while online', async ({ page }) => {
+    const event = makeApprovedEvent({ name: 'Filter Chip Event', slug: 'filter-chip' })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto('/?q=chip')
+
+    // A filter chip should appear for the keyword (label is "Keyword: chip")
+    await expect(page.locator('.filter-chip', { hasText: 'Keyword: chip' })).toBeVisible()
+
+    // Clicking the chip directly removes the filter
+    await page.locator('.filter-chip', { hasText: 'Keyword: chip' }).click()
+    await expect(page.locator('.filter-chip', { hasText: 'Keyword: chip' })).toBeHidden()
+  })
+
+  test('URL filter state survives page reload while online', async ({ page }) => {
+    const event = makeApprovedEvent({ name: 'URL State Event', slug: 'url-state' })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto('/?q=url')
+
+    // Reload while keeping the URL
+    await page.reload()
+    await expect(page.getByLabel('Keyword')).toHaveValue('url')
+    await expect(page.locator('.filter-chip', { hasText: 'url' })).toBeVisible()
+
+    // Offline artifacts should not be present
+    await expect(page.locator('.offline-banner')).toBeHidden()
+    await expect(page.locator('.cached-results-notice')).toBeHidden()
+  })
+
+  test('event detail loads and back-navigation works while online', async ({ page }) => {
+    const event = makeApprovedEvent({ name: 'Detail Nav Event', slug: 'detail-nav' })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto('/')
+
+    await page.locator('.event-card', { hasText: 'Detail Nav Event' }).getByRole('link', { name: 'View details' }).click()
+    await expect(page).toHaveURL(/\/event\/detail-nav$/)
+    await expect(page.getByRole('heading', { name: 'Detail Nav Event' })).toBeVisible()
+
+    // Stale notice must NOT appear while online
+    await expect(page.locator('.stale-data-notice')).toBeHidden()
+
+    // Navigate back
+    await page.getByRole('link', { name: /Back to events/ }).click()
+    await expect(page).toHaveURL(/\/$/)
   })
 })

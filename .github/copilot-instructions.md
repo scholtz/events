@@ -279,3 +279,14 @@ The browser Cache Storage API **only supports caching GET responses**. GraphQL u
 - Client (includes SW): `npm run build:client` — outputs `dist/sw.js` alongside the app bundle.
 - SSR (no SW, no PWA plugin): `npm run build:ssr` — outputs `dist/server/`.
 - Both builds must pass before merging a PWA-related PR.
+
+### Offline-aware UI text: always use straight apostrophes
+- When adding user-visible strings to Vue templates (e.g. `"You're offline"`, `"Couldn't load"`), always use the straight ASCII apostrophe `'` (U+0027), never curly/smart quotes `'` (U+2019).
+- Python's `f-string` or multi-line string literals, text editors, and copy-paste from rich text can silently insert U+2019. This causes Playwright `toContainText()` / `getByRole({ name: ... })` assertions to fail because the rendered DOM contains the curly character while the test hardcodes the straight one.
+- Before writing a Playwright assertion for any user-visible string, grep the Vue template for `\u2019` (`\xe2\x80\x99` in UTF-8) to confirm no curly quotes crept in: `python3 -c "import re; open('src/views/HomeView.vue').read(); ..."`.
+- Prefer using `page.locator('.class').toContainText(...)` rather than `getByRole('heading', { name: '...' })` for any text that contains an apostrophe, as `toContainText` is substring-based and more resilient to whitespace/quote variation.
+
+### usePwa isOffline initialisation timing in E2E tests
+- `usePwa` reads `isOffline.value = !window.navigator.onLine` inside `onMounted`. This fires **after** the component's `watch({ immediate: true })` watcher, which triggers `fetchDiscoveryEvents()` before `onMounted` completes.
+- When writing an E2E test that needs `isOffline` to be `true` from the very first render (e.g. testing offline-specific error copy), use `page.addInitScript()` to override `navigator.onLine` **before** the page loads — not `page.evaluate()` after `goto()`. The `addInitScript` approach runs before any scripts on the page, so `onMounted` will read `false` from `navigator.onLine` and set `isOffline = true` correctly.
+- Example: `await page.addInitScript(() => { Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false }) })`

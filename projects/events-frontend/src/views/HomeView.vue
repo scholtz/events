@@ -12,6 +12,7 @@ import {
 import { useSavedSearchesStore } from '@/stores/savedSearches'
 import { useDiscoveryAnalytics } from '@/composables/useDiscoveryAnalytics'
 import { useSubdomain } from '@/composables/useSubdomain'
+import { usePwa } from '@/composables/usePwa'
 import EventCard from '@/components/events/EventCard.vue'
 import EventFilters from '@/components/events/EventFilters.vue'
 
@@ -22,6 +23,7 @@ const eventsStore = useEventsStore()
 const savedSearchesStore = useSavedSearchesStore()
 const { trackSearch, trackFilterChange, trackFilterClear } = useDiscoveryAnalytics()
 const { activeDomain, isSubdomainView } = useSubdomain()
+const { isOffline } = usePwa()
 
 const syncingFromRoute = ref(false)
 
@@ -175,10 +177,11 @@ const emptyStateMessage = computed(() => {
           </div>
 
           <div v-else-if="eventsStore.discoveryError" class="results-state card error-state" role="alert">
-            <div class="state-icon">⚠️</div>
+            <div class="state-icon" aria-hidden="true">{{ isOffline ? '📡' : '⚠️' }}</div>
             <div>
-              <h2>Couldn’t load event results</h2>
-              <p>{{ eventsStore.discoveryError }}</p>
+              <h2>{{ isOffline ? "You're offline" : "Couldn't load event results" }}</h2>
+              <p v-if="isOffline">You don't have any cached results for this search. Connect to the internet and try again to load events.</p>
+              <p v-else>{{ eventsStore.discoveryError }}</p>
             </div>
             <div class="state-actions">
               <button class="btn btn-primary" @click="eventsStore.fetchDiscoveryEvents()">Try again</button>
@@ -188,13 +191,19 @@ const emptyStateMessage = computed(() => {
             </div>
           </div>
 
-          <div v-else-if="eventsStore.discoveryEvents.length" class="events-grid">
-            <EventCard
-              v-for="event in eventsStore.discoveryEvents"
-              :key="event.id"
-              :event="event"
-            />
-          </div>
+          <template v-else-if="eventsStore.discoveryEvents.length">
+            <div v-if="isOffline" role="status" aria-live="polite" class="cached-results-notice">
+              <span aria-hidden="true">📡</span>
+              Showing results from your last online visit. Refresh when back online.
+            </div>
+            <div class="events-grid">
+              <EventCard
+                v-for="event in eventsStore.discoveryEvents"
+                :key="event.id"
+                :event="event"
+              />
+            </div>
+          </template>
 
           <div v-else class="results-state empty-state card">
             <div class="empty-icon">🔍</div>
@@ -340,6 +349,21 @@ const emptyStateMessage = computed(() => {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 1rem;
+}
+
+/* Offline cached-content notice shown above the events grid */
+.cached-results-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+  background: var(--color-surface-raised);
+  color: var(--color-warning);
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
 }
 
 .results-state {
