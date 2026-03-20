@@ -204,7 +204,7 @@ function formatTimezoneLabel(timezone: string | null): string | null {
   }
 }
 
-function domainUrl(event: {
+function domainCatalogUrl(event: {
   domain?: {
     slug?: string
     subdomain?: string
@@ -218,7 +218,7 @@ function domainUrl(event: {
   return buildSubdomainUrl(subdomain, slug)
 }
 
-function domainHostLabel(event: {
+function domainHostDisplay(event: {
   domain?: {
     name?: string
     subdomain?: string
@@ -261,11 +261,11 @@ function domainHostLabel(event: {
           <div class="event-detail-meta">
             <a
               v-if="event.domain?.subdomain"
-              :href="domainUrl(event)"
+              :href="domainCatalogUrl(event)"
               class="badge badge-primary domain-link"
-              :aria-label="`Browse more events on ${domainHostLabel(event)}`"
+              :aria-label="`Browse more events on ${domainHostDisplay(event)}`"
             >
-              {{ domainHostLabel(event) }}
+              {{ domainHostDisplay(event) }}
             </a>
             <span v-else class="badge badge-primary">
               {{ event.domain?.name ?? 'Event' }}

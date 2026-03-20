@@ -42,10 +42,11 @@ function extractSubdomain(): string | null {
   if (typeof window === 'undefined') return null
   const hostname = window.location.hostname
 
-  // On localhost, support `?domain=slug` so subdomain-specific UX can be
-  // exercised without wildcard DNS during local development and E2E tests.
+  // On localhost, support a dedicated `?subdomain=` hint so subdomain-specific
+  // UX can be exercised without wildcard DNS during local development and E2E
+  // tests. The regular `?domain=` filter remains separate.
   if (isLocalDevelopmentHost(hostname)) {
-    return new URLSearchParams(window.location.search).get('domain')
+    return new URLSearchParams(window.location.search).get('subdomain')
   }
 
   // Base domain has 3 parts (events.biatec.io); 4+ means a category subdomain
@@ -57,7 +58,7 @@ function extractSubdomain(): string | null {
 
 /**
  * Builds a full URL targeting a category subdomain.
- * On localhost returns `/?domain=slug` for in-app navigation.
+ * On localhost returns `/?subdomain=subdomain&domain=slug` for in-app navigation.
  * On production returns `https://{subdomain}.events.biatec.io/`.
  */
 export function buildSubdomainUrl(subdomain: string, slug: string): string {
@@ -65,7 +66,11 @@ export function buildSubdomainUrl(subdomain: string, slug: string): string {
   const hostname = window.location.hostname
 
   if (isLocalDevelopmentHost(hostname)) {
-    return `/?domain=${encodeURIComponent(slug)}`
+    const query = new URLSearchParams({
+      subdomain,
+      domain: slug,
+    })
+    return `/?${query.toString()}`
   }
 
   const baseDomain = getBaseDomain(hostname)
@@ -114,7 +119,7 @@ export function useSubdomain() {
 
   const activeDomain = computed(() => {
     if (!subdomain) return null
-    return domainsStore.domains.find((d) => d.subdomain === subdomain || d.slug === subdomain) ?? null
+    return domainsStore.domains.find((d) => d.subdomain === subdomain) ?? null
   })
 
   const isSubdomainView = computed(() => activeDomain.value !== null)

@@ -293,11 +293,12 @@ test.describe('Event detail page', () => {
 
     await page.goto(`/event/${event.slug}`)
 
-    const tagLink = page.getByRole('link', { name: 'crypto.events.localhost' })
+    const tagLink = page.getByRole('link', { name: /Browse more events on crypto\.events\.localhost/i })
     await expect(tagLink).toBeVisible()
+    await expect(page.getByText('crypto.events.localhost')).toBeVisible()
     await tagLink.click()
 
-    await expect(page).toHaveURL(/\/\?domain=crypto$/)
+    await expect(page).toHaveURL(/\/\?subdomain=crypto&domain=crypto$/)
     await expect(page.getByRole('heading', { name: 'Crypto Events' })).toBeVisible()
   })
 

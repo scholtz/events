@@ -495,7 +495,7 @@ test.describe('Domain filter', () => {
       ],
     })
 
-    await page.goto('/?domain=crypto')
+    await page.goto('/?subdomain=crypto&domain=crypto')
 
     await expect(page.getByRole('heading', { name: 'Crypto Events' })).toBeVisible()
     const allEventsLink = page.getByRole('link', { name: 'All events on events.localhost' })
