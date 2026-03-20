@@ -4,6 +4,7 @@ import { formatEventPrice } from '@/stores/events'
 import { useFavoritesStore } from '@/stores/favorites'
 import { useAuthStore } from '@/stores/auth'
 import { useDiscoveryAnalytics } from '@/composables/useDiscoveryAnalytics'
+import { buildSubdomainUrl } from '@/composables/useSubdomain'
 import { useEventsStore } from '@/stores/events'
 import type { CatalogEvent } from '@/types'
 
@@ -20,19 +21,9 @@ const favoriting = ref(false)
 
 function domainUrl(event: CatalogEvent): string {
   const subdomain = event.domain?.subdomain
+  const slug = event.domain?.slug ?? ''
   if (!subdomain) return '/'
-  const hostname = typeof window !== 'undefined' ? window.location.hostname : ''
-  // In development on localhost, link to /?domain=slug instead
-  if (hostname === 'localhost' || /^\d+\.\d+\.\d+\.\d+$/.test(hostname)) {
-    return `/?domain=${event.domain.slug}`
-  }
-  // Build subdomain URL: e.g. https://tech.events.biatec.io
-  const parts = hostname.split('.')
-  // Remove existing subdomain prefix if present (4+ parts means there's already a subdomain)
-  const baseParts = parts.length > 3 ? parts.slice(1) : parts
-  const baseDomain = baseParts.join('.')
-  const protocol = typeof window !== 'undefined' ? window.location.protocol : 'https:'
-  return `${protocol}//${subdomain}.${baseDomain}/`
+  return buildSubdomainUrl(subdomain, slug)
 }
 
 function formatDate(dateStr: string): string {

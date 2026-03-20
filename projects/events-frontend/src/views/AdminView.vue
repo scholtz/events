@@ -52,8 +52,11 @@ async function fetchAdminOverview() {
   }
 }
 
+const roleError = ref('')
+
 async function updateUserRole(userId: string, role: 'ADMIN' | 'CONTRIBUTOR') {
   updatingRole.value = userId
+  roleError.value = ''
   try {
     const data = await gqlRequest<{ updateUserRole: User }>(
       `mutation UpdateUserRole($input: UpdateUserRoleInput!) {
@@ -69,6 +72,8 @@ async function updateUserRole(userId: string, role: 'ADMIN' | 'CONTRIBUTOR') {
         adminOverview.value.users[idx] = data.updateUserRole
       }
     }
+  } catch {
+    roleError.value = 'Failed to update user role. Please try again.'
   } finally {
     updatingRole.value = null
   }
@@ -141,8 +146,12 @@ async function addDomain() {
 }
 
 async function handleReviewEvent(eventId: string, status: string) {
-  await eventsStore.reviewEvent(eventId, status)
-  await fetchAdminOverview()
+  try {
+    await eventsStore.reviewEvent(eventId, status)
+    await fetchAdminOverview()
+  } catch {
+    // Review failed – the events store handles the error state
+  }
 }
 </script>
 
@@ -319,6 +328,7 @@ async function handleReviewEvent(eventId: string, status: string) {
 
       <!-- Users management -->
       <div v-if="activeTab === 'users'" class="admin-section">
+        <p v-if="roleError" class="role-error" role="alert">{{ roleError }}</p>
         <div class="users-table card">
           <table>
             <thead>
@@ -701,5 +711,14 @@ tr:hover td {
   padding: 2rem;
   text-align: center;
   color: var(--color-text-secondary);
+}
+
+.role-error {
+  color: var(--color-danger, #f87171);
+  font-size: 0.875rem;
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(248, 113, 113, 0.1);
+  border-radius: var(--radius-sm, 4px);
 }
 </style>

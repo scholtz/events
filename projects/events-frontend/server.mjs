@@ -50,8 +50,8 @@ let render
 try {
   const ssrModule = await import('./dist/server/entry-server.js')
   render = ssrModule.render
-} catch {
-  // SSR module not available – fallback to static serving only
+} catch (error) {
+  console.error('SSR module not available, falling back to static serving:', error.message)
 }
 
 const template = await readFile(resolve(distDir, 'index.html'), 'utf-8')
