@@ -290,3 +290,38 @@ The browser Cache Storage API **only supports caching GET responses**. GraphQL u
 - `usePwa` reads `isOffline.value = !window.navigator.onLine` inside `onMounted`. This fires **after** the component's `watch({ immediate: true })` watcher, which triggers `fetchDiscoveryEvents()` before `onMounted` completes.
 - When writing an E2E test that needs `isOffline` to be `true` from the very first render (e.g. testing offline-specific error copy), use `page.addInitScript()` to override `navigator.onLine` **before** the page loads — not `page.evaluate()` after `goto()`. The `addInitScript` approach runs before any scripts on the page, so `onMounted` will read `false` from `navigator.onLine` and set `isOffline = true` correctly.
 - Example: `await page.addInitScript(() => { Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false }) })`
+
+## Discovery feature quality standards
+
+When implementing or extending the event discovery system (HomeView.vue, EventFilters.vue, useEventsStore, savedSearches store), follow these rules to prevent the class of bugs and gaps raised in PR review:
+
+### Analytics must always fire for UI-driven changes
+- The store watcher in HomeView.vue syncs filters → URL → fetch → analytics. The critical invariant: **analytics must fire after every user-driven filter change**, including keyword (`SEARCH`), non-keyword filter (`FILTER_CHANGE`), and clear-all (`FILTER_CLEAR`).
+- **Never `return` early after `router.replace`** in the store watcher — doing so silently drops the analytics call and the fetch for that change. Instead, use a `skipNextRouteSync` flag to prevent the route watcher from triggering a redundant `syncFromRoute` for the same change.
+- Move `syncingFromRoute = false` to _after_ `fetchDiscoveryEvents` inside `syncFromRoute`, so that any store watcher triggered by `replaceFilters` during `syncFromRoute` sees the flag as `true` and returns early (prevents spurious analytics on initial page load).
+
+### Empty-state messages must be filter-specific
+- The empty state shown when no events match must give users actionable guidance. A single generic fallback ("Try broadening your filters") is not acceptable when a specific filter is known.
+- Use `emptyStateMessage` computed to return filter-specific hints: location → city name + suggestion, keyword → keyword + suggestion, mode → mode label + suggestion, price → free/paid-specific hint, date → date-range hint, domain → category hint, multiple filters → multi-filter hint with count.
+- Every empty-state message variant must have an E2E test in `discovery.spec.ts` that verifies the hint text appears.
+
+### Subdomain catalog must be tested with additional filters
+- Every PR touching subdomain routing or domain-scoped filtering must include at least one E2E test that: navigates to `/?subdomain=X&domain=slug`, applies an additional filter (e.g. mode), verifies only matching events are shown, then removes the additional filter and confirms all domain events return.
+- The subdomain header and "All events" link must be asserted as visible in subdomain test scenarios.
+
+### Saved searches must be tested with full multi-filter restoration
+- Saved search E2E tests must cover at minimum: keyword + location + mode + price combined, save → clear → restore, and verify URL params, filter chips, and result set all match after restore.
+- `savedSearchToFilters` in `savedSearches.ts` must map all filter fields including `attendanceMode`.
+
+### Discovery analytics instrumentation must be tested end-to-end
+- Every discovery analytics action type (`RESULT_CLICK`, `SEARCH`, `FILTER_CHANGE`, `FILTER_CLEAR`) must have a corresponding E2E test that uses `page.waitForRequest()` to assert the `TrackDiscoveryAction` GraphQL mutation fires with the correct `actionType` in the request body.
+- `RESULT_CLICK` test must verify it fires even when active filters are applied (non-zero `activeFilterCount`).
+- Tests for analytics must NOT depend on console output or side effects — only on the intercepted network request.
+
+### Every discovery feature must deliver a full vertical slice
+A PR that only adds tests, or only adds UI without tests, or only adds backend changes without frontend coverage is incomplete. Each discovery feature PR must include all of the following that are relevant:
+1. Backend: GraphQL query/resolver/filter changes (if schema or filter logic changes)
+2. Backend: Integration tests in `GraphQlIntegrationTests.cs` covering the new filter combinations
+3. Frontend: Store changes (`useEventsStore`, `eventFiltersToQuery`, `eventFiltersFromQuery`, `activeFilterChips`, `buildDiscoveryFilterInput`)
+4. Frontend: Component/view changes (`EventFilters.vue`, `HomeView.vue`)
+5. Frontend: Playwright E2E tests in `discovery.spec.ts` covering the new filter behavior end-to-end

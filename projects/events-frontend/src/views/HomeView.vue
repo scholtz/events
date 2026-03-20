@@ -28,6 +28,9 @@ const mainSiteHost = computed(() => formatMainSiteHost())
 const { isOffline } = usePwa()
 
 const syncingFromRoute = ref(false)
+// Prevents the route watcher from triggering syncFromRoute when the URL was just
+// updated by the store watcher.  Avoids double-fetch and double-analytics.
+const skipNextRouteSync = ref(false)
 
 const mapCenter = computed(() => {
   const firstEvent = eventsStore.discoveryEvents[0]
@@ -65,13 +68,22 @@ async function syncFromRoute() {
     eventsStore.replaceFilters(nextFilters)
   }
 
-  syncingFromRoute.value = false
   await eventsStore.fetchDiscoveryEvents()
+  // Set to false AFTER the fetch so that any store-watcher fires triggered by
+  // replaceFilters above (which run during the await) see syncingFromRoute=true
+  // and return early, preventing a double-fetch and spurious analytics.
+  syncingFromRoute.value = false
 }
 
 watch(
   () => route.query,
   async () => {
+    if (skipNextRouteSync.value) {
+      // The URL was just updated by the store watcher.  Skip this one invocation
+      // to avoid a second syncFromRoute call (and double-fetch) for the same change.
+      skipNextRouteSync.value = false
+      return
+    }
     await syncFromRoute()
   },
   { immediate: true },
@@ -86,8 +98,11 @@ watch(
     const currentFilters = eventFiltersFromQuery(route.query)
 
     if (!areEventFiltersEqual(filters, currentFilters)) {
+      // Signal the route watcher to skip its next invocation so it doesn't
+      // trigger a redundant syncFromRoute after this URL update.
+      skipNextRouteSync.value = true
       await router.replace({ query: nextQuery })
-      return
+      // Don't return — continue to fetch events and track analytics below.
     }
 
     await eventsStore.fetchDiscoveryEvents()
@@ -132,6 +147,47 @@ function clearDiscoveryFilters() {
 const emptyStateMessage = computed(() => {
   if (!eventsStore.hasActiveFilters) {
     return 'No events are available yet. Check back soon or submit a new one.'
+  }
+
+  const filters = eventsStore.filters
+  const chips = eventsStore.activeFilterChips.filter((c) => c.key !== 'sortBy')
+  const filterCount = chips.length
+
+  if (filterCount === 1) {
+    const chip = chips[0]
+    if (!chip) {
+      return 'Try broadening your filters or clearing a few constraints to see more events.'
+    }
+    if (chip.key === 'location') {
+      return `No events found in "${filters.location}". Try a different city or remove the location filter.`
+    }
+    if (chip.key === 'search') {
+      return `No events match "${filters.search}". Try a different keyword or clear the search.`
+    }
+    if (chip.key === 'attendanceMode') {
+      const modeLabel =
+        filters.attendanceMode === 'IN_PERSON'
+          ? 'in-person'
+          : filters.attendanceMode === 'ONLINE'
+            ? 'online'
+            : 'hybrid'
+      return `No ${modeLabel} events available right now. Try a different attendance mode.`
+    }
+    if (chip.key === 'priceType') {
+      return filters.priceType === 'FREE'
+        ? 'No free events available. Remove the price filter to see all events.'
+        : 'No paid events available. Remove the price filter to see all events.'
+    }
+    if (chip.key === 'dateFrom' || chip.key === 'dateTo') {
+      return 'No events in this date range. Try adjusting or removing the date filters.'
+    }
+    if (chip.key === 'domain') {
+      return 'No events in this category. Remove the domain filter to see all categories.'
+    }
+  }
+
+  if (filterCount > 1) {
+    return `No events match all ${filterCount} active filters. Try removing your most specific filter first, or clear all to start over.`
   }
 
   return 'Try broadening your filters or clearing a few constraints to see more events.'
@@ -203,6 +259,9 @@ const emptyStateMessage = computed(() => {
               <span aria-hidden="true">📡</span>
               Showing results from your last online visit. Refresh when back online.
             </div>
+            <p class="results-summary" role="status" aria-live="polite">
+              {{ eventsStore.resultsSummary }}
+            </p>
             <div class="events-grid">
               <EventCard
                 v-for="event in eventsStore.discoveryEvents"
@@ -368,6 +427,12 @@ const emptyStateMessage = computed(() => {
 .results-column {
   display: flex;
   flex-direction: column;
+}
+
+.results-summary {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  margin-bottom: 0.75rem;
 }
 
 .events-grid {

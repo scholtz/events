@@ -228,6 +228,21 @@ export const useEventsStore = defineStore('events', () => {
     return chips
   })
 
+  const resultsSummary = computed(() => {
+    const count = discoveryEvents.value.length
+    const eventWord = count === 1 ? 'event' : 'events'
+    if (!hasActiveFilters.value) {
+      return `${count} ${eventWord} available`
+    }
+    const filterLabels = activeFilterChips.value
+      .filter((chip) => chip.key !== 'sortBy')
+      .map((chip) => chip.label)
+    if (filterLabels.length === 0) {
+      return `${count} ${eventWord} found`
+    }
+    return `${count} ${eventWord} matching ${filterLabels.join(', ')}`
+  })
+
   function getEventBySlug(slug: string): CatalogEvent | undefined {
     return [...discoveryEvents.value, ...events.value].find((event) => event.slug === slug)
   }
@@ -324,6 +339,7 @@ export const useEventsStore = defineStore('events', () => {
     pendingEvents,
     hasActiveFilters,
     activeFilterChips,
+    resultsSummary,
     getEventBySlug,
     getEventById,
     fetchEvents,
