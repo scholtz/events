@@ -241,9 +241,19 @@ public sealed class Mutation
     [Authorize(Policy = Policies.Admin)]
     public async Task<ApplicationUser> UpdateUserRoleAsync(
         UpdateUserRoleInput input,
+        ClaimsPrincipal claimsPrincipal,
         [Service] AppDbContext dbContext,
         CancellationToken cancellationToken)
     {
+        var currentUserId = claimsPrincipal.GetRequiredUserId();
+
+        if (input.UserId == currentUserId && input.Role != ApplicationUserRole.Admin)
+        {
+            throw CreateError(
+                "Admins cannot remove their own admin role. Ask another admin to change your role.",
+                "SELF_DEMOTION_NOT_ALLOWED");
+        }
+
         var user = await dbContext.Users.SingleOrDefaultAsync(candidate => candidate.Id == input.UserId, cancellationToken)
             ?? throw CreateError("User was not found.", "USER_NOT_FOUND");
 

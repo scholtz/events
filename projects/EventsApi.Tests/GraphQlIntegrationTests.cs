@@ -3305,6 +3305,100 @@ public sealed class GraphQlIntegrationTests
         Assert.Contains("INVALID_DISCOVERY_ACTION_TYPE", errors.ToString());
     }
 
+    // -----------------------------------------------------------------------
+    // UpdateUserRole – self-demotion guard and positive path
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Business risk: if an admin can remove their own admin role via a direct
+    /// API call the platform could lose its last administrator, leaving no one
+    /// able to approve events or manage users.  The server must enforce this
+    /// invariant independently of the UI.
+    /// </summary>
+    [Fact]
+    public async Task UpdateUserRole_AdminCannotDemoteThemselves()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var adminId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("admin-self@example.com", "Self-Demote Admin");
+            admin.Role = ApplicationUserRole.Admin;
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation UpdateUserRole($input: UpdateUserRoleInput!) {
+                  updateUserRole(input: $input) { id role }
+                }
+                """,
+            variables = new { input = new { userId = adminId, role = "CONTRIBUTOR" } }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        Assert.Contains("SELF_DEMOTION_NOT_ALLOWED", errors.ToString());
+
+        // Verify the role was NOT changed in the database
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var user = await db.Users.SingleAsync(u => u.Id == adminId);
+        Assert.Equal(ApplicationUserRole.Admin, user.Role);
+    }
+
+    [Fact]
+    public async Task UpdateUserRole_AdminCanPromoteAnotherUser()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var adminId = Guid.Empty;
+        var contributorId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("admin-promote@example.com", "Promote Admin");
+            admin.Role = ApplicationUserRole.Admin;
+            adminId = admin.Id;
+
+            var contributor = CreateUser("contributor@example.com", "Regular User");
+            contributor.Role = ApplicationUserRole.Contributor;
+            contributorId = contributor.Id;
+
+            dbContext.Users.AddRange(admin, contributor);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation UpdateUserRole($input: UpdateUserRoleInput!) {
+              updateUserRole(input: $input) { id displayName role }
+            }
+            """,
+            new { input = new { userId = contributorId, role = "ADMIN" } });
+
+        var updatedUser = document.RootElement.GetProperty("data").GetProperty("updateUserRole");
+        Assert.Equal("ADMIN", updatedUser.GetProperty("role").GetString());
+        Assert.Equal("Regular User", updatedUser.GetProperty("displayName").GetString());
+
+        // Verify the role was persisted in the database
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var user = await db.Users.SingleAsync(u => u.Id == contributorId);
+        Assert.Equal(ApplicationUserRole.Admin, user.Role);
+    }
+
     private static DateTime FirstDayOfNextMonthUtc()
     {
         var now = DateTime.UtcNow;

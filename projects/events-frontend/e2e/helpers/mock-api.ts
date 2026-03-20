@@ -456,6 +456,14 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
 
     if (query.includes('mutation') && query.includes('UpdateUserRole')) {
       const input = variables.input || {}
+      if (input.userId === state.currentUserId && input.role !== 'ADMIN') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Admins cannot remove their own admin role. Ask another admin to change your role.', extensions: { code: 'SELF_DEMOTION_NOT_ALLOWED' } }] }),
+        })
+        return
+      }
       const user = state.users.find((u) => u.id === input.userId)
       if (!user) {
         await route.fulfill({
