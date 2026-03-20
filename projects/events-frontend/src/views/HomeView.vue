@@ -179,8 +179,8 @@ const emptyStateMessage = computed(() => {
           <div v-else-if="eventsStore.discoveryError" class="results-state card error-state" role="alert">
             <div class="state-icon" aria-hidden="true">{{ isOffline ? '📡' : '⚠️' }}</div>
             <div>
-              <h2>{{ isOffline ? "You’re offline" : "Couldn’t load event results" }}</h2>
-              <p v-if="isOffline">You don’t have any cached results for this search. Connect to the internet and try again to load events.</p>
+              <h2>{{ isOffline ? "You're offline" : "Couldn't load event results" }}</h2>
+              <p v-if="isOffline">You don't have any cached results for this search. Connect to the internet and try again to load events.</p>
               <p v-else>{{ eventsStore.discoveryError }}</p>
             </div>
             <div class="state-actions">
