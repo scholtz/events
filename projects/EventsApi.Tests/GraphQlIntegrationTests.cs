@@ -890,7 +890,8 @@ public sealed class GraphQlIntegrationTests
         decimal? priceAmount = 0m,
         DateTime? submittedAtUtc = null,
         EventStatus status = EventStatus.Published,
-        AttendanceMode attendanceMode = AttendanceMode.InPerson)
+        AttendanceMode attendanceMode = AttendanceMode.InPerson,
+        string? timezone = null)
         => new()
         {
             Name = name,
@@ -915,7 +916,8 @@ public sealed class GraphQlIntegrationTests
             CurrencyCode = "EUR",
             Latitude = 50.0755m,
             Longitude = 14.4378m,
-            AttendanceMode = attendanceMode
+            AttendanceMode = attendanceMode,
+            Timezone = timezone
         };
 
     [Fact]
@@ -2312,6 +2314,260 @@ public sealed class GraphQlIntegrationTests
         var updatedEvent = updateDocument.RootElement.GetProperty("data").GetProperty("updateMyEvent");
         Assert.Equal("Updated Hybrid Event", updatedEvent.GetProperty("name").GetString());
         Assert.Equal("HYBRID", updatedEvent.GetProperty("attendanceMode").GetString());
+    }
+
+    // ── Timezone field tests ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task EventBySlug_ReturnsTimezone_WhenSet()
+    {
+        const string slug = "tz-prague-event";
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("tz-test@example.com", "TZ Test User");
+            var domain = CreateDomain("Tech", "tz-tech");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.Add(CreateEvent(
+                "Prague Timezone Event", slug, "An event in Prague.", "Venue", "Prague",
+                FirstDayOfNextMonthUtc(), domain, user,
+                timezone: "Europe/Prague"));
+        });
+
+        using var document = await ExecuteGraphQlAsync(
+            factory.CreateClient(),
+            """
+            query EventBySlug($slug: String!) {
+              eventBySlug(slug: $slug) {
+                name
+                timezone
+              }
+            }
+            """,
+            new { slug });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("eventBySlug");
+        Assert.Equal("Prague Timezone Event", result.GetProperty("name").GetString());
+        Assert.Equal("Europe/Prague", result.GetProperty("timezone").GetString());
+    }
+
+    [Fact]
+    public async Task EventBySlug_ReturnsNullTimezone_WhenNotSet()
+    {
+        const string slug = "no-tz-event";
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("no-tz@example.com", "No TZ User");
+            var domain = CreateDomain("Tech", "no-tz-tech");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.Add(CreateEvent(
+                "No Timezone Event", slug, "Legacy event without timezone.", "Venue", "Prague",
+                FirstDayOfNextMonthUtc(), domain, user));
+        });
+
+        using var document = await ExecuteGraphQlAsync(
+            factory.CreateClient(),
+            """
+            query EventBySlug($slug: String!) {
+              eventBySlug(slug: $slug) {
+                name
+                timezone
+              }
+            }
+            """,
+            new { slug });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("eventBySlug");
+        Assert.Equal("No Timezone Event", result.GetProperty("name").GetString());
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("timezone").ValueKind);
+    }
+
+    [Fact]
+    public async Task SubmitEvent_PreservesTimezone()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("tz-submit@example.com", "TZ Submit User");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "tz-submit-tech");
+            dbContext.Users.AddRange(user);
+            dbContext.Domains.Add(domain);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        var nextMonth = FirstDayOfNextMonthUtc();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation SubmitEvent($input: EventSubmissionInput!) {
+              submitEvent(input: $input) {
+                name
+                timezone
+              }
+            }
+            """,
+            new
+            {
+                input = new
+                {
+                    domainSlug = "tz-submit-tech",
+                    name = "New York Conference",
+                    description = "An event in New York.",
+                    eventUrl = "https://events.example.com/ny-conf",
+                    venueName = "Convention Center",
+                    addressLine1 = "1 Convention Pl",
+                    city = "New York",
+                    countryCode = "US",
+                    isFree = true,
+                    currencyCode = "USD",
+                    latitude = 40.712m,
+                    longitude = -74.006m,
+                    startsAtUtc = nextMonth,
+                    endsAtUtc = nextMonth.AddHours(4),
+                    attendanceMode = "IN_PERSON",
+                    timezone = "America/New_York"
+                }
+            });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("submitEvent");
+        Assert.Equal("New York Conference", result.GetProperty("name").GetString());
+        Assert.Equal("America/New_York", result.GetProperty("timezone").GetString());
+    }
+
+    [Fact]
+    public async Task SubmitEvent_AllowsNullTimezone_ForLegacyCompatibility()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("tz-null@example.com", "TZ Null User");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "tz-null-tech");
+            dbContext.Users.AddRange(user);
+            dbContext.Domains.Add(domain);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        var nextMonth = FirstDayOfNextMonthUtc();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation SubmitEvent($input: EventSubmissionInput!) {
+              submitEvent(input: $input) {
+                name
+                timezone
+              }
+            }
+            """,
+            new
+            {
+                input = new
+                {
+                    domainSlug = "tz-null-tech",
+                    name = "Legacy Event No TZ",
+                    description = "A legacy event without timezone.",
+                    eventUrl = "https://events.example.com/legacy",
+                    venueName = "Venue",
+                    addressLine1 = "Street 1",
+                    city = "Prague",
+                    countryCode = "CZ",
+                    isFree = true,
+                    currencyCode = "EUR",
+                    latitude = 50.075m,
+                    longitude = 14.437m,
+                    startsAtUtc = nextMonth,
+                    endsAtUtc = nextMonth.AddHours(4),
+                    attendanceMode = "IN_PERSON"
+                    // no timezone field — tests backwards compatibility
+                }
+            });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("submitEvent");
+        Assert.Equal("Legacy Event No TZ", result.GetProperty("name").GetString());
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("timezone").ValueKind);
+    }
+
+    [Fact]
+    public async Task UpdateMyEvent_PreservesTimezone()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("tz-update@example.com", "TZ Update User");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "tz-update-tech");
+            dbContext.Users.AddRange(user);
+            dbContext.Domains.Add(domain);
+
+            var ev = CreateEvent(
+                "Original Event", "original-tz", "Description.",
+                "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, user);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        var nextMonth = FirstDayOfNextMonthUtc();
+
+        using var updateDocument = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation UpdateMyEvent($eventId: UUID!, $input: EventSubmissionInput!) {
+              updateMyEvent(eventId: $eventId, input: $input) {
+                name
+                timezone
+              }
+            }
+            """,
+            new
+            {
+                eventId,
+                input = new
+                {
+                    domainSlug = "tz-update-tech",
+                    name = "Updated London Event",
+                    description = "Now happening in London.",
+                    eventUrl = "https://events.example.com/london",
+                    venueName = "ExCeL London",
+                    addressLine1 = "1 Western Gateway",
+                    city = "London",
+                    countryCode = "GB",
+                    isFree = true,
+                    currencyCode = "GBP",
+                    latitude = 51.508m,
+                    longitude = -0.025m,
+                    startsAtUtc = nextMonth,
+                    endsAtUtc = nextMonth.AddHours(6),
+                    attendanceMode = "IN_PERSON",
+                    timezone = "Europe/London"
+                }
+            });
+
+        var updatedEvent = updateDocument.RootElement.GetProperty("data").GetProperty("updateMyEvent");
+        Assert.Equal("Updated London Event", updatedEvent.GetProperty("name").GetString());
+        Assert.Equal("Europe/London", updatedEvent.GetProperty("timezone").GetString());
     }
 
     private static DateTime FirstDayOfNextMonthUtc()

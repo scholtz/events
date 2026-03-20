@@ -17,7 +17,7 @@ const EVENT_FIELDS = `
   latitude longitude startsAtUtc endsAtUtc
   submittedAtUtc updatedAtUtc publishedAtUtc
   adminNotes status isFree priceAmount currencyCode domainId mapUrl
-  attendanceMode
+  attendanceMode timezone
   domain { id name slug }
   submittedBy { displayName }
 `

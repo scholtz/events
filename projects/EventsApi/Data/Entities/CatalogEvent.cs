@@ -26,6 +26,12 @@ public sealed class CatalogEvent
     public decimal? PriceAmount { get; set; }
     public string CurrencyCode { get; set; } = "EUR";
     public AttendanceMode AttendanceMode { get; set; } = AttendanceMode.InPerson;
+    /// <summary>
+    /// IANA timezone identifier for the event's local time (e.g. "Europe/Prague",
+    /// "America/New_York"). Null for legacy events where the organizer did not specify
+    /// a timezone; callers should fall back to UTC in that case.
+    /// </summary>
+    public string? Timezone { get; set; }
     public Guid DomainId { get; set; }
     public EventDomain Domain { get; set; } = null!;
     public Guid SubmittedByUserId { get; set; }

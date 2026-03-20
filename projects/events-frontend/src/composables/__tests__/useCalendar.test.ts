@@ -57,6 +57,7 @@ function makeEvent(overrides: Partial<CatalogEvent> = {}): CatalogEvent {
     mapUrl: 'https://osm.org',
     interestedCount: 0,
     attendanceMode: 'IN_PERSON',
+    timezone: null,
     ...overrides,
   }
 }
@@ -72,6 +73,7 @@ function makeInput(overrides: Partial<CalendarEventInput> = {}): CalendarEventIn
     url: 'https://example.com/event',
     organizerName: 'Alice Organizer',
     uid: 'test-summit@events-platform',
+    timezone: null,
     ...overrides,
   }
 }
@@ -600,5 +602,103 @@ describe('ICS generation end-to-end', () => {
     expect(ics).toMatch(/SUMMARY:.+/)
     expect(ics).toContain('END:VEVENT')
     expect(ics).toContain('END:VCALENDAR')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Timezone-aware calendar export
+// ---------------------------------------------------------------------------
+
+describe('timezone-aware ICS generation', () => {
+  it('uses DTSTART;TZID= format when timezone is provided', () => {
+    const ics = buildIcsContent(
+      makeInput({ timezone: 'Europe/Prague', startUtc: '2026-06-15T10:00:00Z' }),
+    )
+    // Must use TZID format, not UTC Z-suffix for DTSTART
+    expect(ics).toContain('DTSTART;TZID=Europe/Prague:')
+    expect(ics).not.toContain('DTSTART:20260615T')
+  })
+
+  it('uses DTEND;TZID= format when timezone is provided', () => {
+    const ics = buildIcsContent(
+      makeInput({ timezone: 'Europe/Prague', endUtc: '2026-06-15T18:00:00Z' }),
+    )
+    expect(ics).toContain('DTEND;TZID=Europe/Prague:')
+    expect(ics).not.toContain('DTEND:20260615T')
+  })
+
+  it('includes X-WR-TIMEZONE header when timezone is provided', () => {
+    const ics = buildIcsContent(makeInput({ timezone: 'America/New_York' }))
+    expect(ics).toContain('X-WR-TIMEZONE:America/New_York')
+  })
+
+  it('does NOT include X-WR-TIMEZONE when timezone is null', () => {
+    const ics = buildIcsContent(makeInput({ timezone: null }))
+    expect(ics).not.toContain('X-WR-TIMEZONE')
+  })
+
+  it('falls back to UTC Z-suffix when timezone is null', () => {
+    const ics = buildIcsContent(
+      makeInput({ timezone: null, startUtc: '2026-06-15T10:00:00Z' }),
+    )
+    expect(ics).toContain('DTSTART:20260615T100000Z')
+  })
+
+  it('correctly converts UTC time to Prague local time (UTC+2 in June)', () => {
+    // Prague is UTC+2 in June (CEST).  10:00 UTC → 12:00 Prague local.
+    const ics = buildIcsContent(
+      makeInput({ timezone: 'Europe/Prague', startUtc: '2026-06-15T10:00:00Z' }),
+    )
+    expect(ics).toContain('DTSTART;TZID=Europe/Prague:20260615T120000')
+  })
+
+  it('correctly converts UTC time to New York local time (UTC-4 in June)', () => {
+    // New York is UTC-4 in June (EDT).  14:00 UTC → 10:00 New York local.
+    const ics = buildIcsContent(
+      makeInput({ timezone: 'America/New_York', startUtc: '2026-06-15T14:00:00Z' }),
+    )
+    expect(ics).toContain('DTSTART;TZID=America/New_York:20260615T100000')
+  })
+
+  it('uses fallback DTEND with TZID when endUtc is null', () => {
+    const ics = buildIcsContent(
+      makeInput({
+        timezone: 'Europe/Prague',
+        startUtc: '2026-06-15T10:00:00Z',
+        endUtc: null,
+      }),
+    )
+    // Fallback end = start + 1h = 11:00 UTC → 13:00 Prague local (UTC+2)
+    expect(ics).toContain('DTEND;TZID=Europe/Prague:20260615T130000')
+  })
+
+  it('eventToCalendarInput maps timezone from event to input', () => {
+    const event = makeEvent({ timezone: 'Europe/Prague' })
+    const input = eventToCalendarInput(event)
+    expect(input.timezone).toBe('Europe/Prague')
+  })
+
+  it('eventToCalendarInput sets timezone to null when event has no timezone', () => {
+    const event = makeEvent({ timezone: null })
+    const input = eventToCalendarInput(event)
+    expect(input.timezone).toBeNull()
+  })
+})
+
+describe('timezone-aware Google Calendar URL', () => {
+  it('includes ctz parameter when timezone is provided', () => {
+    const url = buildGoogleCalendarUrl(makeInput({ timezone: 'Europe/Prague' }))
+    const params = new URLSearchParams(url.split('?')[1])
+    expect(params.get('ctz')).toBe('Europe/Prague')
+  })
+
+  it('does NOT include ctz parameter when timezone is null', () => {
+    const url = buildGoogleCalendarUrl(makeInput({ timezone: null }))
+    expect(url).not.toContain('ctz=')
+  })
+
+  it('sets correct ctz for America/New_York', () => {
+    const url = buildGoogleCalendarUrl(makeInput({ timezone: 'America/New_York' }))
+    expect(decodeURIComponent(url)).toContain('ctz=America/New_York')
   })
 })

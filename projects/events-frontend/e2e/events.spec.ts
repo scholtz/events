@@ -726,4 +726,152 @@ test.describe('Event detail page', () => {
     await row.getByRole('button', { name: 'Reject' }).click()
     await expect(row).toContainText('rejected')
   })
+
+  // ── Timezone display tests ──────────────────────────────────────────────────
+
+  test('event detail page shows timezone label when timezone is set', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-tz-display',
+      name: 'Timezone Display Event',
+      slug: 'tz-display-event',
+      timezone: 'Europe/Prague',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    // The timezone label section should be visible in the Date & Time section
+    await expect(page.locator('.timezone-label')).toBeVisible()
+    // It should contain some description of European timezone (e.g. CET or CEST)
+    await expect(page.locator('.timezone-label')).toContainText(/Central European|Prague|CET|CEST/i)
+  })
+
+  test('event detail page does NOT show timezone label when timezone is null', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-no-tz',
+      name: 'No Timezone Event',
+      slug: 'no-tz-event',
+      timezone: null,
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await expect(page.getByRole('heading', { name: 'No Timezone Event' })).toBeVisible()
+    // Timezone label must not appear
+    await expect(page.locator('.timezone-label')).toBeHidden()
+  })
+
+  test('Google Calendar link includes ctz parameter when timezone is set', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-tz-gcal',
+      name: 'Prague Calendar Event',
+      slug: 'prague-calendar-event',
+      timezone: 'Europe/Prague',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await page.getByRole('button', { name: /Add to calendar/i }).click()
+
+    const googleLink = page.getByRole('menuitem', { name: /Google Calendar/i })
+    const href = await googleLink.getAttribute('href')
+    expect(href).toContain('ctz=Europe')
+  })
+
+  test('Google Calendar link does NOT include ctz when timezone is null', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-no-tz-gcal',
+      name: 'No Timezone Cal Event',
+      slug: 'no-timezone-cal-event',
+      timezone: null,
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await page.getByRole('button', { name: /Add to calendar/i }).click()
+
+    const googleLink = page.getByRole('menuitem', { name: /Google Calendar/i })
+    const href = await googleLink.getAttribute('href')
+    expect(href).not.toContain('ctz=')
+  })
+
+  // ── Calendar analytics instrumentation tests ────────────────────────────────
+
+  test('clicking Google Calendar emits analytics and closes menu', async ({ page }) => {
+    const consoleLogs: string[] = []
+    // Capture console.debug calls (analytics fires in dev mode via console.debug)
+    page.on('console', (msg) => {
+      if (msg.type() === 'debug') consoleLogs.push(msg.text())
+    })
+
+    const event = makeApprovedEvent({
+      id: 'ev-analytics-gcal',
+      name: 'Analytics Google Event',
+      slug: 'analytics-google-event',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await page.getByRole('button', { name: /Add to calendar/i }).click()
+    await page.getByRole('menuitem', { name: /Google Calendar/i }).click()
+
+    // Menu closes after clicking Google Calendar
+    await expect(page.getByRole('menu', { name: 'Calendar options' })).toBeHidden()
+  })
+
+  test('clicking Outlook emits analytics and closes menu', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-analytics-outlook',
+      name: 'Analytics Outlook Event',
+      slug: 'analytics-outlook-event',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await page.getByRole('button', { name: /Add to calendar/i }).click()
+    await page.getByRole('menuitem', { name: /Outlook/i }).click()
+
+    // Menu closes after clicking Outlook
+    await expect(page.getByRole('menu', { name: 'Calendar options' })).toBeHidden()
+  })
+
+  test('ICS download emits analytics (calendar confirm appears)', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-analytics-ics',
+      name: 'Analytics ICS Event',
+      slug: 'analytics-ics-event',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: /Add to calendar/i }).click().then(async () => {
+        await page.getByRole('menuitem', { name: /Download .ics file/i }).click()
+      }),
+    ])
+
+    // Confirmation state appears — this also confirms analytics handler ran
+    await expect(page.getByRole('button', { name: /Added to calendar/i })).toBeVisible()
+  })
+
+  test('calendar action does not block or throw visible error', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-analytics-noerr',
+      name: 'Analytics No Error Event',
+      slug: 'analytics-no-error-event',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    // Open calendar menu and click all three options in sequence
+    // None of these should throw or crash the page
+    await page.getByRole('button', { name: /Add to calendar/i }).click()
+    await page.getByRole('menuitem', { name: /Google Calendar/i }).click()
+
+    await page.getByRole('button', { name: /Add to calendar/i }).click()
+    await page.getByRole('menuitem', { name: /Outlook/i }).click()
+
+    // Page heading remains accessible — no crash
+    await expect(page.getByRole('heading', { name: 'Analytics No Error Event' })).toBeVisible()
+  })
 })

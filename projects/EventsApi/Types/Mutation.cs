@@ -96,6 +96,7 @@ public sealed class Mutation
             PriceAmount = NormalizePriceAmount(input),
             CurrencyCode = NormalizeCurrencyCode(input.CurrencyCode),
             AttendanceMode = input.AttendanceMode,
+            Timezone = NormalizeOptionalValue(input.Timezone),
             Latitude = input.Latitude,
             Longitude = input.Longitude,
             StartsAtUtc = EnsureUtc(input.StartsAtUtc),
@@ -154,6 +155,7 @@ public sealed class Mutation
         catalogEvent.PriceAmount = NormalizePriceAmount(input);
         catalogEvent.CurrencyCode = NormalizeCurrencyCode(input.CurrencyCode);
         catalogEvent.AttendanceMode = input.AttendanceMode;
+        catalogEvent.Timezone = NormalizeOptionalValue(input.Timezone);
         catalogEvent.Latitude = input.Latitude;
         catalogEvent.Longitude = input.Longitude;
         catalogEvent.StartsAtUtc = EnsureUtc(input.StartsAtUtc);

@@ -71,6 +71,8 @@ export interface CatalogEvent {
   mapUrl: string
   interestedCount: number
   attendanceMode: AttendanceMode
+  /** IANA timezone identifier (e.g. "Europe/Prague"). Null for legacy events; fall back to UTC. */
+  timezone: string | null
 }
 
 /** Matches backend DashboardOverview response */

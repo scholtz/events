@@ -63,6 +63,7 @@ export type MockEvent = {
   mapUrl: string
   interestedCount: number
   attendanceMode: 'IN_PERSON' | 'ONLINE' | 'HYBRID'
+  timezone: string | null
 }
 
 export type MockSavedSearch = {
@@ -257,6 +258,8 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         reviewedBy: null,
         mapUrl: '',
         interestedCount: 0,
+        attendanceMode: (input.attendanceMode as MockEvent['attendanceMode']) || 'IN_PERSON',
+        timezone: input.timezone ?? null,
       }
       state.events.unshift(newEvent)
       await route.fulfill({
@@ -622,6 +625,7 @@ export function makeApprovedEvent(overrides: Partial<MockEvent> = {}): MockEvent
     mapUrl: 'https://www.openstreetmap.org/?mlat=50.0755&mlon=14.4378#map=15/50.0755/14.4378',
     interestedCount: 0,
     attendanceMode: 'IN_PERSON',
+    timezone: null,
     ...overrides,
   }
 }
