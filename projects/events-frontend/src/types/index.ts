@@ -37,6 +37,20 @@ export interface EventDomain {
   description: string | null
   isActive: boolean
   createdAtUtc: string
+  createdByUserId: string | null
+  primaryColor: string | null
+  accentColor: string | null
+  logoUrl: string | null
+  bannerUrl: string | null
+}
+
+/** Matches backend DomainAdministrator entity */
+export interface DomainAdministrator {
+  id: string
+  domainId: string
+  userId: string
+  user: { displayName: string; email: string }
+  createdAtUtc: string
 }
 
 /** Matches backend CatalogEvent entity */

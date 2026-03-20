@@ -4,7 +4,7 @@ import { useEventsStore } from '@/stores/events'
 import { useAuthStore } from '@/stores/auth'
 import { useDomainsStore } from '@/stores/domains'
 import { gqlRequest } from '@/lib/graphql'
-import type { AdminOverview, User } from '@/types'
+import type { AdminOverview, DomainAdministrator, User } from '@/types'
 
 const eventsStore = useEventsStore()
 const auth = useAuthStore()
@@ -17,6 +17,98 @@ const newDomain = ref({ name: '', slug: '', subdomain: '', description: '' })
 const adminOverview = ref<AdminOverview | null>(null)
 const adminLoading = ref(false)
 const updatingRole = ref<string | null>(null)
+
+// ── Domain admin management state ────────────────────────────────────────
+const selectedDomainId = ref<string | null>(null)
+const domainAdmins = ref<DomainAdministrator[]>([])
+const domainAdminsLoading = ref(false)
+const addAdminUserId = ref('')
+const domainAdminError = ref('')
+const domainStyleSaving = ref(false)
+const domainStyleSuccess = ref(false)
+const domainStyleForm = ref({
+  primaryColor: '',
+  accentColor: '',
+  logoUrl: '',
+  bannerUrl: '',
+})
+
+async function selectDomain(domainId: string) {
+  if (selectedDomainId.value === domainId) {
+    selectedDomainId.value = null
+    return
+  }
+  selectedDomainId.value = domainId
+  domainAdminError.value = ''
+  domainStyleSuccess.value = false
+
+  const domain = domainsStore.domains.find((d) => d.id === domainId)
+  if (domain) {
+    domainStyleForm.value = {
+      primaryColor: domain.primaryColor ?? '',
+      accentColor: domain.accentColor ?? '',
+      logoUrl: domain.logoUrl ?? '',
+      bannerUrl: domain.bannerUrl ?? '',
+    }
+  }
+
+  await loadDomainAdmins(domainId)
+}
+
+async function loadDomainAdmins(domainId: string) {
+  domainAdminsLoading.value = true
+  try {
+    domainAdmins.value = await domainsStore.fetchDomainAdministrators(domainId)
+  } catch {
+    domainAdmins.value = []
+  } finally {
+    domainAdminsLoading.value = false
+  }
+}
+
+async function handleAddDomainAdmin() {
+  if (!selectedDomainId.value || !addAdminUserId.value) return
+  domainAdminError.value = ''
+  try {
+    await domainsStore.addDomainAdministrator(selectedDomainId.value, addAdminUserId.value)
+    addAdminUserId.value = ''
+    await loadDomainAdmins(selectedDomainId.value)
+  } catch {
+    domainAdminError.value = 'Failed to add domain administrator.'
+  }
+}
+
+async function handleRemoveDomainAdmin(userId: string) {
+  if (!selectedDomainId.value) return
+  domainAdminError.value = ''
+  try {
+    await domainsStore.removeDomainAdministrator(selectedDomainId.value, userId)
+    await loadDomainAdmins(selectedDomainId.value)
+  } catch {
+    domainAdminError.value = 'Failed to remove domain administrator.'
+  }
+}
+
+async function handleSaveDomainStyle() {
+  if (!selectedDomainId.value) return
+  domainStyleSaving.value = true
+  domainStyleSuccess.value = false
+  domainAdminError.value = ''
+  try {
+    await domainsStore.updateDomainStyle({
+      domainId: selectedDomainId.value,
+      primaryColor: domainStyleForm.value.primaryColor || null,
+      accentColor: domainStyleForm.value.accentColor || null,
+      logoUrl: domainStyleForm.value.logoUrl || null,
+      bannerUrl: domainStyleForm.value.bannerUrl || null,
+    })
+    domainStyleSuccess.value = true
+  } catch {
+    domainAdminError.value = 'Failed to save domain style.'
+  } finally {
+    domainStyleSaving.value = false
+  }
+}
 
 async function fetchAdminOverview() {
   if (!auth.isAdmin) return
@@ -298,10 +390,15 @@ async function handleReviewEvent(eventId: string, status: string) {
                 <th>Slug</th>
                 <th>Subdomain</th>
                 <th>Description</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="d in domainsStore.domains" :key="d.id">
+              <tr
+                v-for="d in domainsStore.domains"
+                :key="d.id"
+                :class="{ 'selected-row': selectedDomainId === d.id }"
+              >
                 <td>
                   <span
                     class="color-dot"
@@ -316,12 +413,132 @@ async function handleReviewEvent(eventId: string, status: string) {
                   <code class="slug-code">{{ d.subdomain }}</code>
                 </td>
                 <td class="text-secondary">{{ d.description }}</td>
+                <td class="actions-cell">
+                  <button
+                    class="btn btn-outline btn-sm"
+                    @click="selectDomain(d.id)"
+                  >
+                    {{ selectedDomainId === d.id ? 'Close' : 'Manage' }}
+                  </button>
+                </td>
               </tr>
             </tbody>
           </table>
           <div v-if="!domainsStore.domains.length" class="empty-table">
             <div class="empty-icon">🏷️</div>
             <p>No domains yet. Add one above.</p>
+          </div>
+        </div>
+
+        <!-- Domain detail panel -->
+        <div v-if="selectedDomainId" class="domain-detail card">
+          <p v-if="domainAdminError" class="role-error" role="alert">{{ domainAdminError }}</p>
+
+          <!-- Domain style editor -->
+          <div class="domain-style-section">
+            <h3>Tag Style</h3>
+            <form class="style-form" @submit.prevent="handleSaveDomainStyle">
+              <div class="style-form-grid">
+                <label class="form-field">
+                  <span>Primary Color</span>
+                  <input
+                    v-model="domainStyleForm.primaryColor"
+                    class="form-input"
+                    type="text"
+                    placeholder="#137fec"
+                  />
+                </label>
+                <label class="form-field">
+                  <span>Accent Color</span>
+                  <input
+                    v-model="domainStyleForm.accentColor"
+                    class="form-input"
+                    type="text"
+                    placeholder="#ff5500"
+                  />
+                </label>
+                <label class="form-field">
+                  <span>Logo URL</span>
+                  <input
+                    v-model="domainStyleForm.logoUrl"
+                    class="form-input"
+                    type="url"
+                    placeholder="https://example.com/logo.png"
+                  />
+                </label>
+                <label class="form-field">
+                  <span>Banner URL</span>
+                  <input
+                    v-model="domainStyleForm.bannerUrl"
+                    class="form-input"
+                    type="url"
+                    placeholder="https://example.com/banner.jpg"
+                  />
+                </label>
+              </div>
+              <div class="style-form-actions">
+                <button
+                  type="submit"
+                  class="btn btn-primary btn-sm"
+                  :disabled="domainStyleSaving"
+                >
+                  {{ domainStyleSaving ? 'Saving…' : 'Save Style' }}
+                </button>
+                <span v-if="domainStyleSuccess" class="save-success">✓ Saved</span>
+              </div>
+            </form>
+          </div>
+
+          <!-- Domain administrators -->
+          <div class="domain-admins-section">
+            <h3>Tag Administrators</h3>
+            <div v-if="domainAdminsLoading" class="loading-state">
+              <p>Loading administrators…</p>
+            </div>
+            <template v-else>
+              <div class="admin-list">
+                <div
+                  v-for="da in domainAdmins"
+                  :key="da.id"
+                  class="admin-list-item"
+                >
+                  <div>
+                    <strong>{{ da.user.displayName }}</strong>
+                    <span class="text-secondary">{{ da.user.email }}</span>
+                  </div>
+                  <button
+                    class="btn btn-outline btn-sm"
+                    @click="handleRemoveDomainAdmin(da.userId)"
+                  >
+                    Remove
+                  </button>
+                </div>
+                <p v-if="!domainAdmins.length" class="text-secondary">
+                  No administrators assigned to this domain.
+                </p>
+              </div>
+              <form class="add-admin-form" @submit.prevent="handleAddDomainAdmin">
+                <select
+                  v-model="addAdminUserId"
+                  class="form-input"
+                  required
+                >
+                  <option value="" disabled>Select user…</option>
+                  <option
+                    v-for="user in (adminOverview?.users ?? []).filter(
+                      (u) => !domainAdmins.some((da) => da.userId === u.id)
+                    )"
+                    :key="user.id"
+                    :value="user.id"
+                  >
+                    {{ user.displayName }} ({{ user.email }})
+                  </option>
+                </select>
+                <button type="submit" class="btn btn-primary btn-sm" :disabled="!addAdminUserId">
+                  Add Admin
+                </button>
+              </form>
+            </template>
           </div>
         </div>
       </div>
@@ -720,5 +937,83 @@ tr:hover td {
   padding: 0.5rem 0.75rem;
   background: rgba(248, 113, 113, 0.1);
   border-radius: var(--radius-sm, 4px);
+}
+
+/* ── Domain detail panel ──────────────────────────────────────── */
+
+.selected-row {
+  background: rgba(99, 102, 241, 0.08);
+}
+
+.domain-detail {
+  margin-top: 1rem;
+  padding: 1.5rem;
+}
+
+.domain-style-section,
+.domain-admins-section {
+  margin-bottom: 1.5rem;
+}
+
+.domain-style-section h3,
+.domain-admins-section h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+.style-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.style-form-actions {
+  margin-top: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.save-success {
+  color: #4ade80;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.admin-list {
+  margin-bottom: 0.75rem;
+}
+
+.admin-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
+}
+
+.admin-list-item span {
+  margin-left: 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.add-admin-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+
+.add-admin-form select {
+  flex: 1;
 }
 </style>

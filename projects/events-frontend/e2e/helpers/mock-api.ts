@@ -30,6 +30,19 @@ export type MockDomain = {
   description: string | null
   isActive: boolean
   createdAtUtc: string
+  createdByUserId?: string | null
+  primaryColor?: string | null
+  accentColor?: string | null
+  logoUrl?: string | null
+  bannerUrl?: string | null
+}
+
+export type MockDomainAdministrator = {
+  id: string
+  domainId: string
+  userId: string
+  user: { displayName: string; email: string }
+  createdAtUtc: string
 }
 
 export type MockEvent = {
@@ -101,6 +114,7 @@ export type MockCalendarAction = {
 export type MockState = {
   users: MockUser[]
   domains: MockDomain[]
+  domainAdministrators: MockDomainAdministrator[]
   events: MockEvent[]
   savedSearches: MockSavedSearch[]
   favoriteEvents: MockFavoriteEvent[]
@@ -118,6 +132,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
   const state: MockState = {
     users: initial?.users ?? [],
     domains: initial?.domains ?? [],
+    domainAdministrators: initial?.domainAdministrators ?? [],
     events: initial?.events ?? [],
     savedSearches: initial?.savedSearches ?? [],
     favoriteEvents: initial?.favoriteEvents ?? [],
@@ -492,6 +507,76 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       return
     }
 
+    // ── Domain administrator mutations ──
+    if (query.includes('mutation') && query.includes('AddDomainAdmin')) {
+      const input = variables.input || {}
+      const user = state.users.find((u) => u.id === input.userId)
+      if (!user) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'User not found' }] }),
+        })
+        return
+      }
+      const existing = state.domainAdministrators.find(
+        (da) => da.domainId === input.domainId && da.userId === input.userId,
+      )
+      if (existing) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: { addDomainAdministrator: existing } }),
+        })
+        return
+      }
+      const da: MockDomainAdministrator = {
+        id: `da-${Date.now()}`,
+        domainId: input.domainId,
+        userId: input.userId,
+        user: { displayName: user.displayName, email: user.email },
+        createdAtUtc: new Date().toISOString(),
+      }
+      state.domainAdministrators.push(da)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { addDomainAdministrator: da } }),
+      })
+      return
+    }
+
+    if (query.includes('mutation') && query.includes('RemoveDomainAdmin')) {
+      const input = variables.input || {}
+      const idx = state.domainAdministrators.findIndex(
+        (da) => da.domainId === input.domainId && da.userId === input.userId,
+      )
+      if (idx >= 0) state.domainAdministrators.splice(idx, 1)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { removeDomainAdministrator: true } }),
+      })
+      return
+    }
+
+    if (query.includes('mutation') && query.includes('UpdateDomainStyle')) {
+      const input = variables.input || {}
+      const domain = state.domains.find((d) => d.id === input.domainId)
+      if (domain) {
+        domain.primaryColor = input.primaryColor ?? null
+        domain.accentColor = input.accentColor ?? null
+        domain.logoUrl = input.logoUrl ?? null
+        domain.bannerUrl = input.bannerUrl ?? null
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { updateDomainStyle: domain } }),
+      })
+      return
+    }
+
     // ── Queries ──
     if (query.includes('query') && query.includes('AdminOverview')) {
       const currentUser = state.users.find((u) => u.id === state.currentUserId)
@@ -703,6 +788,17 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({ data: { mySavedSearches: savedSearches } }),
+      })
+      return
+    }
+
+    if (query.includes('query') && query.includes('DomainAdmins')) {
+      const domainId = variables.domainId
+      const admins = state.domainAdministrators.filter((da) => da.domainId === domainId)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { domainAdministrators: admins } }),
       })
       return
     }
