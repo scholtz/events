@@ -264,6 +264,44 @@ test.describe('Event detail page', () => {
     await expect(page).toHaveURL(/\/$/)
   })
 
+  test('event detail tag link navigates to the dedicated tag page', async ({ page }) => {
+    const cryptoDomain = {
+      id: 'dom-crypto',
+      name: 'Crypto',
+      slug: 'crypto',
+      subdomain: 'crypto',
+      description: 'Blockchain and crypto events',
+      isActive: true,
+      createdAtUtc: new Date().toISOString(),
+    }
+    const event = makeApprovedEvent({
+      id: 'ev-domain-link',
+      name: 'Crypto Week Event',
+      slug: 'crypto-week-event',
+      domainId: cryptoDomain.id,
+      domain: {
+        id: cryptoDomain.id,
+        name: cryptoDomain.name,
+        slug: cryptoDomain.slug,
+        subdomain: cryptoDomain.subdomain,
+      },
+    })
+    setupMockApi(page, {
+      domains: [cryptoDomain],
+      events: [event],
+    })
+
+    await page.goto(`/event/${event.slug}`)
+
+    const tagLink = page.getByRole('link', { name: /Browse more events on crypto\.events\.localhost/i })
+    await expect(tagLink).toBeVisible()
+    await expect(page.getByText('crypto.events.localhost')).toBeVisible()
+    await tagLink.click()
+
+    await expect(page).toHaveURL(/\/\?subdomain=crypto&domain=crypto$/)
+    await expect(page.getByRole('heading', { name: 'Crypto Events' })).toBeVisible()
+  })
+
   test('shows location info when available', async ({ page }) => {
     const event = makeApprovedEvent({
       id: 'ev-loc',

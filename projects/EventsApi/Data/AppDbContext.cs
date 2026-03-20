@@ -12,6 +12,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<FavoriteEvent> FavoriteEvents => Set<FavoriteEvent>();
     public DbSet<CalendarAnalyticsAction> CalendarAnalyticsActions => Set<CalendarAnalyticsAction>();
     public DbSet<DiscoveryAnalyticsAction> DiscoveryAnalyticsActions => Set<DiscoveryAnalyticsAction>();
+    public DbSet<DomainAdministrator> DomainAdministrators => Set<DomainAdministrator>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -32,6 +33,30 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(domain => domain.Slug).HasMaxLength(120);
             entity.Property(domain => domain.Subdomain).HasMaxLength(120);
             entity.Property(domain => domain.Description).HasMaxLength(1000);
+            entity.Property(domain => domain.PrimaryColor).HasMaxLength(32);
+            entity.Property(domain => domain.AccentColor).HasMaxLength(32);
+            entity.Property(domain => domain.LogoUrl).HasMaxLength(1000);
+            entity.Property(domain => domain.BannerUrl).HasMaxLength(1000);
+
+            entity.HasOne(domain => domain.CreatedBy)
+                .WithMany()
+                .HasForeignKey(domain => domain.CreatedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<DomainAdministrator>(entity =>
+        {
+            entity.HasIndex(da => new { da.DomainId, da.UserId }).IsUnique();
+
+            entity.HasOne(da => da.Domain)
+                .WithMany(domain => domain.Administrators)
+                .HasForeignKey(da => da.DomainId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(da => da.User)
+                .WithMany()
+                .HasForeignKey(da => da.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<CatalogEvent>(entity =>

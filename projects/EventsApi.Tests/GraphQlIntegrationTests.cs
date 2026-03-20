@@ -3399,6 +3399,399 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal(ApplicationUserRole.Admin, user.Role);
     }
 
+    // ── Domain Administrator management tests ────────────────────────────────
+
+    [Fact]
+    public async Task AddDomainAdministrator_GlobalAdmin_AssignsUserToDomain()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty, contributorId = Guid.Empty, domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("admin@example.com", "Admin");
+            admin.Role = ApplicationUserRole.Admin;
+            var contributor = CreateUser("contributor@example.com", "Contributor");
+            var domain = CreateDomain("Crypto", "crypto");
+
+            dbContext.Users.AddRange(admin, contributor);
+            dbContext.Domains.Add(domain);
+
+            adminId = admin.Id;
+            contributorId = contributor.Id;
+            domainId = domain.Id;
+        });
+
+        using var client = factory.CreateClient();
+        var token = await CreateTokenAsync(factory, adminId);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation AddDomainAdmin($input: DomainAdministratorInput!) {
+              addDomainAdministrator(input: $input) { id domainId userId }
+            }
+            """,
+            new { input = new { domainId, userId = contributorId } });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("addDomainAdministrator");
+        Assert.Equal(domainId.ToString(), result.GetProperty("domainId").GetString());
+        Assert.Equal(contributorId.ToString(), result.GetProperty("userId").GetString());
+    }
+
+    [Fact]
+    public async Task AddDomainAdministrator_DomainAdmin_CanAssignOtherUsers()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid domainAdminId = Guid.Empty, newUserId = Guid.Empty, domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domainAdmin = CreateUser("domainadmin@example.com", "Domain Admin");
+            var newUser = CreateUser("newuser@example.com", "New User");
+            var domain = CreateDomain("Crypto", "crypto");
+
+            dbContext.Users.AddRange(domainAdmin, newUser);
+            dbContext.Domains.Add(domain);
+
+            domainAdminId = domainAdmin.Id;
+            newUserId = newUser.Id;
+            domainId = domain.Id;
+
+            // Assign domainAdmin as domain administrator
+            dbContext.Set<DomainAdministrator>().Add(new DomainAdministrator
+            {
+                DomainId = domain.Id,
+                UserId = domainAdmin.Id
+            });
+        });
+
+        using var client = factory.CreateClient();
+        var token = await CreateTokenAsync(factory, domainAdminId);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation AddDomainAdmin($input: DomainAdministratorInput!) {
+              addDomainAdministrator(input: $input) { id userId }
+            }
+            """,
+            new { input = new { domainId, userId = newUserId } });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("addDomainAdministrator");
+        Assert.Equal(newUserId.ToString(), result.GetProperty("userId").GetString());
+    }
+
+    [Fact]
+    public async Task AddDomainAdministrator_RegularUser_Forbidden()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid regularUserId = Guid.Empty, targetUserId = Guid.Empty, domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var regular = CreateUser("regular@example.com", "Regular");
+            var target = CreateUser("target@example.com", "Target");
+            var domain = CreateDomain("Crypto", "crypto");
+
+            dbContext.Users.AddRange(regular, target);
+            dbContext.Domains.Add(domain);
+
+            regularUserId = regular.Id;
+            targetUserId = target.Id;
+            domainId = domain.Id;
+        });
+
+        using var client = factory.CreateClient();
+        var token = await CreateTokenAsync(factory, regularUserId);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+            mutation AddDomainAdmin($input: DomainAdministratorInput!) {
+              addDomainAdministrator(input: $input) { id }
+            }
+            """,
+            variables = new { input = new { domainId, userId = targetUserId } }
+        });
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("FORBIDDEN", body);
+    }
+
+    [Fact]
+    public async Task RemoveDomainAdministrator_GlobalAdmin_RemovesAssignment()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty, contributorId = Guid.Empty, domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("admin@example.com", "Admin");
+            admin.Role = ApplicationUserRole.Admin;
+            var contributor = CreateUser("contributor@example.com", "Contributor");
+            var domain = CreateDomain("Crypto", "crypto");
+
+            dbContext.Users.AddRange(admin, contributor);
+            dbContext.Domains.Add(domain);
+
+            adminId = admin.Id;
+            contributorId = contributor.Id;
+            domainId = domain.Id;
+
+            dbContext.Set<DomainAdministrator>().Add(new DomainAdministrator
+            {
+                DomainId = domain.Id,
+                UserId = contributor.Id
+            });
+        });
+
+        using var client = factory.CreateClient();
+        var token = await CreateTokenAsync(factory, adminId);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation RemoveDomainAdmin($input: DomainAdministratorInput!) {
+              removeDomainAdministrator(input: $input)
+            }
+            """,
+            new { input = new { domainId, userId = contributorId } });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("removeDomainAdministrator").GetBoolean();
+        Assert.True(result);
+    }
+
+    [Fact]
+    public async Task UpdateDomainStyle_DomainAdmin_UpdatesStyleFields()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid domainAdminId = Guid.Empty, domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domainAdmin = CreateUser("domainadmin@example.com", "Domain Admin");
+            var domain = CreateDomain("Crypto", "crypto");
+
+            dbContext.Users.Add(domainAdmin);
+            dbContext.Domains.Add(domain);
+
+            domainAdminId = domainAdmin.Id;
+            domainId = domain.Id;
+
+            dbContext.Set<DomainAdministrator>().Add(new DomainAdministrator
+            {
+                DomainId = domain.Id,
+                UserId = domainAdmin.Id
+            });
+        });
+
+        using var client = factory.CreateClient();
+        var token = await CreateTokenAsync(factory, domainAdminId);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation UpdateStyle($input: UpdateDomainStyleInput!) {
+              updateDomainStyle(input: $input) {
+                id primaryColor accentColor logoUrl bannerUrl
+              }
+            }
+            """,
+            new
+            {
+                input = new
+                {
+                    domainId,
+                    primaryColor = "#ff5500",
+                    accentColor = "#0055ff",
+                    logoUrl = "https://example.com/logo.png",
+                    bannerUrl = "https://example.com/banner.jpg"
+                }
+            });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("updateDomainStyle");
+        Assert.Equal("#ff5500", result.GetProperty("primaryColor").GetString());
+        Assert.Equal("#0055ff", result.GetProperty("accentColor").GetString());
+        Assert.Equal("https://example.com/logo.png", result.GetProperty("logoUrl").GetString());
+        Assert.Equal("https://example.com/banner.jpg", result.GetProperty("bannerUrl").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateDomainStyle_RegularUser_Forbidden()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid userId = Guid.Empty, domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("regular@example.com", "Regular");
+            var domain = CreateDomain("Crypto", "crypto");
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+
+            userId = user.Id;
+            domainId = domain.Id;
+        });
+
+        using var client = factory.CreateClient();
+        var token = await CreateTokenAsync(factory, userId);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+            mutation UpdateStyle($input: UpdateDomainStyleInput!) {
+              updateDomainStyle(input: $input) { id }
+            }
+            """,
+            variables = new { input = new { domainId, primaryColor = "#ff0000" } }
+        });
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("FORBIDDEN", body);
+    }
+
+    [Fact]
+    public async Task GetDomainAdministrators_ReturnsAdminsForDomain()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty, domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("admin@example.com", "Admin");
+            admin.Role = ApplicationUserRole.Admin;
+            var contributor = CreateUser("contributor@example.com", "Contributor");
+            var domain = CreateDomain("Crypto", "crypto");
+
+            dbContext.Users.AddRange(admin, contributor);
+            dbContext.Domains.Add(domain);
+
+            adminId = admin.Id;
+            domainId = domain.Id;
+
+            dbContext.Set<DomainAdministrator>().Add(new DomainAdministrator
+            {
+                DomainId = domain.Id,
+                UserId = admin.Id
+            });
+            dbContext.Set<DomainAdministrator>().Add(new DomainAdministrator
+            {
+                DomainId = domain.Id,
+                UserId = contributor.Id
+            });
+        });
+
+        using var client = factory.CreateClient();
+        var token = await CreateTokenAsync(factory, adminId);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query DomainAdmins($domainId: UUID!) {
+              domainAdministrators(domainId: $domainId) {
+                userId
+                user { displayName }
+              }
+            }
+            """,
+            new { domainId });
+
+        var admins = document.RootElement.GetProperty("data").GetProperty("domainAdministrators");
+        Assert.Equal(2, admins.GetArrayLength());
+    }
+
+    [Fact]
+    public async Task UpsertDomain_CreatorBecomesFirstDomainAdmin()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("admin@example.com", "Admin");
+            admin.Role = ApplicationUserRole.Admin;
+            dbContext.Users.Add(admin);
+            adminId = admin.Id;
+        });
+
+        using var client = factory.CreateClient();
+        var token = await CreateTokenAsync(factory, adminId);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation UpsertDomain($input: DomainInput!) {
+              upsertDomain(input: $input) { id slug createdByUserId }
+            }
+            """,
+            new
+            {
+                input = new
+                {
+                    name = "New Tag",
+                    slug = "new-tag",
+                    subdomain = "new-tag",
+                    description = "A fresh tag",
+                    isActive = true
+                }
+            });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("upsertDomain");
+        var newDomainId = Guid.Parse(result.GetProperty("id").GetString()!);
+        Assert.Equal(adminId.ToString(), result.GetProperty("createdByUserId").GetString());
+
+        // Verify domain admin was created
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var domainAdmin = await db.DomainAdministrators.SingleOrDefaultAsync(
+            da => da.DomainId == newDomainId && da.UserId == adminId);
+        Assert.NotNull(domainAdmin);
+    }
+
+    [Fact]
+    public async Task Domains_ExposeStyleFields()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domain = CreateDomain("Styled Tag", "styled-tag");
+            domain.PrimaryColor = "#ff0000";
+            domain.AccentColor = "#00ff00";
+            domain.LogoUrl = "https://example.com/logo.png";
+            domain.BannerUrl = "https://example.com/banner.jpg";
+            dbContext.Domains.Add(domain);
+        });
+
+        using var client = factory.CreateClient();
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query {
+              domains {
+                slug primaryColor accentColor logoUrl bannerUrl
+              }
+            }
+            """);
+
+        var domains = document.RootElement.GetProperty("data").GetProperty("domains");
+        var domain = domains.EnumerateArray().First();
+        Assert.Equal("#ff0000", domain.GetProperty("primaryColor").GetString());
+        Assert.Equal("#00ff00", domain.GetProperty("accentColor").GetString());
+        Assert.Equal("https://example.com/logo.png", domain.GetProperty("logoUrl").GetString());
+        Assert.Equal("https://example.com/banner.jpg", domain.GetProperty("bannerUrl").GetString());
+    }
+
     private static DateTime FirstDayOfNextMonthUtc()
     {
         var now = DateTime.UtcNow;

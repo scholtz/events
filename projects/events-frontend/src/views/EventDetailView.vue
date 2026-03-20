@@ -7,6 +7,7 @@ import { useFavoritesStore } from '@/stores/favorites'
 import { useAuthStore } from '@/stores/auth'
 import { buildGoogleCalendarUrl, buildOutlookCalendarUrl, downloadIcs, eventToCalendarInput } from '@/composables/useCalendar'
 import { useCalendarAnalytics } from '@/composables/useCalendarAnalytics'
+import { buildSubdomainUrl, formatSubdomainHost } from '@/composables/useSubdomain'
 import { usePwa } from '@/composables/usePwa'
 
 const route = useRoute()
@@ -204,6 +205,33 @@ function formatTimezoneLabel(timezone: string | null): string | null {
     return timezone
   }
 }
+
+function domainCatalogUrl(event: {
+  domain?: {
+    slug?: string
+    subdomain?: string
+  } | null
+}): string {
+  const subdomain = event.domain?.subdomain
+  const slug = event.domain?.slug
+
+  if (!subdomain || !slug) return '/'
+
+  return buildSubdomainUrl(subdomain, slug)
+}
+
+function domainHostDisplay(event: {
+  domain?: {
+    name?: string
+    subdomain?: string
+  } | null
+}): string {
+  const subdomain = event.domain?.subdomain
+
+  if (!subdomain) return event.domain?.name ?? 'Event'
+
+  return formatSubdomainHost(subdomain)
+}
 </script>
 
 <template>
@@ -238,7 +266,15 @@ function formatTimezoneLabel(timezone: string | null): string | null {
       <div class="event-detail card">
         <div class="event-detail-header">
           <div class="event-detail-meta">
-            <span class="badge badge-primary">
+            <a
+              v-if="event.domain?.subdomain"
+              :href="domainCatalogUrl(event)"
+              class="badge badge-primary domain-link"
+              :aria-label="`Browse more events on ${domainHostDisplay(event)}`"
+            >
+              {{ domainHostDisplay(event) }}
+            </a>
+            <span v-else class="badge badge-primary">
               {{ event.domain?.name ?? 'Event' }}
             </span>
             <span class="badge badge-mode">{{ attendanceModeLabel(event.attendanceMode) }}</span>
@@ -535,6 +571,14 @@ function formatTimezoneLabel(timezone: string | null): string | null {
   color: var(--color-primary);
   font-weight: 600;
   letter-spacing: 0.03em;
+}
+
+.domain-link {
+  text-decoration: none;
+}
+
+.domain-link:hover {
+  text-decoration: underline;
 }
 
 .event-detail-header h1 {

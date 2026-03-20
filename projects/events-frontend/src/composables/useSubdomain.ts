@@ -29,13 +29,24 @@ import { useDomainsStore } from '@/stores/domains'
  * Extracts the subdomain prefix from the current hostname.
  * Returns `null` for the base domain, localhost, and IP addresses.
  */
+function isLocalDevelopmentHost(hostname: string): boolean {
+  return hostname === 'localhost' || /^\d+\.\d+\.\d+\.\d+$/.test(hostname)
+}
+
+function getBaseDomain(hostname: string): string {
+  const parts = hostname.split('.')
+  return (parts.length > 3 ? parts.slice(1) : parts).join('.')
+}
+
 function extractSubdomain(): string | null {
   if (typeof window === 'undefined') return null
   const hostname = window.location.hostname
 
-  // localhost or IP: no subdomain
-  if (hostname === 'localhost' || /^\d+\.\d+\.\d+\.\d+$/.test(hostname)) {
-    return null
+  // On localhost, support a dedicated `?subdomain=` hint so subdomain-specific
+  // UX can be exercised without wildcard DNS during local development and E2E
+  // tests. The regular `?domain=` filter remains separate.
+  if (isLocalDevelopmentHost(hostname)) {
+    return new URLSearchParams(window.location.search).get('subdomain')
   }
 
   // Base domain has 3 parts (events.biatec.io); 4+ means a category subdomain
@@ -47,22 +58,58 @@ function extractSubdomain(): string | null {
 
 /**
  * Builds a full URL targeting a category subdomain.
- * On localhost returns `/?domain=slug` for in-app navigation.
+ * On localhost returns `/?subdomain=subdomain&domain=slug` for in-app navigation.
  * On production returns `https://{subdomain}.events.biatec.io/`.
  */
 export function buildSubdomainUrl(subdomain: string, slug: string): string {
   if (typeof window === 'undefined') return '/'
   const hostname = window.location.hostname
 
-  if (hostname === 'localhost' || /^\d+\.\d+\.\d+\.\d+$/.test(hostname)) {
-    return `/?domain=${slug}`
+  if (isLocalDevelopmentHost(hostname)) {
+    const query = new URLSearchParams({
+      subdomain,
+      domain: slug,
+    })
+    return `/?${query.toString()}`
   }
 
-  const parts = hostname.split('.')
-  const baseParts = parts.length > 3 ? parts.slice(1) : parts
-  const baseDomain = baseParts.join('.')
+  const baseDomain = getBaseDomain(hostname)
   const protocol = window.location.protocol
   return `${protocol}//${subdomain}.${baseDomain}/`
+}
+
+export function buildMainSiteUrl(): string {
+  if (typeof window === 'undefined') return '/'
+  const hostname = window.location.hostname
+
+  if (isLocalDevelopmentHost(hostname)) {
+    return '/'
+  }
+
+  const protocol = window.location.protocol
+  return `${protocol}//${getBaseDomain(hostname)}/`
+}
+
+export function formatSubdomainHost(subdomain: string): string {
+  if (typeof window === 'undefined') return `${subdomain}.events.biatec.io`
+  const hostname = window.location.hostname
+
+  if (isLocalDevelopmentHost(hostname)) {
+    return `${subdomain}.events.localhost`
+  }
+
+  return `${subdomain}.${getBaseDomain(hostname)}`
+}
+
+export function formatMainSiteHost(): string {
+  if (typeof window === 'undefined') return 'events.biatec.io'
+  const hostname = window.location.hostname
+
+  if (isLocalDevelopmentHost(hostname)) {
+    return 'events.localhost'
+  }
+
+  return getBaseDomain(hostname)
 }
 
 export function useSubdomain() {

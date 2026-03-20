@@ -262,6 +262,31 @@ public sealed class AppDbInitializer(
                 """,
                 cancellationToken);
         }
+
+        // ── Domain style columns and creator ─────────────────────────────────
+        await EnsureDomainColumnAsync("CreatedByUserId", cancellationToken);
+        await EnsureDomainColumnAsync("PrimaryColor", cancellationToken);
+        await EnsureDomainColumnAsync("AccentColor", cancellationToken);
+        await EnsureDomainColumnAsync("LogoUrl", cancellationToken);
+        await EnsureDomainColumnAsync("BannerUrl", cancellationToken);
+
+        // ── DomainAdministrators join table ──────────────────────────────────
+        if (!await TableExistsAsync("DomainAdministrators", cancellationToken))
+        {
+            await _dbContext.Database.ExecuteSqlRawAsync(
+                """
+                CREATE TABLE "DomainAdministrators" (
+                    "Id" TEXT NOT NULL CONSTRAINT "PK_DomainAdministrators" PRIMARY KEY,
+                    "DomainId" TEXT NOT NULL,
+                    "UserId" TEXT NOT NULL,
+                    "CreatedAtUtc" TEXT NOT NULL,
+                    CONSTRAINT "FK_DomainAdministrators_Domains_DomainId" FOREIGN KEY ("DomainId") REFERENCES "Domains" ("Id") ON DELETE CASCADE,
+                    CONSTRAINT "FK_DomainAdministrators_Users_UserId" FOREIGN KEY ("UserId") REFERENCES "Users" ("Id") ON DELETE CASCADE
+                );
+                CREATE UNIQUE INDEX "IX_DomainAdministrators_DomainId_UserId" ON "DomainAdministrators" ("DomainId", "UserId");
+                """,
+                cancellationToken);
+        }
     }
 
     private async Task EnsureSavedSearchColumnAsync(string columnName, CancellationToken cancellationToken)
@@ -275,6 +300,26 @@ public sealed class AppDbInitializer(
         {
             "AttendanceMode" => """ALTER TABLE "SavedSearches" ADD COLUMN "AttendanceMode" TEXT NULL;""",
             _ => throw new InvalidOperationException($"Unsupported saved-search column '{columnName}'.")
+        };
+
+        await _dbContext.Database.ExecuteSqlRawAsync(commandText, cancellationToken);
+    }
+
+    private async Task EnsureDomainColumnAsync(string columnName, CancellationToken cancellationToken)
+    {
+        if (await TableColumnExistsAsync("Domains", columnName, cancellationToken))
+        {
+            return;
+        }
+
+        var commandText = columnName switch
+        {
+            "CreatedByUserId" => """ALTER TABLE "Domains" ADD COLUMN "CreatedByUserId" TEXT NULL;""",
+            "PrimaryColor" => """ALTER TABLE "Domains" ADD COLUMN "PrimaryColor" TEXT NULL;""",
+            "AccentColor" => """ALTER TABLE "Domains" ADD COLUMN "AccentColor" TEXT NULL;""",
+            "LogoUrl" => """ALTER TABLE "Domains" ADD COLUMN "LogoUrl" TEXT NULL;""",
+            "BannerUrl" => """ALTER TABLE "Domains" ADD COLUMN "BannerUrl" TEXT NULL;""",
+            _ => throw new InvalidOperationException($"Unsupported domain column '{columnName}'.")
         };
 
         await _dbContext.Database.ExecuteSqlRawAsync(commandText, cancellationToken);
@@ -328,6 +373,7 @@ public sealed class AppDbInitializer(
         {
             "Events" => """PRAGMA table_info("Events");""",
             "SavedSearches" => """PRAGMA table_info("SavedSearches");""",
+            "Domains" => """PRAGMA table_info("Domains");""",
             _ => throw new InvalidOperationException($"Unsupported schema table '{tableName}'.")
         };
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
