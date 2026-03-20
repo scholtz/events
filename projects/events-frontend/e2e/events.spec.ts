@@ -98,6 +98,7 @@ test.describe('Submit event form', () => {
     await page.getByRole('link', { name: 'Cancel' }).click()
     await expect(page).toHaveURL(/\/$/)
   })
+
   test('timezone field is present in submit form', async ({ page }) => {
     setupMockApi(page, { domains: [makeTechDomain()] })
     await page.goto('/submit')
@@ -193,7 +194,7 @@ test.describe('Submit event form', () => {
     const error = page.locator('.field-error')
     await expect(error).toBeVisible()
     await expect(error).toContainText('Europe/Prgaue')
-    await expect(page.getByRole('heading', { name: 'Event Submitted!' })).not.toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Event Submitted!' })).toBeHidden()
   })
 
   test('accepts valid canonical IANA timezone values', async ({ page }) => {
@@ -212,7 +213,7 @@ test.describe('Submit event form', () => {
 
     await page.getByRole('button', { name: 'Submit Event' }).click()
     await expect(page.getByRole('heading', { name: 'Event Submitted!' })).toBeVisible()
-    await expect(page.locator('.field-error')).not.toBeVisible()
+    await expect(page.locator('.field-error')).toBeHidden()
   })
 })
 
