@@ -55,7 +55,7 @@ export type MockEvent = {
   priceAmount: number | null
   currencyCode: string
   domainId: string
-  domain: { id: string; name: string; slug: string }
+  domain: { id: string; name: string; slug: string; subdomain: string }
   submittedByUserId: string
   submittedBy: { displayName: string }
   reviewedByUserId: string | null
@@ -259,8 +259,8 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
           currencyCode: input.currencyCode || 'EUR',
           domainId: domain?.id ?? 'dom-1',
           domain: domain
-            ? { id: domain.id, name: domain.name, slug: domain.slug }
-          : { id: 'dom-1', name: 'Default', slug: 'default' },
+            ? { id: domain.id, name: domain.name, slug: domain.slug, subdomain: domain.subdomain }
+            : { id: 'dom-1', name: 'Default', slug: 'default', subdomain: 'default' },
         submittedByUserId: state.currentUserId ?? '',
         submittedBy: { displayName: submitter?.displayName ?? 'Unknown' },
         reviewedByUserId: null,
@@ -454,7 +454,83 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       return
     }
 
+    if (query.includes('mutation') && query.includes('UpdateUserRole')) {
+      const input = variables.input || {}
+      if (input.userId === state.currentUserId && input.role !== 'ADMIN') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Admins cannot remove their own admin role. Ask another admin to change your role.', extensions: { code: 'SELF_DEMOTION_NOT_ALLOWED' } }] }),
+        })
+        return
+      }
+      const user = state.users.find((u) => u.id === input.userId)
+      if (!user) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'User was not found.', extensions: { code: 'USER_NOT_FOUND' } }] }),
+        })
+        return
+      }
+      user.role = input.role
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            updateUserRole: {
+              id: user.id,
+              displayName: user.displayName,
+              email: user.email,
+              role: user.role,
+              createdAtUtc: user.createdAtUtc,
+            },
+          },
+        }),
+      })
+      return
+    }
+
     // ── Queries ──
+    if (query.includes('query') && query.includes('AdminOverview')) {
+      const currentUser = state.users.find((u) => u.id === state.currentUserId)
+      if (!currentUser || currentUser.role !== 'ADMIN') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Not authorized', extensions: { code: 'AUTH_NOT_AUTHORIZED' } }] }),
+        })
+        return
+      }
+      const pendingReviewEvents = state.events.filter((e) => e.status === 'PENDING_APPROVAL')
+      const publishedCount = state.events.filter((e) => e.status === 'PUBLISHED').length
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            adminOverview: {
+              totalUsers: state.users.length,
+              totalDomains: state.domains.length,
+              totalPublishedEvents: publishedCount,
+              totalPendingEvents: pendingReviewEvents.length,
+              users: state.users.map((u) => ({
+                id: u.id,
+                displayName: u.displayName,
+                email: u.email,
+                role: u.role,
+                createdAtUtc: u.createdAtUtc,
+              })),
+              pendingReviewEvents,
+              domains: state.domains,
+            },
+          },
+        }),
+      })
+      return
+    }
+
     if (query.includes('query') && query.includes('MyFavoriteEvents')) {
       const userFavorites = state.favoriteEvents.filter(
         (f) => f.userId === state.currentUserId,
@@ -701,7 +777,7 @@ export function makeApprovedEvent(overrides: Partial<MockEvent> = {}): MockEvent
     priceAmount: 0,
     currencyCode: 'EUR',
     domainId: 'dom-tech',
-    domain: { id: 'dom-tech', name: 'Technology', slug: 'technology' },
+    domain: { id: 'dom-tech', name: 'Technology', slug: 'technology', subdomain: 'tech' },
     submittedByUserId: 'admin-1',
     submittedBy: { displayName: 'Admin User' },
     reviewedByUserId: null,

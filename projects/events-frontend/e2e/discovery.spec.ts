@@ -315,6 +315,9 @@ test.describe('URL-persisted filter state', () => {
     })
     await page.goto('/')
 
+    // Expand advanced filters
+    await page.getByRole('button', { name: 'More filters' }).click()
+
     await page.getByLabel('Location').fill('Prague')
     // Wait for debounce and URL update
     await expect(page).toHaveURL(/location=Prague/, { timeout: 2000 })
@@ -570,6 +573,9 @@ test.describe('Attendance mode filter', () => {
     })
     await page.goto('/')
 
+    // Expand advanced filters to access mode select
+    await page.getByRole('button', { name: 'More filters' }).click()
+
     await page.locator('select#filter-attendance-mode').selectOption('HYBRID')
     await expect(page).toHaveURL(/mode=hybrid/, { timeout: 2000 })
   })
@@ -600,6 +606,9 @@ test.describe('Mobile viewport discovery', () => {
       ],
     })
     await page.goto('/')
+
+    // Expand advanced filters
+    await page.getByRole('button', { name: 'More filters' }).click()
 
     // Mode select should be visible at mobile width
     await expect(page.locator('select#filter-attendance-mode')).toBeVisible()
@@ -685,6 +694,9 @@ test.describe('Mobile viewport discovery', () => {
     await page.goto('/?mode=online')
     await expect(page.locator('.event-card', { hasText: 'Online Workshop' })).toBeVisible()
     await expect(page.locator('.event-card', { hasText: 'In-Person Meetup' })).toBeHidden()
+
+    // Expand advanced filters to access saved search form
+    await page.getByRole('button', { name: 'More filters' }).click()
 
     // Save the search
     await page.getByLabel('Preset name').fill('Online Events')

@@ -4,6 +4,7 @@ import { formatEventPrice } from '@/stores/events'
 import { useFavoritesStore } from '@/stores/favorites'
 import { useAuthStore } from '@/stores/auth'
 import { useDiscoveryAnalytics } from '@/composables/useDiscoveryAnalytics'
+import { buildSubdomainUrl } from '@/composables/useSubdomain'
 import { useEventsStore } from '@/stores/events'
 import type { CatalogEvent } from '@/types'
 
@@ -17,6 +18,13 @@ const eventsStore = useEventsStore()
 const { trackResultClick } = useDiscoveryAnalytics()
 
 const favoriting = ref(false)
+
+function domainUrl(event: CatalogEvent): string {
+  const subdomain = event.domain?.subdomain
+  const slug = event.domain?.slug ?? ''
+  if (!subdomain) return '/'
+  return buildSubdomainUrl(subdomain, slug)
+}
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('en-US', {
@@ -72,9 +80,9 @@ async function handleFavoriteToggle() {
   <article class="event-card card">
     <div class="event-card-body">
       <div class="event-meta">
-        <span class="badge badge-primary">
+        <a :href="domainUrl(event)" class="badge badge-primary domain-link">
           {{ event.domain?.name ?? 'Event' }}
-        </span>
+        </a>
         <div class="event-meta-right">
           <span class="badge badge-mode">{{ attendanceModeLabel }}</span>
           <span class="event-date">{{ formatDate(event.startsAtUtc) }}</span>
@@ -183,6 +191,17 @@ async function handleFavoriteToggle() {
   color: var(--color-primary);
   font-weight: 600;
   letter-spacing: 0.03em;
+}
+
+.domain-link {
+  text-decoration: none;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.domain-link:hover {
+  opacity: 0.8;
+  text-decoration: none;
 }
 
 .event-date {

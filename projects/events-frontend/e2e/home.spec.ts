@@ -132,6 +132,9 @@ test.describe('Event filters', () => {
     // Event visible before filter
     await expect(page.locator('.event-card', { hasText: 'Prague Summit' })).toBeVisible()
 
+    // Expand advanced filters
+    await page.getByRole('button', { name: 'More filters' }).click()
+
     // Filter by non-matching location
     await page.getByLabel('Location').fill('Berlin')
     await expect(page.getByRole('heading', { name: 'No events found' })).toBeVisible()
@@ -162,6 +165,9 @@ test.describe('Event filters', () => {
 
     await expect(page.locator('.event-card', { hasText: 'Old Event' })).toBeVisible()
     await expect(page.locator('.event-card', { hasText: 'New Event' })).toBeVisible()
+
+    // Expand advanced filters
+    await page.getByRole('button', { name: 'More filters' }).click()
 
     await page.getByLabel('From').fill('2026-01-01')
     await expect(page.locator('.event-card', { hasText: 'Old Event' })).toBeHidden()
@@ -220,6 +226,9 @@ test.describe('Event filters', () => {
     )
 
     await page.goto('/?location=Prague&price=paid&sort=newest')
+
+    // Expand advanced filters to verify field values and interact with saved searches
+    await page.getByRole('button', { name: 'More filters' }).click()
 
     await expect(page.getByLabel('Location')).toHaveValue('Prague')
     await expect(page.getByLabel('Price', { exact: true })).toHaveValue('PAID')

@@ -1,16 +1,108 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useEventsStore } from '@/stores/events'
 import { useAuthStore } from '@/stores/auth'
 import { useDomainsStore } from '@/stores/domains'
+import { gqlRequest } from '@/lib/graphql'
+import type { AdminOverview, User } from '@/types'
 
 const eventsStore = useEventsStore()
 const auth = useAuthStore()
 const domainsStore = useDomainsStore()
 
-const activeTab = ref<'events' | 'domains'>('events')
+const activeTab = ref<'events' | 'domains' | 'users'>('events')
 
 const newDomain = ref({ name: '', slug: '', subdomain: '', description: '' })
+
+const adminOverview = ref<AdminOverview | null>(null)
+const adminLoading = ref(false)
+const updatingRole = ref<string | null>(null)
+
+async function fetchAdminOverview() {
+  if (!auth.isAdmin) return
+  adminLoading.value = true
+  try {
+    const data = await gqlRequest<{ adminOverview: AdminOverview }>(
+      `query AdminOverview {
+        adminOverview {
+          totalUsers
+          totalDomains
+          totalPublishedEvents
+          totalPendingEvents
+          users { id displayName email role createdAtUtc }
+          pendingReviewEvents {
+            id name slug description eventUrl
+            venueName addressLine1 city countryCode
+            latitude longitude startsAtUtc endsAtUtc
+            submittedAtUtc updatedAtUtc publishedAtUtc
+            adminNotes status isFree priceAmount currencyCode domainId mapUrl
+            attendanceMode timezone
+            domain { id name slug subdomain }
+            submittedBy { displayName }
+          }
+          domains { id name slug subdomain description isActive createdAtUtc }
+        }
+      }`,
+    )
+    adminOverview.value = data.adminOverview
+  } catch {
+    // Admin overview fetch failed – fall back to basic event list
+  } finally {
+    adminLoading.value = false
+  }
+}
+
+const roleError = ref('')
+
+async function updateUserRole(userId: string, role: 'ADMIN' | 'CONTRIBUTOR') {
+  updatingRole.value = userId
+  roleError.value = ''
+  try {
+    const data = await gqlRequest<{ updateUserRole: User }>(
+      `mutation UpdateUserRole($input: UpdateUserRoleInput!) {
+        updateUserRole(input: $input) {
+          id displayName email role createdAtUtc
+        }
+      }`,
+      { input: { userId, role } },
+    )
+    if (adminOverview.value) {
+      const idx = adminOverview.value.users.findIndex((u) => u.id === data.updateUserRole.id)
+      if (idx >= 0) {
+        adminOverview.value.users[idx] = data.updateUserRole
+      }
+    }
+  } catch {
+    roleError.value = 'Failed to update user role. Please try again.'
+  } finally {
+    updatingRole.value = null
+  }
+}
+
+onMounted(() => {
+  fetchAdminOverview()
+})
+
+function allAdminEvents() {
+  // Prefer events from adminOverview which includes pending; fall back to events store
+  if (adminOverview.value) {
+    // Combine pending review events with published events (adminOverview includes all)
+    return [
+      ...adminOverview.value.pendingReviewEvents,
+      ...eventsStore.allEvents.filter(
+        (e) => !adminOverview.value!.pendingReviewEvents.some((pe) => pe.id === e.id),
+      ),
+    ]
+  }
+  return eventsStore.allEvents
+}
+
+function pendingCount() {
+  if (adminOverview.value) {
+    return adminOverview.value.totalPendingEvents
+  }
+  return eventsStore.pendingEvents.length
+}
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('en-US', {
@@ -50,6 +142,16 @@ async function addDomain() {
   if (!newDomain.value.name || !newDomain.value.slug || !newDomain.value.subdomain) return
   await domainsStore.upsertDomain({ ...newDomain.value })
   newDomain.value = { name: '', slug: '', subdomain: '', description: '' }
+  await fetchAdminOverview()
+}
+
+async function handleReviewEvent(eventId: string, status: string) {
+  try {
+    await eventsStore.reviewEvent(eventId, status)
+    await fetchAdminOverview()
+  } catch {
+    // Review failed – the events store handles the error state
+  }
 }
 </script>
 
@@ -60,9 +162,9 @@ async function addDomain() {
         <h1>Admin Panel</h1>
         <p>Manage events, domains, and platform settings.</p>
       </div>
-      <div v-if="auth.isAdmin && eventsStore.pendingEvents.length" class="pending-pill">
+      <div v-if="auth.isAdmin && pendingCount()" class="pending-pill">
         <span class="pending-dot"></span>
-        {{ eventsStore.pendingEvents.length }} pending
+        {{ pendingCount() }} pending
       </div>
     </div>
 
@@ -73,7 +175,7 @@ async function addDomain() {
           @click="activeTab = 'events'"
         >
           Events
-          <span class="tab-count">{{ eventsStore.allEvents.length }}</span>
+          <span class="tab-count">{{ allAdminEvents().length }}</span>
         </button>
         <button
           :class="['tab-btn', { active: activeTab === 'domains' }]"
@@ -82,11 +184,21 @@ async function addDomain() {
           Domains
           <span class="tab-count">{{ domainsStore.domains.length }}</span>
         </button>
+        <button
+          :class="['tab-btn', { active: activeTab === 'users' }]"
+          @click="activeTab = 'users'"
+        >
+          Users
+          <span class="tab-count">{{ adminOverview?.users.length ?? 0 }}</span>
+        </button>
       </div>
 
       <!-- Events management -->
       <div v-if="activeTab === 'events'" class="admin-section">
-        <div class="events-table card">
+        <div v-if="adminLoading" class="loading-state card">
+          <p>Loading events…</p>
+        </div>
+        <div v-else class="events-table card">
           <table>
             <thead>
               <tr>
@@ -98,7 +210,7 @@ async function addDomain() {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="event in eventsStore.allEvents" :key="event.id">
+              <tr v-for="event in allAdminEvents()" :key="event.id">
                 <td>
                   <RouterLink :to="`/event/${event.slug}`" class="event-link">
                     {{ event.name }}
@@ -120,14 +232,14 @@ async function addDomain() {
                   <button
                     v-if="event.status !== 'PUBLISHED'"
                     class="btn btn-success btn-sm"
-                    @click="eventsStore.reviewEvent(event.id, 'PUBLISHED')"
+                    @click="handleReviewEvent(event.id, 'PUBLISHED')"
                   >
                     Approve
                   </button>
                   <button
                     v-if="event.status !== 'REJECTED'"
                     class="btn btn-outline btn-sm"
-                    @click="eventsStore.reviewEvent(event.id, 'REJECTED')"
+                    @click="handleReviewEvent(event.id, 'REJECTED')"
                   >
                     Reject
                   </button>
@@ -135,7 +247,7 @@ async function addDomain() {
               </tr>
             </tbody>
           </table>
-          <div v-if="!eventsStore.allEvents.length" class="empty-table">
+          <div v-if="!allAdminEvents().length" class="empty-table">
             <div class="empty-icon">📋</div>
             <p>No events to manage.</p>
           </div>
@@ -210,6 +322,61 @@ async function addDomain() {
           <div v-if="!domainsStore.domains.length" class="empty-table">
             <div class="empty-icon">🏷️</div>
             <p>No domains yet. Add one above.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Users management -->
+      <div v-if="activeTab === 'users'" class="admin-section">
+        <p v-if="roleError" class="role-error" role="alert">{{ roleError }}</p>
+        <div class="users-table card">
+          <table>
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Joined</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="user in (adminOverview?.users ?? [])" :key="user.id">
+                <td class="user-name-cell">{{ user.displayName }}</td>
+                <td class="text-secondary">{{ user.email }}</td>
+                <td>
+                  <span class="badge" :class="user.role === 'ADMIN' ? 'badge-admin' : 'badge-contributor'">
+                    {{ user.role === 'ADMIN' ? 'Admin' : 'Contributor' }}
+                  </span>
+                </td>
+                <td class="date-cell">{{ formatDate(user.createdAtUtc) }}</td>
+                <td class="actions-cell">
+                  <button
+                    v-if="user.role !== 'ADMIN'"
+                    class="btn btn-success btn-sm"
+                    :disabled="updatingRole === user.id"
+                    @click="updateUserRole(user.id, 'ADMIN')"
+                  >
+                    Make Admin
+                  </button>
+                  <button
+                    v-if="user.role === 'ADMIN' && user.id !== auth.currentUser?.id"
+                    class="btn btn-outline btn-sm"
+                    :disabled="updatingRole === user.id"
+                    @click="updateUserRole(user.id, 'CONTRIBUTOR')"
+                  >
+                    Remove Admin
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-if="adminLoading" class="empty-table">
+            <p>Loading users…</p>
+          </div>
+          <div v-else-if="!adminOverview?.users.length" class="empty-table">
+            <div class="empty-icon">👤</div>
+            <p>No users found.</p>
           </div>
         </div>
       </div>
@@ -518,5 +685,40 @@ tr:hover td {
 
 .login-prompt p {
   color: var(--color-text-secondary);
+}
+
+.users-table {
+  overflow-x: auto;
+}
+
+.user-name-cell {
+  font-weight: 500;
+}
+
+.badge-admin {
+  background: rgba(139, 92, 246, 0.15);
+  color: #a78bfa;
+  border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+.badge-contributor {
+  background: rgba(59, 130, 246, 0.15);
+  color: #93c5fd;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.loading-state {
+  padding: 2rem;
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+.role-error {
+  color: var(--color-danger, #f87171);
+  font-size: 0.875rem;
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(248, 113, 113, 0.1);
+  border-radius: var(--radius-sm, 4px);
 }
 </style>

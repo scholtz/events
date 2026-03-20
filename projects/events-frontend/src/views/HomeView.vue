@@ -11,6 +11,7 @@ import {
 } from '@/stores/events'
 import { useSavedSearchesStore } from '@/stores/savedSearches'
 import { useDiscoveryAnalytics } from '@/composables/useDiscoveryAnalytics'
+import { useSubdomain } from '@/composables/useSubdomain'
 import EventCard from '@/components/events/EventCard.vue'
 import EventFilters from '@/components/events/EventFilters.vue'
 
@@ -20,6 +21,7 @@ const authStore = useAuthStore()
 const eventsStore = useEventsStore()
 const savedSearchesStore = useSavedSearchesStore()
 const { trackSearch, trackFilterChange, trackFilterClear } = useDiscoveryAnalytics()
+const { activeDomain, isSubdomainView } = useSubdomain()
 
 const syncingFromRoute = ref(false)
 
@@ -49,6 +51,12 @@ async function syncFromRoute() {
   syncingFromRoute.value = true
 
   const nextFilters = eventFiltersFromQuery(route.query)
+
+  // When on a category subdomain, force-filter by that domain's slug
+  if (activeDomain.value && !nextFilters.domain) {
+    nextFilters.domain = activeDomain.value.slug
+  }
+
   if (!areEventFiltersEqual(nextFilters, eventsStore.filters)) {
     eventsStore.replaceFilters(nextFilters)
   }
@@ -129,7 +137,13 @@ const emptyStateMessage = computed(() => {
 
 <template>
   <div class="home-view">
-    <section class="hero">
+    <section v-if="isSubdomainView && activeDomain" class="subdomain-header">
+      <div class="container">
+        <h1>{{ activeDomain.name }} Events</h1>
+        <p v-if="activeDomain.description">{{ activeDomain.description }}</p>
+      </div>
+    </section>
+    <section v-else class="hero">
       <div class="container hero-content">
         <div class="hero-text">
           <h1>Discover Events<br /><span class="hero-accent">Near You</span></h1>
@@ -235,6 +249,26 @@ const emptyStateMessage = computed(() => {
   border-bottom: 1px solid var(--color-border);
   padding: 4rem 0 3rem;
   margin-bottom: 0;
+}
+
+.subdomain-header {
+  background: linear-gradient(160deg, #0d0f14 0%, rgba(19, 127, 236, 0.08) 100%);
+  border-bottom: 1px solid var(--color-border);
+  padding: 2rem 0 1.5rem;
+  margin-bottom: 0;
+}
+
+.subdomain-header h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.25rem;
+  color: var(--color-text);
+}
+
+.subdomain-header p {
+  color: var(--color-text-secondary);
+  font-size: 0.9375rem;
 }
 
 .hero-content {

@@ -13,6 +13,7 @@ const savedSearchesStore = useSavedSearchesStore()
 
 const savedSearchName = ref('')
 const savingSearch = ref(false)
+const filtersExpanded = ref(false)
 
 // Local refs that hold the raw input values for the two free-text fields.
 // Changes are debounced before being committed to the store so that the
@@ -122,13 +123,17 @@ function clearFilterChip(key: string) {
   <div class="event-filters card">
     <div class="filters-header">
       <div>
-        <h2>Advanced discovery</h2>
-        <p>Combine keyword, timing, location, domain, and price filters in one search.</p>
+        <h2>Event discovery</h2>
       </div>
-      <button class="btn btn-outline" @click="eventsStore.clearFilters()">Clear all</button>
+      <div class="filters-header-actions">
+        <button class="btn btn-outline" @click="eventsStore.clearFilters()">Clear all</button>
+        <button class="btn btn-outline toggle-filters-btn" @click="filtersExpanded = !filtersExpanded">
+          {{ filtersExpanded ? 'Hide filters' : 'More filters' }}
+        </button>
+      </div>
     </div>
 
-    <div class="filters-grid">
+    <div class="filters-grid filters-grid-primary">
       <div class="form-group filter-search">
         <label class="form-label" for="filter-search">Keyword</label>
         <input
@@ -155,6 +160,9 @@ function clearFilterChip(key: string) {
           </option>
         </select>
       </div>
+    </div>
+
+    <div v-show="filtersExpanded" class="filters-grid">
 
       <div class="form-group">
         <label class="form-label" for="filter-location">Location</label>
@@ -297,7 +305,7 @@ function clearFilterChip(key: string) {
       </button>
     </div>
 
-    <div class="saved-searches card-section">
+    <div v-show="filtersExpanded" class="saved-searches card-section">
       <div class="saved-searches-header">
         <div>
           <h3>Saved searches</h3>
@@ -375,6 +383,16 @@ function clearFilterChip(key: string) {
   align-items: flex-start;
 }
 
+.filters-header-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.toggle-filters-btn {
+  white-space: nowrap;
+}
+
 .filters-header h2,
 .saved-searches-header h3 {
   font-size: 1.125rem;
@@ -398,8 +416,8 @@ function clearFilterChip(key: string) {
   align-items: end;
 }
 
-.filter-search {
-  grid-column: span 2;
+.filters-grid-primary {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
 }
 
 .active-filters {
@@ -517,8 +535,8 @@ function clearFilterChip(key: string) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .filter-search {
-    grid-column: 1 / -1;
+  .filters-grid-primary {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -531,7 +549,8 @@ function clearFilterChip(key: string) {
     display: grid;
   }
 
-  .filters-grid {
+  .filters-grid,
+  .filters-grid-primary {
     grid-template-columns: 1fr;
   }
 
