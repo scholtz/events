@@ -26,6 +26,8 @@ const EVENT_FIELDS = `
   priceAmount
   currencyCode
   domainId
+  attendanceMode
+  timezone
   domain { id name slug subdomain description isActive createdAtUtc }
   submittedByUserId
   submittedBy { displayName }
