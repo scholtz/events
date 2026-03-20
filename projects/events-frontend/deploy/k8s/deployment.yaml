@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: events-frontend
+  namespace: events-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: events-frontend
+  template:
+    metadata:
+      labels:
+        app: events-frontend
+    spec:
+      imagePullSecrets:
+        - name: regcred
+      containers:
+        - name: events-frontend
+          image: IMAGE_PLACEHOLDER
+          ports:
+            - containerPort: 3000
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "3000"
+            - name: VITE_GRAPHQL_URL
+              value: https://events-api.de-4.biatec.io/graphql
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 20

@@ -1,0 +1,111 @@
+name: events-frontend-ci-cd
+
+on:
+  pull_request:
+    paths:
+      - 'projects/events-frontend/**'
+      - '.github/workflows/events-frontend-ci-cd.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'projects/events-frontend/**'
+      - '.github/workflows/events-frontend-ci-cd.yml'
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  PROJECT_PATH: projects/events-frontend
+  IMAGE_NAME: harbor.de-4.biatec.io/biatec/events-frontend
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ${{ env.PROJECT_PATH }}/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ${{ env.PROJECT_PATH }}
+        run: npm ci
+
+      - name: Lint
+        working-directory: ${{ env.PROJECT_PATH }}
+        run: npm run lint
+
+      - name: Build
+        working-directory: ${{ env.PROJECT_PATH }}
+        run: npm run build
+
+  docker:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: build-test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to Harbor
+        uses: docker/login-action@v3
+        with:
+          registry: harbor.de-4.biatec.io
+          username: ${{ secrets.HARBOR_USERNAME }}
+          password: ${{ secrets.HARBOR_PASSWORD }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./${{ env.PROJECT_PATH }}
+          file: ./${{ env.PROJECT_PATH }}/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+            ${{ env.IMAGE_NAME }}:latest
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: docker
+    env:
+      IMAGE_REF: harbor.de-4.biatec.io/biatec/events-frontend:sha-${{ github.sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check secrets
+        run: |
+          if [ -z "${{ secrets.KUBE_CONFIG_DATA }}" ]; then
+            echo "Required secrets are not set. Skipping deployment."
+            exit 1
+          fi
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: latest
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG_DATA }}" | base64 --decode > ~/.kube/config
+
+      - name: Apply namespace
+        run: kubectl apply -f ${{ env.PROJECT_PATH }}/deploy/k8s/namespace.yaml
+
+      - name: Deploy application
+        run: |
+          sed "s|IMAGE_PLACEHOLDER|${IMAGE_REF}|g" ${{ env.PROJECT_PATH }}/deploy/k8s/deployment.yaml | kubectl apply -f -
+          kubectl apply -f ${{ env.PROJECT_PATH }}/deploy/k8s/service.yaml
+          kubectl apply -f ${{ env.PROJECT_PATH }}/deploy/k8s/ingress.yaml
+
+      - name: Verify rollout
+        run: kubectl rollout status deployment/events-frontend --namespace events-frontend

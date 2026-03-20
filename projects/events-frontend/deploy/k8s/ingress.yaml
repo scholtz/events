@@ -1,0 +1,35 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: events-frontend
+  namespace: events-frontend
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - events.biatec.io
+        - "*.events.biatec.io"
+      secretName: tls-events.biatec.io
+  rules:
+    - host: events.biatec.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: events-frontend
+                port:
+                  number: 80
+    - host: "*.events.biatec.io"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: events-frontend
+                port:
+                  number: 80

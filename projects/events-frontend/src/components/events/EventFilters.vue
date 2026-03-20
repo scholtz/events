@@ -123,20 +123,17 @@ function clearFilterChip(key: string) {
   <div class="event-filters card">
     <div class="filters-header">
       <div>
-        <h2>Advanced discovery</h2>
-        <p v-if="filtersExpanded">
-          Combine keyword, timing, location, domain, and price filters in one search.
-        </p>
+        <h2>Event discovery</h2>
       </div>
       <div class="filters-header-actions">
         <button class="btn btn-outline" @click="eventsStore.clearFilters()">Clear all</button>
         <button class="btn btn-outline toggle-filters-btn" @click="filtersExpanded = !filtersExpanded">
-          {{ filtersExpanded ? 'Hide filters' : 'Show filters' }}
+          {{ filtersExpanded ? 'Hide filters' : 'More filters' }}
         </button>
       </div>
     </div>
 
-    <div v-show="filtersExpanded" class="filters-grid">
+    <div class="filters-grid filters-grid-primary">
       <div class="form-group filter-search">
         <label class="form-label" for="filter-search">Keyword</label>
         <input
@@ -163,6 +160,9 @@ function clearFilterChip(key: string) {
           </option>
         </select>
       </div>
+    </div>
+
+    <div v-show="filtersExpanded" class="filters-grid">
 
       <div class="form-group">
         <label class="form-label" for="filter-location">Location</label>
@@ -416,8 +416,8 @@ function clearFilterChip(key: string) {
   align-items: end;
 }
 
-.filter-search {
-  grid-column: span 2;
+.filters-grid-primary {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
 }
 
 .active-filters {
@@ -535,8 +535,8 @@ function clearFilterChip(key: string) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .filter-search {
-    grid-column: 1 / -1;
+  .filters-grid-primary {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -549,7 +549,8 @@ function clearFilterChip(key: string) {
     display: grid;
   }
 
-  .filters-grid {
+  .filters-grid,
+  .filters-grid-primary {
     grid-template-columns: 1fr;
   }
 

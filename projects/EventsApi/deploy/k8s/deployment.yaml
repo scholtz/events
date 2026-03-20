@@ -51,6 +51,8 @@ spec:
               value: https://events-scholtz.vercel.app
             - name: Cors__AllowedOrigins__2
               value: http://localhost:5173
+            - name: Cors__AllowedOrigins__3
+              value: https://events.biatec.io
           readinessProbe:
             httpGet:
               path: /healthz
