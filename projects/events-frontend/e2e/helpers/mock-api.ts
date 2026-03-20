@@ -91,12 +91,20 @@ export type MockFavoriteEvent = {
   createdAtUtc: string
 }
 
+export type MockCalendarAction = {
+  id: string
+  eventId: string
+  provider: string
+  triggeredAtUtc: string
+}
+
 export type MockState = {
   users: MockUser[]
   domains: MockDomain[]
   events: MockEvent[]
   savedSearches: MockSavedSearch[]
   favoriteEvents: MockFavoriteEvent[]
+  calendarActions: MockCalendarAction[]
   currentUserId: string | null
   currentToken: string | null
 }
@@ -113,6 +121,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
     events: initial?.events ?? [],
     savedSearches: initial?.savedSearches ?? [],
     favoriteEvents: initial?.favoriteEvents ?? [],
+    calendarActions: initial?.calendarActions ?? [],
     currentUserId: initial?.currentUserId ?? null,
     currentToken: initial?.currentToken ?? null,
   }
@@ -396,6 +405,34 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       return
     }
 
+    if (query.includes('mutation') && query.includes('TrackCalendarAction')) {
+      const input = variables.input || {}
+      const provider = (input.provider as string)?.toUpperCase() ?? ''
+      if (!['ICS', 'GOOGLE', 'OUTLOOK'].includes(provider)) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            errors: [{ message: 'Provider must be one of: ICS, GOOGLE, OUTLOOK.', extensions: { code: 'INVALID_CALENDAR_PROVIDER' } }],
+          }),
+        })
+        return
+      }
+      const newAction: MockCalendarAction = {
+        id: `cal-${state.calendarActions.length + 1}`,
+        eventId: input.eventId,
+        provider,
+        triggeredAtUtc: new Date().toISOString(),
+      }
+      state.calendarActions.push(newAction)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { trackCalendarAction: true } }),
+      })
+      return
+    }
+
     // ── Queries ──
     if (query.includes('query') && query.includes('MyFavoriteEvents')) {
       const userFavorites = state.favoriteEvents.filter(
@@ -428,6 +465,23 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         const last30 = allFavs.filter(
           (f) => new Date(f.createdAtUtc).getTime() >= cutoff30Days,
         ).length
+
+        const allCal = state.calendarActions.filter((a) => a.eventId === e.id)
+        const calTotal = allCal.length
+        const calLast7 = allCal.filter(
+          (a) => new Date(a.triggeredAtUtc).getTime() >= cutoff7Days,
+        ).length
+        const calLast30 = allCal.filter(
+          (a) => new Date(a.triggeredAtUtc).getTime() >= cutoff30Days,
+        ).length
+        const providerMap = new Map<string, number>()
+        for (const a of allCal) {
+          providerMap.set(a.provider, (providerMap.get(a.provider) ?? 0) + 1)
+        }
+        const calendarActionsByProvider = Array.from(providerMap.entries()).map(
+          ([provider, count]) => ({ provider, count }),
+        )
+
         return {
           eventId: e.id,
           eventName: e.name,
@@ -437,6 +491,10 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
           interestedLast7Days: last7,
           interestedLast30Days: last30,
           startsAtUtc: e.startsAtUtc,
+          totalCalendarActions: calTotal,
+          calendarActionsLast7Days: calLast7,
+          calendarActionsLast30Days: calLast30,
+          calendarActionsByProvider,
         }
       })
 
@@ -444,11 +502,16 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         .filter((a) => a.status === 'PUBLISHED')
         .reduce((sum, a) => sum + a.totalInterestedCount, 0)
 
+      const totalCalendarActions = eventAnalytics
+        .filter((a) => a.status === 'PUBLISHED')
+        .reduce((sum, a) => sum + a.totalCalendarActions, 0)
+
       const overview = {
         totalSubmittedEvents: managedEvents.length,
         publishedEvents: managedEvents.filter((e) => e.status === 'PUBLISHED').length,
         pendingApprovalEvents: managedEvents.filter((e) => e.status === 'PENDING_APPROVAL').length,
         totalInterestedCount,
+        totalCalendarActions,
         managedEvents: managedEvents.map((e) => ({
           id: e.id,
           name: e.name,

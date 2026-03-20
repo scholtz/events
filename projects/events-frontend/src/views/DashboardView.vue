@@ -60,6 +60,31 @@ function trendClass(item: EventAnalyticsItem): string {
   if (item.interestedLast30Days > 0) return 'trend--recent'
   return 'trend--quiet'
 }
+
+function calendarTrendLabel(item: EventAnalyticsItem): string {
+  if (item.calendarActionsLast7Days > 0) return `+${item.calendarActionsLast7Days} this week`
+  if (item.calendarActionsLast30Days > 0) return `+${item.calendarActionsLast30Days} this month`
+  return 'No recent adds'
+}
+
+function calendarTrendClass(item: EventAnalyticsItem): string {
+  if (item.calendarActionsLast7Days > 0) return 'trend--active'
+  if (item.calendarActionsLast30Days > 0) return 'trend--recent'
+  return 'trend--quiet'
+}
+
+function providerLabel(provider: string): string {
+  switch (provider) {
+    case 'GOOGLE':
+      return 'Google'
+    case 'OUTLOOK':
+      return 'Outlook'
+    case 'ICS':
+      return 'ICS'
+    default:
+      return provider
+  }
+}
 </script>
 
 <template>
@@ -140,6 +165,13 @@ function trendClass(item: EventAnalyticsItem): string {
               <div class="stat-label">Total Saves</div>
             </div>
           </div>
+          <div class="stat-card card">
+            <div class="stat-icon stat-icon--calendar" aria-hidden="true">📅</div>
+            <div class="stat-info">
+              <div class="stat-number stat-number--calendar">{{ overview.totalCalendarActions }}</div>
+              <div class="stat-label">Calendar Adds</div>
+            </div>
+          </div>
         </div>
 
         <!-- Analytics section -->
@@ -147,7 +179,8 @@ function trendClass(item: EventAnalyticsItem): string {
           <h2>Event Performance</h2>
           <p class="section-subtitle">
             Saves show how many attendees bookmarked your published events.
-            Trend reflects activity in the last 7 and 30 days.
+            Calendar adds show how many attendees added an event to their personal calendar.
+            Trends reflect activity in the last 7 and 30 days.
           </p>
         </div>
 
@@ -171,6 +204,8 @@ function trendClass(item: EventAnalyticsItem): string {
                   Saves
                 </th>
                 <th scope="col" class="col-momentum" title="Recent save activity">Momentum</th>
+                <th scope="col" class="col-calendar" title="Total add-to-calendar actions">Calendar</th>
+                <th scope="col" class="col-cal-trend" title="Recent calendar add activity">Cal Trend</th>
                 <th scope="col">Actions</th>
               </tr>
             </thead>
@@ -200,6 +235,33 @@ function trendClass(item: EventAnalyticsItem): string {
                 <td class="col-momentum">
                   <span class="trend-badge" :class="trendClass(item)">
                     {{ trendLabel(item) }}
+                  </span>
+                </td>
+                <td class="col-calendar">
+                  <span
+                    class="saves-count"
+                    :aria-label="`${item.totalCalendarActions} calendar adds`"
+                  >
+                    {{ item.totalCalendarActions }}
+                  </span>
+                  <span
+                    v-if="item.calendarActionsByProvider.length"
+                    class="provider-breakdown"
+                    :aria-label="item.calendarActionsByProvider.map(p => `${providerLabel(p.provider)}: ${p.count}`).join(', ')"
+                  >
+                    <span
+                      v-for="p in item.calendarActionsByProvider"
+                      :key="p.provider"
+                      class="provider-chip"
+                      :title="`${providerLabel(p.provider)}: ${p.count}`"
+                    >
+                      {{ providerLabel(p.provider) }}&nbsp;{{ p.count }}
+                    </span>
+                  </span>
+                </td>
+                <td class="col-cal-trend">
+                  <span class="trend-badge" :class="calendarTrendClass(item)">
+                    {{ calendarTrendLabel(item) }}
                   </span>
                 </td>
                 <td class="actions-cell">
@@ -320,6 +382,10 @@ function trendClass(item: EventAnalyticsItem): string {
 
 .stat-number--primary {
   color: var(--color-primary);
+}
+
+.stat-number--calendar {
+  color: #a78bfa;
 }
 
 .stat-label {
@@ -611,6 +677,26 @@ tr:hover td {
   color: var(--color-text-secondary);
 }
 
+/* ── Provider breakdown ── */
+.provider-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.25rem;
+}
+
+.provider-chip {
+  display: inline-block;
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  background: rgba(167, 139, 250, 0.12);
+  color: #a78bfa;
+  white-space: nowrap;
+  cursor: default;
+}
+
 /* ── Responsive ── */
 @media (max-width: 640px) {
   .stats-grid {
@@ -618,7 +704,9 @@ tr:hover td {
   }
 
   .col-saves,
-  .col-momentum {
+  .col-momentum,
+  .col-calendar,
+  .col-cal-trend {
     display: none;
   }
 }

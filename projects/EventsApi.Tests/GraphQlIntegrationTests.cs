@@ -799,6 +799,495 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal("ONLINE", restored.GetProperty("attendanceMode").GetString());
     }
 
+    // -----------------------------------------------------------------------
+    // Calendar Analytics Tests
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public async Task TrackCalendarAction_StoresRecordAndReturnsTrue()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("cal-track@example.com", "Cal Track User");
+            var domain = CreateDomain("Tech", "cal-track-tech");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent("Calendar Event", "calendar-event", "Description.",
+                "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, user);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation TrackCalendarAction($input: TrackCalendarActionInput!) {
+              trackCalendarAction(input: $input)
+            }
+            """,
+            new { input = new { eventId, provider = "GOOGLE" } });
+
+        Assert.True(document.RootElement.GetProperty("data").GetProperty("trackCalendarAction").GetBoolean());
+
+        // Verify record is persisted
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var action = Assert.Single(db.CalendarAnalyticsActions.Where(a => a.EventId == eventId));
+        Assert.Equal("GOOGLE", action.Provider);
+    }
+
+    [Theory]
+    [InlineData("ICS")]
+    [InlineData("GOOGLE")]
+    [InlineData("OUTLOOK")]
+    public async Task TrackCalendarAction_AcceptsAllValidProviders(string provider)
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser($"provider-{provider.ToLower()}@example.com", "Provider User");
+            var domain = CreateDomain("Tech", $"provider-tech-{provider.ToLower()}");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent($"Event {provider}", $"event-{provider.ToLower()}", "Description.",
+                "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, user);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation TrackCalendarAction($input: TrackCalendarActionInput!) {
+              trackCalendarAction(input: $input)
+            }
+            """,
+            new { input = new { eventId, provider } });
+
+        Assert.True(document.RootElement.GetProperty("data").GetProperty("trackCalendarAction").GetBoolean());
+    }
+
+    [Fact]
+    public async Task TrackCalendarAction_InvalidProvider_ReturnsError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("invalid-provider@example.com", "Invalid Provider User");
+            var domain = CreateDomain("Tech", "invalid-provider-tech");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent("Event", "event-invalid-prov", "Description.",
+                "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, user);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation TrackCalendarAction($input: TrackCalendarActionInput!) {
+                  trackCalendarAction(input: $input)
+                }
+                """,
+            variables = new { input = new { eventId, provider = "UNKNOWN_PROVIDER" } }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        Assert.Contains("INVALID_CALENDAR_PROVIDER", errors.ToString());
+    }
+
+    [Fact]
+    public async Task TrackCalendarAction_NonExistentEvent_ReturnsError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("no-event@example.com", "No Event User");
+            var domain = CreateDomain("Tech", "no-event-tech");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+        });
+
+        using var client = factory.CreateClient();
+        var nonExistentId = Guid.NewGuid();
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation TrackCalendarAction($input: TrackCalendarActionInput!) {
+                  trackCalendarAction(input: $input)
+                }
+                """,
+            variables = new { input = new { eventId = nonExistentId, provider = "ICS" } }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        Assert.Contains("EVENT_NOT_FOUND", errors.ToString());
+    }
+
+    [Fact]
+    public async Task TrackCalendarAction_NonPublishedEvent_ReturnsError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var pendingEventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("non-published@example.com", "Non Published User");
+            var domain = CreateDomain("Tech", "non-published-tech");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent("Pending Event", "pending-event-cal", "Description.",
+                "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, user,
+                status: EventStatus.PendingApproval);
+            pendingEventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation TrackCalendarAction($input: TrackCalendarActionInput!) {
+                  trackCalendarAction(input: $input)
+                }
+                """,
+            variables = new { input = new { eventId = pendingEventId, provider = "ICS" } }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        Assert.Contains("EVENT_NOT_PUBLISHED", errors.ToString());
+    }
+
+    [Fact]
+    public async Task TrackCalendarAction_IsUnauthenticated_Succeeds()
+    {
+        // trackCalendarAction must work without a JWT token (anonymous tracking)
+        await using var factory = new EventsApiWebApplicationFactory();
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("anon-track@example.com", "Anon Track User");
+            var domain = CreateDomain("Tech", "anon-track-tech");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent("Anon Event", "anon-event-cal", "Description.",
+                "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, user);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        // No Authorization header set
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation TrackCalendarAction($input: TrackCalendarActionInput!) {
+              trackCalendarAction(input: $input)
+            }
+            """,
+            new { input = new { eventId, provider = "ICS" } });
+
+        Assert.True(document.RootElement.GetProperty("data").GetProperty("trackCalendarAction").GetBoolean());
+    }
+
+    [Fact]
+    public async Task MyDashboard_IncludesCalendarAnalytics_CorrectCounts()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("cal-dashboard@example.com", "Cal Dashboard User");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "cal-dashboard-tech");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+
+            var ev = CreateEvent("Dashboard Event", "dashboard-event-cal", "Description.",
+                "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, user);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+
+            // Add calendar actions: 2 GOOGLE, 1 ICS — all within last 7 days
+            dbContext.CalendarAnalyticsActions.AddRange(
+                new CalendarAnalyticsAction { EventId = ev.Id, Provider = "GOOGLE", TriggeredAtUtc = DateTime.UtcNow.AddDays(-1) },
+                new CalendarAnalyticsAction { EventId = ev.Id, Provider = "GOOGLE", TriggeredAtUtc = DateTime.UtcNow.AddDays(-2) },
+                new CalendarAnalyticsAction { EventId = ev.Id, Provider = "ICS", TriggeredAtUtc = DateTime.UtcNow.AddDays(-3) });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyDashboard {
+              myDashboard {
+                totalCalendarActions
+                eventAnalytics {
+                  eventId eventName totalCalendarActions calendarActionsLast7Days calendarActionsLast30Days
+                  calendarActionsByProvider { provider count }
+                }
+              }
+            }
+            """);
+
+        var dashboard = document.RootElement.GetProperty("data").GetProperty("myDashboard");
+        Assert.Equal(3, dashboard.GetProperty("totalCalendarActions").GetInt32());
+
+        var analytics = Assert.Single(dashboard.GetProperty("eventAnalytics").EnumerateArray());
+        Assert.Equal(3, analytics.GetProperty("totalCalendarActions").GetInt32());
+        Assert.Equal(3, analytics.GetProperty("calendarActionsLast7Days").GetInt32());
+        Assert.Equal(3, analytics.GetProperty("calendarActionsLast30Days").GetInt32());
+
+        var byProvider = analytics.GetProperty("calendarActionsByProvider").EnumerateArray().ToList();
+        Assert.Equal(2, byProvider.Count);
+        var google = byProvider.Single(p => p.GetProperty("provider").GetString() == "GOOGLE");
+        Assert.Equal(2, google.GetProperty("count").GetInt32());
+        var ics = byProvider.Single(p => p.GetProperty("provider").GetString() == "ICS");
+        Assert.Equal(1, ics.GetProperty("count").GetInt32());
+    }
+
+    [Fact]
+    public async Task MyDashboard_CalendarAnalytics_ZeroStateReturnsZeroNotNull()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("cal-zero@example.com", "Cal Zero User");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "cal-zero-tech");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.Add(CreateEvent("Zero Event", "zero-event-cal", "Description.",
+                "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, user));
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyDashboard {
+              myDashboard {
+                totalCalendarActions
+                eventAnalytics {
+                  totalCalendarActions calendarActionsLast7Days calendarActionsLast30Days
+                  calendarActionsByProvider { provider count }
+                }
+              }
+            }
+            """);
+
+        var dashboard = document.RootElement.GetProperty("data").GetProperty("myDashboard");
+        Assert.Equal(0, dashboard.GetProperty("totalCalendarActions").GetInt32());
+
+        var analytics = Assert.Single(dashboard.GetProperty("eventAnalytics").EnumerateArray());
+        Assert.Equal(0, analytics.GetProperty("totalCalendarActions").GetInt32());
+        Assert.Equal(0, analytics.GetProperty("calendarActionsLast7Days").GetInt32());
+        Assert.Equal(0, analytics.GetProperty("calendarActionsLast30Days").GetInt32());
+        Assert.Empty(analytics.GetProperty("calendarActionsByProvider").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task MyDashboard_TotalCalendarActions_OnlyCountsPublishedEvents()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("cal-published@example.com", "Cal Published User");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "cal-published-tech");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+
+            var publishedEv = CreateEvent("Published Event", "cal-pub-event", "Description.",
+                "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, user, status: EventStatus.Published);
+            var pendingEv = CreateEvent("Pending Event", "cal-pend-event", "Description.",
+                "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, user, status: EventStatus.PendingApproval);
+            dbContext.Events.AddRange(publishedEv, pendingEv);
+
+            dbContext.CalendarAnalyticsActions.AddRange(
+                new CalendarAnalyticsAction { EventId = publishedEv.Id, Provider = "GOOGLE", TriggeredAtUtc = DateTime.UtcNow },
+                new CalendarAnalyticsAction { EventId = pendingEv.Id, Provider = "ICS", TriggeredAtUtc = DateTime.UtcNow });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyDashboard {
+              myDashboard {
+                totalCalendarActions
+              }
+            }
+            """);
+
+        var dashboard = document.RootElement.GetProperty("data").GetProperty("myDashboard");
+        // Only the published event's action should count toward the headline KPI
+        Assert.Equal(1, dashboard.GetProperty("totalCalendarActions").GetInt32());
+    }
+
+    [Fact]
+    public async Task MyDashboard_CalendarAnalytics_TrendWindowCutoffs_AreCorrect()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("cal-trends@example.com", "Cal Trends User");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "cal-trends-tech");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+
+            var ev = CreateEvent("Trend Event", "trend-event-cal", "Description.",
+                "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, user);
+            dbContext.Events.Add(ev);
+
+            dbContext.CalendarAnalyticsActions.AddRange(
+                // Within last 7 days
+                new CalendarAnalyticsAction { EventId = ev.Id, Provider = "GOOGLE", TriggeredAtUtc = DateTime.UtcNow.AddDays(-1) },
+                // Within last 30 days but not 7 days
+                new CalendarAnalyticsAction { EventId = ev.Id, Provider = "ICS", TriggeredAtUtc = DateTime.UtcNow.AddDays(-15) },
+                // Older than 30 days
+                new CalendarAnalyticsAction { EventId = ev.Id, Provider = "OUTLOOK", TriggeredAtUtc = DateTime.UtcNow.AddDays(-45) });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyDashboard {
+              myDashboard {
+                eventAnalytics {
+                  totalCalendarActions calendarActionsLast7Days calendarActionsLast30Days
+                }
+              }
+            }
+            """);
+
+        var analytics = Assert.Single(document.RootElement
+            .GetProperty("data").GetProperty("myDashboard").GetProperty("eventAnalytics").EnumerateArray());
+
+        Assert.Equal(3, analytics.GetProperty("totalCalendarActions").GetInt32());
+        Assert.Equal(1, analytics.GetProperty("calendarActionsLast7Days").GetInt32());
+        Assert.Equal(2, analytics.GetProperty("calendarActionsLast30Days").GetInt32());
+    }
+
+    [Fact]
+    public async Task MyDashboard_CalendarAnalytics_OrganizerIsolation()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var organizer1Id = Guid.Empty;
+        var organizer2Id = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var org1 = CreateUser("cal-org1@example.com", "Cal Org1");
+            var org2 = CreateUser("cal-org2@example.com", "Cal Org2");
+            organizer1Id = org1.Id;
+            organizer2Id = org2.Id;
+
+            var domain = CreateDomain("Tech", "cal-iso-tech");
+            dbContext.Users.AddRange(org1, org2);
+            dbContext.Domains.Add(domain);
+
+            var ev1 = CreateEvent("Org1 Cal Event", "org1-cal-event", "Description.",
+                "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, org1);
+            var ev2 = CreateEvent("Org2 Cal Event", "org2-cal-event", "Description.",
+                "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, org2);
+            dbContext.Events.AddRange(ev1, ev2);
+
+            // 2 actions on org1's event, 1 on org2's
+            dbContext.CalendarAnalyticsActions.AddRange(
+                new CalendarAnalyticsAction { EventId = ev1.Id, Provider = "GOOGLE", TriggeredAtUtc = DateTime.UtcNow },
+                new CalendarAnalyticsAction { EventId = ev1.Id, Provider = "ICS", TriggeredAtUtc = DateTime.UtcNow },
+                new CalendarAnalyticsAction { EventId = ev2.Id, Provider = "OUTLOOK", TriggeredAtUtc = DateTime.UtcNow });
+        });
+
+        using var client1 = factory.CreateClient();
+        client1.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, organizer1Id));
+
+        using var doc1 = await ExecuteGraphQlAsync(
+            client1,
+            """
+            query MyDashboard {
+              myDashboard {
+                totalCalendarActions
+                eventAnalytics { eventName totalCalendarActions }
+              }
+            }
+            """);
+
+        var dashboard1 = doc1.RootElement.GetProperty("data").GetProperty("myDashboard");
+        Assert.Equal(2, dashboard1.GetProperty("totalCalendarActions").GetInt32());
+        var analytics1 = Assert.Single(dashboard1.GetProperty("eventAnalytics").EnumerateArray());
+        Assert.Equal("Org1 Cal Event", analytics1.GetProperty("eventName").GetString());
+        Assert.Equal(2, analytics1.GetProperty("totalCalendarActions").GetInt32());
+
+        using var client2 = factory.CreateClient();
+        client2.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, organizer2Id));
+
+        using var doc2 = await ExecuteGraphQlAsync(
+            client2,
+            """
+            query MyDashboard {
+              myDashboard {
+                totalCalendarActions
+                eventAnalytics { eventName totalCalendarActions }
+              }
+            }
+            """);
+
+        var dashboard2 = doc2.RootElement.GetProperty("data").GetProperty("myDashboard");
+        Assert.Equal(1, dashboard2.GetProperty("totalCalendarActions").GetInt32());
+        var analytics2 = Assert.Single(dashboard2.GetProperty("eventAnalytics").EnumerateArray());
+        Assert.Equal("Org2 Cal Event", analytics2.GetProperty("eventName").GetString());
+        Assert.Equal(1, analytics2.GetProperty("totalCalendarActions").GetInt32());
+    }
+
     private static async Task SeedAsync(EventsApiWebApplicationFactory factory, Action<AppDbContext> seedAction)
     {
         using var scope = factory.Services.CreateScope();

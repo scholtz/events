@@ -227,6 +227,23 @@ public sealed class AppDbInitializer(
                 """,
                 cancellationToken);
         }
+
+        if (!await TableExistsAsync("CalendarAnalyticsActions", cancellationToken))
+        {
+            await _dbContext.Database.ExecuteSqlRawAsync(
+                """
+                CREATE TABLE "CalendarAnalyticsActions" (
+                    "Id" TEXT NOT NULL CONSTRAINT "PK_CalendarAnalyticsActions" PRIMARY KEY,
+                    "EventId" TEXT NOT NULL,
+                    "Provider" TEXT NOT NULL,
+                    "TriggeredAtUtc" TEXT NOT NULL,
+                    CONSTRAINT "FK_CalendarAnalyticsActions_Events_EventId" FOREIGN KEY ("EventId") REFERENCES "Events" ("Id") ON DELETE CASCADE
+                );
+                CREATE INDEX "IX_CalendarAnalyticsActions_EventId" ON "CalendarAnalyticsActions" ("EventId");
+                CREATE INDEX "IX_CalendarAnalyticsActions_TriggeredAtUtc" ON "CalendarAnalyticsActions" ("TriggeredAtUtc");
+                """,
+                cancellationToken);
+        }
     }
 
     private async Task EnsureSavedSearchColumnAsync(string columnName, CancellationToken cancellationToken)

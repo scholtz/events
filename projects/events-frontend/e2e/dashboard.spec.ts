@@ -6,6 +6,7 @@ import {
   makeApprovedEvent,
   loginAs,
   type MockFavoriteEvent,
+  type MockCalendarAction,
 } from './helpers/mock-api'
 
 test.describe('Organizer analytics dashboard', () => {
@@ -149,9 +150,9 @@ test.describe('Organizer analytics dashboard', () => {
     await loginAs(page, user)
     await page.waitForURL(/\/dashboard$/)
 
-    // Should show "No recent saves" for event with no activity
-    await expect(page.locator('.trend--quiet')).toBeVisible()
-    await expect(page.locator('.trend--quiet')).toContainText('No recent saves')
+    // Should show "No recent saves" for event with no activity (saves momentum column)
+    await expect(page.locator('.col-momentum .trend--quiet')).toBeVisible()
+    await expect(page.locator('.col-momentum .trend--quiet')).toContainText('No recent saves')
   })
 
   test('shows low-data guidance when no saves exist for published events', async ({ page }) => {
@@ -313,5 +314,265 @@ test.describe('Organizer analytics dashboard', () => {
     // KPI card "Total Saves" should show 3
     const savesCard = page.locator('.stat-card', { has: page.locator('.stat-label', { hasText: 'Total Saves' }) })
     await expect(savesCard.locator('.stat-number--primary')).toContainText('3')
+  })
+})
+
+// ── Calendar Analytics dashboard tests ───────────────────────────────────────
+
+test.describe('Calendar analytics dashboard', () => {
+  test('shows Calendar Adds KPI card with correct total', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-cal-kpi',
+      slug: 'cal-kpi-event',
+      name: 'Calendar KPI Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    const state = setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+
+    const actions: MockCalendarAction[] = [
+      { id: 'ca-1', eventId: event.id, provider: 'GOOGLE', triggeredAtUtc: new Date().toISOString() },
+      { id: 'ca-2', eventId: event.id, provider: 'ICS', triggeredAtUtc: new Date().toISOString() },
+      { id: 'ca-3', eventId: event.id, provider: 'GOOGLE', triggeredAtUtc: new Date().toISOString() },
+    ]
+    state.calendarActions.push(...actions)
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    const calCard = page.locator('.stat-card', {
+      has: page.locator('.stat-label', { hasText: 'Calendar Adds' }),
+    })
+    await expect(calCard).toBeVisible()
+    await expect(calCard.locator('.stat-number--calendar')).toContainText('3')
+  })
+
+  test('shows calendar trend "this week" when actions in last 7 days', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-cal-trend-week',
+      slug: 'cal-trend-week',
+      name: 'Cal Trend Week Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    const state = setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    state.calendarActions.push({
+      id: 'ca-week-1',
+      eventId: event.id,
+      provider: 'GOOGLE',
+      triggeredAtUtc: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Cal trend badge should show "this week"
+    const calTrendCells = page.locator('.col-cal-trend .trend--active')
+    await expect(calTrendCells.first()).toBeVisible()
+    await expect(calTrendCells.first()).toContainText('this week')
+  })
+
+  test('shows calendar trend "this month" when actions in last 30 but not 7 days', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-cal-trend-month',
+      slug: 'cal-trend-month',
+      name: 'Cal Trend Month Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    const state = setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    state.calendarActions.push({
+      id: 'ca-month-1',
+      eventId: event.id,
+      provider: 'OUTLOOK',
+      triggeredAtUtc: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    const calTrendCells = page.locator('.col-cal-trend .trend--recent')
+    await expect(calTrendCells.first()).toBeVisible()
+    await expect(calTrendCells.first()).toContainText('this month')
+  })
+
+  test('shows "No recent adds" when no calendar actions in last 30 days', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-cal-quiet',
+      slug: 'cal-quiet-event',
+      name: 'Cal Quiet Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    const calTrendCells = page.locator('.col-cal-trend .trend--quiet')
+    await expect(calTrendCells.first()).toBeVisible()
+    await expect(calTrendCells.first()).toContainText('No recent adds')
+  })
+
+  test('shows provider breakdown chips for events with calendar actions', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-cal-providers',
+      slug: 'cal-providers-event',
+      name: 'Cal Providers Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    const state = setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    state.calendarActions.push(
+      { id: 'ca-p1', eventId: event.id, provider: 'GOOGLE', triggeredAtUtc: new Date().toISOString() },
+      { id: 'ca-p2', eventId: event.id, provider: 'GOOGLE', triggeredAtUtc: new Date().toISOString() },
+      { id: 'ca-p3', eventId: event.id, provider: 'ICS', triggeredAtUtc: new Date().toISOString() },
+    )
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Provider breakdown chips should be visible
+    await expect(page.locator('.provider-chip', { hasText: 'Google 2' })).toBeVisible()
+    await expect(page.locator('.provider-chip', { hasText: 'ICS 1' })).toBeVisible()
+  })
+
+  test('Calendar Adds KPI only counts published events', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+
+    const publishedEvent = makeApprovedEvent({
+      id: 'ev-cal-pub',
+      slug: 'cal-pub-event',
+      name: 'Published Cal Event',
+      status: 'PUBLISHED',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+    const pendingEvent = makeApprovedEvent({
+      id: 'ev-cal-pend',
+      slug: 'cal-pend-event',
+      name: 'Pending Cal Event',
+      status: 'PENDING_APPROVAL',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    const state = setupMockApi(page, {
+      users: [user],
+      domains: [domain],
+      events: [publishedEvent, pendingEvent],
+    })
+    state.calendarActions.push(
+      { id: 'ca-pub-1', eventId: publishedEvent.id, provider: 'GOOGLE', triggeredAtUtc: new Date().toISOString() },
+      { id: 'ca-pend-1', eventId: pendingEvent.id, provider: 'ICS', triggeredAtUtc: new Date().toISOString() },
+    )
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // KPI should only count published event's action (1, not 2)
+    const calCard = page.locator('.stat-card', {
+      has: page.locator('.stat-label', { hasText: 'Calendar Adds' }),
+    })
+    await expect(calCard.locator('.stat-number--calendar')).toContainText('1')
+  })
+
+  test('calendar analytics column shows 0 for event with no actions', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-cal-zero',
+      slug: 'cal-zero-event',
+      name: 'Cal Zero Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Calendar column shows 0
+    const calCell = page.locator('.col-calendar .saves-count')
+    await expect(calCell.first()).toContainText('0')
+
+    // No provider chips visible
+    await expect(page.locator('.provider-chip')).toHaveCount(0)
+  })
+
+  test('unauthenticated user sees sign-in prompt, no calendar analytics shown', async ({
+    page,
+  }) => {
+    const domain = makeTechDomain()
+    setupMockApi(page, { domains: [domain] })
+
+    await page.goto('/dashboard')
+
+    await expect(page.getByRole('heading', { name: 'Sign in required' })).toBeVisible()
+    await expect(page.locator('.col-calendar')).toHaveCount(0)
+  })
+
+  test('organizer only sees their own events calendar analytics', async ({ page }) => {
+    const organizer = makeAdminUser()
+    const domain = makeTechDomain()
+
+    const myEvent = makeApprovedEvent({
+      id: 'ev-cal-mine',
+      slug: 'cal-my-event',
+      name: 'My Cal Event',
+      submittedByUserId: organizer.id,
+      submittedBy: { displayName: organizer.displayName },
+    })
+    const otherEvent = makeApprovedEvent({
+      id: 'ev-cal-other',
+      slug: 'cal-other-event',
+      name: "Other's Cal Event",
+      submittedByUserId: 'other-organizer-99',
+      submittedBy: { displayName: 'Other Organizer' },
+    })
+
+    const state = setupMockApi(page, {
+      users: [organizer],
+      domains: [domain],
+      events: [myEvent, otherEvent],
+    })
+    // 5 actions on other's event, 1 on mine
+    state.calendarActions.push(
+      { id: 'ca-mine', eventId: myEvent.id, provider: 'GOOGLE', triggeredAtUtc: new Date().toISOString() },
+      { id: 'ca-o1', eventId: otherEvent.id, provider: 'ICS', triggeredAtUtc: new Date().toISOString() },
+      { id: 'ca-o2', eventId: otherEvent.id, provider: 'ICS', triggeredAtUtc: new Date().toISOString() },
+      { id: 'ca-o3', eventId: otherEvent.id, provider: 'GOOGLE', triggeredAtUtc: new Date().toISOString() },
+    )
+
+    await loginAs(page, organizer)
+    await page.waitForURL(/\/dashboard$/)
+
+    // KPI should only count my event's action (1)
+    const calCard = page.locator('.stat-card', {
+      has: page.locator('.stat-label', { hasText: 'Calendar Adds' }),
+    })
+    await expect(calCard.locator('.stat-number--calendar')).toContainText('1')
+
+    // Other organizer's event should not appear in table
+    await expect(page.getByText("Other's Cal Event")).toBeHidden()
   })
 })

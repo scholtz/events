@@ -358,6 +358,52 @@ public sealed class Mutation
         return true;
     }
 
+    /// <summary>
+    /// Records an add-to-calendar action for analytics purposes.
+    /// This mutation is intentionally unauthenticated — it accepts anonymous
+    /// telemetry from attendees.  No user identity is stored.
+    /// The event must exist and be published.
+    /// Accepted providers: ICS, GOOGLE, OUTLOOK.
+    /// </summary>
+    public async Task<bool> TrackCalendarActionAsync(
+        TrackCalendarActionInput input,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var normalizedProvider = input.Provider?.Trim().ToUpperInvariant() ?? string.Empty;
+        if (normalizedProvider is not ("ICS" or "GOOGLE" or "OUTLOOK"))
+        {
+            throw CreateError(
+                "Provider must be one of: ICS, GOOGLE, OUTLOOK.",
+                "INVALID_CALENDAR_PROVIDER");
+        }
+
+        var catalogEvent = await dbContext.Events
+            .AsNoTracking()
+            .SingleOrDefaultAsync(e => e.Id == input.EventId, cancellationToken);
+
+        if (catalogEvent is null)
+        {
+            throw CreateError("Event was not found.", "EVENT_NOT_FOUND");
+        }
+
+        if (catalogEvent.Status != EventStatus.Published)
+        {
+            throw CreateError("Calendar actions can only be tracked for published events.", "EVENT_NOT_PUBLISHED");
+        }
+
+        var action = new CalendarAnalyticsAction
+        {
+            EventId = input.EventId,
+            Provider = normalizedProvider,
+            TriggeredAtUtc = DateTime.UtcNow
+        };
+
+        dbContext.CalendarAnalyticsActions.Add(action);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     private static AuthPayload CreateAuthPayload(ApplicationUser user, JwtTokenService jwtTokenService)
     {
         var session = jwtTokenService.CreateSession(user);
