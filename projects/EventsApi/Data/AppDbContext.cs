@@ -11,6 +11,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<SavedSearch> SavedSearches => Set<SavedSearch>();
     public DbSet<FavoriteEvent> FavoriteEvents => Set<FavoriteEvent>();
     public DbSet<CalendarAnalyticsAction> CalendarAnalyticsActions => Set<CalendarAnalyticsAction>();
+    public DbSet<DiscoveryAnalyticsAction> DiscoveryAnalyticsActions => Set<DiscoveryAnalyticsAction>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -110,6 +111,15 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .WithMany()
                 .HasForeignKey(action => action.EventId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<DiscoveryAnalyticsAction>(entity =>
+        {
+            entity.Property(action => action.ActionType).HasMaxLength(32);
+            entity.Property(action => action.EventSlug).HasMaxLength(200);
+
+            entity.HasIndex(action => action.ActionType);
+            entity.HasIndex(action => action.TriggeredAtUtc);
         });
     }
 }
