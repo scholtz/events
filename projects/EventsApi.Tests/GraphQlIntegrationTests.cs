@@ -3797,4 +3797,138 @@ public sealed class GraphQlIntegrationTests
         var now = DateTime.UtcNow;
         return new DateTime(now.Year, now.Month, 1, 10, 0, 0, DateTimeKind.Utc).AddMonths(1);
     }
+
+    [Fact]
+    public async Task EventsQuery_AttendanceModeAndDateRange_CombineCorrectly()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("att-date@example.com", "Att Date User");
+            var tech = CreateDomain("Tech", "tech-att-date");
+            var nextMonth = FirstDayOfNextMonthUtc();
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(tech);
+            dbContext.Events.AddRange(
+                CreateEvent("Online Next Month", "online-next-month", "Online soon.", "Virtual", "Online", nextMonth, tech, user, attendanceMode: AttendanceMode.Online),
+                CreateEvent("Online Far Future", "online-far-future", "Online later.", "Virtual", "Online", nextMonth.AddMonths(3), tech, user, attendanceMode: AttendanceMode.Online),
+                CreateEvent("In-Person Next Month", "in-person-next-month", "Physical soon.", "Hall", "Prague", nextMonth.AddDays(1), tech, user, attendanceMode: AttendanceMode.InPerson));
+        });
+
+        using var client = factory.CreateClient();
+        var nextMonth = FirstDayOfNextMonthUtc();
+
+        // Online + narrow date window should match only "Online Next Month"
+        var names = await QueryEventNamesAsync(client, new
+        {
+            attendanceMode = "ONLINE",
+            startsFromUtc = nextMonth.AddDays(-1),
+            startsToUtc = nextMonth.AddDays(14),
+            sortBy = "UPCOMING"
+        });
+
+        Assert.Equal(["Online Next Month"], names);
+    }
+
+    [Fact]
+    public async Task EventsQuery_KeywordDomainAttendanceModeAndSort_AllCombineCorrectly()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("combo@example.com", "Combo User");
+            var ai = CreateDomain("AI", "ai-combo");
+            var crypto = CreateDomain("Crypto", "crypto-combo");
+            var nextMonth = FirstDayOfNextMonthUtc();
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.AddRange(ai, crypto);
+            dbContext.Events.AddRange(
+                // Should match: keyword "summit" + domain ai + online
+                CreateEvent("AI Summit Online", "ai-summit-online", "AI online event.", "Virtual", "Remote", nextMonth, ai, user, attendanceMode: AttendanceMode.Online),
+                // Should NOT match: wrong domain
+                CreateEvent("Crypto Summit Online", "crypto-summit-online", "Crypto online event.", "Virtual", "Remote", nextMonth.AddDays(1), crypto, user, attendanceMode: AttendanceMode.Online),
+                // Should NOT match: wrong attendance mode
+                CreateEvent("AI Summit In-Person", "ai-summit-in-person", "AI in-person event.", "Venue", "Prague", nextMonth.AddDays(2), ai, user, attendanceMode: AttendanceMode.InPerson),
+                // Should NOT match: keyword mismatch
+                CreateEvent("AI Workshop Online", "ai-workshop-online", "AI online workshop.", "Virtual", "Remote", nextMonth.AddDays(3), ai, user, attendanceMode: AttendanceMode.Online));
+        });
+
+        using var client = factory.CreateClient();
+
+        var names = await QueryEventNamesAsync(client, new
+        {
+            searchText = "summit",
+            domainSlug = "ai-combo",
+            attendanceMode = "ONLINE",
+            sortBy = "UPCOMING"
+        });
+
+        Assert.Equal(["AI Summit Online"], names);
+    }
+
+    [Fact]
+    public async Task EventsQuery_CombinedFilters_ReturnsEmptyWhenNoEventsMatch()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("empty@example.com", "Empty User");
+            var tech = CreateDomain("Tech", "tech-empty");
+            var nextMonth = FirstDayOfNextMonthUtc();
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(tech);
+            dbContext.Events.AddRange(
+                CreateEvent("Prague Meetup", "prague-meetup", "Meetup in Prague.", "Venue", "Prague", nextMonth, tech, user, attendanceMode: AttendanceMode.InPerson),
+                CreateEvent("Online Workshop", "online-workshop-empty", "Remote session.", "Virtual", "Online", nextMonth.AddDays(1), tech, user, attendanceMode: AttendanceMode.Online));
+        });
+
+        using var client = factory.CreateClient();
+
+        // Combination that matches nothing: location text "berlin" + online + free
+        var names = await QueryEventNamesAsync(client, new
+        {
+            locationText = "berlin",
+            attendanceMode = "ONLINE",
+            isFree = true,
+            sortBy = "UPCOMING"
+        });
+
+        Assert.Empty(names);
+    }
+
+    [Fact]
+    public async Task EventsQuery_PriceRangeAndDomain_CombineCorrectly()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("price-domain@example.com", "Price Domain User");
+            var ai = CreateDomain("AI", "ai-price");
+            var crypto = CreateDomain("Crypto", "crypto-price");
+            var nextMonth = FirstDayOfNextMonthUtc();
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.AddRange(ai, crypto);
+            dbContext.Events.AddRange(
+                CreateEvent("AI Workshop Cheap", "ai-workshop-cheap", "Budget AI.", "Venue", "Prague", nextMonth, ai, user, isFree: false, priceAmount: 20m),
+                CreateEvent("AI Conference Premium", "ai-conference-premium", "Premium AI.", "Venue", "Prague", nextMonth.AddDays(1), ai, user, isFree: false, priceAmount: 250m),
+                CreateEvent("Crypto Workshop Mid", "crypto-workshop-mid", "Mid-range crypto.", "Venue", "Brno", nextMonth.AddDays(2), crypto, user, isFree: false, priceAmount: 75m));
+        });
+
+        using var client = factory.CreateClient();
+
+        // AI domain + price range 50–300 should match only the premium one
+        var names = await QueryEventNamesAsync(client, new
+        {
+            domainSlug = "ai-price",
+            priceMin = 50m,
+            priceMax = 300m,
+            sortBy = "UPCOMING"
+        });
+
+        Assert.Equal(["AI Conference Premium"], names);
+    }
 }

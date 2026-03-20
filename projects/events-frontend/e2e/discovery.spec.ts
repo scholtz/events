@@ -815,3 +815,284 @@ test.describe('Mobile viewport discovery', () => {
     await expect(page.locator('.filter-chip', { hasText: 'Mode: Online' })).toBeVisible()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Date range filter
+// ---------------------------------------------------------------------------
+
+test.describe('Date range filter', () => {
+  test('from-date filter hides events before the cutoff', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-early',
+          name: 'Early Summit',
+          slug: 'early-summit',
+          startsAtUtc: '2026-03-01T10:00:00Z',
+        }),
+        makeApprovedEvent({
+          id: 'e-late',
+          name: 'Late Summit',
+          slug: 'late-summit',
+          startsAtUtc: '2026-09-01T10:00:00Z',
+        }),
+      ],
+    })
+    await page.goto('/?from=2026-06-01')
+
+    await expect(page.locator('.event-card', { hasText: 'Late Summit' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Early Summit' })).toBeHidden()
+    await expect(page.locator('.filter-chip', { hasText: /from/i })).toBeVisible()
+  })
+
+  test('to-date filter hides events after the cutoff', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-early',
+          name: 'Early Summit',
+          slug: 'early-summit',
+          startsAtUtc: '2026-03-01T10:00:00Z',
+        }),
+        makeApprovedEvent({
+          id: 'e-late',
+          name: 'Late Summit',
+          slug: 'late-summit',
+          startsAtUtc: '2026-09-01T10:00:00Z',
+        }),
+      ],
+    })
+    await page.goto('/?to=2026-05-01')
+
+    await expect(page.locator('.event-card', { hasText: 'Early Summit' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Late Summit' })).toBeHidden()
+    await expect(page.locator('.filter-chip', { hasText: /to/i })).toBeVisible()
+  })
+
+  test('date range filter chip is restored from URL on reload', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-1', name: 'Summer Conf', slug: 'summer-conf', startsAtUtc: '2026-07-15T10:00:00Z' }),
+      ],
+    })
+    await page.goto('/?from=2026-06-01&to=2026-12-31')
+
+    // Expand advanced filters to reveal date inputs
+    await page.getByRole('button', { name: 'More filters' }).click()
+
+    await expect(page.getByLabel('From')).toHaveValue('2026-06-01')
+    await expect(page.getByLabel('To')).toHaveValue('2026-12-31')
+    await expect(page.locator('.filter-chip', { hasText: /from/i })).toBeVisible()
+    await expect(page.locator('.filter-chip', { hasText: /to/i })).toBeVisible()
+  })
+
+  test('removing date-from chip shows previously hidden events', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-early',
+          name: 'Early Summit',
+          slug: 'early-summit',
+          startsAtUtc: '2026-03-01T10:00:00Z',
+        }),
+        makeApprovedEvent({
+          id: 'e-late',
+          name: 'Late Summit',
+          slug: 'late-summit',
+          startsAtUtc: '2026-09-01T10:00:00Z',
+        }),
+      ],
+    })
+    await page.goto('/?from=2026-06-01')
+
+    await expect(page.locator('.event-card', { hasText: 'Early Summit' })).toBeHidden()
+    // Click the "From" chip to remove the filter
+    await page.locator('.filter-chip', { hasText: /from/i }).click()
+
+    await expect(page.locator('.event-card', { hasText: 'Early Summit' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Late Summit' })).toBeVisible()
+  })
+
+  test('date range filter URL updates when filters are changed', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ name: 'Summer Conf', slug: 'summer-conf', startsAtUtc: '2026-07-15T10:00:00Z' })],
+    })
+    await page.goto('/')
+
+    await page.getByRole('button', { name: 'More filters' }).click()
+    await page.getByLabel('From').fill('2026-06-01')
+
+    await expect(page).toHaveURL(/from=2026-06-01/, { timeout: 2000 })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Price range (min/max) filter
+// ---------------------------------------------------------------------------
+
+test.describe('Price range filter', () => {
+  test('min-price filter hides cheaper events', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-cheap',
+          name: 'Budget Talk',
+          slug: 'budget-talk',
+          isFree: false,
+          priceAmount: 10,
+        }),
+        makeApprovedEvent({
+          id: 'e-premium',
+          name: 'Premium Summit',
+          slug: 'premium-summit',
+          isFree: false,
+          priceAmount: 200,
+        }),
+      ],
+    })
+    await page.goto('/?minPrice=100')
+
+    await expect(page.locator('.event-card', { hasText: 'Premium Summit' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Budget Talk' })).toBeHidden()
+    await expect(page.locator('.filter-chip', { hasText: /min price/i })).toBeVisible()
+  })
+
+  test('max-price filter hides more expensive events', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-cheap',
+          name: 'Budget Talk',
+          slug: 'budget-talk',
+          isFree: false,
+          priceAmount: 10,
+        }),
+        makeApprovedEvent({
+          id: 'e-premium',
+          name: 'Premium Summit',
+          slug: 'premium-summit',
+          isFree: false,
+          priceAmount: 200,
+        }),
+      ],
+    })
+    await page.goto('/?maxPrice=50')
+
+    await expect(page.locator('.event-card', { hasText: 'Budget Talk' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Premium Summit' })).toBeHidden()
+    await expect(page.locator('.filter-chip', { hasText: /max price/i })).toBeVisible()
+  })
+
+  test('min and max price together create a price window', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-1', name: 'Cheap Talk', slug: 'cheap-talk', isFree: false, priceAmount: 5 }),
+        makeApprovedEvent({
+          id: 'e-2',
+          name: 'Mid-Range Workshop',
+          slug: 'mid-range-workshop',
+          isFree: false,
+          priceAmount: 75,
+        }),
+        makeApprovedEvent({
+          id: 'e-3',
+          name: 'Premium Conference',
+          slug: 'premium-conference',
+          isFree: false,
+          priceAmount: 500,
+        }),
+      ],
+    })
+    await page.goto('/?minPrice=50&maxPrice=100')
+
+    await expect(page.locator('.event-card', { hasText: 'Mid-Range Workshop' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Cheap Talk' })).toBeHidden()
+    await expect(page.locator('.event-card', { hasText: 'Premium Conference' })).toBeHidden()
+  })
+
+  test('price range chips are restored from URL on reload', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ name: 'Mid-Range Workshop', slug: 'mid-range', isFree: false, priceAmount: 75 })],
+    })
+    await page.goto('/?minPrice=50&maxPrice=100')
+
+    await expect(page.locator('.filter-chip', { hasText: /min price/i })).toBeVisible()
+    await expect(page.locator('.filter-chip', { hasText: /max price/i })).toBeVisible()
+  })
+
+  test('removing min-price chip restores cheaper events', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-cheap', name: 'Budget Talk', slug: 'budget-talk', isFree: false, priceAmount: 10 }),
+        makeApprovedEvent({
+          id: 'e-premium',
+          name: 'Premium Summit',
+          slug: 'premium-summit',
+          isFree: false,
+          priceAmount: 200,
+        }),
+      ],
+    })
+    await page.goto('/?minPrice=100')
+
+    await expect(page.locator('.event-card', { hasText: 'Budget Talk' })).toBeHidden()
+
+    await page.locator('.filter-chip', { hasText: /min price/i }).click()
+
+    await expect(page.locator('.event-card', { hasText: 'Budget Talk' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Premium Summit' })).toBeVisible()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Results summary
+// ---------------------------------------------------------------------------
+
+test.describe('Results summary', () => {
+  test('shows results summary with filter context when active filters are applied', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-1', name: 'Prague Summit', slug: 'prague-summit', city: 'Prague' }),
+        makeApprovedEvent({ id: 'e-2', name: 'Brno Meetup', slug: 'brno-meetup', city: 'Brno' }),
+      ],
+    })
+    await page.goto('/?location=Prague')
+
+    await expect(page.locator('.results-summary')).toContainText('1 event matching')
+    await expect(page.locator('.results-summary')).toContainText('Location: Prague')
+  })
+
+  test('shows plain available count when no active filters', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-1', name: 'Event A', slug: 'event-a' }),
+        makeApprovedEvent({ id: 'e-2', name: 'Event B', slug: 'event-b' }),
+      ],
+    })
+    await page.goto('/')
+
+    await expect(page.locator('.results-summary')).toContainText('2 events available')
+  })
+
+  test('summary pluralises correctly for a single event', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-1', name: 'Solo Event', slug: 'solo-event' })],
+    })
+    await page.goto('/')
+
+    await expect(page.locator('.results-summary')).toContainText('1 event available')
+  })
+})

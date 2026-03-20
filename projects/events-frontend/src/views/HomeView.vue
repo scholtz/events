@@ -203,6 +203,9 @@ const emptyStateMessage = computed(() => {
               <span aria-hidden="true">📡</span>
               Showing results from your last online visit. Refresh when back online.
             </div>
+            <p class="results-summary" role="status" aria-live="polite">
+              {{ eventsStore.resultsSummary }}
+            </p>
             <div class="events-grid">
               <EventCard
                 v-for="event in eventsStore.discoveryEvents"
@@ -368,6 +371,12 @@ const emptyStateMessage = computed(() => {
 .results-column {
   display: flex;
   flex-direction: column;
+}
+
+.results-summary {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  margin-bottom: 0.75rem;
 }
 
 .events-grid {
