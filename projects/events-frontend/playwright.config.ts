@@ -40,6 +40,16 @@ export default defineConfig({
     trace: 'on-first-retry',
 
     headless: true,
+
+    // Block service workers in all tests.  In production the SW is generated
+    // by vite-plugin-pwa and registered only in the browser (PROD guard in
+    // usePwa.ts).  When Playwright runs against the production preview build
+    // (CI=true) the SW would otherwise install, claim all clients via
+    // clientsClaim(), and intercept GraphQL POST fetches.  The SW's internal
+    // fetch() calls bypass page.route() mocks, causing mock API responses to
+    // never be seen by the SW and all data requests to fail.  Blocking SW
+    // registration keeps every test isolated and deterministic.
+    serviceWorkers: 'block',
   },
 
   /* Configure projects for major browsers */

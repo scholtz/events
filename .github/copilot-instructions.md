@@ -250,3 +250,32 @@ npm run test:e2e
 ./node_modules/.bin/playwright test --headed --project=chromium
 # Debug step-by-step
 ./node_modules/.bin/playwright test --debug --project=chromium
+
+## PWA and service-worker development
+
+### Architecture
+- `vite-plugin-pwa` is configured in `injectManifest` mode (NOT `generateSW`) with a custom service worker at `src/sw.ts`.
+- `src/sw.ts` is excluded from `tsconfig.app.json` (WebWorker lib conflicts with DOM lib). It is compiled separately by `vite-plugin-pwa`'s `injectManifest` build.
+- The `usePwa` composable (`src/composables/usePwa.ts`) uses `workbox-window` via dynamic import inside `onMounted` and only in `import.meta.env.PROD`. This avoids the `virtual:pwa-register/vue` virtual module which breaks SSR builds.
+
+### Why injectManifest (not generateSW)
+The browser Cache Storage API **only supports caching GET responses**. GraphQL uses POST requests. `generateSW`'s `runtimeCaching` silently ignores POST requests — responses are never stored. The custom `src/sw.ts` uses IndexedDB (IDB) as a bounded response store for POST GraphQL queries. Never use `generateSW` + `runtimeCaching` for GraphQL endpoints.
+
+### GraphQL caching safety rules
+- Every GraphQL request body must be parsed and checked with `isMutationOperation()` from `src/lib/graphqlSw.ts` **before any caching decision**.
+- Mutations (`/^\s*mutation\b/i`) must ALWAYS be passed directly to the network. Never store mutation responses in IDB.
+- Cache key: `url :: normalised-query :: JSON(variables)` — JWT tokens are in request headers, not the key, so they are never leaked into the cache.
+- IDB store: `gql-network-cache` / object store `responses` with `cacheKey` (keyPath) and `timestamp` index.
+- Max entries: 50. Max TTL: 1 hour. These limits prevent unbounded storage growth.
+
+### Playwright E2E tests and service workers
+**Critical**: Playwright's `page.route()` intercepts requests at the browser network level. Service workers make their own sub-requests via the Fetch API that **bypass `page.route()` mocks** — the SW's `fetch()` calls go to the real network, not the mock. This means:
+1. The Playwright config sets `serviceWorkers: 'block'` globally so no SW installs during tests.
+2. Do NOT write E2E tests that depend on a real SW being active — they will fail because the SW's internal fetches cannot see `page.route()` mocked responses.
+3. To verify SW behaviour, write **unit tests** for the pure utility functions (`src/lib/graphqlSw.ts`) and **structural E2E tests** that verify the `sw.js` file is served and contains expected string literals (e.g. `gql-network-cache`, `SKIP_WAITING`).
+4. When checking for identifiers in minified `sw.js`, only check **string literals** (e.g. database names, header names, regex patterns). Function and variable names are mangled by the minifier and will not match.
+
+### Build commands
+- Client (includes SW): `npm run build:client` — outputs `dist/sw.js` alongside the app bundle.
+- SSR (no SW, no PWA plugin): `npm run build:ssr` — outputs `dist/server/`.
+- Both builds must pass before merging a PWA-related PR.
