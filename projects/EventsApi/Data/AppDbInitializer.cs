@@ -174,6 +174,7 @@ public sealed class AppDbInitializer(
         await EnsureEventColumnAsync("PriceAmount", cancellationToken);
         await EnsureEventColumnAsync("CurrencyCode", cancellationToken);
         await EnsureEventColumnAsync("AttendanceMode", cancellationToken);
+        await EnsureEventColumnAsync("Timezone", cancellationToken);
 
         if (!await TableExistsAsync("SavedSearches", cancellationToken))
         {
@@ -257,6 +258,7 @@ public sealed class AppDbInitializer(
             "PriceAmount" => """ALTER TABLE "Events" ADD COLUMN "PriceAmount" TEXT NULL;""",
             "CurrencyCode" => """ALTER TABLE "Events" ADD COLUMN "CurrencyCode" TEXT NOT NULL DEFAULT 'EUR';""",
             "AttendanceMode" => """ALTER TABLE "Events" ADD COLUMN "AttendanceMode" TEXT NOT NULL DEFAULT 'InPerson';""",
+            "Timezone" => """ALTER TABLE "Events" ADD COLUMN "Timezone" TEXT NULL;""",
             _ => throw new InvalidOperationException($"Unsupported event column '{columnName}'.")
         };
 

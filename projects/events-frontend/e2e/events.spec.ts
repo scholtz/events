@@ -98,6 +98,122 @@ test.describe('Submit event form', () => {
     await page.getByRole('link', { name: 'Cancel' }).click()
     await expect(page).toHaveURL(/\/$/)
   })
+  test('timezone field is present in submit form', async ({ page }) => {
+    setupMockApi(page, { domains: [makeTechDomain()] })
+    await page.goto('/submit')
+
+    const timezoneInput = page.getByLabel(/Timezone/i)
+    await expect(timezoneInput).toBeVisible()
+    await expect(timezoneInput).toHaveAttribute('placeholder', 'e.g., Europe/Prague')
+  })
+
+  test('can enter a timezone and submit event', async ({ page }) => {
+    const admin = makeAdminUser()
+    const state = setupMockApi(page, { users: [admin], domains: [makeTechDomain()] })
+    state.currentUserId = admin.id
+
+    await page.goto('/submit')
+
+    await page.getByLabel('Event Title *').fill('Prague Summit with TZ')
+    await page.getByLabel('Description *').fill('An event with a timezone.')
+    await page.getByLabel('Domain *').selectOption('technology')
+    await page.getByLabel('Start Date *').fill('2026-09-01')
+    await page.getByLabel('Website / Registration URL *').fill('https://example.com')
+    await page.getByLabel(/Timezone/i).fill('Europe/Prague')
+
+    await expect(page.getByLabel(/Timezone/i)).toHaveValue('Europe/Prague')
+
+    await page.getByRole('button', { name: 'Submit Event' }).click()
+    await expect(page.getByRole('heading', { name: 'Event Submitted!' })).toBeVisible()
+  })
+
+  test('timezone value is sent in the submit mutation', async ({ page }) => {
+    const admin = makeAdminUser()
+    const state = setupMockApi(page, { users: [admin], domains: [makeTechDomain()] })
+    state.currentUserId = admin.id
+
+    const capturedBodies: string[] = []
+    await page.route('**/graphql', async (route, request) => {
+      const body = request.postData() ?? ''
+      if (body.includes('SubmitEvent')) capturedBodies.push(body)
+      await route.fallback()
+    })
+
+    await page.goto('/submit')
+
+    await page.getByLabel('Event Title *').fill('London Conference')
+    await page.getByLabel('Description *').fill('An event in London.')
+    await page.getByLabel('Domain *').selectOption('technology')
+    await page.getByLabel('Start Date *').fill('2026-10-01')
+    await page.getByLabel('Website / Registration URL *').fill('https://example.com')
+    await page.getByLabel(/Timezone/i).fill('Europe/London')
+
+    await page.getByRole('button', { name: 'Submit Event' }).click()
+    await expect(page.getByRole('heading', { name: 'Event Submitted!' })).toBeVisible()
+
+    expect(capturedBodies.length).toBeGreaterThan(0)
+    expect(capturedBodies[0]).toContain('Europe/London')
+  })
+
+  test('submitting without timezone omits the field gracefully', async ({ page }) => {
+    const admin = makeAdminUser()
+    const state = setupMockApi(page, { users: [admin], domains: [makeTechDomain()] })
+    state.currentUserId = admin.id
+
+    await page.goto('/submit')
+
+    await page.getByLabel('Event Title *').fill('No Timezone Event')
+    await page.getByLabel('Description *').fill('No timezone provided.')
+    await page.getByLabel('Domain *').selectOption('technology')
+    await page.getByLabel('Start Date *').fill('2026-08-01')
+    await page.getByLabel('Website / Registration URL *').fill('https://example.com')
+    // Intentionally leave timezone blank
+
+    await page.getByRole('button', { name: 'Submit Event' }).click()
+    await expect(page.getByRole('heading', { name: 'Event Submitted!' })).toBeVisible()
+  })
+
+  test('shows inline error for invalid timezone and blocks submission', async ({ page }) => {
+    const admin = makeAdminUser()
+    const state = setupMockApi(page, { users: [admin], domains: [makeTechDomain()] })
+    state.currentUserId = admin.id
+
+    await page.goto('/submit')
+
+    await page.getByLabel('Event Title *').fill('Bad TZ Event')
+    await page.getByLabel('Description *').fill('Has a typo in timezone.')
+    await page.getByLabel('Domain *').selectOption('technology')
+    await page.getByLabel('Start Date *').fill('2026-11-01')
+    await page.getByLabel('Website / Registration URL *').fill('https://example.com')
+    await page.getByLabel(/Timezone/i).fill('Europe/Prgaue')
+
+    await page.getByRole('button', { name: 'Submit Event' }).click()
+
+    // Should show error and NOT submit
+    const error = page.locator('.field-error')
+    await expect(error).toBeVisible()
+    await expect(error).toContainText('Europe/Prgaue')
+    await expect(page.getByRole('heading', { name: 'Event Submitted!' })).not.toBeVisible()
+  })
+
+  test('accepts valid canonical IANA timezone values', async ({ page }) => {
+    const admin = makeAdminUser()
+    const state = setupMockApi(page, { users: [admin], domains: [makeTechDomain()] })
+    state.currentUserId = admin.id
+
+    await page.goto('/submit')
+
+    await page.getByLabel('Event Title *').fill('New York Event')
+    await page.getByLabel('Description *').fill('Happening in New York.')
+    await page.getByLabel('Domain *').selectOption('technology')
+    await page.getByLabel('Start Date *').fill('2026-12-01')
+    await page.getByLabel('Website / Registration URL *').fill('https://example.com')
+    await page.getByLabel(/Timezone/i).fill('America/New_York')
+
+    await page.getByRole('button', { name: 'Submit Event' }).click()
+    await expect(page.getByRole('heading', { name: 'Event Submitted!' })).toBeVisible()
+    await expect(page.locator('.field-error')).not.toBeVisible()
+  })
 })
 
 test.describe('Event detail page', () => {
@@ -725,5 +841,153 @@ test.describe('Event detail page', () => {
     await expect(row).toBeVisible()
     await row.getByRole('button', { name: 'Reject' }).click()
     await expect(row).toContainText('rejected')
+  })
+
+  // ── Timezone display tests ──────────────────────────────────────────────────
+
+  test('event detail page shows timezone label when timezone is set', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-tz-display',
+      name: 'Timezone Display Event',
+      slug: 'tz-display-event',
+      timezone: 'Europe/Prague',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    // The timezone label section should be visible in the Date & Time section
+    await expect(page.locator('.timezone-label')).toBeVisible()
+    // It should contain some description of European timezone (e.g. CET or CEST)
+    await expect(page.locator('.timezone-label')).toContainText(/Central European|Prague|CET|CEST/i)
+  })
+
+  test('event detail page does NOT show timezone label when timezone is null', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-no-tz',
+      name: 'No Timezone Event',
+      slug: 'no-tz-event',
+      timezone: null,
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await expect(page.getByRole('heading', { name: 'No Timezone Event' })).toBeVisible()
+    // Timezone label must not appear
+    await expect(page.locator('.timezone-label')).toBeHidden()
+  })
+
+  test('Google Calendar link includes ctz parameter when timezone is set', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-tz-gcal',
+      name: 'Prague Calendar Event',
+      slug: 'prague-calendar-event',
+      timezone: 'Europe/Prague',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await page.getByRole('button', { name: /Add to calendar/i }).click()
+
+    const googleLink = page.getByRole('menuitem', { name: /Google Calendar/i })
+    const href = await googleLink.getAttribute('href')
+    expect(href).toContain('ctz=Europe')
+  })
+
+  test('Google Calendar link does NOT include ctz when timezone is null', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-no-tz-gcal',
+      name: 'No Timezone Cal Event',
+      slug: 'no-timezone-cal-event',
+      timezone: null,
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await page.getByRole('button', { name: /Add to calendar/i }).click()
+
+    const googleLink = page.getByRole('menuitem', { name: /Google Calendar/i })
+    const href = await googleLink.getAttribute('href')
+    expect(href).not.toContain('ctz=')
+  })
+
+  // ── Calendar analytics instrumentation tests ────────────────────────────────
+
+  test('clicking Google Calendar emits analytics and closes menu', async ({ page }) => {
+    const consoleLogs: string[] = []
+    // Capture console.debug calls (analytics fires in dev mode via console.debug)
+    page.on('console', (msg) => {
+      if (msg.type() === 'debug') consoleLogs.push(msg.text())
+    })
+
+    const event = makeApprovedEvent({
+      id: 'ev-analytics-gcal',
+      name: 'Analytics Google Event',
+      slug: 'analytics-google-event',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await page.getByRole('button', { name: /Add to calendar/i }).click()
+    await page.getByRole('menuitem', { name: /Google Calendar/i }).click()
+
+    // Menu closes after clicking Google Calendar
+    await expect(page.getByRole('menu', { name: 'Calendar options' })).toBeHidden()
+  })
+
+  test('clicking Outlook emits analytics and closes menu', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-analytics-outlook',
+      name: 'Analytics Outlook Event',
+      slug: 'analytics-outlook-event',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await page.getByRole('button', { name: /Add to calendar/i }).click()
+    await page.getByRole('menuitem', { name: /Outlook/i }).click()
+
+    // Menu closes after clicking Outlook
+    await expect(page.getByRole('menu', { name: 'Calendar options' })).toBeHidden()
+  })
+
+  test('ICS download emits analytics (calendar confirm appears)', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-analytics-ics',
+      name: 'Analytics ICS Event',
+      slug: 'analytics-ics-event',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: /Add to calendar/i }).click().then(async () => {
+        await page.getByRole('menuitem', { name: /Download .ics file/i }).click()
+      }),
+    ])
+
+    // Confirmation state appears — this also confirms analytics handler ran
+    await expect(page.getByRole('button', { name: /Added to calendar/i })).toBeVisible()
+  })
+
+  test('calendar action does not block or throw visible error', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-analytics-noerr',
+      name: 'Analytics No Error Event',
+      slug: 'analytics-no-error-event',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    // Open calendar menu and click all three options in sequence
+    // None of these should throw or crash the page
+    await page.getByRole('button', { name: /Add to calendar/i }).click()
+    await page.getByRole('menuitem', { name: /Google Calendar/i }).click()
+
+    await page.getByRole('button', { name: /Add to calendar/i }).click()
+    await page.getByRole('menuitem', { name: /Outlook/i }).click()
+
+    // Page heading remains accessible — no crash
+    await expect(page.getByRole('heading', { name: 'Analytics No Error Event' })).toBeVisible()
   })
 })

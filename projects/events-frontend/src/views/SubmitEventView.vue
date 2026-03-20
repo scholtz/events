@@ -18,6 +18,7 @@ const form = reactive({
   domainSlug: '',
   startsAtUtc: '',
   endsAtUtc: '',
+  timezone: '',
   venueName: '',
   addressLine1: '',
   city: '',
@@ -31,6 +32,20 @@ const form = reactive({
   attendanceMode: 'IN_PERSON',
 })
 
+const timezoneError = ref('')
+
+function validateTimezone(tz: string): boolean {
+  if (!tz) return true // optional field — blank is valid
+  try {
+    // Validate by attempting to construct an Intl.DateTimeFormat with the timezone.
+    // Invalid IANA identifiers will throw a RangeError.
+    Intl.DateTimeFormat(undefined, { timeZone: tz })
+    return true
+  } catch {
+    return false
+  }
+}
+
 async function handleSubmit() {
   if (!form.name || !form.description || !form.domainSlug || !form.startsAtUtc || !form.eventUrl)
     return
@@ -42,6 +57,13 @@ async function handleSubmit() {
       return
     }
   }
+
+  const tzTrimmed = form.timezone.trim()
+  if (tzTrimmed && !validateTimezone(tzTrimmed)) {
+    timezoneError.value = `"${tzTrimmed}" is not a recognised IANA timezone. Try a value like Europe/Prague or America/New_York.`
+    return
+  }
+  timezoneError.value = ''
 
   submitting.value = true
   submissionError.value = ''
@@ -65,6 +87,7 @@ async function handleSubmit() {
         ? new Date(form.endsAtUtc).toISOString()
         : new Date(form.startsAtUtc).toISOString(),
       attendanceMode: form.attendanceMode as 'IN_PERSON' | 'ONLINE' | 'HYBRID',
+      timezone: form.timezone.trim() || undefined,
     })
     submitted.value = true
     setTimeout(() => router.push('/dashboard'), 1500)
@@ -178,6 +201,52 @@ async function handleSubmit() {
                 class="form-input"
                 type="date"
               />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="event-timezone">
+                Timezone
+                <span class="form-hint">IANA identifier, e.g. Europe/Prague</span>
+              </label>
+              <input
+                id="event-timezone"
+                v-model="form.timezone"
+                :class="['form-input', timezoneError ? 'form-input--error' : '']"
+                type="text"
+                list="common-timezones"
+                placeholder="e.g., Europe/Prague"
+                autocomplete="off"
+              />
+              <p v-if="timezoneError" class="field-error" role="alert">{{ timezoneError }}</p>
+              <datalist id="common-timezones">
+                <option value="Europe/Prague" />
+                <option value="Europe/London" />
+                <option value="Europe/Paris" />
+                <option value="Europe/Berlin" />
+                <option value="Europe/Vienna" />
+                <option value="Europe/Warsaw" />
+                <option value="Europe/Bratislava" />
+                <option value="Europe/Budapest" />
+                <option value="Europe/Bucharest" />
+                <option value="Europe/Kiev" />
+                <option value="Europe/Moscow" />
+                <option value="America/New_York" />
+                <option value="America/Chicago" />
+                <option value="America/Denver" />
+                <option value="America/Los_Angeles" />
+                <option value="America/Toronto" />
+                <option value="America/Vancouver" />
+                <option value="America/Sao_Paulo" />
+                <option value="Asia/Tokyo" />
+                <option value="Asia/Shanghai" />
+                <option value="Asia/Singapore" />
+                <option value="Asia/Dubai" />
+                <option value="Asia/Kolkata" />
+                <option value="Australia/Sydney" />
+                <option value="Pacific/Auckland" />
+                <option value="UTC" />
+              </datalist>
             </div>
           </div>
         </fieldset>
@@ -461,6 +530,25 @@ async function handleSubmit() {
 
 .success-card p {
   color: var(--color-text-secondary);
+}
+
+.form-input--error {
+  border-color: var(--color-danger);
+}
+
+.field-error {
+  color: var(--color-danger);
+  font-size: 0.8125rem;
+  margin-top: 0.25rem;
+  padding: 0;
+}
+
+.form-hint {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+  margin-top: 0.125rem;
 }
 
 @media (max-width: 640px) {

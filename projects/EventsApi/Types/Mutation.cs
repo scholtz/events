@@ -96,6 +96,7 @@ public sealed class Mutation
             PriceAmount = NormalizePriceAmount(input),
             CurrencyCode = NormalizeCurrencyCode(input.CurrencyCode),
             AttendanceMode = input.AttendanceMode,
+            Timezone = NormalizeOptionalValue(input.Timezone),
             Latitude = input.Latitude,
             Longitude = input.Longitude,
             StartsAtUtc = EnsureUtc(input.StartsAtUtc),
@@ -154,6 +155,7 @@ public sealed class Mutation
         catalogEvent.PriceAmount = NormalizePriceAmount(input);
         catalogEvent.CurrencyCode = NormalizeCurrencyCode(input.CurrencyCode);
         catalogEvent.AttendanceMode = input.AttendanceMode;
+        catalogEvent.Timezone = NormalizeOptionalValue(input.Timezone);
         catalogEvent.Latitude = input.Latitude;
         catalogEvent.Longitude = input.Longitude;
         catalogEvent.StartsAtUtc = EnsureUtc(input.StartsAtUtc);
@@ -403,6 +405,27 @@ public sealed class Mutation
         if (!input.IsFree && input.PriceAmount is null)
         {
             throw CreateError("Paid events require a valid non-negative price.", "INVALID_EVENT_PRICE");
+        }
+
+        var timezone = NormalizeOptionalValue(input.Timezone);
+        if (timezone is not null && !IsValidIanaTimezone(timezone))
+        {
+            throw CreateError(
+                $"'{timezone}' is not a recognised IANA timezone identifier.",
+                "INVALID_TIMEZONE");
+        }
+    }
+
+    private static bool IsValidIanaTimezone(string tz)
+    {
+        try
+        {
+            _ = TimeZoneInfo.FindSystemTimeZoneById(tz);
+            return true;
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            return false;
         }
     }
 

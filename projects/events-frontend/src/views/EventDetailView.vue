@@ -6,6 +6,7 @@ import { useEventsStore } from '@/stores/events'
 import { useFavoritesStore } from '@/stores/favorites'
 import { useAuthStore } from '@/stores/auth'
 import { buildGoogleCalendarUrl, buildOutlookCalendarUrl, downloadIcs, eventToCalendarInput } from '@/composables/useCalendar'
+import { useCalendarAnalytics } from '@/composables/useCalendarAnalytics'
 
 const route = useRoute()
 const eventsStore = useEventsStore()
@@ -137,6 +138,7 @@ function attendanceModeLabel(mode: string | undefined): string {
 const calendarMenuOpen = ref(false)
 const calendarAdded = ref(false)
 let calendarConfirmTimer: ReturnType<typeof setTimeout> | undefined
+const { trackCalendarAction } = useCalendarAnalytics()
 
 onUnmounted(() => {
   clearTimeout(calendarConfirmTimer)
@@ -153,6 +155,7 @@ function closeCalendarMenu() {
 function handleDownloadIcs() {
   if (!event.value) return
   downloadIcs(event.value)
+  trackCalendarAction('ics', event.value.id, event.value.slug)
   calendarAdded.value = true
   closeCalendarMenu()
   clearTimeout(calendarConfirmTimer)
@@ -168,6 +171,37 @@ const googleCalendarUrl = computed(() =>
 const outlookCalendarUrl = computed(() =>
   event.value ? buildOutlookCalendarUrl(eventToCalendarInput(event.value)) : '#',
 )
+
+function handleGoogleCalendarClick() {
+  if (event.value) trackCalendarAction('google', event.value.id, event.value.slug)
+  closeCalendarMenu()
+}
+
+function handleOutlookCalendarClick() {
+  if (event.value) trackCalendarAction('outlook', event.value.id, event.value.slug)
+  closeCalendarMenu()
+}
+
+/**
+ * Returns a short human-readable timezone label for display in the Date & Time
+ * section, e.g. "Europe/Prague" → "Prague time (CET/CEST)".
+ * Falls back to the raw IANA id if Intl.DateTimeFormat doesn't have richer info.
+ */
+function formatTimezoneLabel(timezone: string | null): string | null {
+  if (!timezone) return null
+  try {
+    const now = new Date()
+    const shortName = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      timeZoneName: 'long',
+    })
+      .formatToParts(now)
+      .find((p) => p.type === 'timeZoneName')?.value
+    return shortName ?? timezone
+  } catch {
+    return timezone
+  }
+}
 </script>
 
 <template>
@@ -235,6 +269,10 @@ const outlookCalendarUrl = computed(() =>
               <template v-if="event.endsAtUtc">
                 <p class="text-secondary">Until {{ formatDate(event.endsAtUtc) }}, {{ formatTime(event.endsAtUtc) }}</p>
               </template>
+              <p v-if="event.timezone" class="timezone-label text-secondary">
+                <span aria-hidden="true">🌐</span>
+                {{ formatTimezoneLabel(event.timezone) }}
+              </p>
             </div>
 
             <!-- Location / Venue -->
@@ -321,7 +359,7 @@ const outlookCalendarUrl = computed(() =>
                     rel="noopener noreferrer"
                     class="calendar-menu-item"
                     role="menuitem"
-                    @click="closeCalendarMenu"
+                    @click="handleGoogleCalendarClick"
                   >
                     <span aria-hidden="true">🗓</span>
                     Google Calendar
@@ -332,7 +370,7 @@ const outlookCalendarUrl = computed(() =>
                     rel="noopener noreferrer"
                     class="calendar-menu-item"
                     role="menuitem"
-                    @click="closeCalendarMenu"
+                    @click="handleOutlookCalendarClick"
                   >
                     <span aria-hidden="true">📆</span>
                     Outlook
@@ -903,6 +941,14 @@ const outlookCalendarUrl = computed(() =>
 
 .info-section .calendar-action {
   margin-top: 0.75rem;
+}
+
+.timezone-label {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  margin-top: 0.25rem;
 }
 
 @media (max-width: 480px) {

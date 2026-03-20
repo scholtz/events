@@ -50,6 +50,11 @@ public sealed class EventSubmissionInput
     public DateTime StartsAtUtc { get; init; }
     public DateTime EndsAtUtc { get; init; }
     public AttendanceMode AttendanceMode { get; init; } = AttendanceMode.InPerson;
+    /// <summary>
+    /// IANA timezone identifier for the event (e.g. "Europe/Prague", "America/New_York").
+    /// Optional; legacy events without this field will fall back to UTC for calendar export.
+    /// </summary>
+    public string? Timezone { get; init; }
 }
 
 public sealed class SavedSearchInput

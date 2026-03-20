@@ -27,6 +27,12 @@ export interface CalendarEventInput {
   organizerName: string | null
   /** Slug used to generate a stable UID for the ICS VEVENT. */
   uid: string
+  /**
+   * IANA timezone identifier for the event's local time (e.g. "Europe/Prague").
+   * When provided, ICS exports use DTSTART;TZID= format and provider deep-links
+   * include the timezone parameter.  Falls back to UTC (Z-suffix) when null.
+   */
+  timezone: string | null
 }
 
 // ---------------------------------------------------------------------------
@@ -40,6 +46,29 @@ export interface CalendarEventInput {
  */
 function toIcsDate(isoUtc: string): string {
   return isoUtc.replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z')
+}
+
+/**
+ * Convert an ISO-8601 UTC date string to a local datetime string in the given
+ * IANA timezone, formatted as YYYYMMDDTHHMMSS (no Z suffix, for use with TZID=).
+ * Uses Intl.DateTimeFormat which is available in all modern browsers and Node 12+.
+ */
+function toLocalIcsDate(isoUtc: string, timezone: string): string {
+  const date = new Date(isoUtc)
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  })
+  const parts = fmt.formatToParts(date)
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '00'
+  const hour = get('hour') === '24' ? '00' : get('hour')
+  return `${get('year')}${get('month')}${get('day')}T${hour}${get('minute')}${get('second')}`
 }
 
 /**
@@ -131,6 +160,7 @@ export function eventToCalendarInput(event: CatalogEvent): CalendarEventInput {
     url: event.eventUrl || '',
     organizerName: event.submittedBy?.displayName ?? null,
     uid: `${event.slug}@events-platform`,
+    timezone: event.timezone ?? null,
   }
 }
 
@@ -142,11 +172,31 @@ export function eventToCalendarInput(event: CatalogEvent): CalendarEventInput {
  * Generates a standards-compliant ICS string for a single event.
  * The output is RFC 5545 conformant and importable by Apple Calendar,
  * Google Calendar, Outlook, and most other calendar clients.
+ *
+ * When a canonical timezone is available the DTSTART/DTEND properties use the
+ * TZID parameter (floating local time) instead of a UTC Z-suffix, which
+ * preserves the organiser's intended local schedule for attendees in the same
+ * timezone and gives calendar clients enough context to handle DST correctly.
+ * An X-WR-TIMEZONE extension header is also included for broader compatibility
+ * with clients that rely on the Google Calendar extension.
+ *
+ * Legacy events without a timezone fall back to the existing UTC behaviour.
  */
 export function buildIcsContent(input: CalendarEventInput): string {
   const dtstamp = toIcsDate(new Date().toISOString())
-  const dtstart = toIcsDate(input.startUtc)
-  const dtend = toIcsDate(input.endUtc ?? fallbackEndUtc(input.startUtc))
+  const tz = input.timezone
+
+  let dtstart: string
+  let dtend: string
+
+  if (tz) {
+    dtstart = `DTSTART;TZID=${tz}:${toLocalIcsDate(input.startUtc, tz)}`
+    const endUtc = input.endUtc ?? fallbackEndUtc(input.startUtc)
+    dtend = `DTEND;TZID=${tz}:${toLocalIcsDate(endUtc, tz)}`
+  } else {
+    dtstart = `DTSTART:${toIcsDate(input.startUtc)}`
+    dtend = `DTEND:${toIcsDate(input.endUtc ?? fallbackEndUtc(input.startUtc))}`
+  }
 
   const lines: string[] = [
     'BEGIN:VCALENDAR',
@@ -154,16 +204,23 @@ export function buildIcsContent(input: CalendarEventInput): string {
     'PRODID:-//Events Platform//Events//EN',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
+  ]
+
+  if (tz) {
+    lines.push(`X-WR-TIMEZONE:${tz}`)
+  }
+
+  lines.push(
     'BEGIN:VEVENT',
     foldLine(`UID:${escapeIcsText(input.uid)}`),
     `DTSTAMP:${dtstamp}`,
-    `DTSTART:${dtstart}`,
-    `DTEND:${dtend}`,
+    dtstart,
+    dtend,
     foldLine(`SUMMARY:${escapeIcsText(input.title)}`),
     foldLine(`DESCRIPTION:${escapeIcsText(input.description)}`),
     foldLine(`LOCATION:${escapeIcsText(input.location)}`),
     foldLine(`URL:${input.url}`),
-  ]
+  )
 
   if (input.organizerName) {
     lines.push(foldLine(`ORGANIZER;CN=${escapeIcsText(input.organizerName)}:mailto:noreply@events-platform.com`))
@@ -201,6 +258,8 @@ export function downloadIcs(event: CatalogEvent): string {
 /**
  * Build a Google Calendar "Add event" deep-link URL.
  * Opens the Google Calendar event creation form pre-populated with event data.
+ * When a canonical timezone is available, the `ctz` parameter tells Google
+ * Calendar which timezone to use when displaying the event times.
  */
 export function buildGoogleCalendarUrl(input: CalendarEventInput): string {
   const dtstart = toIcsDate(input.startUtc)
@@ -213,6 +272,9 @@ export function buildGoogleCalendarUrl(input: CalendarEventInput): string {
     location: input.location,
     sprop: `website:${input.url}`,
   })
+  if (input.timezone) {
+    params.set('ctz', input.timezone)
+  }
   return `https://calendar.google.com/calendar/render?${params.toString()}`
 }
 
