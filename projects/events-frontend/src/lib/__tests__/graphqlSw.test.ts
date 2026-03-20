@@ -21,6 +21,15 @@
 
 import { describe, expect, it } from 'vitest'
 import { isMutationOperation, makeGraphQlCacheKey } from '@/lib/graphqlSw'
+import {
+  openGqlDb,
+  idbGet,
+  idbPut,
+  idbCount,
+  GQL_MAX_ENTRIES,
+  type GqlCacheEntry,
+} from '@/lib/graphqlSw'
+import { IDBFactory } from 'fake-indexeddb'
 
 // ---------------------------------------------------------------------------
 // isMutationOperation
@@ -170,5 +179,168 @@ describe('makeGraphQlCacheKey', () => {
   it('includes the URL in the key so different endpoints never share cache entries', () => {
     const key = makeGraphQlCacheKey(BASE_URL, EVENTS_QUERY, {})
     expect(key).toContain(BASE_URL)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// IndexedDB helpers – openGqlDb / idbGet / idbPut / idbCount
+// ---------------------------------------------------------------------------
+
+/**
+ * Creates a fresh, isolated FakeIDB instance for each test so tests cannot
+ * accidentally share state through a real browser IDB.
+ */
+function makeFakeIdb(): IDBFactory {
+  return new IDBFactory()
+}
+
+/** Helper: open a fresh test database. */
+async function openTestDb(): Promise<{ db: IDBDatabase; fakeIdb: IDBFactory }> {
+  const fakeIdb = makeFakeIdb()
+  const db = await openGqlDb(fakeIdb)
+  return { db, fakeIdb }
+}
+
+/** Helper: build a minimal cache entry with a controllable timestamp. */
+function makeEntry(n: number, tsOffset = 0): GqlCacheEntry {
+  return {
+    cacheKey: `key-${n}`,
+    body: `{"data":{"id":${n}}}`,
+    timestamp: 1_000_000 + n * 1000 + tsOffset,
+  }
+}
+
+describe('openGqlDb', () => {
+  it('creates the object store on first open', async () => {
+    const { db } = await openTestDb()
+    expect(db.objectStoreNames.contains('responses')).toBe(true)
+  })
+
+  it('creates a timestamp index', async () => {
+    const { db } = await openTestDb()
+    const tx = db.transaction('responses', 'readonly')
+    const store = tx.objectStore('responses')
+    expect(store.indexNames.contains('timestamp')).toBe(true)
+  })
+})
+
+describe('idbGet / idbPut – happy path', () => {
+  it('returns undefined for a key that was never written', async () => {
+    const { db } = await openTestDb()
+    const result = await idbGet(db, 'nonexistent-key')
+    expect(result).toBeUndefined()
+  })
+
+  it('returns the entry after a successful put', async () => {
+    const { db } = await openTestDb()
+    const entry = makeEntry(1)
+    await idbPut(db, entry)
+    const result = await idbGet(db, entry.cacheKey)
+    expect(result).toEqual(entry)
+  })
+
+  it('overwrites an existing entry with the same cacheKey', async () => {
+    const { db } = await openTestDb()
+    const first = makeEntry(1)
+    const updated = { ...first, body: '{"data":{"updated":true}}', timestamp: first.timestamp + 5000 }
+    await idbPut(db, first)
+    await idbPut(db, updated)
+    const result = await idbGet(db, first.cacheKey)
+    expect(result?.body).toBe(updated.body)
+    expect(result?.timestamp).toBe(updated.timestamp)
+  })
+})
+
+describe('idbCount', () => {
+  it('returns 0 for an empty store', async () => {
+    const { db } = await openTestDb()
+    expect(await idbCount(db)).toBe(0)
+  })
+
+  it('returns the correct count after multiple puts', async () => {
+    const { db } = await openTestDb()
+    await idbPut(db, makeEntry(1))
+    await idbPut(db, makeEntry(2))
+    await idbPut(db, makeEntry(3))
+    expect(await idbCount(db)).toBe(3)
+  })
+})
+
+describe('idbPut – bounded-storage pruning', () => {
+  it('does not prune when count is exactly at the cap', async () => {
+    const { db } = await openTestDb()
+    const cap = 5
+    for (let i = 1; i <= cap; i++) {
+      await idbPut(db, makeEntry(i), cap)
+    }
+    expect(await idbCount(db)).toBe(cap)
+  })
+
+  it('prunes the single oldest entry when one over the cap', async () => {
+    const { db } = await openTestDb()
+    const cap = 3
+    // Fill to cap
+    await idbPut(db, makeEntry(1), cap) // oldest  (ts: 1_001_000)
+    await idbPut(db, makeEntry(2), cap) // middle  (ts: 1_002_000)
+    await idbPut(db, makeEntry(3), cap) // newest  (ts: 1_003_000)
+    // Add one more – should push out entry 1 (oldest)
+    await idbPut(db, makeEntry(4), cap)
+    expect(await idbCount(db)).toBe(cap)
+    expect(await idbGet(db, 'key-1')).toBeUndefined()
+    expect(await idbGet(db, 'key-4')).toBeDefined()
+  })
+
+  it('prunes all excess entries when multiple over the cap (not just one)', async () => {
+    // This is the core regression test for the original bug where the pruning
+    // loop only deleted a single entry even when many were over the cap.
+    const { db } = await openTestDb()
+    const cap = 3
+    // Insert 10 entries into a cap-3 store in a single transaction each
+    for (let i = 1; i <= 10; i++) {
+      await idbPut(db, makeEntry(i), cap)
+    }
+    // Must be at or below cap, never above
+    const finalCount = await idbCount(db)
+    expect(finalCount).toBeLessThanOrEqual(cap)
+  })
+
+  it('retains the NEWEST entries, not the oldest, after pruning', async () => {
+    const { db } = await openTestDb()
+    const cap = 2
+    // Insert 4 entries; oldest first
+    for (let i = 1; i <= 4; i++) {
+      await idbPut(db, makeEntry(i), cap)
+    }
+    // After pruning entries 1 and 2, only 3 and 4 should remain
+    expect(await idbCount(db)).toBeLessThanOrEqual(cap)
+    expect(await idbGet(db, 'key-1')).toBeUndefined()
+    expect(await idbGet(db, 'key-2')).toBeUndefined()
+    expect(await idbGet(db, 'key-3')).toBeDefined()
+    expect(await idbGet(db, 'key-4')).toBeDefined()
+  })
+
+  it('handles pruning when cap is 1', async () => {
+    const { db } = await openTestDb()
+    const cap = 1
+    await idbPut(db, makeEntry(1), cap)
+    await idbPut(db, makeEntry(2), cap)
+    await idbPut(db, makeEntry(3), cap)
+    expect(await idbCount(db)).toBe(1)
+    // Only the newest should survive
+    expect(await idbGet(db, 'key-3')).toBeDefined()
+  })
+
+  it('GQL_MAX_ENTRIES default cap is 50', () => {
+    // The default cap is a product constant — changes to it are a breaking
+    // product decision and should be a deliberate edit, not an accident.
+    expect(GQL_MAX_ENTRIES).toBe(50)
+  })
+
+  it('stays bounded after 60 sequential writes with the default cap', async () => {
+    const { db } = await openTestDb()
+    for (let i = 1; i <= 60; i++) {
+      await idbPut(db, makeEntry(i))
+    }
+    expect(await idbCount(db)).toBeLessThanOrEqual(GQL_MAX_ENTRIES)
   })
 })

@@ -29,7 +29,14 @@ import { registerRoute } from 'workbox-routing'
 import { StaleWhileRevalidate, CacheFirst } from 'workbox-strategies'
 import { ExpirationPlugin } from 'workbox-expiration'
 import { CacheableResponsePlugin } from 'workbox-cacheable-response'
-import { isMutationOperation, makeGraphQlCacheKey } from './lib/graphqlSw'
+import {
+  isMutationOperation,
+  makeGraphQlCacheKey,
+  openGqlDb,
+  idbGet,
+  idbPut,
+  GQL_MAX_AGE_MS,
+} from './lib/graphqlSw'
 
 declare const self: ServiceWorkerGlobalScope & {
   __WB_MANIFEST: Array<{ url: string; revision: string | null }>
@@ -100,70 +107,23 @@ registerRoute(
 // only allows GET responses).  We use IndexedDB as a bounded response store
 // with a NetworkFirst strategy: try the network with a 5-second timeout, and
 // fall back to IDB when the network fails or is unavailable.
+//
+// The IDB helper functions (openGqlDb, idbGet, idbPut) live in graphqlSw.ts
+// so they can be unit-tested in isolation.  The SW calls openGqlDb() with
+// self.indexedDB to bind the factory to the service-worker global.
 // ---------------------------------------------------------------------------
 
-const GQL_DB_NAME = 'gql-network-cache'
-const GQL_STORE = 'responses'
-const GQL_MAX_AGE_MS = 60 * 60 * 1000 // 1 hour
-const GQL_MAX_ENTRIES = 50
 const GQL_NETWORK_TIMEOUT_MS = 5000
 
 // Lazily-opened IDB connection, reused across requests.
 let _db: IDBDatabase | null = null
 
-function openGqlDb(): Promise<IDBDatabase> {
+function getOrOpenDb(): Promise<IDBDatabase> {
   if (_db) return Promise.resolve(_db)
-  return new Promise((resolve, reject) => {
-    const req = self.indexedDB.open(GQL_DB_NAME, 1)
-    req.onupgradeneeded = (e: IDBVersionChangeEvent) => {
-      const db = (e.target as IDBOpenDBRequest).result
-      if (!db.objectStoreNames.contains(GQL_STORE)) {
-        const store = db.createObjectStore(GQL_STORE, { keyPath: 'cacheKey' })
-        store.createIndex('timestamp', 'timestamp', { unique: false })
-      }
-    }
-    req.onsuccess = () => {
-      _db = req.result
-      resolve(_db)
-    }
-    req.onerror = () => reject(req.error)
+  return openGqlDb(self.indexedDB).then((db) => {
+    _db = db
+    return db
   })
-}
-
-function idbGet(db: IDBDatabase, key: string): Promise<GqlCacheEntry | undefined> {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(GQL_STORE, 'readonly')
-    const req = tx.objectStore(GQL_STORE).get(key)
-    req.onsuccess = () => resolve(req.result as GqlCacheEntry | undefined)
-    req.onerror = () => reject(req.error)
-  })
-}
-
-function idbPut(db: IDBDatabase, entry: GqlCacheEntry): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(GQL_STORE, 'readwrite')
-    const store = tx.objectStore(GQL_STORE)
-    store.put(entry)
-    // Prune oldest entries if we exceed the max
-    const countReq = store.count()
-    countReq.onsuccess = () => {
-      if (countReq.result > GQL_MAX_ENTRIES) {
-        const idxReq = store.index('timestamp').openCursor(null, 'next')
-        idxReq.onsuccess = () => {
-          const cursor = idxReq.result
-          if (cursor) cursor.delete()
-        }
-      }
-    }
-    tx.oncomplete = () => resolve()
-    tx.onerror = () => reject(tx.error)
-  })
-}
-
-interface GqlCacheEntry {
-  cacheKey: string
-  body: string
-  timestamp: number
 }
 
 async function fetchWithTimeout(request: Request, ms: number): Promise<Response> {
@@ -212,7 +172,7 @@ async function handleGraphQLPost(request: Request): Promise<Response> {
         .text()
         .then(async (body) => {
           try {
-            const db = await openGqlDb()
+            const db = await getOrOpenDb()
             await idbPut(db, { cacheKey, body, timestamp: Date.now() })
           } catch {
             // IDB write failures are non-critical
@@ -227,7 +187,7 @@ async function handleGraphQLPost(request: Request): Promise<Response> {
   } catch {
     // Network failed or timed out – try IDB cache
     try {
-      const db = await openGqlDb()
+      const db = await getOrOpenDb()
       const cached = await idbGet(db, cacheKey)
 
       if (cached && Date.now() - cached.timestamp < GQL_MAX_AGE_MS) {
