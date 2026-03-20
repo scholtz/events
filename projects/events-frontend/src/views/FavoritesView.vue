@@ -3,7 +3,7 @@ import { onMounted, computed } from 'vue'
 import { useFavoritesStore } from '@/stores/favorites'
 import { useAuthStore } from '@/stores/auth'
 import { formatEventPrice } from '@/stores/events'
-import type { CatalogEvent } from '@/types'
+import type { AttendanceMode, CatalogEvent } from '@/types'
 
 const favoritesStore = useFavoritesStore()
 const authStore = useAuthStore()
@@ -47,6 +47,17 @@ function locationSummary(event: CatalogEvent): string {
 
 async function handleUnfavorite(eventId: string) {
   await favoritesStore.unfavoriteEvent(eventId)
+}
+
+function attendanceModeLabel(mode: AttendanceMode): string {
+  switch (mode) {
+    case 'ONLINE':
+      return 'Online'
+    case 'HYBRID':
+      return 'Hybrid'
+    default:
+      return 'In Person'
+  }
 }
 </script>
 
@@ -104,7 +115,10 @@ async function handleUnfavorite(eventId: string) {
           >
             <div class="favorite-item-body">
               <div class="favorite-item-meta">
-                <span class="badge badge-primary">{{ event.domain?.name ?? 'Event' }}</span>
+                <div class="favorite-item-badges">
+                  <span class="badge badge-primary">{{ event.domain?.name ?? 'Event' }}</span>
+                  <span class="badge badge-mode">{{ attendanceModeLabel(event.attendanceMode) }}</span>
+                </div>
                 <span class="favorite-date">{{ formatDate(event.startsAtUtc) }} · {{ formatTime(event.startsAtUtc) }}</span>
               </div>
               <h3 class="favorite-title">
@@ -149,7 +163,10 @@ async function handleUnfavorite(eventId: string) {
           >
             <div class="favorite-item-body">
               <div class="favorite-item-meta">
-                <span class="badge badge-primary">{{ event.domain?.name ?? 'Event' }}</span>
+                <div class="favorite-item-badges">
+                  <span class="badge badge-primary">{{ event.domain?.name ?? 'Event' }}</span>
+                  <span class="badge badge-mode">{{ attendanceModeLabel(event.attendanceMode) }}</span>
+                </div>
                 <span class="favorite-date">{{ formatDate(event.startsAtUtc) }} · {{ formatTime(event.startsAtUtc) }}</span>
               </div>
               <h3 class="favorite-title">
@@ -290,6 +307,13 @@ async function handleUnfavorite(eventId: string) {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.favorite-item-badges {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
   flex-wrap: wrap;
 }
 
