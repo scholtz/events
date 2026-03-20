@@ -4,11 +4,16 @@
 
 The Events Platform is a comprehensive event management and discovery system designed to connect event organizers, attendees, and communities. Our vision is to become the leading platform for domain-specific event management, enabling seamless event creation, promotion, and participation across various industries and communities. We aim to foster vibrant communities through intelligent event recommendations, real-time collaboration tools, and integrated analytics, ultimately creating a world where discovering and attending meaningful events is effortless and engaging.
 
+Events can be tagged. The tag is category and slug of the category name is served as the sub domain name. First user who creates a tag is his administrator. Tags can have multiple administrators assigned. Global administrators can change the tag administrators. Tag administrator approves if the event is displayed under the specific tag. For multilanguage support each slug permission is linked to the english tag permission. Tag administrator has also some limitted ability to modify the design of the website.
+
+On event detail page is showned hyperlink to the domain name including the tag slug, for example crypto.events.biatec.io. Subdomain level event list page is dedicated to the slug so the design and UX is focused on this. Example of the tag may be for example the Prague Blockchain Week, and organizer of these multi event event enables the events at the dedicated website. 
+
 Key pillars of our vision:
 - **Accessibility**: Democratize event management for all users, from individual organizers to large enterprises
 - **Community Building**: Strengthen connections between event organizers and attendees through interactive features
 - **Innovation**: Leverage cutting-edge technology to enhance the event experience
 - **Sustainability**: Promote eco-friendly event practices and virtual attendance options
+- **Multilanguage**: App provides localized environment for event organizers or event attendees, for example English, Slovak, German, Chinesse or Italian.
 
 ## Current Tech Stack
 

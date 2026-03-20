@@ -8,11 +8,13 @@ import { useAuthStore } from '@/stores/auth'
 import { buildGoogleCalendarUrl, buildOutlookCalendarUrl, downloadIcs, eventToCalendarInput } from '@/composables/useCalendar'
 import { useCalendarAnalytics } from '@/composables/useCalendarAnalytics'
 import { buildSubdomainUrl, formatSubdomainHost } from '@/composables/useSubdomain'
+import { usePwa } from '@/composables/usePwa'
 
 const route = useRoute()
 const eventsStore = useEventsStore()
 const favoritesStore = useFavoritesStore()
 const authStore = useAuthStore()
+const { isOffline } = usePwa()
 
 const slug = computed(() => route.params.id as string)
 
@@ -256,6 +258,11 @@ function domainHostDisplay(event: {
 
     <template v-else-if="event">
       <RouterLink to="/" class="back-link">← Back to events</RouterLink>
+      <!-- Offline stale-data notice: shown when viewing event detail without network -->
+      <div v-if="isOffline" role="status" aria-live="polite" class="stale-data-notice">
+        <span aria-hidden="true">📡</span>
+        You're offline — this event information is from your last online visit and may not reflect the latest changes.
+      </div>
       <div class="event-detail card">
         <div class="event-detail-header">
           <div class="event-detail-meta">
@@ -522,6 +529,22 @@ function domainHostDisplay(event: {
 .back-link:hover {
   color: var(--color-text);
   text-decoration: none;
+}
+
+/* Offline stale-data notice shown when viewing cached event details offline */
+.stale-data-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.625rem 0.875rem;
+  margin-bottom: 1rem;
+  background: var(--color-surface-raised);
+  color: var(--color-warning);
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.4;
 }
 
 .event-detail {
