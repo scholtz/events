@@ -2570,6 +2570,136 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal("Europe/London", updatedEvent.GetProperty("timezone").GetString());
     }
 
+    [Fact]
+    public async Task SubmitEvent_RejectsInvalidTimezone()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("tz-invalid@example.com", "TZ Invalid User");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "tz-invalid-tech");
+            dbContext.Users.AddRange(user);
+            dbContext.Domains.Add(domain);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        var nextMonth = FirstDayOfNextMonthUtc();
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation SubmitEvent($input: EventSubmissionInput!) {
+                  submitEvent(input: $input) {
+                    name
+                    timezone
+                  }
+                }
+                """,
+            variables = new
+            {
+                input = new
+                {
+                    domainSlug = "tz-invalid-tech",
+                    name = "Invalid TZ Event",
+                    description = "An event with a bad timezone.",
+                    eventUrl = "https://events.example.com/invalid-tz",
+                    venueName = "Some Venue",
+                    addressLine1 = "1 Main St",
+                    city = "Prague",
+                    countryCode = "CZ",
+                    isFree = true,
+                    currencyCode = "EUR",
+                    latitude = 50.075m,
+                    longitude = 14.437m,
+                    startsAtUtc = nextMonth,
+                    endsAtUtc = nextMonth.AddHours(2),
+                    attendanceMode = "IN_PERSON",
+                    timezone = "NotARealTimezone"
+                }
+            }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        Assert.Contains("INVALID_TIMEZONE", errors.ToString());
+    }
+
+    [Fact]
+    public async Task UpdateMyEvent_RejectsInvalidTimezone()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("tz-update-invalid@example.com", "TZ Update Invalid User");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "tz-update-invalid-tech");
+            dbContext.Users.AddRange(user);
+            dbContext.Domains.Add(domain);
+
+            var ev = CreateEvent(
+                "Original Event", "original-tz-invalid", "Description.",
+                "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, user);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        var nextMonth = FirstDayOfNextMonthUtc();
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation UpdateMyEvent($eventId: UUID!, $input: EventSubmissionInput!) {
+                  updateMyEvent(eventId: $eventId, input: $input) {
+                    name
+                    timezone
+                  }
+                }
+                """,
+            variables = new
+            {
+                eventId,
+                input = new
+                {
+                    domainSlug = "tz-update-invalid-tech",
+                    name = "Bad TZ Update",
+                    description = "Should fail validation.",
+                    eventUrl = "https://events.example.com/bad-tz",
+                    venueName = "Venue",
+                    addressLine1 = "1 Main St",
+                    city = "Prague",
+                    countryCode = "CZ",
+                    isFree = true,
+                    currencyCode = "EUR",
+                    latitude = 50.075m,
+                    longitude = 14.437m,
+                    startsAtUtc = nextMonth,
+                    endsAtUtc = nextMonth.AddHours(2),
+                    attendanceMode = "IN_PERSON",
+                    timezone = "Europe/Prgaue"
+                }
+            }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        Assert.Contains("INVALID_TIMEZONE", errors.ToString());
+    }
+
     private static DateTime FirstDayOfNextMonthUtc()
     {
         var now = DateTime.UtcNow;

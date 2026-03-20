@@ -32,6 +32,20 @@ const form = reactive({
   attendanceMode: 'IN_PERSON',
 })
 
+const timezoneError = ref('')
+
+function validateTimezone(tz: string): boolean {
+  if (!tz) return true // optional field — blank is valid
+  try {
+    // Validate by attempting to construct an Intl.DateTimeFormat with the timezone.
+    // Invalid IANA identifiers will throw a RangeError.
+    Intl.DateTimeFormat(undefined, { timeZone: tz })
+    return true
+  } catch {
+    return false
+  }
+}
+
 async function handleSubmit() {
   if (!form.name || !form.description || !form.domainSlug || !form.startsAtUtc || !form.eventUrl)
     return
@@ -43,6 +57,13 @@ async function handleSubmit() {
       return
     }
   }
+
+  const tzTrimmed = form.timezone.trim()
+  if (tzTrimmed && !validateTimezone(tzTrimmed)) {
+    timezoneError.value = `"${tzTrimmed}" is not a recognised IANA timezone. Try a value like Europe/Prague or America/New_York.`
+    return
+  }
+  timezoneError.value = ''
 
   submitting.value = true
   submissionError.value = ''
@@ -191,12 +212,13 @@ async function handleSubmit() {
               <input
                 id="event-timezone"
                 v-model="form.timezone"
-                class="form-input"
+                :class="['form-input', timezoneError ? 'form-input--error' : '']"
                 type="text"
                 list="common-timezones"
                 placeholder="e.g., Europe/Prague"
                 autocomplete="off"
               />
+              <p v-if="timezoneError" class="field-error" role="alert">{{ timezoneError }}</p>
               <datalist id="common-timezones">
                 <option value="Europe/Prague" />
                 <option value="Europe/London" />
@@ -508,6 +530,17 @@ async function handleSubmit() {
 
 .success-card p {
   color: var(--color-text-secondary);
+}
+
+.form-input--error {
+  border-color: var(--color-danger);
+}
+
+.field-error {
+  color: var(--color-danger);
+  font-size: 0.8125rem;
+  margin-top: 0.25rem;
+  padding: 0;
 }
 
 .form-hint {

@@ -172,6 +172,48 @@ test.describe('Submit event form', () => {
     await page.getByRole('button', { name: 'Submit Event' }).click()
     await expect(page.getByRole('heading', { name: 'Event Submitted!' })).toBeVisible()
   })
+
+  test('shows inline error for invalid timezone and blocks submission', async ({ page }) => {
+    const admin = makeAdminUser()
+    const state = setupMockApi(page, { users: [admin], domains: [makeTechDomain()] })
+    state.currentUserId = admin.id
+
+    await page.goto('/submit')
+
+    await page.getByLabel('Event Title *').fill('Bad TZ Event')
+    await page.getByLabel('Description *').fill('Has a typo in timezone.')
+    await page.getByLabel('Domain *').selectOption('technology')
+    await page.getByLabel('Start Date *').fill('2026-11-01')
+    await page.getByLabel('Website / Registration URL *').fill('https://example.com')
+    await page.getByLabel(/Timezone/i).fill('Europe/Prgaue')
+
+    await page.getByRole('button', { name: 'Submit Event' }).click()
+
+    // Should show error and NOT submit
+    const error = page.locator('.field-error')
+    await expect(error).toBeVisible()
+    await expect(error).toContainText('Europe/Prgaue')
+    await expect(page.getByRole('heading', { name: 'Event Submitted!' })).not.toBeVisible()
+  })
+
+  test('accepts valid canonical IANA timezone values', async ({ page }) => {
+    const admin = makeAdminUser()
+    const state = setupMockApi(page, { users: [admin], domains: [makeTechDomain()] })
+    state.currentUserId = admin.id
+
+    await page.goto('/submit')
+
+    await page.getByLabel('Event Title *').fill('New York Event')
+    await page.getByLabel('Description *').fill('Happening in New York.')
+    await page.getByLabel('Domain *').selectOption('technology')
+    await page.getByLabel('Start Date *').fill('2026-12-01')
+    await page.getByLabel('Website / Registration URL *').fill('https://example.com')
+    await page.getByLabel(/Timezone/i).fill('America/New_York')
+
+    await page.getByRole('button', { name: 'Submit Event' }).click()
+    await expect(page.getByRole('heading', { name: 'Event Submitted!' })).toBeVisible()
+    await expect(page.locator('.field-error')).not.toBeVisible()
+  })
 })
 
 test.describe('Event detail page', () => {

@@ -406,6 +406,27 @@ public sealed class Mutation
         {
             throw CreateError("Paid events require a valid non-negative price.", "INVALID_EVENT_PRICE");
         }
+
+        var timezone = NormalizeOptionalValue(input.Timezone);
+        if (timezone is not null && !IsValidIanaTimezone(timezone))
+        {
+            throw CreateError(
+                $"'{timezone}' is not a recognised IANA timezone identifier.",
+                "INVALID_TIMEZONE");
+        }
+    }
+
+    private static bool IsValidIanaTimezone(string tz)
+    {
+        try
+        {
+            _ = TimeZoneInfo.FindSystemTimeZoneById(tz);
+            return true;
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            return false;
+        }
     }
 
     private static DateTime EnsureUtc(DateTime value)
