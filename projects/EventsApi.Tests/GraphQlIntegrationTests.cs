@@ -460,6 +460,80 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task EventsQuery_KeywordOnly_MatchesDomainNameAndOrganizerDisplayName()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var aliceOrganizer = CreateUser("alice@example.com", "Alice Wonderland");
+            var bobOrganizer = CreateUser("bob@example.com", "Bob Builder");
+            var cryptoDomain = CreateDomain("Crypto & Blockchain", "crypto-blockchain");
+            var techDomain = CreateDomain("Tech", "tech");
+            var nextMonth = FirstDayOfNextMonthUtc();
+
+            dbContext.Users.AddRange(aliceOrganizer, bobOrganizer);
+            dbContext.Domains.AddRange(cryptoDomain, techDomain);
+
+            // Event submitted by Alice in the Crypto domain (generic title)
+            var e1 = CreateEvent(
+                "Monthly Meetup",
+                "monthly-meetup",
+                "A regular community gathering.",
+                "Innovation Hub",
+                "Berlin",
+                nextMonth,
+                cryptoDomain,
+                aliceOrganizer);
+
+            // Event submitted by Bob in the Tech domain
+            var e2 = CreateEvent(
+                "Annual Conference",
+                "annual-conference",
+                "Year-end summary session.",
+                "Convention Center",
+                "Prague",
+                nextMonth.AddDays(1),
+                techDomain,
+                bobOrganizer);
+
+            // Event submitted by Alice in the Tech domain (no keyword overlap)
+            var e3 = CreateEvent(
+                "Dev Workshop",
+                "dev-workshop",
+                "Hands-on coding practice.",
+                "Cowork Space",
+                "Vienna",
+                nextMonth.AddDays(2),
+                techDomain,
+                aliceOrganizer);
+
+            dbContext.Events.AddRange(e1, e2, e3);
+        });
+
+        using var client = factory.CreateClient();
+
+        // Searching for "crypto" should match by domain name ("Crypto & Blockchain")
+        var cryptoResults = await QueryEventNamesAsync(client, new { searchText = "crypto" });
+        Assert.Equal(["Monthly Meetup"], cryptoResults);
+
+        // Searching for "blockchain" should also match the domain name
+        var blockchainResults = await QueryEventNamesAsync(client, new { searchText = "blockchain" });
+        Assert.Equal(["Monthly Meetup"], blockchainResults);
+
+        // Searching for "Alice" matches events by organizer display name
+        var aliceResults = await QueryEventNamesAsync(client, new { searchText = "Alice" });
+        Assert.Equal(["Dev Workshop", "Monthly Meetup"], aliceResults.Order().ToList());
+
+        // Searching for "Bob" matches only Bob's event
+        var bobResults = await QueryEventNamesAsync(client, new { searchText = "Bob" });
+        Assert.Equal(["Annual Conference"], bobResults);
+
+        // A keyword that matches neither domain nor organizer returns no results
+        var noResults = await QueryEventNamesAsync(client, new { searchText = "zzznomatch" });
+        Assert.Empty(noResults);
+    }
+
+    [Fact]
     public async Task EventsQuery_CityFilter_MatchesExactCityOnly()
     {
         await using var factory = new EventsApiWebApplicationFactory();

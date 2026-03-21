@@ -246,6 +246,98 @@ test.describe('Multi-filter combination', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Keyword search — domain name and organizer matching
+// ---------------------------------------------------------------------------
+
+test.describe('Keyword search — tag name and organizer matching', () => {
+  test('keyword matching the domain name surfaces events tagged with that domain', async ({
+    page,
+  }) => {
+    const cryptoDomain = makeCryptoDomain() // name: 'Crypto'
+    setupMockApi(page, {
+      domains: [makeTechDomain(), cryptoDomain],
+      events: [
+        makeApprovedEvent({
+          id: 'e-crypto',
+          name: 'Monthly Meetup',
+          slug: 'monthly-meetup',
+          description: 'A regular gathering.',
+          domain: { id: cryptoDomain.id, name: cryptoDomain.name, slug: cryptoDomain.slug, subdomain: cryptoDomain.subdomain },
+          domainId: cryptoDomain.id,
+        }),
+        makeApprovedEvent({
+          id: 'e-tech',
+          name: 'Tech Workshop',
+          slug: 'tech-workshop',
+          description: 'Hands-on coding.',
+          domain: { id: 'dom-tech', name: 'Technology', slug: 'technology', subdomain: 'tech' },
+          domainId: 'dom-tech',
+        }),
+      ],
+    })
+
+    // Searching for "crypto" should surface "Monthly Meetup" via domain name match
+    await page.goto('/?q=crypto')
+
+    await expect(page.locator('.event-card', { hasText: 'Monthly Meetup' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Tech Workshop' })).toBeHidden()
+  })
+
+  test('keyword matching organizer display name surfaces their events', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-alice-1',
+          name: 'Prague Summit',
+          slug: 'prague-summit',
+          submittedBy: { displayName: 'Alice Wonderland' },
+        }),
+        makeApprovedEvent({
+          id: 'e-alice-2',
+          name: 'Vienna Workshop',
+          slug: 'vienna-workshop',
+          submittedBy: { displayName: 'Alice Wonderland' },
+        }),
+        makeApprovedEvent({
+          id: 'e-bob',
+          name: 'Berlin Conference',
+          slug: 'berlin-conference',
+          submittedBy: { displayName: 'Bob Builder' },
+        }),
+      ],
+    })
+
+    await page.goto('/?q=alice')
+
+    await expect(page.locator('.event-card', { hasText: 'Prague Summit' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Vienna Workshop' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Berlin Conference' })).toBeHidden()
+  })
+
+  test('domain chip label shows human-readable domain name not raw slug', async ({ page }) => {
+    const cryptoDomain = makeCryptoDomain() // name: 'Crypto', slug: 'crypto'
+    setupMockApi(page, {
+      domains: [makeTechDomain(), cryptoDomain],
+      events: [
+        makeApprovedEvent({
+          id: 'e-crypto',
+          name: 'Blockchain Summit',
+          slug: 'blockchain-summit',
+          domain: { id: cryptoDomain.id, name: cryptoDomain.name, slug: cryptoDomain.slug, subdomain: cryptoDomain.subdomain },
+          domainId: cryptoDomain.id,
+        }),
+      ],
+    })
+
+    await page.goto('/?domain=crypto')
+
+    // The chip should show the human-readable domain name, not the raw slug
+    await expect(page.locator('.filter-chip', { hasText: 'Domain: Crypto' })).toBeVisible()
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Error state
 // ---------------------------------------------------------------------------
 
