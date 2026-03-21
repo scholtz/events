@@ -47,6 +47,13 @@ describe('i18n', () => {
       expect(SUPPORTED_LOCALES).toContain(result)
     })
 
+    it('returns en when no localStorage value exists', async () => {
+      const { detectLocale } = await import('../index')
+      // navigator.languages is not available in vitest, so it falls back to 'en'
+      const result = detectLocale()
+      expect(result).toBe('en')
+    })
+
     it('persistLocale stores the locale in localStorage', async () => {
       const { persistLocale, LOCALE_STORAGE_KEY } = await import('../index')
       persistLocale('de')
@@ -59,6 +66,14 @@ describe('i18n', () => {
       persistLocale('en')
       expect(mockStorage.getItem(LOCALE_STORAGE_KEY)).toBe('en')
     })
+
+    it('persistLocale stores each supported locale correctly', async () => {
+      const { persistLocale, LOCALE_STORAGE_KEY, SUPPORTED_LOCALES } = await import('../index')
+      for (const loc of SUPPORTED_LOCALES) {
+        persistLocale(loc)
+        expect(mockStorage.getItem(LOCALE_STORAGE_KEY)).toBe(loc)
+      }
+    })
   })
 
   describe('SUPPORTED_LOCALES', () => {
@@ -67,6 +82,19 @@ describe('i18n', () => {
       expect(SUPPORTED_LOCALES).toContain('en')
       expect(SUPPORTED_LOCALES).toContain('sk')
       expect(SUPPORTED_LOCALES).toContain('de')
+    })
+
+    it('has exactly 3 supported locales', async () => {
+      const { SUPPORTED_LOCALES } = await import('../index')
+      expect(SUPPORTED_LOCALES).toHaveLength(3)
+    })
+  })
+
+  describe('LOCALE_STORAGE_KEY', () => {
+    it('is a non-empty string', async () => {
+      const { LOCALE_STORAGE_KEY } = await import('../index')
+      expect(typeof LOCALE_STORAGE_KEY).toBe('string')
+      expect(LOCALE_STORAGE_KEY.length).toBeGreaterThan(0)
     })
   })
 
@@ -124,6 +152,71 @@ describe('i18n', () => {
           }
         }
       }
+    })
+
+    it('every translation value is a string', async () => {
+      const locales: Record<string, Record<string, Record<string, string>>> = {
+        en: (await import('../locales/en')).default as any,
+        sk: (await import('../locales/sk')).default as any,
+        de: (await import('../locales/de')).default as any,
+      }
+
+      for (const [localeName, messages] of Object.entries(locales)) {
+        for (const [section, entries] of Object.entries(messages)) {
+          if (typeof entries === 'object' && entries !== null) {
+            for (const [key, value] of Object.entries(entries)) {
+              expect(
+                typeof value,
+                `Non-string value: ${localeName}.${section}.${key} = ${JSON.stringify(value)}`,
+              ).toBe('string')
+            }
+          }
+        }
+      }
+    })
+
+    it('English locale has language names for all supported locales', async () => {
+      const en = (await import('../locales/en')).default
+      const { SUPPORTED_LOCALES } = await import('../index')
+
+      for (const loc of SUPPORTED_LOCALES) {
+        expect(
+          (en.languages as Record<string, string>)[loc],
+          `Missing language name for ${loc} in English locale`,
+        ).toBeDefined()
+      }
+    })
+
+    it('all locales have language names for all supported locales', async () => {
+      const en = (await import('../locales/en')).default
+      const sk = (await import('../locales/sk')).default
+      const de = (await import('../locales/de')).default
+      const { SUPPORTED_LOCALES } = await import('../index')
+
+      for (const loc of SUPPORTED_LOCALES) {
+        expect((en.languages as Record<string, string>)[loc]).toBeDefined()
+        expect((sk.languages as Record<string, string>)[loc]).toBeDefined()
+        expect((de.languages as Record<string, string>)[loc]).toBeDefined()
+      }
+    })
+
+    it('English translations use straight apostrophes, not curly quotes', async () => {
+      const en = (await import('../locales/en')).default
+
+      function checkForCurlyQuotes(obj: Record<string, any>, path: string) {
+        for (const [key, value] of Object.entries(obj)) {
+          if (typeof value === 'string') {
+            expect(
+              value.includes('\u2019'),
+              `Curly quote found: ${path}.${key} = ${JSON.stringify(value)}`,
+            ).toBe(false)
+          } else if (typeof value === 'object' && value !== null) {
+            checkForCurlyQuotes(value, `${path}.${key}`)
+          }
+        }
+      }
+
+      checkForCurlyQuotes(en, 'en')
     })
   })
 })

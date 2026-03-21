@@ -1,10 +1,24 @@
 /**
  * Internationalization (i18n) / Language switching tests.
+ *
+ * Covers:
+ * - Language switcher visibility and interaction
+ * - Switching between all supported languages (EN, SK, DE)
+ * - Persistence across navigation and page reload
+ * - Localized content on key views: home/discovery, event detail, login, filters, empty states, footer
+ * - Fallback behavior when English is the default
+ * - Document `lang` attribute updates
  */
 import { expect, test } from '@playwright/test'
-import { makeApprovedEvent, makeTechDomain, setupMockApi } from './helpers/mock-api'
+import {
+  loginAs,
+  makeAdminUser,
+  makeApprovedEvent,
+  makeTechDomain,
+  setupMockApi,
+} from './helpers/mock-api'
 
-test.describe('Language switching', () => {
+test.describe('Language switcher', () => {
   test('language switcher is visible in the header', async ({ page }) => {
     setupMockApi(page, { domains: [makeTechDomain()] })
     await page.goto('/')
@@ -13,48 +27,137 @@ test.describe('Language switching', () => {
     await expect(switcher).toBeVisible()
   })
 
-  test('defaults to English', async ({ page }) => {
+  test('language switcher has all supported languages', async ({ page }) => {
     setupMockApi(page, { domains: [makeTechDomain()] })
     await page.goto('/')
 
-    // The hero heading should be in English
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('Discover Events')
-    // Nav links should be in English
-    await expect(page.getByRole('link', { name: 'Browse' }).first()).toBeVisible()
+    const switcher = page.locator('#language-select')
+    await expect(switcher).toBeVisible()
+    await expect(switcher.locator('option')).toHaveCount(3)
+    const values = await switcher.locator('option').evaluateAll((opts) =>
+      (opts as HTMLOptionElement[]).map((o) => o.value),
+    )
+    expect(values).toEqual(expect.arrayContaining(['en', 'sk', 'de']))
   })
 
-  test('switching to Slovak updates the UI', async ({ page }) => {
+  test('language switcher updates document lang attribute', async ({ page }) => {
+    setupMockApi(page, { domains: [makeTechDomain()] })
+    await page.goto('/')
+
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en')
+
+    await page.locator('#language-select').selectOption('sk')
+    await expect(page.locator('html')).toHaveAttribute('lang', 'sk')
+
+    await page.locator('#language-select').selectOption('de')
+    await expect(page.locator('html')).toHaveAttribute('lang', 'de')
+  })
+})
+
+test.describe('English default', () => {
+  test('defaults to English with correct hero and navigation', async ({ page }) => {
+    setupMockApi(page, { domains: [makeTechDomain()] })
+    await page.goto('/')
+
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Discover Events')
+    await expect(page.getByRole('link', { name: 'Browse' }).first()).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Submit Event' })).toBeVisible()
+    await expect(page.locator('.app-footer')).toContainText('All rights reserved')
+  })
+})
+
+test.describe('Slovak translations', () => {
+  test('switching to Slovak updates hero, navigation, and footer', async ({ page }) => {
     setupMockApi(page, {
       domains: [makeTechDomain()],
       events: [makeApprovedEvent({ name: 'Test Event', slug: 'test-event' })],
     })
     await page.goto('/')
 
-    // Switch to Slovak
     await page.locator('#language-select').selectOption('sk')
 
-    // Hero heading should now be in Slovak
     await expect(page.getByRole('heading', { level: 1 })).toContainText('Objavte udalosti')
-    // Nav links should be in Slovak
     await expect(page.getByRole('link', { name: 'Prehľadávať' }).first()).toBeVisible()
+    await expect(page.locator('.app-footer')).toContainText('Všetky práva vyhradené')
   })
 
-  test('switching to German updates the UI', async ({ page }) => {
+  test('filter labels are localized in Slovak', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent()],
+    })
+    await page.goto('/')
+
+    await page.locator('#language-select').selectOption('sk')
+
+    await expect(page.getByLabel('Kľúčové slovo')).toBeVisible()
+    await expect(page.getByLabel('Doména')).toBeVisible()
+  })
+
+  test('empty state is localized in Slovak', async ({ page }) => {
+    setupMockApi(page, { domains: [makeTechDomain()] })
+    await page.goto('/')
+
+    await page.locator('#language-select').selectOption('sk')
+
+    await expect(page.getByText('Zatiaľ nie sú k dispozícii žiadne udalosti')).toBeVisible()
+  })
+
+  test('login view is localized in Slovak', async ({ page }) => {
+    setupMockApi(page, { domains: [makeTechDomain()] })
+    await page.goto('/')
+
+    await page.locator('#language-select').selectOption('sk')
+    await page.getByRole('link', { name: 'Prihlásenie' }).click()
+    await page.waitForURL(/\/login/)
+
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Vitajte späť')
+    await expect(page.getByLabel('E-mail')).toBeVisible()
+    await expect(page.getByLabel('Heslo')).toBeVisible()
+  })
+})
+
+test.describe('German translations', () => {
+  test('switching to German updates hero, navigation, and footer', async ({ page }) => {
     setupMockApi(page, {
       domains: [makeTechDomain()],
       events: [makeApprovedEvent({ name: 'Test Event', slug: 'test-event' })],
     })
     await page.goto('/')
 
-    // Switch to German
     await page.locator('#language-select').selectOption('de')
 
-    // Hero heading should now be in German
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('Entdecken Sie Veranstaltungen')
-    // Nav links should be in German
+    await expect(page.getByRole('heading', { level: 1 })).toContainText(
+      'Entdecken Sie Veranstaltungen',
+    )
     await expect(page.getByRole('link', { name: 'Durchsuchen' }).first()).toBeVisible()
+    await expect(page.locator('.app-footer')).toContainText('Alle Rechte vorbehalten')
   })
 
+  test('empty state is localized in German', async ({ page }) => {
+    setupMockApi(page, { domains: [makeTechDomain()] })
+    await page.goto('/')
+
+    await page.locator('#language-select').selectOption('de')
+
+    await expect(page.getByText('Keine Veranstaltungen gefunden')).toBeVisible()
+  })
+
+  test('login view is localized in German', async ({ page }) => {
+    setupMockApi(page, { domains: [makeTechDomain()] })
+    await page.goto('/')
+
+    await page.locator('#language-select').selectOption('de')
+    await page.getByRole('link', { name: 'Anmelden' }).first().click()
+    await page.waitForURL(/\/login/)
+
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Willkommen zurück')
+    await expect(page.getByLabel('E-Mail')).toBeVisible()
+    await expect(page.getByLabel('Passwort')).toBeVisible()
+  })
+})
+
+test.describe('Language persistence', () => {
   test('language preference persists after navigation', async ({ page }) => {
     setupMockApi(page, {
       domains: [makeTechDomain()],
@@ -62,15 +165,12 @@ test.describe('Language switching', () => {
     })
     await page.goto('/')
 
-    // Switch to Slovak
     await page.locator('#language-select').selectOption('sk')
     await expect(page.getByRole('heading', { level: 1 })).toContainText('Objavte udalosti')
 
-    // Navigate to login page
     await page.getByRole('link', { name: 'Prihlásenie' }).click()
     await page.waitForURL(/\/login/)
 
-    // Login page should be in Slovak
     await expect(page.getByRole('heading', { level: 1 })).toContainText('Vitajte späť')
   })
 
@@ -81,72 +181,147 @@ test.describe('Language switching', () => {
     })
     await page.goto('/')
 
-    // Switch to German
     await page.locator('#language-select').selectOption('de')
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('Entdecken Sie Veranstaltungen')
+    await expect(page.getByRole('heading', { level: 1 })).toContainText(
+      'Entdecken Sie Veranstaltungen',
+    )
 
-    // Reload the page
     await page.reload()
 
-    // Page should still be in German after reload
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('Entdecken Sie Veranstaltungen')
+    await expect(page.getByRole('heading', { level: 1 })).toContainText(
+      'Entdecken Sie Veranstaltungen',
+    )
   })
 
-  test('filters section is localized when switching to Slovak', async ({ page }) => {
-    setupMockApi(page, {
-      domains: [makeTechDomain()],
-      events: [makeApprovedEvent()],
-    })
-    await page.goto('/')
-
-    // Switch to Slovak
-    await page.locator('#language-select').selectOption('sk')
-
-    // Check filter labels are translated
-    await expect(page.getByLabel('Kľúčové slovo')).toBeVisible()
-    await expect(page.getByLabel('Doména')).toBeVisible()
-  })
-
-  test('empty state message is localized', async ({ page }) => {
+  test('switching back to English restores original text', async ({ page }) => {
     setupMockApi(page, { domains: [makeTechDomain()] })
     await page.goto('/')
 
-    // Switch to German
-    await page.locator('#language-select').selectOption('de')
-
-    // Empty state should show German text
-    await expect(page.getByText('Keine Veranstaltungen gefunden')).toBeVisible()
-  })
-
-  test('footer is localized', async ({ page }) => {
-    setupMockApi(page, { domains: [makeTechDomain()] })
-    await page.goto('/')
-
-    // Switch to Slovak
     await page.locator('#language-select').selectOption('sk')
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Objavte udalosti')
 
-    // Footer should contain Slovak text
-    await expect(page.locator('.app-footer')).toContainText('Všetky práva vyhradené')
+    await page.locator('#language-select').selectOption('en')
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Discover Events')
+    await expect(page.locator('.app-footer')).toContainText('All rights reserved')
   })
+})
 
-  test('event detail view shows localized labels after switching language', async ({ page }) => {
+test.describe('Localized event detail', () => {
+  test('event detail view shows localized section headings in German', async ({ page }) => {
     const event = makeApprovedEvent({
-      name: 'Localized Event',
-      slug: 'localized-event',
+      name: 'Localized Detail Event',
+      slug: 'localized-detail',
       venueName: 'Test Venue',
       city: 'Bratislava',
+      description: 'A great test event.',
     })
     setupMockApi(page, {
       domains: [makeTechDomain()],
       events: [event],
     })
 
-    // Switch to German first, then navigate to event
     await page.goto('/')
     await page.locator('#language-select').selectOption('de')
 
-    // Navigate to event detail
-    await page.goto('/event/localized-event')
-    await expect(page.getByRole('heading', { level: 1, name: 'Localized Event' })).toBeVisible()
+    await page.goto('/event/localized-detail')
+    await expect(page.getByRole('heading', { name: 'Localized Detail Event' })).toBeVisible()
+
+    await expect(page.getByText('Datum & Uhrzeit')).toBeVisible()
+    await expect(page.getByText('Veranstaltungsort & Standort')).toBeVisible()
+    await expect(page.getByText('Community-Interesse')).toBeVisible()
+  })
+
+  test('back link uses localized text in Slovak', async ({ page }) => {
+    const event = makeApprovedEvent({
+      name: 'Back Link Test',
+      slug: 'back-link-test',
+    })
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [event],
+    })
+
+    await page.goto('/')
+    await page.locator('#language-select').selectOption('sk')
+
+    await page.goto('/event/back-link-test')
+
+    await expect(page.getByRole('link', { name: /Späť na udalosti/ })).toBeVisible()
+  })
+
+  test('event not found page is localized in German', async ({ page }) => {
+    setupMockApi(page, { domains: [makeTechDomain()] })
+    await page.goto('/')
+    await page.locator('#language-select').selectOption('de')
+
+    await page.goto('/event/nonexistent-slug')
+
+    await expect(
+      page.getByRole('heading', { name: 'Veranstaltung nicht gefunden' }),
+    ).toBeVisible()
+  })
+})
+
+test.describe('Localized dashboard', () => {
+  test('unauthenticated dashboard shows localized sign-in prompt in German', async ({
+    page,
+  }) => {
+    setupMockApi(page, { domains: [makeTechDomain()] })
+    await page.goto('/')
+    await page.locator('#language-select').selectOption('de')
+
+    await page.goto('/dashboard')
+
+    await expect(
+      page.getByRole('heading', { name: 'Anmeldung erforderlich' }),
+    ).toBeVisible()
+    // The login-prompt section should have the localized Log In button
+    await expect(page.locator('.login-prompt').getByRole('link', { name: 'Anmelden' })).toBeVisible()
+  })
+
+  test('authenticated dashboard shows localized welcome in Slovak', async ({ page }) => {
+    const user = makeAdminUser()
+    setupMockApi(page, { users: [user], domains: [makeTechDomain()] })
+
+    // Log in first (in English), then switch language
+    await loginAs(page, user)
+    await page.locator('#language-select').selectOption('sk')
+
+    await expect(page.getByText('Vitajte späť')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Prehľad' })).toBeVisible()
+  })
+})
+
+test.describe('Localized submit event', () => {
+  test('submit event form shows localized labels in German', async ({ page }) => {
+    const user = makeAdminUser()
+    setupMockApi(page, { users: [user], domains: [makeTechDomain()] })
+
+    // Log in first (in English), then switch language
+    await loginAs(page, user)
+    await page.locator('#language-select').selectOption('de')
+
+    await page.goto('/submit')
+    await expect(
+      page.getByRole('heading', { name: 'Veranstaltung einreichen' }),
+    ).toBeVisible()
+    await expect(page.getByLabel('Veranstaltungstitel')).toBeVisible()
+    await expect(page.getByLabel('Beschreibung')).toBeVisible()
+  })
+})
+
+test.describe('Localized favorites', () => {
+  test('favorites page shows localized sign-in prompt in Slovak', async ({ page }) => {
+    setupMockApi(page, { domains: [makeTechDomain()] })
+    await page.goto('/')
+    await page.locator('#language-select').selectOption('sk')
+
+    await page.goto('/favorites')
+
+    await expect(
+      page.getByRole('heading', {
+        name: 'Prihláste sa pre zobrazenie uložených udalostí',
+      }),
+    ).toBeVisible()
   })
 })
