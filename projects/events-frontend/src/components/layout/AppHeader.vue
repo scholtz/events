@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
+import LanguageSwitcher from '@/components/layout/LanguageSwitcher.vue'
 
+const { t } = useI18n()
 const auth = useAuthStore()
 </script>
 
@@ -12,19 +15,20 @@ const auth = useAuthStore()
         <span class="logo-text">Events</span>
       </RouterLink>
       <nav class="nav-links">
-        <RouterLink to="/">Browse</RouterLink>
-        <RouterLink to="/submit">Submit Event</RouterLink>
-        <RouterLink v-if="auth.isAuthenticated" to="/favorites">Saved</RouterLink>
-        <RouterLink v-if="auth.isAuthenticated" to="/dashboard">Dashboard</RouterLink>
-        <RouterLink v-if="auth.isAdmin" to="/admin">Admin</RouterLink>
+        <RouterLink to="/">{{ t('nav.browse') }}</RouterLink>
+        <RouterLink to="/submit">{{ t('nav.submitEvent') }}</RouterLink>
+        <RouterLink v-if="auth.isAuthenticated" to="/favorites">{{ t('nav.saved') }}</RouterLink>
+        <RouterLink v-if="auth.isAuthenticated" to="/dashboard">{{ t('nav.dashboard') }}</RouterLink>
+        <RouterLink v-if="auth.isAdmin" to="/admin">{{ t('nav.admin') }}</RouterLink>
       </nav>
       <div class="header-actions">
+        <LanguageSwitcher />
         <template v-if="auth.isAuthenticated">
           <span class="user-name">{{ auth.currentUser?.displayName }}</span>
-          <button class="btn btn-ghost" @click="auth.logout()">Logout</button>
+          <button class="btn btn-ghost" @click="auth.logout()">{{ t('common.logout') }}</button>
         </template>
         <template v-else>
-          <RouterLink to="/login" class="btn btn-primary">Login</RouterLink>
+          <RouterLink to="/login" class="btn btn-primary">{{ t('common.login') }}</RouterLink>
         </template>
       </div>
     </div>

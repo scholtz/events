@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppFooter from '@/components/layout/AppFooter.vue'
 import { useEventsStore } from '@/stores/events'
@@ -8,6 +9,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useFavoritesStore } from '@/stores/favorites'
 import { usePwa } from '@/composables/usePwa'
 
+const { t } = useI18n()
 const eventsStore = useEventsStore()
 const domainsStore = useDomainsStore()
 const authStore = useAuthStore()
@@ -46,13 +48,13 @@ watch(
     <!-- Offline banner: shown when the browser loses connectivity -->
     <div v-if="isOffline" role="status" aria-live="polite" class="offline-banner">
       <span class="offline-icon" aria-hidden="true">📡</span>
-      You're offline – showing cached content. Some information may not be up to date.
+      {{ t('banners.offline') }}
     </div>
 
     <!-- Update prompt: shown when a new service-worker version is waiting -->
     <div v-if="updateAvailable" role="status" aria-live="polite" class="update-banner">
-      <span>A new version of the app is available.</span>
-      <button class="btn btn-primary update-btn" @click="acceptUpdate">Refresh to update</button>
+      <span>{{ t('banners.updateAvailable') }}</span>
+      <button class="btn btn-primary update-btn" @click="acceptUpdate">{{ t('banners.refreshToUpdate') }}</button>
     </div>
 
     <main class="app-main">

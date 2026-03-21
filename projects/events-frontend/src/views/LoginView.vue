@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
+const { t } = useI18n()
 const auth = useAuthStore()
 const router = useRouter()
 
@@ -24,7 +26,7 @@ const handleSubmit = async () => {
     }
     router.push('/dashboard')
   } catch (err: unknown) {
-    error.value = err instanceof Error ? err.message : 'An error occurred'
+    error.value = err instanceof Error ? err.message : t('login.genericError')
   } finally {
     loading.value = false
   }
@@ -40,47 +42,47 @@ const handleSubmit = async () => {
           <span class="brand-name">Events</span>
         </div>
 
-        <h1>{{ isLogin ? 'Welcome back' : 'Create account' }}</h1>
+        <h1>{{ isLogin ? t('login.welcomeBack') : t('login.createAccount') }}</h1>
         <p class="login-subtitle">
-          {{ isLogin ? 'Sign in to manage your events.' : 'Join to discover and submit events.' }}
+          {{ isLogin ? t('login.signInSubtitle') : t('login.signUpSubtitle') }}
         </p>
 
         <form @submit.prevent="handleSubmit">
           <div v-if="!isLogin" class="form-group">
-            <label class="form-label" for="name">Full Name</label>
+            <label class="form-label" for="name">{{ t('login.fullName') }}</label>
             <input
               id="name"
               v-model="name"
               class="form-input"
               type="text"
               required
-              placeholder="Your name"
+              :placeholder="t('login.namePlaceholder')"
               autocomplete="name"
             />
           </div>
 
           <div class="form-group">
-            <label class="form-label" for="email">Email</label>
+            <label class="form-label" for="email">{{ t('login.email') }}</label>
             <input
               id="email"
               v-model="email"
               class="form-input"
               type="email"
               required
-              placeholder="your@email.com"
+              :placeholder="t('login.emailPlaceholder')"
               autocomplete="email"
             />
           </div>
 
           <div class="form-group">
-            <label class="form-label" for="password">Password</label>
+            <label class="form-label" for="password">{{ t('login.password') }}</label>
             <input
               id="password"
               v-model="password"
               class="form-input"
               type="password"
               required
-              placeholder="••••••••"
+              :placeholder="t('login.passwordPlaceholder')"
               autocomplete="current-password"
             />
           </div>
@@ -90,14 +92,14 @@ const handleSubmit = async () => {
           </div>
 
           <button type="submit" class="btn btn-primary submit-btn" :disabled="loading">
-            {{ loading ? 'Please wait…' : isLogin ? 'Sign In' : 'Create Account' }}
+            {{ loading ? t('login.pleaseWait') : isLogin ? t('common.signIn') : t('login.createAccount') }}
           </button>
         </form>
 
         <p class="toggle-mode">
-          {{ isLogin ? "Don't have an account?" : 'Already have an account?' }}
+          {{ isLogin ? t('login.noAccount') : t('login.haveAccount') }}
           <button type="button" class="link-btn" @click="isLogin = !isLogin">
-            {{ isLogin ? 'Sign Up' : 'Sign In' }}
+            {{ isLogin ? t('common.signUp') : t('common.signIn') }}
           </button>
         </p>
       </div>
