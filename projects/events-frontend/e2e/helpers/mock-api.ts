@@ -771,6 +771,16 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       return
     }
 
+    if (query.includes('query') && query.includes('CategoryEvents')) {
+      const filteredEvents = filterEventsForDiscovery(state.events, variables.filter)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { events: filteredEvents } }),
+      })
+      return
+    }
+
     if (query.includes('query') && query.includes('Events')) {
       await route.fulfill({
         status: 200,
@@ -808,6 +818,17 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({ data: { domains: state.domains } }),
+      })
+      return
+    }
+
+    if (query.includes('query') && query.includes('DomainBySlug')) {
+      const slug = variables.slug as string | undefined
+      const domain = slug ? state.domains.find((d) => d.slug === slug) ?? null : null
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { domainBySlug: domain } }),
       })
       return
     }

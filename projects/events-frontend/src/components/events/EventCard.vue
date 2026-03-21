@@ -5,7 +5,6 @@ import { formatEventPrice } from '@/stores/events'
 import { useFavoritesStore } from '@/stores/favorites'
 import { useAuthStore } from '@/stores/auth'
 import { useDiscoveryAnalytics } from '@/composables/useDiscoveryAnalytics'
-import { buildSubdomainUrl } from '@/composables/useSubdomain'
 import { useEventsStore } from '@/stores/events'
 import type { CatalogEvent } from '@/types'
 
@@ -22,10 +21,9 @@ const { trackResultClick } = useDiscoveryAnalytics()
 const favoriting = ref(false)
 
 function domainUrl(event: CatalogEvent): string {
-  const subdomain = event.domain?.subdomain
-  const slug = event.domain?.slug ?? ''
-  if (!subdomain) return '/'
-  return buildSubdomainUrl(subdomain, slug)
+  const slug = event.domain?.slug
+  if (!slug) return '/'
+  return `/category/${slug}`
 }
 
 function formatDate(dateStr: string): string {
@@ -75,9 +73,9 @@ async function handleFavoriteToggle() {
   <article class="event-card card">
     <div class="event-card-body">
       <div class="event-meta">
-        <a :href="domainUrl(event)" class="badge badge-primary domain-link">
+        <RouterLink :to="domainUrl(event)" class="badge badge-primary domain-link">
           {{ event.domain?.name ?? 'Event' }}
-        </a>
+        </RouterLink>
         <div class="event-meta-right">
           <span class="badge badge-mode">{{ attendanceModeLabel }}</span>
           <span class="event-date">{{ formatDate(event.startsAtUtc) }}</span>

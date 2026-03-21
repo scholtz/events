@@ -35,6 +35,11 @@ const router = createRouter({
       name: 'favorites',
       component: () => import('@/views/FavoritesView.vue'),
     },
+    {
+      path: '/category/:slug',
+      name: 'category',
+      component: () => import('@/views/CategoryLandingView.vue'),
+    },
   ],
   scrollBehavior() {
     return { top: 0 }

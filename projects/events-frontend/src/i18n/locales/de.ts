@@ -335,4 +335,22 @@ export default {
     REJECTED: 'abgelehnt',
     DRAFT: 'entwurf',
   },
+
+  category: {
+    pageTitle: '{name} Veranstaltungen',
+    pageTitleDefault: 'Kategorie-Veranstaltungen',
+    allEvents: 'Alle Veranstaltungen',
+    heading: '{name} Veranstaltungen',
+    oneUpcomingEvent: '1 bevorstehende Veranstaltung',
+    upcomingEventCount: '{count} bevorstehende Veranstaltungen',
+    oneEventFound: '1 Veranstaltung gefunden',
+    eventsFound: '{count} Veranstaltungen gefunden',
+    filterAndExplore: 'Filtern & Erkunden',
+    noEvents: 'Keine bevorstehenden Veranstaltungen',
+    noEventsDescription: 'In der Kategorie {name} gibt es noch keine bevorstehenden Veranstaltungen. Schauen Sie bald wieder vorbei.',
+    browseAll: 'Alle Veranstaltungen durchsuchen',
+    notFound: 'Kategorie nicht gefunden',
+    notFoundDescription: 'Die Kategorie „{slug}" existiert nicht oder ist nicht mehr aktiv.',
+    errorLoad: 'Kategorie konnte nicht geladen werden',
+  },
 }

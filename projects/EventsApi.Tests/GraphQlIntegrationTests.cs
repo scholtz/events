@@ -3931,4 +3931,142 @@ public sealed class GraphQlIntegrationTests
 
         Assert.Equal(["AI Conference Premium"], names);
     }
+
+    // ── domainBySlug query ─────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task DomainBySlug_ReturnsActiveDomainWithCorrectFields()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            dbContext.Domains.Add(CreateDomain("Crypto", "crypto-slug-test"));
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query DomainBySlug($slug: String!) {
+              domainBySlug(slug: $slug) {
+                id name slug subdomain description isActive
+              }
+            }
+            """,
+            new { slug = "crypto-slug-test" });
+
+        var domain = document.RootElement.GetProperty("data").GetProperty("domainBySlug");
+        Assert.Equal("Crypto", domain.GetProperty("name").GetString());
+        Assert.Equal("crypto-slug-test", domain.GetProperty("slug").GetString());
+        Assert.True(domain.GetProperty("isActive").GetBoolean());
+    }
+
+    [Fact]
+    public async Task DomainBySlug_ReturnsNullWhenSlugDoesNotExist()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            dbContext.Domains.Add(CreateDomain("Tech", "tech-exists"));
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query DomainBySlug($slug: String!) {
+              domainBySlug(slug: $slug) {
+                id name slug
+              }
+            }
+            """,
+            new { slug = "nonexistent-slug" });
+
+        var domain = document.RootElement.GetProperty("data").GetProperty("domainBySlug");
+        Assert.Equal(JsonValueKind.Null, domain.ValueKind);
+    }
+
+    [Fact]
+    public async Task DomainBySlug_ReturnsNullForInactiveDomain()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var inactive = CreateDomain("Inactive Domain", "inactive-slug");
+            inactive.IsActive = false;
+            dbContext.Domains.Add(inactive);
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query DomainBySlug($slug: String!) {
+              domainBySlug(slug: $slug) {
+                id name slug
+              }
+            }
+            """,
+            new { slug = "inactive-slug" });
+
+        var domain = document.RootElement.GetProperty("data").GetProperty("domainBySlug");
+        Assert.Equal(JsonValueKind.Null, domain.ValueKind);
+    }
+
+    [Fact]
+    public async Task DomainBySlug_IsCaseInsensitiveAndTrimsWhitespace()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            dbContext.Domains.Add(CreateDomain("Blockchain", "blockchain-ci"));
+        });
+
+        using var client = factory.CreateClient();
+
+        // Slug stored as lowercase; querying with mixed case + whitespace should still resolve
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query DomainBySlug($slug: String!) {
+              domainBySlug(slug: $slug) {
+                name slug
+              }
+            }
+            """,
+            new { slug = "  blockchain-ci  " });
+
+        var domain = document.RootElement.GetProperty("data").GetProperty("domainBySlug");
+        Assert.Equal("Blockchain", domain.GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task DomainBySlug_IsAccessibleWithoutAuthentication()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            dbContext.Domains.Add(CreateDomain("Public Domain", "public-domain"));
+        });
+
+        // Use a raw HttpClient with no auth header
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query DomainBySlug($slug: String!) {
+              domainBySlug(slug: $slug) {
+                name
+              }
+            }
+            """,
+            new { slug = "public-domain" });
+
+        var domain = document.RootElement.GetProperty("data").GetProperty("domainBySlug");
+        Assert.Equal("Public Domain", domain.GetProperty("name").GetString());
+    }
 }

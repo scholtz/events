@@ -1444,3 +1444,228 @@ test.describe('Discovery analytics instrumentation', () => {
     expect(await analyticsRequest).toBeDefined()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Category landing pages
+// ---------------------------------------------------------------------------
+
+test.describe('Category landing page', () => {
+  test('shows domain name, description and event count on /category/:slug', async ({ page }) => {
+    const cryptoDomain = {
+      id: 'dom-crypto',
+      name: 'Crypto',
+      slug: 'crypto',
+      subdomain: 'crypto',
+      description: 'Blockchain and crypto events',
+      isActive: true,
+      createdAtUtc: new Date().toISOString(),
+    }
+    setupMockApi(page, {
+      domains: [cryptoDomain],
+      events: [
+        makeApprovedEvent({
+          id: 'e-crypto-1',
+          name: 'Prague Crypto Summit',
+          slug: 'prague-crypto-summit',
+          domainId: cryptoDomain.id,
+          domain: { id: cryptoDomain.id, name: cryptoDomain.name, slug: cryptoDomain.slug, subdomain: cryptoDomain.subdomain },
+        }),
+        makeApprovedEvent({
+          id: 'e-crypto-2',
+          name: 'Blockchain Dev Day',
+          slug: 'blockchain-dev-day',
+          domainId: cryptoDomain.id,
+          domain: { id: cryptoDomain.id, name: cryptoDomain.name, slug: cryptoDomain.slug, subdomain: cryptoDomain.subdomain },
+        }),
+      ],
+    })
+    await page.goto('/category/crypto')
+
+    await expect(page.getByRole('heading', { name: 'Crypto Events' })).toBeVisible()
+    await expect(page.getByText('Blockchain and crypto events')).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Prague Crypto Summit' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Blockchain Dev Day' })).toBeVisible()
+  })
+
+  test('shows breadcrumb with link back to all events', async ({ page }) => {
+    const techDomain = makeTechDomain()
+    setupMockApi(page, {
+      domains: [techDomain],
+      events: [makeApprovedEvent()],
+    })
+    await page.goto('/category/technology')
+
+    const breadcrumbLink = page.getByRole('link', { name: 'All Events' })
+    await expect(breadcrumbLink).toBeVisible()
+    await breadcrumbLink.click()
+    await expect(page).toHaveURL('/')
+  })
+
+  test('shows not-found state when category slug does not match any domain', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [],
+    })
+    await page.goto('/category/nonexistent-slug')
+
+    await expect(page.getByRole('heading', { name: 'Category not found' })).toBeVisible()
+    await expect(page.getByText(/The category .nonexistent-slug./)).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Browse All Events' })).toBeVisible()
+  })
+
+  test('shows empty state when category has no events', async ({ page }) => {
+    const aiDomain = {
+      id: 'dom-ai',
+      name: 'AI',
+      slug: 'ai',
+      subdomain: 'ai',
+      description: 'Artificial intelligence events',
+      isActive: true,
+      createdAtUtc: new Date().toISOString(),
+    }
+    setupMockApi(page, {
+      domains: [aiDomain],
+      events: [],
+    })
+    await page.goto('/category/ai')
+
+    await expect(page.getByRole('heading', { name: 'No upcoming events' })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Browse All Events' })).toBeVisible()
+  })
+
+  test('Filter & Explore link navigates to home with domain filter applied', async ({ page }) => {
+    const techDomain = makeTechDomain()
+    setupMockApi(page, {
+      domains: [techDomain],
+      events: [makeApprovedEvent()],
+    })
+    await page.goto('/category/technology')
+
+    const filterLink = page.getByRole('link', { name: 'Filter & Explore' })
+    await expect(filterLink).toBeVisible()
+    await filterLink.click()
+
+    await expect(page).toHaveURL(/\/\?domain=technology/)
+  })
+
+  test('domain badge on event card links to the category page', async ({ page }) => {
+    const techDomain = makeTechDomain()
+    setupMockApi(page, {
+      domains: [techDomain],
+      events: [makeApprovedEvent({ name: 'Tech Summit', slug: 'tech-summit' })],
+    })
+    await page.goto('/')
+
+    const domainBadge = page.locator('.event-card .domain-link', { hasText: 'Technology' })
+    await expect(domainBadge).toBeVisible()
+    await domainBadge.click()
+
+    await expect(page).toHaveURL('/category/technology')
+  })
+
+  test('category page shows correct upcoming event count', async ({ page }) => {
+    const techDomain = makeTechDomain()
+    const futureDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+    setupMockApi(page, {
+      domains: [techDomain],
+      events: [
+        makeApprovedEvent({ id: 'e1', name: 'Event One', slug: 'event-one', startsAtUtc: futureDate }),
+        makeApprovedEvent({ id: 'e2', name: 'Event Two', slug: 'event-two', startsAtUtc: futureDate }),
+        makeApprovedEvent({ id: 'e3', name: 'Event Three', slug: 'event-three', startsAtUtc: futureDate }),
+      ],
+    })
+    await page.goto('/category/technology')
+
+    await expect(page.getByText('3 upcoming events')).toBeVisible()
+  })
+
+  test('category page is usable on mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    const techDomain = makeTechDomain()
+    setupMockApi(page, {
+      domains: [techDomain],
+      events: [makeApprovedEvent({ name: 'Mobile Tech Event', slug: 'mobile-tech-event' })],
+    })
+    await page.goto('/category/technology')
+
+    await expect(page.getByRole('heading', { name: 'Technology Events' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Mobile Tech Event' })).toBeVisible()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Category landing page — additional coverage
+// ---------------------------------------------------------------------------
+
+test.describe('Category landing page — error and SEO', () => {
+  test('shows error state with retry button when API fails for category page', async ({ page }) => {
+    setupMockApi(page, { domains: [makeTechDomain()] })
+
+    // Override CategoryEvents to return a GraphQL error; other requests fall through.
+    page.route('**/graphql', async (route) => {
+      const body = JSON.parse(route.request().postData() || '{}')
+      if ((body.query || '').includes('CategoryEvents')) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Service unavailable' }] }),
+        })
+        return
+      }
+      await route.fallback()
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.error-state')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible()
+  })
+
+  test('page title includes the domain name for SEO', async ({ page }) => {
+    const techDomain = makeTechDomain()
+    setupMockApi(page, {
+      domains: [techDomain],
+      events: [makeApprovedEvent()],
+    })
+    await page.goto('/category/technology')
+
+    await expect(page).toHaveTitle(/Technology/)
+  })
+
+  test('event count shows singular label for exactly one upcoming event', async ({ page }) => {
+    const techDomain = makeTechDomain()
+    const futureDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+    setupMockApi(page, {
+      domains: [techDomain],
+      events: [makeApprovedEvent({ id: 'e1', name: 'Solo Event', slug: 'solo-event', startsAtUtc: futureDate })],
+    })
+    await page.goto('/category/technology')
+
+    await expect(page.getByText('1 upcoming event')).toBeVisible()
+  })
+
+  test('events found count shows singular for exactly one result', async ({ page }) => {
+    const techDomain = makeTechDomain()
+    setupMockApi(page, {
+      domains: [techDomain],
+      events: [makeApprovedEvent({ name: 'Only One', slug: 'only-one' })],
+    })
+    await page.goto('/category/technology')
+
+    await expect(page.getByText('1 event found')).toBeVisible()
+  })
+
+  test('events found count shows plural for multiple results', async ({ page }) => {
+    const techDomain = makeTechDomain()
+    setupMockApi(page, {
+      domains: [techDomain],
+      events: [
+        makeApprovedEvent({ id: 'e1', name: 'Event A', slug: 'event-a' }),
+        makeApprovedEvent({ id: 'e2', name: 'Event B', slug: 'event-b' }),
+      ],
+    })
+    await page.goto('/category/technology')
+
+    await expect(page.getByText('2 events found')).toBeVisible()
+  })
+})
