@@ -42,7 +42,9 @@ public sealed class Query
                 || catalogEvent.Description.ToLower().Contains(normalizedSearchText)
                 || catalogEvent.VenueName.ToLower().Contains(normalizedSearchText)
                 || catalogEvent.AddressLine1.ToLower().Contains(normalizedSearchText)
-                || catalogEvent.City.ToLower().Contains(normalizedSearchText));
+                || catalogEvent.City.ToLower().Contains(normalizedSearchText)
+                || catalogEvent.Domain.Name.ToLower().Contains(normalizedSearchText)
+                || catalogEvent.SubmittedBy.DisplayName.ToLower().Contains(normalizedSearchText));
         }
 
         if (!string.IsNullOrWhiteSpace(filter?.DomainSlug))

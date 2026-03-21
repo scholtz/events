@@ -120,6 +120,19 @@ function clearFilterChip(key: string) {
       break
   }
 }
+
+/**
+ * Resolves a human-readable label for a filter chip.
+ * For the domain chip, replaces the raw slug with the domain's display name
+ * (e.g. "Domain: Crypto & Blockchain" instead of "Domain: crypto-blockchain").
+ */
+function resolveChipLabel(chip: { key: string; label: string }): string {
+  if (chip.key === 'domain' && eventsStore.filters.domain) {
+    const domainName = domainsStore.domains.find((d) => d.slug === eventsStore.filters.domain)?.name
+    if (domainName) return `Domain: ${domainName}`
+  }
+  return chip.label
+}
 </script>
 
 <template>
@@ -303,7 +316,7 @@ function clearFilterChip(key: string) {
         type="button"
         @click="clearFilterChip(chip.key)"
       >
-        {{ chip.label }}
+        {{ resolveChipLabel(chip) }}
         <span aria-hidden="true">×</span>
       </button>
     </div>

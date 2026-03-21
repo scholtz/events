@@ -942,7 +942,7 @@ function filterEventsForDiscovery(events: MockEvent[], filter?: Record<string, u
     .filter((event) => {
       if (
         normalizedSearch &&
-        !`${event.name} ${event.description} ${event.venueName} ${event.city} ${event.addressLine1}`
+        !`${event.name} ${event.description} ${event.venueName} ${event.city} ${event.addressLine1} ${event.domain.name} ${event.submittedBy.displayName}`
           .toLowerCase()
           .includes(normalizedSearch)
       ) {
