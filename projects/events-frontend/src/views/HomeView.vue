@@ -204,13 +204,13 @@ const emptyStateMessage = computed(() => {
       </div>
     </section>
     <section v-else class="hero">
+      <div class="hero-video-wrapper" aria-hidden="true">
+        <div class="hero-video-overlay"></div>
+        <video autoplay muted loop playsinline class="hero-video">
+          <source src="/videos/background-1.mp4" type="video/mp4" />
+        </video>
+      </div>
       <div class="container hero-content">
-        <div class="hero-video-wrapper">
-          <div class="hero-video-overlay"></div>
-          <video autoplay muted loop playsinline class="hero-video" aria-hidden="true">
-            <source src="/videos/background-1.mp4" type="video/mp4" />
-          </video>
-        </div>
         <div class="hero-text">
           <h1>
             {{ t('home.heroTitle') }}<br /><span class="hero-accent">{{
@@ -218,6 +218,15 @@ const emptyStateMessage = computed(() => {
             }}</span>
           </h1>
           <p>{{ t('home.heroDescription') }}</p>
+          <RouterLink to="/submit" class="btn btn-primary hero-cta">{{
+            t('home.heroCta')
+          }}</RouterLink>
+        </div>
+        <div class="hero-stat-row">
+          <div class="hero-stat">
+            <span class="hero-stat-num">{{ eventsStore.discoveryEvents.length }}</span>
+            <span class="hero-stat-label">{{ t('home.matchingEvents') }}</span>
+          </div>
         </div>
       </div>
     </section>
@@ -383,9 +392,18 @@ const emptyStateMessage = computed(() => {
 }
 
 .hero-content {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   gap: 2rem;
+}
+
+.hero-video-wrapper {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 .hero-text h1 {
@@ -608,20 +626,15 @@ const emptyStateMessage = computed(() => {
 }
 .hero-video {
   position: absolute;
-  top: 0;
-  left: 0;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  z-index: -2;
 }
+
 .hero-video-overlay {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  inset: 0;
   background-color: rgba(52, 55, 220, 0.312);
-  z-index: -1;
 }
 </style>

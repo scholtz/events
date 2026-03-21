@@ -250,6 +250,15 @@ npm run test:e2e
 ./node_modules/.bin/playwright test --headed --project=chromium
 # Debug step-by-step
 ./node_modules/.bin/playwright test --debug --project=chromium
+# Before any grep-filtered run, verify the exact selection first
+./node_modules/.bin/playwright test --project=chromium --grep="your pattern" --list
+```
+
+### Grep-filtered Playwright runs
+- When asked to run a filtered subset with `--grep`, **always** run the same command with `--list` first and confirm the expected tests are selected before executing the real run.
+- Do not claim that `npm run test:e2e -- --grep=...` or Playwright ignored the grep filter unless you have reproduced it locally. In this repo, `npm run test:e2e -- --project=chromium --grep="a|b|c" --list` correctly limits the selection.
+- Preserve shell quoting exactly when the grep pattern contains spaces or `|` alternation. Use one quoted regex string, not multiple unquoted tokens.
+- If a filtered run still appears to execute many tests, inspect the listed titles first; the issue may be overly broad matching or an execution mistake rather than Playwright ignoring `--grep`.
 
 ## PWA and service-worker development
 
