@@ -92,6 +92,43 @@ Every analytics dashboard must have E2E tests covering:
 - All analytics must be aggregate-only — never expose attendee identities, raw attendee lists, or anything that could link a specific person to an event interaction.
 - Document in the PR which metrics are direct counts vs. derived, and confirm no PII is exposed.
 
+## Category / tag landing page quality standards
+
+When implementing or extending category landing pages (`/category/:slug`, `CategoryLandingView.vue`, and the `domainBySlug` backend query), always follow these standards to ensure the page is production-ready and fully tested.
+
+### Full vertical slice requirement
+Every PR that touches category landing pages must deliver all of the following:
+1. **Backend**: `domainBySlug` query in `Query.cs` returns the correct domain or `null`
+2. **Backend**: Integration tests in `GraphQlIntegrationTests.cs` covering: found domain, not-found (null), inactive domain returns null, case-insensitive slug, unauthenticated access
+3. **Frontend**: `CategoryLandingView.vue` with heading, breadcrumb, event count, scoped event grid, empty/not-found/error/loading states
+4. **Frontend**: Route registered in `src/router/index.ts`
+5. **Frontend**: Mock handlers for `DomainBySlug` and `CategoryEvents` queries in `e2e/helpers/mock-api.ts`
+6. **Frontend**: Playwright E2E tests covering all states and i18n
+
+### Backend integration test requirements for domainBySlug
+- Found, active domain returns correct fields (`name`, `slug`, `isActive`)
+- Non-existent slug returns `null` (not an error)
+- Inactive domain (`isActive = false`) returns `null`
+- Slug matching is case-insensitive and trims whitespace
+- Query is accessible without authentication
+
+### Frontend E2E test requirements for category landing pages
+- Domain name, description, and event list render correctly
+- Breadcrumb shows "All Events" link that navigates back to `/`
+- "Filter & Explore" link navigates to `/?domain=<slug>`
+- Domain badge on event card navigates to `/category/:slug`
+- Not-found state when slug doesn't match any domain
+- Empty state when domain exists but has no events
+- Error state with retry button when API fails
+- SEO: page title includes the domain name
+- Event count pluralises correctly (singular vs. plural)
+- Mobile viewport: heading and event cards are both visible
+- i18n: breadcrumb label and heading are localized (test at least Slovak or German)
+
+### Event card domain badge
+- The domain badge on `EventCard.vue` MUST use `<RouterLink to="/category/:slug">` for in-app navigation — NOT an external `<a href>` pointing to the subdomain URL.
+- The `EventDetailView.vue` domain badge KEEPS the subdomain URL (`buildSubdomainUrl`) to preserve the external community hub link on the detail page.
+
 ## Event detail page quality standards
 
 When implementing or extending the event detail page (`EventDetailView.vue` and `eventBySlug` backend query), always follow these standards to ensure the page is production-ready, privacy-safe, and fully tested.

@@ -1592,3 +1592,80 @@ test.describe('Category landing page', () => {
     await expect(page.locator('.event-card', { hasText: 'Mobile Tech Event' })).toBeVisible()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Category landing page — additional coverage
+// ---------------------------------------------------------------------------
+
+test.describe('Category landing page — error and SEO', () => {
+  test('shows error state with retry button when API fails for category page', async ({ page }) => {
+    setupMockApi(page, { domains: [makeTechDomain()] })
+
+    // Override CategoryEvents to return a GraphQL error; other requests fall through.
+    page.route('**/graphql', async (route) => {
+      const body = JSON.parse(route.request().postData() || '{}')
+      if ((body.query || '').includes('CategoryEvents')) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Service unavailable' }] }),
+        })
+        return
+      }
+      await route.fallback()
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.error-state')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible()
+  })
+
+  test('page title includes the domain name for SEO', async ({ page }) => {
+    const techDomain = makeTechDomain()
+    setupMockApi(page, {
+      domains: [techDomain],
+      events: [makeApprovedEvent()],
+    })
+    await page.goto('/category/technology')
+
+    await expect(page).toHaveTitle(/Technology/)
+  })
+
+  test('event count shows singular label for exactly one upcoming event', async ({ page }) => {
+    const techDomain = makeTechDomain()
+    const futureDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+    setupMockApi(page, {
+      domains: [techDomain],
+      events: [makeApprovedEvent({ id: 'e1', name: 'Solo Event', slug: 'solo-event', startsAtUtc: futureDate })],
+    })
+    await page.goto('/category/technology')
+
+    await expect(page.getByText('1 upcoming event')).toBeVisible()
+  })
+
+  test('events found count shows singular for exactly one result', async ({ page }) => {
+    const techDomain = makeTechDomain()
+    setupMockApi(page, {
+      domains: [techDomain],
+      events: [makeApprovedEvent({ name: 'Only One', slug: 'only-one' })],
+    })
+    await page.goto('/category/technology')
+
+    await expect(page.getByText('1 event found')).toBeVisible()
+  })
+
+  test('events found count shows plural for multiple results', async ({ page }) => {
+    const techDomain = makeTechDomain()
+    setupMockApi(page, {
+      domains: [techDomain],
+      events: [
+        makeApprovedEvent({ id: 'e1', name: 'Event A', slug: 'event-a' }),
+        makeApprovedEvent({ id: 'e2', name: 'Event B', slug: 'event-b' }),
+      ],
+    })
+    await page.goto('/category/technology')
+
+    await expect(page.getByText('2 events found')).toBeVisible()
+  })
+})

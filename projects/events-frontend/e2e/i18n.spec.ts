@@ -325,3 +325,47 @@ test.describe('Localized favorites', () => {
     ).toBeVisible()
   })
 })
+
+test.describe('Localized category landing page', () => {
+  test('category breadcrumb uses English "All Events" label by default', async ({ page }) => {
+    const techDomain = makeTechDomain()
+    setupMockApi(page, {
+      domains: [techDomain],
+      events: [makeApprovedEvent()],
+    })
+    await page.goto('/category/technology')
+
+    await expect(page.getByRole('link', { name: 'All Events' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Technology Events' })).toBeVisible()
+  })
+
+  test('category page breadcrumb is localized in Slovak', async ({ page }) => {
+    const techDomain = makeTechDomain()
+    setupMockApi(page, {
+      domains: [techDomain],
+      events: [makeApprovedEvent()],
+    })
+    await page.goto('/category/technology')
+
+    // Switch to Slovak
+    await page.getByRole('combobox', { name: 'Language' }).selectOption('sk')
+
+    await expect(page.getByRole('link', { name: 'Všetky udalosti' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /Udalosti/ })).toBeVisible()
+  })
+
+  test('category page breadcrumb is localized in German', async ({ page }) => {
+    const techDomain = makeTechDomain()
+    setupMockApi(page, {
+      domains: [techDomain],
+      events: [makeApprovedEvent()],
+    })
+    await page.goto('/category/technology')
+
+    // Switch to German
+    await page.getByRole('combobox', { name: 'Language' }).selectOption('de')
+
+    await expect(page.getByRole('link', { name: 'Alle Veranstaltungen' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /Veranstaltungen/ })).toBeVisible()
+  })
+})
