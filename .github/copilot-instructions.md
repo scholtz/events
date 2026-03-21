@@ -250,6 +250,15 @@ npm run test:e2e
 ./node_modules/.bin/playwright test --headed --project=chromium
 # Debug step-by-step
 ./node_modules/.bin/playwright test --debug --project=chromium
+# Before any grep-filtered run, verify the exact selection first
+./node_modules/.bin/playwright test --project=chromium --grep="your pattern" --list
+```
+
+### Grep-filtered Playwright runs
+- When asked to run a filtered subset with `--grep`, **always** run the same command with `--list` first and confirm the expected tests are selected before executing the real run.
+- Do not claim that `npm run test:e2e -- --grep=...` or Playwright ignored the grep filter unless you have reproduced it locally. In this repo, `npm run test:e2e -- --project=chromium --grep="a|b|c" --list` correctly limits the selection.
+- Preserve shell quoting exactly when the grep pattern contains spaces or `|` alternation. Use one quoted regex string, not multiple unquoted tokens.
+- If a filtered run still appears to execute many tests, inspect the listed titles first; the issue may be overly broad matching or an execution mistake rather than Playwright ignoring `--grep`.
 
 ## PWA and service-worker development
 
@@ -325,3 +334,36 @@ A PR that only adds tests, or only adds UI without tests, or only adds backend c
 3. Frontend: Store changes (`useEventsStore`, `eventFiltersToQuery`, `eventFiltersFromQuery`, `activeFilterChips`, `buildDiscoveryFilterInput`)
 4. Frontend: Component/view changes (`EventFilters.vue`, `HomeView.vue`)
 5. Frontend: Playwright E2E tests in `discovery.spec.ts` covering the new filter behavior end-to-end
+
+## Internationalization (i18n) quality standards
+
+### Architecture
+- Frontend uses vue-i18n v11 in Composition API mode (`useI18n()` with `t()` and `locale.value`).
+- Locale files live at `src/i18n/locales/{en,sk,de}.ts`. Detection chain: localStorage (`app_locale`) → `navigator.languages` → `'en'`.
+- `LanguageSwitcher` component in `AppHeader` persists the choice and sets `document.documentElement.lang`.
+- i18n E2E tests live in `e2e/i18n.spec.ts`. Unit tests live in `src/i18n/__tests__/i18n.test.ts`.
+
+### English translations must exactly match original hardcoded text
+- When wrapping existing hardcoded English strings with `t()` calls, the English locale value **must be character-for-character identical** to the original string. Do not paraphrase, re-capitalize, change punctuation (em dash `—` vs en dash `–`), or "improve" wording.
+- Before submitting a PR that adds i18n to a view, run `git diff <base>~1 -- <view-file>` and manually verify that every hardcoded string in the original is preserved exactly in the English locale file. Any deviation will break existing E2E tests that assert on specific text.
+- Pay special attention to: case sensitivity (`Sign in` vs `Sign In` vs `Login` vs `Log In`), arrow characters (`→` vs `↗`), dash types (`—` vs `–` vs `-`), and apostrophe types (`'` straight vs `'` curly).
+
+### Run ALL existing E2E tests before declaring i18n work complete
+- i18n changes touch every view and component. A single wrong translation key or mismatched English string can break tests across `events.spec.ts`, `pwa.spec.ts`, `auth.spec.ts`, `dashboard.spec.ts`, `discovery.spec.ts`, and `vue.spec.ts`.
+- Always run the **full** Playwright test suite (`npx playwright test --project=chromium`) after any i18n change, not just the i18n-specific tests.
+- Always run `npm run lint` after i18n or locale-test changes. The locale unit tests themselves are linted in CI, and `no-explicit-any` errors in `src/i18n/__tests__/i18n.test.ts` can fail `events-frontend-ci-cd` even when unit tests, Playwright, and builds are all green.
+
+### Locale key naming conventions
+- Use the same key name across all locales. The unit test `all locales have matching nested keys` enforces this.
+- If the original English text differs by case across different UI locations (e.g., `Sign In` on a button vs `Sign in` as inline text), use separate keys (e.g., `common.signIn` vs `common.signInLower`) rather than reusing one key for both contexts.
+- Keep key names descriptive of content, not of the UI element (e.g., `eventDetail.backToEvents` not `eventDetail.backLink`).
+
+### loginAs helper uses English labels
+- The `loginAs()` E2E helper in `e2e/helpers/mock-api.ts` fills form fields using English labels (`Email`, `Password`, `Sign In`). When testing localized views, either switch the language **after** calling `loginAs()`, or use localStorage seeding to bypass the login UI.
+
+### Adding a new locale
+1. Copy `src/i18n/locales/en.ts` → `src/i18n/locales/<code>.ts`, translate all values
+2. Import in `src/i18n/index.ts`, add to `SUPPORTED_LOCALES` and `messages`
+3. Add `languages.<code>` entry to **every** locale file (each language's self-name)
+4. Run `npm run test:unit` — the key-completeness tests will catch any gaps
+5. Run `npx playwright test --project=chromium` — the full E2E suite will catch any regressions

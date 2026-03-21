@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useAuthStore } from '@/stores/auth'
 import type { EventAnalyticsItem } from '@/types'
 
+const { t, locale } = useI18n()
 const dashboardStore = useDashboardStore()
 const auth = useAuthStore()
 
@@ -16,7 +18,7 @@ onMounted(async () => {
 })
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('en-US', {
+  return new Date(dateStr).toLocaleDateString(locale.value, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
@@ -24,16 +26,9 @@ function formatDate(dateStr: string): string {
 }
 
 function statusLabel(status: string): string {
-  switch (status) {
-    case 'PUBLISHED':
-      return 'published'
-    case 'PENDING_APPROVAL':
-      return 'pending'
-    case 'REJECTED':
-      return 'rejected'
-    default:
-      return status.toLowerCase()
-  }
+  const key = `eventStatus.${status}`
+  const translated = t(key)
+  return translated === key ? status.toLowerCase() : translated
 }
 
 function statusBadgeClass(status: string): string {
@@ -50,9 +45,9 @@ function statusBadgeClass(status: string): string {
 }
 
 function trendLabel(item: EventAnalyticsItem): string {
-  if (item.interestedLast7Days > 0) return `+${item.interestedLast7Days} this week`
-  if (item.interestedLast30Days > 0) return `+${item.interestedLast30Days} this month`
-  return 'No recent saves'
+  if (item.interestedLast7Days > 0) return t('dashboard.trendThisWeek', { count: item.interestedLast7Days })
+  if (item.interestedLast30Days > 0) return t('dashboard.trendThisMonth', { count: item.interestedLast30Days })
+  return t('dashboard.noRecentSaves')
 }
 
 function trendClass(item: EventAnalyticsItem): string {
@@ -62,9 +57,9 @@ function trendClass(item: EventAnalyticsItem): string {
 }
 
 function calendarTrendLabel(item: EventAnalyticsItem): string {
-  if (item.calendarActionsLast7Days > 0) return `+${item.calendarActionsLast7Days} this week`
-  if (item.calendarActionsLast30Days > 0) return `+${item.calendarActionsLast30Days} this month`
-  return 'No recent adds'
+  if (item.calendarActionsLast7Days > 0) return t('dashboard.trendThisWeek', { count: item.calendarActionsLast7Days })
+  if (item.calendarActionsLast30Days > 0) return t('dashboard.trendThisMonth', { count: item.calendarActionsLast30Days })
+  return t('dashboard.noRecentAdds')
 }
 
 function calendarTrendClass(item: EventAnalyticsItem): string {
@@ -91,14 +86,14 @@ function providerLabel(provider: string): string {
   <div class="container dashboard-view">
     <div class="page-header">
       <div>
-        <h1>Dashboard</h1>
+        <h1>{{ t('dashboard.title') }}</h1>
         <p v-if="auth.isAuthenticated">
-          Welcome back, {{ auth.currentUser?.displayName }}!
+          {{ t('dashboard.welcomeBack', { name: auth.currentUser?.displayName }) }}
         </p>
-        <p v-else>Please log in to see your dashboard.</p>
+        <p v-else>{{ t('dashboard.pleaseLogIn') }}</p>
       </div>
       <RouterLink v-if="auth.isAuthenticated" to="/submit" class="btn btn-primary">
-        + Submit Event
+        {{ t('dashboard.submitEvent') }}
       </RouterLink>
     </div>
 
@@ -130,7 +125,7 @@ function providerLabel(provider: string): string {
       <div v-else-if="dashboardStore.error" class="card error-state" role="alert">
         <div class="error-icon">⚠️</div>
         <p class="error-message">{{ dashboardStore.error }}</p>
-        <button class="btn btn-outline" @click="dashboardStore.fetchDashboard()">Try again</button>
+        <button class="btn btn-outline" @click="dashboardStore.fetchDashboard()">{{ t('common.tryAgain') }}</button>
       </div>
 
       <!-- Loaded state -->
@@ -141,55 +136,51 @@ function providerLabel(provider: string): string {
             <div class="stat-icon stat-icon--total" aria-hidden="true">📊</div>
             <div class="stat-info">
               <div class="stat-number">{{ overview.totalSubmittedEvents }}</div>
-              <div class="stat-label">Total Events</div>
+              <div class="stat-label">{{ t('dashboard.totalEvents') }}</div>
             </div>
           </div>
           <div class="stat-card card">
             <div class="stat-icon stat-icon--approved" aria-hidden="true">✅</div>
             <div class="stat-info">
               <div class="stat-number stat-number--success">{{ overview.publishedEvents }}</div>
-              <div class="stat-label">Published</div>
+              <div class="stat-label">{{ t('dashboard.published') }}</div>
             </div>
           </div>
           <div class="stat-card card">
             <div class="stat-icon stat-icon--pending" aria-hidden="true">⏳</div>
             <div class="stat-info">
               <div class="stat-number stat-number--warning">{{ overview.pendingApprovalEvents }}</div>
-              <div class="stat-label">Pending Review</div>
+              <div class="stat-label">{{ t('dashboard.pendingReview') }}</div>
             </div>
           </div>
           <div class="stat-card card">
             <div class="stat-icon stat-icon--interested" aria-hidden="true">🔖</div>
             <div class="stat-info">
               <div class="stat-number stat-number--primary">{{ overview.totalInterestedCount }}</div>
-              <div class="stat-label">Total Saves</div>
+              <div class="stat-label">{{ t('dashboard.totalSaves') }}</div>
             </div>
           </div>
           <div class="stat-card card">
             <div class="stat-icon stat-icon--calendar" aria-hidden="true">📅</div>
             <div class="stat-info">
               <div class="stat-number stat-number--calendar">{{ overview.totalCalendarActions }}</div>
-              <div class="stat-label">Calendar Adds</div>
+              <div class="stat-label">{{ t('dashboard.calendarAdds') }}</div>
             </div>
           </div>
         </div>
 
         <!-- Analytics section -->
         <div class="section-header">
-          <h2>Event Performance</h2>
-          <p class="section-subtitle">
-            Saves show how many attendees bookmarked your published events.
-            Calendar adds show how many attendees added an event to their personal calendar.
-            Trends reflect activity in the last 7 and 30 days.
-          </p>
+          <h2>{{ t('dashboard.eventPerformance') }}</h2>
+          <p class="section-subtitle">{{ t('dashboard.performanceDescription') }}</p>
         </div>
 
         <!-- No events empty state -->
         <div v-if="!overview.managedEvents.length" class="card empty-state">
           <div class="empty-icon">📭</div>
-          <h3>No events yet</h3>
-          <p>Submit your first event to start tracking performance.</p>
-          <RouterLink to="/submit" class="btn btn-primary">Submit your first event</RouterLink>
+          <h3>{{ t('dashboard.noEventsTitle') }}</h3>
+          <p>{{ t('dashboard.noEventsDescription') }}</p>
+          <RouterLink to="/submit" class="btn btn-primary">{{ t('dashboard.submitFirstEvent') }}</RouterLink>
         </div>
 
         <!-- Events analytics table -->
@@ -197,16 +188,16 @@ function providerLabel(provider: string): string {
           <table>
             <thead>
               <tr>
-                <th scope="col">Event</th>
-                <th scope="col">Status</th>
-                <th scope="col">Date</th>
-                <th scope="col" class="col-saves" title="Total number of attendees who saved this event">
-                  Saves
+                <th scope="col">{{ t('dashboard.tableEvent') }}</th>
+                <th scope="col">{{ t('dashboard.tableStatus') }}</th>
+                <th scope="col">{{ t('dashboard.tableDate') }}</th>
+                <th scope="col" class="col-saves" :title="t('dashboard.tableSaves')">
+                  {{ t('dashboard.tableSaves') }}
                 </th>
-                <th scope="col" class="col-momentum" title="Recent save activity">Momentum</th>
-                <th scope="col" class="col-calendar" title="Total add-to-calendar actions">Calendar</th>
-                <th scope="col" class="col-cal-trend" title="Recent calendar add activity">Cal Trend</th>
-                <th scope="col">Actions</th>
+                <th scope="col" class="col-momentum" :title="t('dashboard.tableMomentum')">{{ t('dashboard.tableMomentum') }}</th>
+                <th scope="col" class="col-calendar" :title="t('dashboard.tableCalendar')">{{ t('dashboard.tableCalendar') }}</th>
+                <th scope="col" class="col-cal-trend" :title="t('dashboard.tableCalTrend')">{{ t('dashboard.tableCalTrend') }}</th>
+                <th scope="col">{{ t('dashboard.tableActions') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -270,7 +261,7 @@ function providerLabel(provider: string): string {
                     :to="`/event/${item.eventSlug}`"
                     class="btn btn-outline btn-sm"
                   >
-                    View
+                    {{ t('dashboard.viewDetails') }}
                   </RouterLink>
                   <span v-else class="text-muted btn-sm-placeholder">—</span>
                 </td>
@@ -299,9 +290,9 @@ function providerLabel(provider: string): string {
     <!-- Not authenticated -->
     <div v-else class="card login-prompt">
       <div class="prompt-icon" aria-hidden="true">🔐</div>
-      <h2>Sign in required</h2>
-      <p>You need to be logged in to access the dashboard.</p>
-      <RouterLink to="/login" class="btn btn-primary">Log In</RouterLink>
+      <h2>{{ t('dashboard.signInRequired') }}</h2>
+      <p>{{ t('dashboard.pleaseLogIn') }}</p>
+      <RouterLink to="/login" class="btn btn-primary">{{ t('dashboard.logIn') }}</RouterLink>
     </div>
   </div>
 </template>

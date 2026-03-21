@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { savedSearchToFilters, useEventsStore } from '@/stores/events'
 import { useDomainsStore } from '@/stores/domains'
 import { useSavedSearchesStore } from '@/stores/savedSearches'
 import type { SavedSearch } from '@/types'
+
+const { t } = useI18n()
 
 const authStore = useAuthStore()
 const eventsStore = useEventsStore()
@@ -123,38 +126,38 @@ function clearFilterChip(key: string) {
   <div class="event-filters card">
     <div class="filters-header">
       <div>
-        <h2>Event discovery</h2>
+        <h2>{{ t('filters.title') }}</h2>
       </div>
       <div class="filters-header-actions">
-        <button class="btn btn-outline" @click="eventsStore.clearFilters()">Clear all</button>
+        <button class="btn btn-outline" @click="eventsStore.clearFilters()">{{ t('common.clearAll') }}</button>
         <button class="btn btn-outline toggle-filters-btn" @click="filtersExpanded = !filtersExpanded">
-          {{ filtersExpanded ? 'Hide filters' : 'More filters' }}
+          {{ filtersExpanded ? t('filters.hideFilters') : t('filters.moreFilters') }}
         </button>
       </div>
     </div>
 
     <div class="filters-grid filters-grid-primary">
       <div class="form-group filter-search">
-        <label class="form-label" for="filter-search">Keyword</label>
+        <label class="form-label" for="filter-search">{{ t('filters.keyword') }}</label>
         <input
           id="filter-search"
           class="form-input"
           type="text"
-          placeholder="Search events, topics, or venues"
+          :placeholder="t('filters.keywordPlaceholder')"
           :value="searchInput"
           @input="onSearchInput(($event.target as HTMLInputElement).value)"
         />
       </div>
 
       <div class="form-group">
-        <label class="form-label" for="filter-domain">Domain</label>
+        <label class="form-label" for="filter-domain">{{ t('filters.domain') }}</label>
         <select
           id="filter-domain"
           class="form-select"
           :value="eventsStore.filters.domain"
           @change="eventsStore.setFilters({ domain: ($event.target as HTMLSelectElement).value })"
         >
-          <option value="">All domains</option>
+          <option value="">{{ t('filters.allDomains') }}</option>
           <option v-for="domain in domainsStore.domains" :key="domain.id" :value="domain.slug">
             {{ domain.name }}
           </option>
@@ -165,19 +168,19 @@ function clearFilterChip(key: string) {
     <div v-show="filtersExpanded" class="filters-grid">
 
       <div class="form-group">
-        <label class="form-label" for="filter-location">Location</label>
+        <label class="form-label" for="filter-location">{{ t('filters.location') }}</label>
         <input
           id="filter-location"
           class="form-input"
           type="text"
-          placeholder="Prague, venue, or address"
+          :placeholder="t('filters.locationPlaceholder')"
           :value="locationInput"
           @input="onLocationInput(($event.target as HTMLInputElement).value)"
         />
       </div>
 
       <div class="form-group">
-        <label class="form-label" for="filter-attendance-mode">Mode</label>
+        <label class="form-label" for="filter-attendance-mode">{{ t('filters.mode') }}</label>
         <select
           id="filter-attendance-mode"
           class="form-select"
@@ -192,15 +195,15 @@ function clearFilterChip(key: string) {
             })
           "
         >
-          <option value="">Any mode</option>
-          <option value="IN_PERSON">In Person</option>
-          <option value="ONLINE">Online</option>
-          <option value="HYBRID">Hybrid</option>
+          <option value="">{{ t('filters.anyMode') }}</option>
+          <option value="IN_PERSON">{{ t('filters.inPerson') }}</option>
+          <option value="ONLINE">{{ t('filters.online') }}</option>
+          <option value="HYBRID">{{ t('filters.hybrid') }}</option>
         </select>
       </div>
 
       <div class="form-group">
-        <label class="form-label" for="filter-date-from">From</label>
+        <label class="form-label" for="filter-date-from">{{ t('filters.from') }}</label>
         <input
           id="filter-date-from"
           class="form-input"
@@ -211,7 +214,7 @@ function clearFilterChip(key: string) {
       </div>
 
       <div class="form-group">
-        <label class="form-label" for="filter-date-to">To</label>
+        <label class="form-label" for="filter-date-to">{{ t('filters.to') }}</label>
         <input
           id="filter-date-to"
           class="form-input"
@@ -222,7 +225,7 @@ function clearFilterChip(key: string) {
       </div>
 
       <div class="form-group">
-        <label class="form-label" for="filter-price-type">Price</label>
+        <label class="form-label" for="filter-price-type">{{ t('filters.price') }}</label>
         <select
           id="filter-price-type"
           class="form-select"
@@ -233,14 +236,14 @@ function clearFilterChip(key: string) {
             })
           "
         >
-          <option value="ALL">Any price</option>
-          <option value="FREE">Free</option>
-          <option value="PAID">Paid</option>
+          <option value="ALL">{{ t('filters.anyPrice') }}</option>
+          <option value="FREE">{{ t('filters.free') }}</option>
+          <option value="PAID">{{ t('filters.paid') }}</option>
         </select>
       </div>
 
       <div class="form-group">
-        <label class="form-label" for="filter-price-min">Min price</label>
+        <label class="form-label" for="filter-price-min">{{ t('filters.minPrice') }}</label>
         <input
           id="filter-price-min"
           class="form-input"
@@ -255,7 +258,7 @@ function clearFilterChip(key: string) {
       </div>
 
       <div class="form-group">
-        <label class="form-label" for="filter-price-max">Max price</label>
+        <label class="form-label" for="filter-price-max">{{ t('filters.maxPrice') }}</label>
         <input
           id="filter-price-max"
           class="form-input"
@@ -270,7 +273,7 @@ function clearFilterChip(key: string) {
       </div>
 
       <div class="form-group">
-        <label class="form-label" for="filter-sort">Sort by</label>
+        <label class="form-label" for="filter-sort">{{ t('filters.sortBy') }}</label>
         <select
           id="filter-sort"
           class="form-select"
@@ -284,15 +287,15 @@ function clearFilterChip(key: string) {
             })
           "
         >
-          <option value="UPCOMING">Upcoming date</option>
-          <option value="NEWEST">Newest added</option>
-          <option value="RELEVANCE">Relevance</option>
+          <option value="UPCOMING">{{ t('filters.upcoming') }}</option>
+          <option value="NEWEST">{{ t('filters.newest') }}</option>
+          <option value="RELEVANCE">{{ t('filters.relevance') }}</option>
         </select>
       </div>
     </div>
 
     <div v-if="eventsStore.activeFilterChips.length" class="active-filters">
-      <span class="active-label">Active filters</span>
+      <span class="active-label">{{ t('filters.activeFilters') }}</span>
       <button
         v-for="chip in eventsStore.activeFilterChips"
         :key="chip.key"
@@ -308,28 +311,28 @@ function clearFilterChip(key: string) {
     <div v-show="filtersExpanded" class="saved-searches card-section">
       <div class="saved-searches-header">
         <div>
-          <h3>Saved searches</h3>
-          <p v-if="authStore.isAuthenticated">Save a named filter preset and reuse it later.</p>
-          <p v-else>Sign in to save filter presets to your account.</p>
+          <h3>{{ t('filters.savedSearches') }}</h3>
+          <p v-if="authStore.isAuthenticated">{{ t('filters.savedSearchesDescription') }}</p>
+          <p v-else>{{ t('filters.savedSearchesSignIn') }}</p>
         </div>
         <RouterLink v-if="!authStore.isAuthenticated" to="/login" class="btn btn-outline btn-login">
-          Sign in
+          {{ t('common.signInLower') }}
         </RouterLink>
       </div>
 
       <div v-if="authStore.isAuthenticated" class="saved-search-form">
         <div class="form-group saved-search-name">
-          <label class="form-label" for="saved-search-name">Preset name</label>
+          <label class="form-label" for="saved-search-name">{{ t('filters.presetName') }}</label>
           <input
             id="saved-search-name"
             v-model="savedSearchName"
             class="form-input"
             type="text"
-            placeholder="e.g. Prague crypto next month"
+            :placeholder="t('filters.presetPlaceholder')"
           />
         </div>
         <button class="btn btn-primary save-search-btn" :disabled="!canSaveSearch" @click="handleSaveSearch">
-          {{ savingSearch ? 'Saving...' : 'Save current search' }}
+          {{ savingSearch ? t('filters.saving') : t('filters.saveCurrentSearch') }}
         </button>
       </div>
 
@@ -346,22 +349,22 @@ function clearFilterChip(key: string) {
           <button class="saved-search-apply" type="button" @click="applySavedSearch(savedSearch)">
             <span class="saved-search-name-text">{{ savedSearch.name }}</span>
             <span class="saved-search-meta">
-              {{ savedSearch.locationText || savedSearch.domainSlug || 'Reusable preset' }}
+              {{ savedSearch.locationText || savedSearch.domainSlug || t('filters.reusablePreset') }}
             </span>
           </button>
           <button
             class="saved-search-delete"
             type="button"
-            :aria-label="`Delete saved search ${savedSearch.name}`"
+            :aria-label="t('filters.deleteSearch', { name: savedSearch.name })"
             @click="removeSavedSearch(savedSearch.id)"
           >
-            Delete
+            {{ t('common.delete') }}
           </button>
         </div>
       </div>
 
       <p v-else-if="authStore.isAuthenticated && !savedSearchesStore.loading" class="saved-search-empty">
-        No saved searches yet.
+        {{ t('filters.noSavedSearches') }}
       </p>
     </div>
   </div>

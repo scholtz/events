@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { onMounted, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useFavoritesStore } from '@/stores/favorites'
 import { useAuthStore } from '@/stores/auth'
 import { formatEventPrice } from '@/stores/events'
 import type { AttendanceMode, CatalogEvent } from '@/types'
 
+const { t, locale } = useI18n()
 const favoritesStore = useFavoritesStore()
 const authStore = useAuthStore()
 
@@ -25,7 +27,7 @@ onMounted(async () => {
 })
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('en-US', {
+  return new Date(dateStr).toLocaleDateString(locale.value, {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
@@ -34,7 +36,7 @@ function formatDate(dateStr: string): string {
 }
 
 function formatTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleTimeString('en-US', {
+  return new Date(dateStr).toLocaleTimeString(locale.value, {
     hour: 'numeric',
     minute: '2-digit',
   })
@@ -42,7 +44,7 @@ function formatTime(dateStr: string): string {
 
 function locationSummary(event: CatalogEvent): string {
   if (event.venueName && event.city) return `${event.venueName}, ${event.city}`
-  return event.venueName || event.city || 'Location TBD'
+  return event.venueName || event.city || t('eventCard.locationTbd')
 }
 
 async function handleUnfavorite(eventId: string) {
@@ -50,63 +52,53 @@ async function handleUnfavorite(eventId: string) {
 }
 
 function attendanceModeLabel(mode: AttendanceMode): string {
-  switch (mode) {
-    case 'ONLINE':
-      return 'Online'
-    case 'HYBRID':
-      return 'Hybrid'
-    default:
-      return 'In Person'
-  }
+  return t(`attendanceMode.${mode}`)
 }
 </script>
 
 <template>
   <div class="container favorites-view">
     <div class="favorites-header">
-      <h1>My Saved Events</h1>
-      <p class="favorites-subtitle">Events you've saved to revisit later.</p>
+      <h1>{{ t('favorites.title') }}</h1>
+      <p class="favorites-subtitle">{{ t('favorites.subtitle') }}</p>
     </div>
 
     <template v-if="!authStore.isAuthenticated">
       <div class="empty-state card">
         <div class="empty-icon">🔐</div>
-        <h2>Sign in to view saved events</h2>
-        <p>Create an account or sign in to save events and build your personal list.</p>
-        <RouterLink to="/login" class="btn btn-primary">Sign In</RouterLink>
+        <h2>{{ t('favorites.signInTitle') }}</h2>
+        <p>{{ t('favorites.signInDescription') }}</p>
+        <RouterLink to="/login" class="btn btn-primary">{{ t('common.signIn') }}</RouterLink>
       </div>
     </template>
 
     <template v-else-if="favoritesStore.loading">
       <div class="loading-state">
-        <p>Loading your saved events…</p>
+        <p>{{ t('favorites.loadingMessage') }}</p>
       </div>
     </template>
 
     <template v-else-if="favoritesStore.error">
       <div class="error-state card">
         <div class="empty-icon">⚠️</div>
-        <h2>Something went wrong</h2>
+        <h2>{{ t('favorites.errorTitle') }}</h2>
         <p>{{ favoritesStore.error }}</p>
-        <button class="btn btn-primary" @click="favoritesStore.fetchFavoriteEvents()">Try again</button>
+        <button class="btn btn-primary" @click="favoritesStore.fetchFavoriteEvents()">{{ t('common.tryAgain') }}</button>
       </div>
     </template>
 
     <template v-else-if="favoritesStore.favoriteEvents.length === 0">
       <div class="empty-state card">
         <div class="empty-icon">⭐</div>
-        <h2>No saved events yet</h2>
-        <p>
-          Save events you're interested in by clicking the star icon on any event card or detail
-          page.
-        </p>
-        <RouterLink to="/" class="btn btn-primary">Browse Events</RouterLink>
+        <h2>{{ t('favorites.emptyTitle') }}</h2>
+        <p>{{ t('favorites.emptyDescription') }}</p>
+        <RouterLink to="/" class="btn btn-primary">{{ t('favorites.browseEvents') }}</RouterLink>
       </div>
     </template>
 
     <template v-else>
       <section v-if="upcomingFavorites.length > 0" class="favorites-section">
-        <h2 class="section-heading">Upcoming ({{ upcomingFavorites.length }})</h2>
+        <h2 class="section-heading">{{ t('favorites.upcoming') }} ({{ upcomingFavorites.length }})</h2>
         <div class="favorites-list">
           <article
             v-for="event in upcomingFavorites"
@@ -130,7 +122,7 @@ function attendanceModeLabel(mode: AttendanceMode): string {
               <p class="favorite-price">💳 {{ formatEventPrice(event) }}</p>
               <div class="favorite-actions">
                 <RouterLink :to="`/event/${event.slug}`" class="btn btn-primary btn-sm">
-                  View details
+                  {{ t('eventCard.viewDetails') }}
                 </RouterLink>
                 <a
                   :href="event.eventUrl"
@@ -138,14 +130,14 @@ function attendanceModeLabel(mode: AttendanceMode): string {
                   rel="noopener noreferrer"
                   class="btn btn-outline btn-sm"
                 >
-                  Event link ↗
+                  {{ t('eventCard.eventLink') }}
                 </a>
                 <button
                   class="btn btn-ghost btn-sm unsave-btn"
-                  aria-label="Remove from favorites"
+                  :aria-label="t('favorites.removeLabel')"
                   @click="handleUnfavorite(event.id)"
                 >
-                  ★ Remove
+                  {{ t('favorites.remove') }}
                 </button>
               </div>
             </div>
@@ -154,7 +146,7 @@ function attendanceModeLabel(mode: AttendanceMode): string {
       </section>
 
       <section v-if="pastFavorites.length > 0" class="favorites-section past-section">
-        <h2 class="section-heading past-heading">Past ({{ pastFavorites.length }})</h2>
+        <h2 class="section-heading past-heading">{{ t('favorites.past') }} ({{ pastFavorites.length }})</h2>
         <div class="favorites-list">
           <article
             v-for="event in pastFavorites"
@@ -178,14 +170,14 @@ function attendanceModeLabel(mode: AttendanceMode): string {
               <p class="favorite-price">💳 {{ formatEventPrice(event) }}</p>
               <div class="favorite-actions">
                 <RouterLink :to="`/event/${event.slug}`" class="btn btn-outline btn-sm">
-                  View details
+                  {{ t('eventCard.viewDetails') }}
                 </RouterLink>
                 <button
                   class="btn btn-ghost btn-sm unsave-btn"
-                  aria-label="Remove from favorites"
+                  :aria-label="t('favorites.removeLabel')"
                   @click="handleUnfavorite(event.id)"
                 >
-                  ★ Remove
+                  {{ t('favorites.remove') }}
                 </button>
               </div>
             </div>

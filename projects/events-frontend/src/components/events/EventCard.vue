@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { formatEventPrice } from '@/stores/events'
 import { useFavoritesStore } from '@/stores/favorites'
 import { useAuthStore } from '@/stores/auth'
@@ -12,6 +13,7 @@ const props = defineProps<{
   event: CatalogEvent
 }>()
 
+const { t, locale } = useI18n()
 const favoritesStore = useFavoritesStore()
 const authStore = useAuthStore()
 const eventsStore = useEventsStore()
@@ -27,7 +29,7 @@ function domainUrl(event: CatalogEvent): string {
 }
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('en-US', {
+  return new Date(dateStr).toLocaleDateString(locale.value, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
@@ -35,7 +37,7 @@ function formatDate(dateStr: string): string {
 }
 
 function formatTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleTimeString('en-US', {
+  return new Date(dateStr).toLocaleTimeString(locale.value, {
     hour: 'numeric',
     minute: '2-digit',
   })
@@ -43,20 +45,13 @@ function formatTime(dateStr: string): string {
 
 const locationSummary = computed(() => {
   if (props.event.venueName && props.event.city) return `${props.event.venueName}, ${props.event.city}`
-  return props.event.venueName || props.event.city || 'Location TBD'
+  return props.event.venueName || props.event.city || t('eventCard.locationTbd')
 })
 
 const priceSummary = computed(() => formatEventPrice(props.event))
 
 const attendanceModeLabel = computed(() => {
-  switch (props.event.attendanceMode) {
-    case 'ONLINE':
-      return 'Online'
-    case 'HYBRID':
-      return 'Hybrid'
-    default:
-      return 'In Person'
-  }
+  return t(`attendanceMode.${props.event.attendanceMode}`)
 })
 
 const isFavorited = computed(() => favoritesStore.isFavorited(props.event.id))
@@ -90,7 +85,7 @@ async function handleFavoriteToggle() {
             v-if="authStore.isAuthenticated"
             class="favorite-btn"
             :class="{ 'is-favorited': isFavorited }"
-            :aria-label="isFavorited ? 'Remove from favorites' : 'Add to favorites'"
+            :aria-label="isFavorited ? t('eventCard.removeFromFavorites') : t('eventCard.addToFavorites')"
             :aria-pressed="isFavorited"
             :disabled="favoriting"
             @click.prevent="handleFavoriteToggle"
@@ -110,28 +105,28 @@ async function handleFavoriteToggle() {
 
       <dl class="event-details">
         <div class="event-detail-item">
-          <dt>Date</dt>
+          <dt>{{ t('eventCard.date') }}</dt>
           <dd>{{ formatDate(event.startsAtUtc) }} · {{ formatTime(event.startsAtUtc) }}</dd>
         </div>
         <div class="event-detail-item">
-          <dt>Location</dt>
+          <dt>{{ t('eventCard.location') }}</dt>
           <dd>{{ locationSummary }}</dd>
         </div>
         <div class="event-detail-item">
-          <dt>Price</dt>
+          <dt>{{ t('eventCard.priceLbl') }}</dt>
           <dd>{{ priceSummary }}</dd>
         </div>
       </dl>
 
       <div class="event-actions">
-        <RouterLink :to="`/event/${event.slug}`" class="btn btn-primary btn-sm" @click="handleResultClick">View details</RouterLink>
+        <RouterLink :to="`/event/${event.slug}`" class="btn btn-primary btn-sm" @click="handleResultClick">{{ t('eventCard.viewDetails') }}</RouterLink>
         <a
           :href="event.eventUrl"
           target="_blank"
           rel="noopener noreferrer"
           class="btn btn-outline btn-sm"
         >
-          Event link ↗
+          {{ t('eventCard.eventLink') }}
         </a>
         <a
           v-if="event.mapUrl"
@@ -140,7 +135,7 @@ async function handleFavoriteToggle() {
           rel="noopener noreferrer"
           class="btn btn-ghost btn-sm"
         >
-          Map ↗
+          {{ t('eventCard.map') }}
         </a>
       </div>
     </div>

@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useEventsStore } from '@/stores/events'
 import { useAuthStore } from '@/stores/auth'
 import { useDomainsStore } from '@/stores/domains'
 import { gqlRequest } from '@/lib/graphql'
 import type { AdminOverview, DomainAdministrator, User } from '@/types'
 
+const { t, locale } = useI18n()
 const eventsStore = useEventsStore()
 const auth = useAuthStore()
 const domainsStore = useDomainsStore()
@@ -197,7 +199,7 @@ function pendingCount() {
 }
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('en-US', {
+  return new Date(dateStr).toLocaleDateString(locale.value, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
@@ -205,16 +207,9 @@ function formatDate(dateStr: string): string {
 }
 
 function statusLabel(status: string): string {
-  switch (status) {
-    case 'PUBLISHED':
-      return 'published'
-    case 'PENDING_APPROVAL':
-      return 'pending'
-    case 'REJECTED':
-      return 'rejected'
-    default:
-      return status.toLowerCase()
-  }
+  const key = `eventStatus.${status}`
+  const translated = t(key)
+  return translated === key ? status.toLowerCase() : translated
 }
 
 function statusBadgeClass(status: string): string {
@@ -251,8 +246,8 @@ async function handleReviewEvent(eventId: string, status: string) {
   <div class="container admin-view">
     <div class="page-header">
       <div>
-        <h1>Admin Panel</h1>
-        <p>Manage events, domains, and platform settings.</p>
+        <h1>{{ t('admin.title') }}</h1>
+        <p>{{ t('admin.subtitle') }}</p>
       </div>
       <div v-if="auth.isAdmin && pendingCount()" class="pending-pill">
         <span class="pending-dot"></span>
@@ -266,21 +261,21 @@ async function handleReviewEvent(eventId: string, status: string) {
           :class="['tab-btn', { active: activeTab === 'events' }]"
           @click="activeTab = 'events'"
         >
-          Events
+          {{ t('admin.tabEvents') }}
           <span class="tab-count">{{ allAdminEvents().length }}</span>
         </button>
         <button
           :class="['tab-btn', { active: activeTab === 'domains' }]"
           @click="activeTab = 'domains'"
         >
-          Domains
+          {{ t('admin.tabDomains') }}
           <span class="tab-count">{{ domainsStore.domains.length }}</span>
         </button>
         <button
           :class="['tab-btn', { active: activeTab === 'users' }]"
           @click="activeTab = 'users'"
         >
-          Users
+          {{ t('admin.tabUsers') }}
           <span class="tab-count">{{ adminOverview?.users.length ?? 0 }}</span>
         </button>
       </div>
@@ -326,14 +321,14 @@ async function handleReviewEvent(eventId: string, status: string) {
                     class="btn btn-success btn-sm"
                     @click="handleReviewEvent(event.id, 'PUBLISHED')"
                   >
-                    Approve
+                    {{ t('admin.approve') }}
                   </button>
                   <button
                     v-if="event.status !== 'REJECTED'"
                     class="btn btn-outline btn-sm"
                     @click="handleReviewEvent(event.id, 'REJECTED')"
                   >
-                    Reject
+                    {{ t('admin.reject') }}
                   </button>
                 </td>
               </tr>
