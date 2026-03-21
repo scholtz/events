@@ -103,7 +103,10 @@ function formatInterestedCount(count: number): string {
 }
 
 function statusLabel(status: string): string {
-  return t(`eventStatus.${status}`, status.toLowerCase())
+  const key = `eventStatus.${status}`
+  const translated = t(key)
+  // If vue-i18n returns the key itself, the translation is missing → fall back
+  return translated === key ? status.toLowerCase() : translated
 }
 
 function statusBadgeClass(status: string): string {

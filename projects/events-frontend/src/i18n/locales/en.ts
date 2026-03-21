@@ -205,7 +205,7 @@ export default {
     title: 'Submit an Event',
     subtitle: 'Share an upcoming event with the community. Submitted events are reviewed before publishing.',
     successTitle: 'Event Submitted!',
-    successMessage: 'Your event is under review. We\'ll publish it shortly.',
+    successMessage: "Your event is under review. We'll publish it shortly.",
     goToDashboard: 'Go to Dashboard',
     basicInfo: 'Basic Information',
     eventTitle: 'Event Title',
@@ -250,14 +250,14 @@ export default {
   // ── Favorites ──────────────────────────────────────────────────────────────
   favorites: {
     title: 'My Saved Events',
-    subtitle: 'Events you\'ve saved to revisit later.',
+    subtitle: "Events you've saved to revisit later.",
     signInTitle: 'Sign in to view saved events',
     signInDescription: 'Create an account or sign in to save events and build your personal list.',
     loadingMessage: 'Loading your saved events…',
     errorTitle: 'Something went wrong',
     emptyTitle: 'No saved events yet',
     emptyDescription:
-      'Save events you\'re interested in by clicking the star icon on any event card or detail page.',
+      "Save events you're interested in by clicking the star icon on any event card or detail page.",
     browseEvents: 'Browse Events',
     upcoming: 'Upcoming',
     past: 'Past',

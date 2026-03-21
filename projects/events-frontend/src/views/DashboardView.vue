@@ -26,7 +26,9 @@ function formatDate(dateStr: string): string {
 }
 
 function statusLabel(status: string): string {
-  return t(`eventStatus.${status}`, status.toLowerCase())
+  const key = `eventStatus.${status}`
+  const translated = t(key)
+  return translated === key ? status.toLowerCase() : translated
 }
 
 function statusBadgeClass(status: string): string {

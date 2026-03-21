@@ -214,7 +214,8 @@ async function handleSubmit() {
                 :class="['form-input', timezoneError ? 'form-input--error' : '']"
                 type="text"
                 list="common-timezones"
-                placeholder="e.g., Europe/Prague"                autocomplete="off"
+                placeholder="e.g., Europe/Prague"
+                autocomplete="off"
               />
               <p v-if="timezoneError" class="field-error" role="alert">{{ timezoneError }}</p>
               <datalist id="common-timezones">
