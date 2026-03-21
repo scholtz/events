@@ -316,7 +316,7 @@ function clearFilterChip(key: string) {
           <p v-else>{{ t('filters.savedSearchesSignIn') }}</p>
         </div>
         <RouterLink v-if="!authStore.isAuthenticated" to="/login" class="btn btn-outline btn-login">
-          {{ t('common.signIn') }}
+          {{ t('common.signInLower') }}
         </RouterLink>
       </div>
 

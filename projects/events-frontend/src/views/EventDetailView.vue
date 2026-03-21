@@ -249,7 +249,7 @@ function domainHostDisplay(event: {
     </template>
 
     <template v-else-if="event">
-      <RouterLink to="/" class="back-link">{{ t('eventDetail.backToBrowse') }}</RouterLink>
+      <RouterLink to="/" class="back-link">{{ t('eventDetail.backToEvents') }}</RouterLink>
       <!-- Offline stale-data notice: shown when viewing event detail without network -->
       <div v-if="isOffline" role="status" aria-live="polite" class="stale-data-notice">
         <span aria-hidden="true">📡</span>
@@ -283,7 +283,7 @@ function domainHostDisplay(event: {
               @click="handleFavoriteToggle"
             >
               <span aria-hidden="true">{{ isFavorited ? '★' : '☆' }}</span>
-              {{ isFavorited ? t('eventDetail.unsaveEvent') : t('eventDetail.saveThisEvent') }}
+              {{ isFavorited ? t('eventDetail.saved') : t('eventDetail.saveEvent') }}
             </button>
           </div>
           <h1>{{ event.name }}</h1>
@@ -314,7 +314,7 @@ function domainHostDisplay(event: {
             <div class="info-section">
               <h3 class="info-label">
                 <span class="info-icon" aria-hidden="true">📍</span>
-                {{ t('eventDetail.locationTitle') }}
+                {{ t('eventDetail.venueAndLocation') }}
               </h3>
               <p class="venue-name">{{ event.venueName || 'TBD' }}</p>
               <p v-if="event.addressLine1 || event.city" class="text-secondary venue-address">
@@ -422,10 +422,10 @@ function domainHostDisplay(event: {
               class="event-map"
               aria-label="Event location map"
             >
-              <h3 class="map-heading">{{ t('eventDetail.locationTitle') }}</h3>
+              <h3 class="map-heading">{{ t('eventDetail.locationOnMap') }}</h3>
               <iframe
                 :src="mapUrl(eventLat, eventLng)"
-                :title="t('eventDetail.locationTitle')"
+                :title="t('eventDetail.mapIframeTitle')"
                 loading="lazy"
                 sandbox="allow-scripts"
               ></iframe>
@@ -435,13 +435,13 @@ function domainHostDisplay(event: {
                 rel="noopener noreferrer"
                 class="map-link"
               >
-                {{ t('home.mapOpenOsm') }}
+                {{ t('eventDetail.openInOsm') }}
               </a>
             </div>
 
             <!-- Location fallback (when no coordinates) -->
             <div v-else class="event-map location-fallback" aria-label="Event location">
-              <h3 class="map-heading">{{ t('eventDetail.locationTitle') }}</h3>
+              <h3 class="map-heading">{{ t('eventDetail.locationFallbackHeading') }}</h3>
               <div class="location-fallback-content">
                 <span class="location-icon" aria-hidden="true">📍</span>
                 <div>
@@ -473,14 +473,14 @@ function domainHostDisplay(event: {
                 </div>
               </div>
               <p v-if="!authStore.isAuthenticated" class="attendee-cta">
-                <RouterLink to="/login" class="link-subtle">{{ t('common.signIn') }}</RouterLink>
+                <RouterLink to="/login" class="link-subtle">{{ t('common.signInLower') }}</RouterLink>
                 {{ t('eventDetail.signInToSave') }}
               </p>
               <p v-else-if="!isFavorited" class="attendee-cta">
-                {{ t('eventDetail.saveThisEvent') }}
+                {{ t('eventDetail.saveToShowInterest') }}
               </p>
               <p v-else class="attendee-cta attendee-cta--saved">
-                ✓ {{ t('eventDetail.unsaveEvent') }}
+                ✓ {{ t('eventDetail.youveSavedThisEvent') }}
               </p>
             </div>
           </div>
@@ -497,8 +497,8 @@ function domainHostDisplay(event: {
 
     <div v-else class="empty-state card">
       <div class="empty-icon">🔍</div>
-      <h2>{{ t('home.noEventsFound') }}</h2>
-      <p>{{ t('eventDetail.unableToLoadDescription') }}</p>
+      <h2>{{ t('eventDetail.eventNotFound') }}</h2>
+      <p>{{ t('eventDetail.eventNotFoundDescription') }}</p>
       <RouterLink to="/" class="btn btn-primary">{{ t('favorites.browseEvents') }}</RouterLink>
     </div>
   </div>

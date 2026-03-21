@@ -290,9 +290,9 @@ function providerLabel(provider: string): string {
     <!-- Not authenticated -->
     <div v-else class="card login-prompt">
       <div class="prompt-icon" aria-hidden="true">🔐</div>
-      <h2>{{ t('favorites.signInTitle') }}</h2>
+      <h2>{{ t('dashboard.signInRequired') }}</h2>
       <p>{{ t('dashboard.pleaseLogIn') }}</p>
-      <RouterLink to="/login" class="btn btn-primary">{{ t('common.login') }}</RouterLink>
+      <RouterLink to="/login" class="btn btn-primary">{{ t('dashboard.logIn') }}</RouterLink>
     </div>
   </div>
 </template>
