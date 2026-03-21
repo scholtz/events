@@ -172,9 +172,7 @@ const emptyStateMessage = computed(() => {
       return t('home.emptyModeHybrid')
     }
     if (chip.key === 'priceType') {
-      return filters.priceType === 'FREE'
-        ? t('home.emptyPriceFree')
-        : t('home.emptyPricePaid')
+      return filters.priceType === 'FREE' ? t('home.emptyPriceFree') : t('home.emptyPricePaid')
     }
     if (chip.key === 'dateFrom' || chip.key === 'dateTo') {
       return t('home.emptyDate')
@@ -190,7 +188,6 @@ const emptyStateMessage = computed(() => {
 
   return t('home.emptyGeneric')
 })
-
 </script>
 
 <template>
@@ -208,16 +205,19 @@ const emptyStateMessage = computed(() => {
     </section>
     <section v-else class="hero">
       <div class="container hero-content">
-        <div class="hero-text">
-          <h1>{{ t('home.heroTitle') }}<br /><span class="hero-accent">{{ t('home.heroAccent') }}</span></h1>
-          <p>{{ t('home.heroDescription') }}</p>
-          <RouterLink to="/submit" class="btn btn-primary hero-cta">{{ t('home.heroCta') }}</RouterLink>
+        <div class="hero-video-wrapper">
+          <div class="hero-video-overlay"></div>
+          <video autoplay muted loop playsinline class="hero-video" aria-hidden="true">
+            <source src="/videos/background-1.mp4" type="video/mp4" />
+          </video>
         </div>
-        <div class="hero-stat-row">
-          <div class="hero-stat">
-            <span class="hero-stat-num">{{ eventsStore.discoveryEvents.length }}</span>
-            <span class="hero-stat-label">{{ t('home.matchingEvents') }}</span>
-          </div>
+        <div class="hero-text">
+          <h1>
+            {{ t('home.heroTitle') }}<br /><span class="hero-accent">{{
+              t('home.heroAccent')
+            }}</span>
+          </h1>
+          <p>{{ t('home.heroDescription') }}</p>
         </div>
       </div>
     </section>
@@ -226,7 +226,11 @@ const emptyStateMessage = computed(() => {
       <EventFilters />
       <div class="catalog-layout">
         <div class="results-column">
-          <div v-if="eventsStore.discoveryLoading" class="results-state card loading-state" aria-live="polite">
+          <div
+            v-if="eventsStore.discoveryLoading"
+            class="results-state card loading-state"
+            aria-live="polite"
+          >
             <div class="loading-spinner" aria-hidden="true"></div>
             <div>
               <h2>{{ t('home.updatingResults') }}</h2>
@@ -234,7 +238,11 @@ const emptyStateMessage = computed(() => {
             </div>
           </div>
 
-          <div v-else-if="eventsStore.discoveryError" class="results-state card error-state" role="alert">
+          <div
+            v-else-if="eventsStore.discoveryError"
+            class="results-state card error-state"
+            role="alert"
+          >
             <div class="state-icon" aria-hidden="true">{{ isOffline ? '📡' : '⚠️' }}</div>
             <div>
               <h2>{{ isOffline ? t('home.errorOffline') : t('home.errorLoad') }}</h2>
@@ -242,8 +250,14 @@ const emptyStateMessage = computed(() => {
               <p v-else>{{ eventsStore.discoveryError }}</p>
             </div>
             <div class="state-actions">
-              <button class="btn btn-primary" @click="eventsStore.fetchDiscoveryEvents()">{{ t('common.tryAgain') }}</button>
-              <button v-if="eventsStore.hasActiveFilters" class="btn btn-outline" @click="clearDiscoveryFilters">
+              <button class="btn btn-primary" @click="eventsStore.fetchDiscoveryEvents()">
+                {{ t('common.tryAgain') }}
+              </button>
+              <button
+                v-if="eventsStore.hasActiveFilters"
+                class="btn btn-outline"
+                @click="clearDiscoveryFilters"
+              >
                 {{ t('home.clearFilters') }}
               </button>
             </div>
@@ -271,10 +285,16 @@ const emptyStateMessage = computed(() => {
             <h2>{{ t('home.noEventsFound') }}</h2>
             <p>{{ emptyStateMessage }}</p>
             <div class="state-actions">
-              <button v-if="eventsStore.hasActiveFilters" class="btn btn-primary" @click="clearDiscoveryFilters">
+              <button
+                v-if="eventsStore.hasActiveFilters"
+                class="btn btn-primary"
+                @click="clearDiscoveryFilters"
+              >
                 {{ t('home.clearFilters') }}
               </button>
-              <RouterLink v-else to="/submit" class="btn btn-primary">{{ t('home.submitAnEvent') }}</RouterLink>
+              <RouterLink v-else to="/submit" class="btn btn-primary">{{
+                t('home.submitAnEvent')
+              }}</RouterLink>
             </div>
           </div>
         </div>
@@ -290,7 +310,9 @@ const emptyStateMessage = computed(() => {
             </svg>
             {{ t('home.mapContext') }}
           </h2>
-          <p v-if="mapCenter" class="map-caption">{{ t('home.mapShowing', { label: mapCenter.label }) }}</p>
+          <p v-if="mapCenter" class="map-caption">
+            {{ t('home.mapShowing', { label: mapCenter.label }) }}
+          </p>
           <iframe
             v-if="mapCenter"
             :src="mapUrl(mapCenter.lat, mapCenter.lng)"
@@ -319,6 +341,7 @@ const emptyStateMessage = computed(() => {
   border-bottom: 1px solid var(--color-border);
   padding: 4rem 0 3rem;
   margin-bottom: 0;
+  position: relative;
 }
 
 .subdomain-header {
@@ -582,5 +605,23 @@ const emptyStateMessage = computed(() => {
   .error-state {
     grid-template-columns: 1fr;
   }
+}
+.hero-video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: -2;
+}
+.hero-video-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(52, 55, 220, 0.312);
+  z-index: -1;
 }
 </style>
