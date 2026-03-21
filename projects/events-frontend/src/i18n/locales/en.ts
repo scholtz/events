@@ -347,4 +347,23 @@ export default {
     REJECTED: 'rejected',
     DRAFT: 'draft',
   },
+
+  // ── Category landing page ──────────────────────────────────────────────────
+  category: {
+    pageTitle: '{name} Events',
+    pageTitleDefault: 'Category Events',
+    allEvents: 'All Events',
+    heading: '{name} Events',
+    oneUpcomingEvent: '1 upcoming event',
+    upcomingEventCount: '{count} upcoming events',
+    oneEventFound: '1 event found',
+    eventsFound: '{count} events found',
+    filterAndExplore: 'Filter & Explore',
+    noEvents: 'No upcoming events',
+    noEventsDescription: 'There are no upcoming events in the {name} category yet. Check back soon.',
+    browseAll: 'Browse All Events',
+    notFound: 'Category not found',
+    notFoundDescription: 'The category "{slug}" does not exist or is no longer active.',
+    errorLoad: 'Unable to load category',
+  },
 }

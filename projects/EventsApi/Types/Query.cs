@@ -143,6 +143,20 @@ public sealed class Query
                 cancellationToken);
 
     /// <summary>
+    /// Returns a single active domain by its slug.
+    /// Used by category landing pages to retrieve domain metadata.
+    /// </summary>
+    public async Task<EventDomain?> GetDomainBySlugAsync(
+        string slug,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+        => await dbContext.Domains
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                domain => domain.Slug == slug.Trim().ToLowerInvariant() && domain.IsActive,
+                cancellationToken);
+
+    /// <summary>
     /// Returns the administrators assigned to a domain/tag.
     /// Available to global admins and domain administrators.
     /// </summary>

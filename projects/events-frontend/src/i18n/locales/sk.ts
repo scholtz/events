@@ -335,4 +335,22 @@ export default {
     REJECTED: 'zamietnuté',
     DRAFT: 'koncept',
   },
+
+  category: {
+    pageTitle: 'Udalosti: {name}',
+    pageTitleDefault: 'Udalosti kategórie',
+    allEvents: 'Všetky udalosti',
+    heading: 'Udalosti: {name}',
+    oneUpcomingEvent: '1 nadchádzajúca udalosť',
+    upcomingEventCount: '{count} nadchádzajúcich udalostí',
+    oneEventFound: 'Nájdená 1 udalosť',
+    eventsFound: 'Nájdených {count} udalostí',
+    filterAndExplore: 'Filtrovať a prehľadávať',
+    noEvents: 'Žiadne nadchádzajúce udalosti',
+    noEventsDescription: 'V kategórii {name} zatiaľ nie sú žiadne nadchádzajúce udalosti. Skúste to neskôr.',
+    browseAll: 'Prehľadávať všetky udalosti',
+    notFound: 'Kategória nenájdená',
+    notFoundDescription: 'Kategória „{slug}" neexistuje alebo už nie je aktívna.',
+    errorLoad: 'Nepodarilo sa načítať kategóriu',
+  },
 }
