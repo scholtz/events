@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import {
@@ -16,6 +17,7 @@ import { usePwa } from '@/composables/usePwa'
 import EventCard from '@/components/events/EventCard.vue'
 import EventFilters from '@/components/events/EventFilters.vue'
 
+const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
@@ -146,7 +148,7 @@ function clearDiscoveryFilters() {
 
 const emptyStateMessage = computed(() => {
   if (!eventsStore.hasActiveFilters) {
-    return 'No events are available yet. Check back soon or submit a new one.'
+    return t('home.emptyNoEvents')
   }
 
   const filters = eventsStore.filters
@@ -156,41 +158,37 @@ const emptyStateMessage = computed(() => {
   if (filterCount === 1) {
     const chip = chips[0]
     if (!chip) {
-      return 'Try broadening your filters or clearing a few constraints to see more events.'
+      return t('home.emptyGeneric')
     }
     if (chip.key === 'location') {
-      return `No events found in "${filters.location}". Try a different city or remove the location filter.`
+      return t('home.emptyLocation', { location: filters.location })
     }
     if (chip.key === 'search') {
-      return `No events match "${filters.search}". Try a different keyword or clear the search.`
+      return t('home.emptySearch', { search: filters.search })
     }
     if (chip.key === 'attendanceMode') {
-      const modeLabel =
-        filters.attendanceMode === 'IN_PERSON'
-          ? 'in-person'
-          : filters.attendanceMode === 'ONLINE'
-            ? 'online'
-            : 'hybrid'
-      return `No ${modeLabel} events available right now. Try a different attendance mode.`
+      if (filters.attendanceMode === 'IN_PERSON') return t('home.emptyModeInPerson')
+      if (filters.attendanceMode === 'ONLINE') return t('home.emptyModeOnline')
+      return t('home.emptyModeHybrid')
     }
     if (chip.key === 'priceType') {
       return filters.priceType === 'FREE'
-        ? 'No free events available. Remove the price filter to see all events.'
-        : 'No paid events available. Remove the price filter to see all events.'
+        ? t('home.emptyPriceFree')
+        : t('home.emptyPricePaid')
     }
     if (chip.key === 'dateFrom' || chip.key === 'dateTo') {
-      return 'No events in this date range. Try adjusting or removing the date filters.'
+      return t('home.emptyDate')
     }
     if (chip.key === 'domain') {
-      return 'No events in this category. Remove the domain filter to see all categories.'
+      return t('home.emptyDomain')
     }
   }
 
   if (filterCount > 1) {
-    return `No events match all ${filterCount} active filters. Try removing your most specific filter first, or clear all to start over.`
+    return t('home.emptyMultiple', { count: filterCount })
   }
 
-  return 'Try broadening your filters or clearing a few constraints to see more events.'
+  return t('home.emptyGeneric')
 })
 
 </script>
@@ -204,24 +202,21 @@ const emptyStateMessage = computed(() => {
           <p v-if="activeDomain.description">{{ activeDomain.description }}</p>
         </div>
         <a :href="mainSiteUrl" class="main-site-link">
-          All events on {{ mainSiteHost }}
+          {{ t('home.allEventsOn', { host: mainSiteHost }) }}
         </a>
       </div>
     </section>
     <section v-else class="hero">
       <div class="container hero-content">
         <div class="hero-text">
-          <h1>Discover Events<br /><span class="hero-accent">Near You</span></h1>
-          <p>
-            Find high-intent, domain-specific events with shareable filters, map context, and
-            pricing details.
-          </p>
-          <RouterLink to="/submit" class="btn btn-primary hero-cta">Submit an Event</RouterLink>
+          <h1>{{ t('home.heroTitle') }}<br /><span class="hero-accent">{{ t('home.heroAccent') }}</span></h1>
+          <p>{{ t('home.heroDescription') }}</p>
+          <RouterLink to="/submit" class="btn btn-primary hero-cta">{{ t('home.heroCta') }}</RouterLink>
         </div>
         <div class="hero-stat-row">
           <div class="hero-stat">
             <span class="hero-stat-num">{{ eventsStore.discoveryEvents.length }}</span>
-            <span class="hero-stat-label">Matching Events</span>
+            <span class="hero-stat-label">{{ t('home.matchingEvents') }}</span>
           </div>
         </div>
       </div>
@@ -234,22 +229,22 @@ const emptyStateMessage = computed(() => {
           <div v-if="eventsStore.discoveryLoading" class="results-state card loading-state" aria-live="polite">
             <div class="loading-spinner" aria-hidden="true"></div>
             <div>
-              <h2>Updating results…</h2>
-              <p>Applying your filters and loading the best matching events.</p>
+              <h2>{{ t('home.updatingResults') }}</h2>
+              <p>{{ t('home.updatingDescription') }}</p>
             </div>
           </div>
 
           <div v-else-if="eventsStore.discoveryError" class="results-state card error-state" role="alert">
             <div class="state-icon" aria-hidden="true">{{ isOffline ? '📡' : '⚠️' }}</div>
             <div>
-              <h2>{{ isOffline ? "You're offline" : "Couldn't load event results" }}</h2>
-              <p v-if="isOffline">You don't have any cached results for this search. Connect to the internet and try again to load events.</p>
+              <h2>{{ isOffline ? t('home.errorOffline') : t('home.errorLoad') }}</h2>
+              <p v-if="isOffline">{{ t('home.errorOfflineDescription') }}</p>
               <p v-else>{{ eventsStore.discoveryError }}</p>
             </div>
             <div class="state-actions">
-              <button class="btn btn-primary" @click="eventsStore.fetchDiscoveryEvents()">Try again</button>
+              <button class="btn btn-primary" @click="eventsStore.fetchDiscoveryEvents()">{{ t('common.tryAgain') }}</button>
               <button v-if="eventsStore.hasActiveFilters" class="btn btn-outline" @click="clearDiscoveryFilters">
-                Clear filters
+                {{ t('home.clearFilters') }}
               </button>
             </div>
           </div>
@@ -257,7 +252,7 @@ const emptyStateMessage = computed(() => {
           <template v-else-if="eventsStore.discoveryEvents.length">
             <div v-if="isOffline" role="status" aria-live="polite" class="cached-results-notice">
               <span aria-hidden="true">📡</span>
-              Showing results from your last online visit. Refresh when back online.
+              {{ t('home.cachedResultsNotice') }}
             </div>
             <p class="results-summary" role="status" aria-live="polite">
               {{ eventsStore.resultsSummary }}
@@ -273,13 +268,13 @@ const emptyStateMessage = computed(() => {
 
           <div v-else class="results-state empty-state card">
             <div class="empty-icon">🔍</div>
-            <h2>No events found</h2>
+            <h2>{{ t('home.noEventsFound') }}</h2>
             <p>{{ emptyStateMessage }}</p>
             <div class="state-actions">
               <button v-if="eventsStore.hasActiveFilters" class="btn btn-primary" @click="clearDiscoveryFilters">
-                Clear filters
+                {{ t('home.clearFilters') }}
               </button>
-              <RouterLink v-else to="/submit" class="btn btn-primary">Submit an Event</RouterLink>
+              <RouterLink v-else to="/submit" class="btn btn-primary">{{ t('home.submitAnEvent') }}</RouterLink>
             </div>
           </div>
         </div>
@@ -293,25 +288,25 @@ const emptyStateMessage = computed(() => {
                 clip-rule="evenodd"
               />
             </svg>
-            Map context
+            {{ t('home.mapContext') }}
           </h2>
-          <p v-if="mapCenter" class="map-caption">Showing: {{ mapCenter.label }}</p>
+          <p v-if="mapCenter" class="map-caption">{{ t('home.mapShowing', { label: mapCenter.label }) }}</p>
           <iframe
             v-if="mapCenter"
             :src="mapUrl(mapCenter.lat, mapCenter.lng)"
-            title="Event locations map"
+            :title="t('home.mapContext')"
             loading="lazy"
             sandbox="allow-scripts"
           ></iframe>
           <div v-if="mapCenter" class="map-actions">
             <a :href="mapCenter.mapUrl" target="_blank" rel="noopener noreferrer" class="map-link">
-              Open in OpenStreetMap ↗
+              {{ t('home.mapOpenOsm') }}
             </a>
           </div>
           <p v-else-if="!eventsStore.hasActiveFilters" class="map-empty">
-            Events with location data will appear here as soon as they match your discovery view.
+            {{ t('home.mapEmptyDefault') }}
           </p>
-          <p v-else class="map-empty">Adjust your filters to find results with map context.</p>
+          <p v-else class="map-empty">{{ t('home.mapEmptyFilters') }}</p>
         </aside>
       </div>
     </div>

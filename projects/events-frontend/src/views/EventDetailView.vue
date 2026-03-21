@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { formatEventPrice } from '@/stores/events'
 import { useEventsStore } from '@/stores/events'
@@ -10,6 +11,7 @@ import { useCalendarAnalytics } from '@/composables/useCalendarAnalytics'
 import { buildSubdomainUrl, formatSubdomainHost } from '@/composables/useSubdomain'
 import { usePwa } from '@/composables/usePwa'
 
+const { t, locale } = useI18n()
 const route = useRoute()
 const eventsStore = useEventsStore()
 const favoritesStore = useFavoritesStore()
@@ -52,7 +54,7 @@ async function handleFavoriteToggle() {
 }
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('en-US', {
+  return new Date(dateStr).toLocaleDateString(locale.value, {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
@@ -61,7 +63,7 @@ function formatDate(dateStr: string): string {
 }
 
 function formatTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleTimeString('en-US', {
+  return new Date(dateStr).toLocaleTimeString(locale.value, {
     hour: 'numeric',
     minute: '2-digit',
     timeZoneName: 'short',
@@ -95,22 +97,13 @@ function googleMapsDirectionsUrl(event: { venueName: string; addressLine1: strin
 }
 
 function formatInterestedCount(count: number): string {
-  if (count === 0) return 'Be the first to save this event'
-  if (count === 1) return '1 person interested'
-  return `${count} people interested`
+  if (count === 0) return t('eventDetail.beFirstToSave')
+  if (count === 1) return t('eventDetail.personInterested')
+  return t('eventDetail.peopleInterested', { count })
 }
 
 function statusLabel(status: string): string {
-  switch (status) {
-    case 'PUBLISHED':
-      return 'published'
-    case 'PENDING_APPROVAL':
-      return 'pending'
-    case 'REJECTED':
-      return 'rejected'
-    default:
-      return status.toLowerCase()
-  }
+  return t(`eventStatus.${status}`, status.toLowerCase())
 }
 
 function statusBadgeClass(status: string): string {
@@ -127,14 +120,10 @@ function statusBadgeClass(status: string): string {
 }
 
 function attendanceModeLabel(mode: string | undefined): string {
-  switch (mode) {
-    case 'ONLINE':
-      return 'Online'
-    case 'HYBRID':
-      return 'Hybrid'
-    default:
-      return 'In Person'
+  if (mode && (mode === 'IN_PERSON' || mode === 'ONLINE' || mode === 'HYBRID')) {
+    return t(`attendanceMode.${mode}`)
   }
+  return t('attendanceMode.IN_PERSON')
 }
 
 // ── Add to calendar ──────────────────────────────────────────────────────────
@@ -257,11 +246,11 @@ function domainHostDisplay(event: {
     </template>
 
     <template v-else-if="event">
-      <RouterLink to="/" class="back-link">← Back to events</RouterLink>
+      <RouterLink to="/" class="back-link">{{ t('eventDetail.backToBrowse') }}</RouterLink>
       <!-- Offline stale-data notice: shown when viewing event detail without network -->
       <div v-if="isOffline" role="status" aria-live="polite" class="stale-data-notice">
         <span aria-hidden="true">📡</span>
-        You're offline — this event information is from your last online visit and may not reflect the latest changes.
+        {{ t('eventDetail.offlineStale') }}
       </div>
       <div class="event-detail card">
         <div class="event-detail-header">
@@ -285,18 +274,18 @@ function domainHostDisplay(event: {
               v-if="authStore.isAuthenticated"
               class="favorite-btn"
               :class="{ 'is-favorited': isFavorited }"
-              :aria-label="isFavorited ? 'Remove from favorites' : 'Add to favorites'"
+              :aria-label="isFavorited ? t('eventCard.removeFromFavorites') : t('eventCard.addToFavorites')"
               :aria-pressed="isFavorited"
               :disabled="favoriting"
               @click="handleFavoriteToggle"
             >
               <span aria-hidden="true">{{ isFavorited ? '★' : '☆' }}</span>
-              {{ isFavorited ? 'Saved' : 'Save event' }}
+              {{ isFavorited ? t('eventDetail.unsaveEvent') : t('eventDetail.saveThisEvent') }}
             </button>
           </div>
           <h1>{{ event.name }}</h1>
           <p v-if="event.submittedBy" class="organizer">
-            Submitted by {{ event.submittedBy.displayName }}
+            {{ t('eventDetail.submittedBy', { name: event.submittedBy.displayName }) }}
           </p>
         </div>
         <div class="event-detail-body">
@@ -305,7 +294,7 @@ function domainHostDisplay(event: {
             <div class="info-section">
               <h3 class="info-label">
                 <span class="info-icon" aria-hidden="true">📅</span>
-                Date &amp; Time
+                {{ t('eventDetail.dateAndTime') }}
               </h3>
               <p>{{ formatDate(event.startsAtUtc) }}</p>
               <p class="text-secondary">{{ formatTime(event.startsAtUtc) }}</p>
@@ -322,7 +311,7 @@ function domainHostDisplay(event: {
             <div class="info-section">
               <h3 class="info-label">
                 <span class="info-icon" aria-hidden="true">📍</span>
-                Venue &amp; Location
+                {{ t('eventDetail.locationTitle') }}
               </h3>
               <p class="venue-name">{{ event.venueName || 'TBD' }}</p>
               <p v-if="event.addressLine1 || event.city" class="text-secondary venue-address">
@@ -334,7 +323,7 @@ function domainHostDisplay(event: {
                 rel="noopener noreferrer"
                 class="directions-link"
               >
-                🗺️ Get Directions ↗
+                🗺️ {{ t('eventDetail.getDirections') }}
               </a>
             </div>
 
@@ -342,7 +331,7 @@ function domainHostDisplay(event: {
             <div class="info-section">
               <h3 class="info-label">
                 <span class="info-icon" aria-hidden="true">📝</span>
-                About
+                {{ t('eventDetail.about') }}
               </h3>
               <p class="event-description">{{ event.description }}</p>
             </div>
@@ -351,7 +340,7 @@ function domainHostDisplay(event: {
             <div class="info-section">
               <h3 class="info-label">
                 <span class="info-icon" aria-hidden="true">💳</span>
-                Pricing
+                {{ t('eventDetail.pricing') }}
               </h3>
               <p>{{ formatEventPrice(event) }}</p>
             </div>
@@ -364,7 +353,7 @@ function domainHostDisplay(event: {
                 rel="noopener noreferrer"
                 class="btn btn-primary"
               >
-                Visit Event Page →
+                {{ t('eventDetail.eventLink') }}
               </a>
 
               <!-- Add to calendar -->
@@ -373,11 +362,11 @@ function domainHostDisplay(event: {
                   class="btn btn-outline calendar-btn"
                   :aria-expanded="calendarMenuOpen"
                   aria-haspopup="menu"
-                  :aria-label="calendarAdded ? 'Added to calendar' : 'Add to calendar'"
+                  :aria-label="calendarAdded ? t('eventDetail.calendarAdded') : t('eventDetail.addToCalendar')"
                   @click="toggleCalendarMenu"
                 >
                   <span aria-hidden="true">📅</span>
-                  {{ calendarAdded ? 'Added to calendar ✓' : 'Add to calendar' }}
+                  {{ calendarAdded ? t('eventDetail.calendarAdded') : t('eventDetail.addToCalendar') }}
                   <span aria-hidden="true" class="chevron">▾</span>
                 </button>
 
@@ -394,7 +383,7 @@ function domainHostDisplay(event: {
                     @click="handleDownloadIcs"
                   >
                     <span aria-hidden="true">⬇</span>
-                    Download .ics file
+                    {{ t('eventDetail.downloadIcs') }}
                   </button>
                   <a
                     :href="googleCalendarUrl"
@@ -405,7 +394,7 @@ function domainHostDisplay(event: {
                     @click="handleGoogleCalendarClick"
                   >
                     <span aria-hidden="true">🗓</span>
-                    Google Calendar
+                    {{ t('eventDetail.googleCalendar') }}
                   </a>
                   <a
                     :href="outlookCalendarUrl"
@@ -416,7 +405,7 @@ function domainHostDisplay(event: {
                     @click="handleOutlookCalendarClick"
                   >
                     <span aria-hidden="true">📆</span>
-                    Outlook
+                    {{ t('eventDetail.outlookCalendar') }}
                   </a>
                 </div>
               </div>
@@ -430,10 +419,10 @@ function domainHostDisplay(event: {
               class="event-map"
               aria-label="Event location map"
             >
-              <h3 class="map-heading">Location on Map</h3>
+              <h3 class="map-heading">{{ t('eventDetail.locationTitle') }}</h3>
               <iframe
                 :src="mapUrl(eventLat, eventLng)"
-                title="Interactive map showing event location"
+                :title="t('eventDetail.locationTitle')"
                 loading="lazy"
                 sandbox="allow-scripts"
               ></iframe>
@@ -443,19 +432,19 @@ function domainHostDisplay(event: {
                 rel="noopener noreferrer"
                 class="map-link"
               >
-                Open in OpenStreetMap ↗
+                {{ t('home.mapOpenOsm') }}
               </a>
             </div>
 
             <!-- Location fallback (when no coordinates) -->
             <div v-else class="event-map location-fallback" aria-label="Event location">
-              <h3 class="map-heading">Location</h3>
+              <h3 class="map-heading">{{ t('eventDetail.locationTitle') }}</h3>
               <div class="location-fallback-content">
                 <span class="location-icon" aria-hidden="true">📍</span>
                 <div>
                   <p class="venue-name">{{ event.venueName || 'Venue TBD' }}</p>
                   <p v-if="event.city" class="text-secondary">{{ [event.city, event.countryCode].filter(Boolean).join(', ') }}</p>
-                  <p v-else class="text-secondary">Location details not available yet</p>
+                  <p v-else class="text-secondary">{{ t('eventDetail.noExactLocation') }}</p>
                 </div>
               </div>
               <a
@@ -464,13 +453,13 @@ function domainHostDisplay(event: {
                 rel="noopener noreferrer"
                 class="map-link"
               >
-                Search on Google Maps ↗
+                {{ t('eventDetail.searchOnGoogleMaps') }}
               </a>
             </div>
 
             <!-- Attendee context -->
             <div class="attendee-context" aria-label="Event interest summary">
-              <h3 class="map-heading">Community Interest</h3>
+              <h3 class="map-heading">{{ t('eventDetail.interestedSection') }}</h3>
               <div class="attendee-stats">
                 <div class="stat-item">
                   <span class="stat-icon" aria-hidden="true">🔖</span>
@@ -481,14 +470,14 @@ function domainHostDisplay(event: {
                 </div>
               </div>
               <p v-if="!authStore.isAuthenticated" class="attendee-cta">
-                <RouterLink to="/login" class="link-subtle">Sign in</RouterLink>
-                to save this event and show your interest.
+                <RouterLink to="/login" class="link-subtle">{{ t('common.signIn') }}</RouterLink>
+                {{ t('eventDetail.signInToSave') }}
               </p>
               <p v-else-if="!isFavorited" class="attendee-cta">
-                Save this event to show your interest.
+                {{ t('eventDetail.saveThisEvent') }}
               </p>
               <p v-else class="attendee-cta attendee-cta--saved">
-                ✓ You've saved this event
+                ✓ {{ t('eventDetail.unsaveEvent') }}
               </p>
             </div>
           </div>
@@ -498,16 +487,16 @@ function domainHostDisplay(event: {
 
     <div v-else-if="detailError" class="empty-state card" role="alert">
       <div class="empty-icon">⚠️</div>
-      <h2>Unable to load event</h2>
+      <h2>{{ t('eventDetail.unableToLoad') }}</h2>
       <p>{{ detailError }}</p>
-      <button class="btn btn-primary" @click="loadDetail">Try again</button>
+      <button class="btn btn-primary" @click="loadDetail">{{ t('common.tryAgain') }}</button>
     </div>
 
     <div v-else class="empty-state card">
       <div class="empty-icon">🔍</div>
-      <h2>Event not found</h2>
-      <p>The event you are looking for does not exist or has been removed.</p>
-      <RouterLink to="/" class="btn btn-primary">Browse Events</RouterLink>
+      <h2>{{ t('home.noEventsFound') }}</h2>
+      <p>{{ t('eventDetail.unableToLoadDescription') }}</p>
+      <RouterLink to="/" class="btn btn-primary">{{ t('favorites.browseEvents') }}</RouterLink>
     </div>
   </div>
 </template>

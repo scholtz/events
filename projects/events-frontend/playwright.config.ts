@@ -41,6 +41,10 @@ export default defineConfig({
 
     headless: true,
 
+    // Default browser locale to English so existing E2E tests that assert
+    // English UI text are not affected by the host system locale.
+    locale: 'en-US',
+
     // Block service workers in all tests.  In production the SW is generated
     // by vite-plugin-pwa and registered only in the browser (PROD guard in
     // usePwa.ts).  When Playwright runs against the production preview build
