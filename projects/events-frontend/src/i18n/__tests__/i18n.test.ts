@@ -4,6 +4,31 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 // which calls createI18n() and triggers import.meta.env. We'll test
 // the helper functions via a direct dynamic import of the module source.
 
+type LocaleValue = string | LocaleMessages
+type LocaleMessages = Record<string, LocaleValue>
+
+async function importLocaleMessages(locale: 'en' | 'sk' | 'de'): Promise<LocaleMessages> {
+  if (locale === 'en') return (await import('../locales/en')).default as LocaleMessages
+  if (locale === 'sk') return (await import('../locales/sk')).default as LocaleMessages
+  return (await import('../locales/de')).default as LocaleMessages
+}
+
+function visitTranslationStrings(
+  messages: LocaleMessages,
+  visit: (path: string, value: string) => void,
+  path = '',
+) {
+  for (const [key, value] of Object.entries(messages)) {
+    const nextPath = path ? `${path}.${key}` : key
+    if (typeof value === 'string') {
+      visit(nextPath, value)
+      continue
+    }
+
+    visitTranslationStrings(value, visit, nextPath)
+  }
+}
+
 describe('i18n', () => {
   // Provide a minimal localStorage stub for the node test environment
   const store: Record<string, string> = {}
@@ -134,44 +159,33 @@ describe('i18n', () => {
     })
 
     it('no translation value is an empty string', async () => {
-      const locales: Record<string, Record<string, Record<string, string>>> = {
-        en: (await import('../locales/en')).default as any,
-        sk: (await import('../locales/sk')).default as any,
-        de: (await import('../locales/de')).default as any,
+      const locales: Record<string, LocaleMessages> = {
+        en: await importLocaleMessages('en'),
+        sk: await importLocaleMessages('sk'),
+        de: await importLocaleMessages('de'),
       }
 
       for (const [localeName, messages] of Object.entries(locales)) {
-        for (const [section, entries] of Object.entries(messages)) {
-          if (typeof entries === 'object' && entries !== null) {
-            for (const [key, value] of Object.entries(entries)) {
-              expect(
-                value,
-                `Empty translation: ${localeName}.${section}.${key}`,
-              ).not.toBe('')
-            }
-          }
-        }
+        visitTranslationStrings(messages, (path, value) => {
+          expect(value, `Empty translation: ${localeName}.${path}`).not.toBe('')
+        })
       }
     })
 
     it('every translation value is a string', async () => {
-      const locales: Record<string, Record<string, Record<string, string>>> = {
-        en: (await import('../locales/en')).default as any,
-        sk: (await import('../locales/sk')).default as any,
-        de: (await import('../locales/de')).default as any,
+      const locales: Record<string, LocaleMessages> = {
+        en: await importLocaleMessages('en'),
+        sk: await importLocaleMessages('sk'),
+        de: await importLocaleMessages('de'),
       }
 
       for (const [localeName, messages] of Object.entries(locales)) {
-        for (const [section, entries] of Object.entries(messages)) {
-          if (typeof entries === 'object' && entries !== null) {
-            for (const [key, value] of Object.entries(entries)) {
-              expect(
-                typeof value,
-                `Non-string value: ${localeName}.${section}.${key} = ${JSON.stringify(value)}`,
-              ).toBe('string')
-            }
-          }
-        }
+        visitTranslationStrings(messages, (path, value) => {
+          expect(
+            typeof value,
+            `Non-string value: ${localeName}.${path} = ${JSON.stringify(value)}`,
+          ).toBe('string')
+        })
       }
     })
 
@@ -201,22 +215,14 @@ describe('i18n', () => {
     })
 
     it('English translations use straight apostrophes, not curly quotes', async () => {
-      const en = (await import('../locales/en')).default
+      const en = await importLocaleMessages('en')
 
-      function checkForCurlyQuotes(obj: Record<string, any>, path: string) {
-        for (const [key, value] of Object.entries(obj)) {
-          if (typeof value === 'string') {
-            expect(
-              value.includes('\u2019'),
-              `Curly quote found: ${path}.${key} = ${JSON.stringify(value)}`,
-            ).toBe(false)
-          } else if (typeof value === 'object' && value !== null) {
-            checkForCurlyQuotes(value, `${path}.${key}`)
-          }
-        }
-      }
-
-      checkForCurlyQuotes(en, 'en')
+      visitTranslationStrings(en, (path, value) => {
+        expect(
+          value.includes('\u2019'),
+          `Curly quote found: en.${path} = ${JSON.stringify(value)}`,
+        ).toBe(false)
+      })
     })
   })
 })

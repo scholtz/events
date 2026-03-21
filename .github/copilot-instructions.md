@@ -351,6 +351,7 @@ A PR that only adds tests, or only adds UI without tests, or only adds backend c
 ### Run ALL existing E2E tests before declaring i18n work complete
 - i18n changes touch every view and component. A single wrong translation key or mismatched English string can break tests across `events.spec.ts`, `pwa.spec.ts`, `auth.spec.ts`, `dashboard.spec.ts`, `discovery.spec.ts`, and `vue.spec.ts`.
 - Always run the **full** Playwright test suite (`npx playwright test --project=chromium`) after any i18n change, not just the i18n-specific tests.
+- Always run `npm run lint` after i18n or locale-test changes. The locale unit tests themselves are linted in CI, and `no-explicit-any` errors in `src/i18n/__tests__/i18n.test.ts` can fail `events-frontend-ci-cd` even when unit tests, Playwright, and builds are all green.
 
 ### Locale key naming conventions
 - Use the same key name across all locales. The unit test `all locales have matching nested keys` enforces this.
