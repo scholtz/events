@@ -38,7 +38,7 @@ async function fetchCategoryData() {
 
   try {
     // Try to find domain from store first (already loaded in App.vue)
-    let foundDomain = domainsStore.getDomainBySlug(slug.value)
+    let foundDomain: EventDomain | null = domainsStore.getDomainBySlug(slug.value) ?? null
 
     if (!foundDomain) {
       // Fallback: fetch from API if not already in store
@@ -48,7 +48,7 @@ async function fetchCategoryData() {
         }`,
         { slug: slug.value },
       )
-      foundDomain = domainData.domainBySlug ?? null
+      foundDomain = domainData.domainBySlug
     }
 
     domain.value = foundDomain
