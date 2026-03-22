@@ -41,6 +41,9 @@ const eventLat = computed(() => Number(event.value?.latitude ?? 0))
 const eventLng = computed(() => Number(event.value?.longitude ?? 0))
 const validCoords = computed(() => hasValidCoords(eventLat.value, eventLng.value))
 
+// ONLINE-only events must not show misleading physical map UI (acceptance criterion)
+const isOnlineOnly = computed(() => event.value?.attendanceMode === 'ONLINE')
+
 async function handleFavoriteToggle() {
   if (!event.value || !authStore.isAuthenticated) return
   favoriting.value = true
@@ -313,21 +316,26 @@ function domainHostDisplay(event: {
             <!-- Location / Venue -->
             <div class="info-section">
               <h3 class="info-label">
-                <span class="info-icon" aria-hidden="true">📍</span>
-                {{ t('eventDetail.venueAndLocation') }}
+                <span class="info-icon" aria-hidden="true">{{ isOnlineOnly ? '💻' : '📍' }}</span>
+                {{ isOnlineOnly ? t('eventDetail.virtualEvent') : t('eventDetail.venueAndLocation') }}
               </h3>
-              <p class="venue-name">{{ event.venueName || 'TBD' }}</p>
-              <p v-if="event.addressLine1 || event.city" class="text-secondary venue-address">
-                {{ [event.addressLine1, event.city, event.countryCode].filter(Boolean).join(', ') }}
-              </p>
-              <a
-                :href="googleMapsDirectionsUrl(event)"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="directions-link"
-              >
-                🗺️ {{ t('eventDetail.getDirections') }}
-              </a>
+              <template v-if="isOnlineOnly">
+                <p class="text-secondary">{{ t('eventDetail.virtualEventDescription') }}</p>
+              </template>
+              <template v-else>
+                <p class="venue-name">{{ event.venueName || 'TBD' }}</p>
+                <p v-if="event.addressLine1 || event.city" class="text-secondary venue-address">
+                  {{ [event.addressLine1, event.city, event.countryCode].filter(Boolean).join(', ') }}
+                </p>
+                <a
+                  :href="googleMapsDirectionsUrl(event)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="directions-link"
+                >
+                  🗺️ {{ t('eventDetail.getDirections') }}
+                </a>
+              </template>
             </div>
 
             <!-- About -->
@@ -416,9 +424,22 @@ function domainHostDisplay(event: {
           </div>
 
           <div class="event-sidebar">
-            <!-- Interactive map (when coordinates available) -->
+            <!-- Virtual event notice (replaces map for ONLINE-only events) -->
             <div
-              v-if="validCoords"
+              v-if="isOnlineOnly"
+              class="event-map virtual-event-notice"
+              aria-label="Virtual event"
+            >
+              <h3 class="map-heading">{{ t('eventDetail.virtualEvent') }}</h3>
+              <div class="virtual-event-content">
+                <span class="virtual-event-icon" aria-hidden="true">💻</span>
+                <p>{{ t('eventDetail.virtualEventDescription') }}</p>
+              </div>
+            </div>
+
+            <!-- Interactive map (when coordinates available and not online-only) -->
+            <div
+              v-else-if="validCoords"
               class="event-map"
               aria-label="Event location map"
             >
@@ -722,6 +743,29 @@ function domainHostDisplay(event: {
 .location-fallback-content .text-secondary {
   font-size: 0.8125rem !important;
   margin-top: 0.125rem;
+}
+
+/* Virtual event notice */
+.virtual-event-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: var(--color-surface-raised, var(--color-surface));
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.virtual-event-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+}
+
+.virtual-event-content p {
+  font-size: 0.9375rem;
+  color: var(--color-text-secondary);
+  margin: 0;
 }
 
 /* Attendee context */

@@ -181,6 +181,8 @@ export default {
     offlineStale:
       'Ste offline — tieto informácie sú z vašej poslednej návštevy a nemusia odrážať najnovšie zmeny.',
     openInOsm: 'Otvoriť v OpenStreetMap ↗',
+    virtualEvent: 'Virtuálna udalosť',
+    virtualEventDescription: 'Táto udalosť prebieha online. Žiadne fyzické miesto.',
   },
 
   login: {
