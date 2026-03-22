@@ -1774,8 +1774,8 @@ test.describe('Language filter', () => {
     await page.goto('/?lang=en')
 
     await expect(page.locator('.event-card', { hasText: 'English Event' })).toBeVisible()
-    await expect(page.locator('.event-card', { hasText: 'Czech Event' })).not.toBeVisible()
-    await expect(page.locator('.event-card', { hasText: 'No Language Event' })).not.toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Czech Event' })).toBeHidden()
+    await expect(page.locator('.event-card', { hasText: 'No Language Event' })).toBeHidden()
   })
 
   test('language filter chip is restored from URL on reload', async ({ page }) => {
@@ -1796,7 +1796,7 @@ test.describe('Language filter', () => {
     })
     await page.goto('/?lang=en')
 
-    await expect(page.locator('.event-card', { hasText: 'Czech Event' })).not.toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Czech Event' })).toBeHidden()
 
     await page.locator('.filter-chip', { hasText: 'Language: EN' }).click()
 
