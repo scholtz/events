@@ -206,6 +206,7 @@ const emptyStateMessage = computed(() => {
     <section v-else class="hero">
       <div class="hero-video-wrapper" aria-hidden="true">
         <div class="hero-video-overlay">
+          <div class="hero-video-uplayer"></div>
           <video autoplay muted loop playsinline class="hero-video">
             <source src="/videos/background-1.mp4" type="video/mp4" />
           </video>
@@ -631,11 +632,15 @@ const emptyStateMessage = computed(() => {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  z-index: -2;
 }
 
-.hero-video-overlay {
+.hero-video-uplayer {
   position: absolute;
   inset: 0;
-  background-color: rgba(52, 55, 220, 0.312);
+  width: 100%;
+  height: 100%;
+  background-color: rgba(52, 55, 220, 0.2);
+  z-index: -1;
 }
 </style>
