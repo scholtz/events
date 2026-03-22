@@ -189,6 +189,20 @@ test.describe('PWA service worker caching', () => {
     expect(swBody).toContain('indexedDB')
   })
 
+  test('sw.js contains push notification handlers for reminders', async ({ page }) => {
+    setupMockApi(page)
+    await page.goto('/')
+
+    const swResponse = await page.request.get('/sw.js')
+    expect(swResponse.ok()).toBe(true)
+    const swBody = await swResponse.text()
+
+    // Verify structural push support without trying to run a real service worker in Playwright.
+    expect(swBody).toContain('push')
+    expect(swBody).toContain('notificationclick')
+    expect(swBody).toContain('showNotification')
+  })
+
   test('event detail shows cached-data fallback message when network unavailable', async ({
     page,
   }) => {

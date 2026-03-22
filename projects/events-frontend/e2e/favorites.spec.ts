@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import type { Page } from '@playwright/test'
 import {
   setupMockApi,
   makeTechDomain,
@@ -6,6 +7,79 @@ import {
   makeAdminUser,
   loginAs,
 } from './helpers/mock-api'
+
+async function mockPushEnvironment(
+  page: Page,
+  options: {
+    initialPermission?: 'default' | 'granted' | 'denied'
+    requestedPermission?: 'granted' | 'denied'
+    unsupported?: boolean
+  } = {},
+) {
+  await page.addInitScript(
+    ({
+      initialPermission = 'default',
+      requestedPermission = 'granted',
+      unsupported = false,
+    }) => {
+      if (unsupported) {
+        Reflect.deleteProperty(window, 'Notification')
+        Reflect.deleteProperty(window, 'PushManager')
+        return
+      }
+
+      let currentPermission = initialPermission
+      const encoder = new TextEncoder()
+      const fakeSubscription = {
+        endpoint: 'https://push.example.com/browser-subscription',
+        toJSON() {
+          return { endpoint: this.endpoint }
+        },
+        getKey(name: string) {
+          return encoder.encode(`${name}-test-key`).buffer
+        },
+        async unsubscribe() {
+          return true
+        },
+      }
+
+      Object.defineProperty(window, 'PushManager', {
+        configurable: true,
+        value: function PushManager() {},
+      })
+
+      Object.defineProperty(window, 'Notification', {
+        configurable: true,
+        value: {
+          get permission() {
+            return currentPermission
+          },
+          async requestPermission() {
+            currentPermission = requestedPermission
+            return currentPermission
+          },
+        },
+      })
+
+      Object.defineProperty(navigator, 'serviceWorker', {
+        configurable: true,
+        value: {
+          ready: Promise.resolve({
+            pushManager: {
+              async subscribe() {
+                return fakeSubscription
+              },
+              async getSubscription() {
+                return currentPermission === 'granted' ? fakeSubscription : null
+              },
+            },
+          }),
+        },
+      })
+    },
+    options,
+  )
+}
 
 test.describe('Favorites', () => {
   test('signed-out user sees sign-in prompt on favorites page', async ({ page }) => {
@@ -318,5 +392,176 @@ test.describe('Favorites', () => {
     await expect(page.locator('.favorite-item', { hasText: 'Online Summit' }).locator('.badge-mode')).toContainText('Online')
     await expect(page.locator('.favorite-item', { hasText: 'Hybrid Summit' }).locator('.badge-mode')).toContainText('Hybrid')
     await expect(page.locator('.favorite-item', { hasText: 'In-Person Summit' }).locator('.badge-mode')).toContainText('In Person')
+  })
+
+  test('user can enable a reminder for a saved event from favorites', async ({ page }) => {
+    await mockPushEnvironment(page, {
+      initialPermission: 'default',
+      requestedPermission: 'granted',
+    })
+
+    const admin = makeAdminUser()
+    const event = makeApprovedEvent({
+      id: 'event-reminder',
+      name: 'Reminder Summit',
+      slug: 'reminder-summit',
+      startsAtUtc: '2030-10-01T10:00:00Z',
+      endsAtUtc: '2030-10-01T18:00:00Z',
+    })
+    const state = setupMockApi(page, {
+      users: [admin],
+      domains: [makeTechDomain()],
+      events: [event],
+    })
+
+    state.favoriteEvents = [
+      { id: 'fav-reminder', userId: admin.id, eventId: event.id, createdAtUtc: new Date().toISOString() },
+    ]
+    state.currentUserId = admin.id
+    state.currentToken = `token-${admin.id}`
+
+    await loginAs(page, admin)
+    await page.goto('/favorites')
+
+    const reminderCard = page.locator('.favorite-item', { hasText: 'Reminder Summit' })
+    await expect(reminderCard.getByRole('button', { name: 'Remind me' })).toBeVisible()
+
+    await reminderCard.getByRole('button', { name: 'Remind me' }).click()
+
+    await expect(reminderCard.getByRole('button', { name: 'Cancel reminder' })).toBeVisible()
+    await expect(reminderCard).toContainText(
+      "You'll receive a notification 24 hours before this event starts.",
+    )
+    await expect.poll(() => state.pushSubscriptions.length).toBe(1)
+    await expect.poll(() => state.eventReminders.length).toBe(1)
+  })
+
+  test('blocked notification permission shows recovery messaging', async ({ page }) => {
+    await mockPushEnvironment(page, {
+      initialPermission: 'default',
+      requestedPermission: 'denied',
+    })
+
+    const admin = makeAdminUser()
+    const event = makeApprovedEvent({
+      id: 'event-blocked',
+      name: 'Blocked Reminder Summit',
+      slug: 'blocked-reminder-summit',
+      startsAtUtc: '2030-11-01T10:00:00Z',
+      endsAtUtc: '2030-11-01T18:00:00Z',
+    })
+    const state = setupMockApi(page, {
+      users: [admin],
+      domains: [makeTechDomain()],
+      events: [event],
+    })
+
+    state.favoriteEvents = [
+      { id: 'fav-blocked', userId: admin.id, eventId: event.id, createdAtUtc: new Date().toISOString() },
+    ]
+    state.currentUserId = admin.id
+    state.currentToken = `token-${admin.id}`
+
+    await loginAs(page, admin)
+    await page.goto('/favorites')
+
+    const reminderCard = page.locator('.favorite-item', { hasText: 'Blocked Reminder Summit' })
+    await reminderCard.getByRole('button', { name: 'Remind me' }).click()
+
+    await expect(reminderCard).toContainText(
+      'Notifications are blocked in your browser. To enable reminders, open your browser settings and allow notifications for this site.',
+    )
+    await expect(reminderCard.getByRole('button', { name: 'Remind me' })).toBeVisible()
+    await expect.poll(() => state.pushSubscriptions.length).toBe(0)
+    await expect.poll(() => state.eventReminders.length).toBe(0)
+  })
+
+  test('unsupported browser shows reminder unavailable state', async ({ page }) => {
+    await mockPushEnvironment(page, { unsupported: true })
+
+    const admin = makeAdminUser()
+    const event = makeApprovedEvent({
+      id: 'event-unsupported',
+      name: 'Unsupported Reminder Summit',
+      slug: 'unsupported-reminder-summit',
+      startsAtUtc: '2030-12-01T10:00:00Z',
+      endsAtUtc: '2030-12-01T18:00:00Z',
+    })
+    const state = setupMockApi(page, {
+      users: [admin],
+      domains: [makeTechDomain()],
+      events: [event],
+    })
+
+    state.favoriteEvents = [
+      { id: 'fav-unsupported', userId: admin.id, eventId: event.id, createdAtUtc: new Date().toISOString() },
+    ]
+    state.currentUserId = admin.id
+    state.currentToken = `token-${admin.id}`
+
+    await loginAs(page, admin)
+    await page.goto('/favorites')
+
+    await expect(page.locator('.favorite-item', { hasText: 'Unsupported Reminder Summit' })).toContainText(
+      'Push reminders are not supported in this browser. Try using Chrome, Edge, or Firefox on a supported device.',
+    )
+    await expect(page.getByRole('button', { name: 'Remind me' })).toHaveCount(0)
+  })
+
+  test('user can disable an existing reminder from the event detail page', async ({ page }) => {
+    await mockPushEnvironment(page, {
+      initialPermission: 'granted',
+      requestedPermission: 'granted',
+    })
+
+    const admin = makeAdminUser()
+    const event = makeApprovedEvent({
+      id: 'event-detail-reminder',
+      name: 'Detail Reminder Summit',
+      slug: 'detail-reminder-summit',
+      startsAtUtc: '2031-01-01T10:00:00Z',
+      endsAtUtc: '2031-01-01T18:00:00Z',
+    })
+    const state = setupMockApi(page, {
+      users: [admin],
+      domains: [makeTechDomain()],
+      events: [event],
+    })
+
+    state.favoriteEvents = [
+      { id: 'fav-detail-reminder', userId: admin.id, eventId: event.id, createdAtUtc: new Date().toISOString() },
+    ]
+    state.pushSubscriptions = [
+      {
+        id: 'push-existing',
+        userId: admin.id,
+        endpoint: 'https://push.example.com/existing',
+        p256dh: 'existing-key',
+        auth: 'existing-auth',
+        createdAtUtc: new Date().toISOString(),
+        updatedAtUtc: new Date().toISOString(),
+      },
+    ]
+    state.eventReminders = [
+      {
+        id: 'reminder-existing',
+        userId: admin.id,
+        eventId: event.id,
+        offsetHours: 24,
+        scheduledForUtc: '2030-12-31T10:00:00Z',
+        sentAtUtc: null,
+        createdAtUtc: new Date().toISOString(),
+      },
+    ]
+    state.currentUserId = admin.id
+    state.currentToken = `token-${admin.id}`
+
+    await loginAs(page, admin)
+    await page.goto(`/event/${event.slug}`)
+
+    await expect(page.getByRole('button', { name: 'Cancel reminder' })).toBeVisible()
+    await page.getByRole('button', { name: 'Cancel reminder' }).click()
+    await expect(page.getByRole('button', { name: 'Remind me' })).toBeVisible()
+    await expect.poll(() => state.eventReminders.length).toBe(0)
   })
 })
