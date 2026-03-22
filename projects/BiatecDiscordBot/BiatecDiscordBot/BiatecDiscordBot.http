@@ -1,0 +1,6 @@
+@BiatecDiscordBot_HostAddress = http://localhost:5201
+
+GET {{BiatecDiscordBot_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
