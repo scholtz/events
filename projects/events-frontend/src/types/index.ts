@@ -87,6 +87,8 @@ export interface CatalogEvent {
   attendanceMode: AttendanceMode
   /** IANA timezone identifier (e.g. "Europe/Prague"). Null for legacy events; fall back to UTC. */
   timezone: string | null
+  /** BCP 47 language tag for the primary language of the event (e.g. "en", "cs", "de"). Null if unspecified. */
+  language: string | null
 }
 
 /** Matches backend DashboardOverview response */
@@ -146,6 +148,8 @@ export interface EventFilters {
   priceMax: string
   sortBy: EventSortOption
   attendanceMode: AttendanceMode | ''
+  /** BCP 47 language tag, e.g. "en", "cs", "de". Empty string means no language filter. */
+  language: string
 }
 
 export interface SavedSearch {
@@ -161,6 +165,8 @@ export interface SavedSearch {
   priceMax: number | null
   sortBy: EventSortOption
   attendanceMode: AttendanceMode | null
+  /** BCP 47 language tag stored with this saved search preset (e.g. "en", "cs", "de"). */
+  language: string | null
   createdAtUtc: string
   updatedAtUtc: string
 }

@@ -17,7 +17,7 @@ const EVENT_FIELDS = `
   latitude longitude startsAtUtc endsAtUtc
   submittedAtUtc updatedAtUtc publishedAtUtc
   adminNotes status isFree priceAmount currencyCode domainId mapUrl
-  attendanceMode timezone
+  attendanceMode timezone language
   domain { id name slug subdomain }
   submittedBy { displayName }
 `
@@ -42,6 +42,7 @@ export function createDefaultEventFilters(): EventFilters {
     priceMax: '',
     sortBy: DEFAULT_SORT,
     attendanceMode: '',
+    language: '',
   }
 }
 
@@ -58,6 +59,7 @@ export function buildDiscoveryFilterInput(filters: EventFilters): Record<string,
   if (filters.priceMin) filter.priceMin = Number(filters.priceMin)
   if (filters.priceMax) filter.priceMax = Number(filters.priceMax)
   if (filters.attendanceMode) filter.attendanceMode = filters.attendanceMode
+  if (filters.language.trim()) filter.language = filters.language.trim().toLowerCase()
   filter.sortBy = filters.sortBy
 
   return Object.keys(filter).length ? filter : undefined
@@ -76,6 +78,7 @@ export function eventFiltersToQuery(filters: EventFilters): LocationQueryRaw {
   if (filters.priceMax) query.maxPrice = filters.priceMax
   if (filters.sortBy !== DEFAULT_SORT) query.sort = filters.sortBy.toLowerCase()
   if (filters.attendanceMode) query.mode = filters.attendanceMode.toLowerCase().replace('_', '-')
+  if (filters.language.trim()) query.lang = filters.language.trim().toLowerCase()
 
   return query
 }
@@ -105,6 +108,8 @@ export function eventFiltersFromQuery(query: LocationQuery): EventFilters {
     filters.attendanceMode = mode as AttendanceMode
   }
 
+  filters.language = getQueryValue(query.lang).toLowerCase()
+
   return filters
 }
 
@@ -121,6 +126,7 @@ export function savedSearchToFilters(savedSearch: SavedSearch): EventFilters {
     priceMax: savedSearch.priceMax?.toString() ?? '',
     sortBy: savedSearch.sortBy ?? DEFAULT_SORT,
     attendanceMode: savedSearch.attendanceMode ?? '',
+    language: savedSearch.language ?? '',
   }
 }
 
@@ -135,7 +141,8 @@ export function areEventFiltersEqual(left: EventFilters, right: EventFilters): b
     left.priceMin === right.priceMin &&
     left.priceMax === right.priceMax &&
     left.sortBy === right.sortBy &&
-    left.attendanceMode === right.attendanceMode
+    left.attendanceMode === right.attendanceMode &&
+    left.language === right.language
   )
 }
 
@@ -224,6 +231,7 @@ export const useEventsStore = defineStore('events', () => {
     if (filters.value.attendanceMode === 'IN_PERSON') chips.push({ key: 'attendanceMode', label: 'Mode: In Person' })
     if (filters.value.attendanceMode === 'ONLINE') chips.push({ key: 'attendanceMode', label: 'Mode: Online' })
     if (filters.value.attendanceMode === 'HYBRID') chips.push({ key: 'attendanceMode', label: 'Mode: Hybrid' })
+    if (filters.value.language.trim()) chips.push({ key: 'language', label: `Language: ${filters.value.language.trim().toUpperCase()}` })
 
     return chips
   })

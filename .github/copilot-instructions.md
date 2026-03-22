@@ -404,3 +404,32 @@ A PR that only adds tests, or only adds UI without tests, or only adds backend c
 3. Add `languages.<code>` entry to **every** locale file (each language's self-name)
 4. Run `npm run test:unit` — the key-completeness tests will catch any gaps
 5. Run `npx playwright test --project=chromium` — the full E2E suite will catch any regressions
+
+## New filter field quality checklist
+
+When adding a new filter field (e.g. `language`, `country`, `eventType`) to the discovery system, every one of the following files **must** be updated in the same PR. Forgetting any one of them will cause build or test failures:
+
+### Backend checklist
+- [ ] Add the field to the entity class (e.g. `CatalogEvent.cs`, `SavedSearch.cs`)
+- [ ] Add EF Core model config in `AppDbContext.cs` (e.g. `HasMaxLength`)
+- [ ] Add SQLite schema migration in `AppDbInitializer.EnsureSchemaAsync` — both the `CREATE TABLE` DDL **and** the `ALTER TABLE ADD COLUMN` branch for existing databases
+- [ ] Add the field to `EventFilterInput` and `EventSubmissionInput` in `Inputs.cs`
+- [ ] Add the WHERE clause in `Query.GetEventsAsync`
+- [ ] Map the field in `Mutation.SubmitEventAsync`, `UpdateMyEventAsync`, and `SaveSearchAsync`
+- [ ] Add backend integration tests in `GraphQlIntegrationTests.cs`
+
+### Frontend checklist
+- [ ] Add the field to `EventFilters` interface in `src/types/index.ts`
+- [ ] Add the field to `CatalogEvent` and `SavedSearch` interfaces in `src/types/index.ts`
+- [ ] Update `createDefaultEventFilters`, `buildDiscoveryFilterInput`, `eventFiltersToQuery`, `eventFiltersFromQuery`, `savedSearchToFilters`, `areEventFiltersEqual`, `activeFilterChips`, and `clearFilterChip` in `src/stores/events.ts`
+- [ ] Add the UI control in `EventFilters.vue` with accessible `<label>` and `id`
+- [ ] Add i18n keys to ALL locale files (`en.ts`, `sk.ts`, `de.ts`)
+- [ ] Update `MockEvent` type in `e2e/helpers/mock-api.ts` with the new field
+- [ ] Update `MockSavedSearch` type in `e2e/helpers/mock-api.ts`
+- [ ] Update `makeApprovedEvent` in `e2e/helpers/mock-api.ts` to include the new field with a sensible default
+- [ ] Update the `SaveSearch` mock handler in `e2e/helpers/mock-api.ts`
+- [ ] Update `filterEventsForDiscovery` in `e2e/helpers/mock-api.ts` with the new filter logic
+- [ ] Update unit test `fullFilters()` fixture in `src/stores/__tests__/events.test.ts`
+- [ ] Update unit test `makeSavedSearch()` fixture in `src/stores/__tests__/events.test.ts`
+- [ ] Add unit tests for the new field in `areEventFiltersEqual`, `eventFiltersToQuery`, `eventFiltersFromQuery`, `buildDiscoveryFilterInput`, and `savedSearchToFilters`
+- [ ] Add E2E tests in `e2e/discovery.spec.ts` covering: URL direct navigation, chip display, chip removal, URL update on select change

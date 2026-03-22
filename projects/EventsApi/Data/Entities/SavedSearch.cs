@@ -21,6 +21,11 @@ public sealed class SavedSearch
     public decimal? PriceMax { get; set; }
     public EventSortOption SortBy { get; set; } = EventSortOption.Upcoming;
     public AttendanceMode? AttendanceMode { get; set; }
+    /// <summary>
+    /// BCP 47 language tag stored with this saved search preset (e.g. "en", "cs", "de").
+    /// Null means the user did not include a language filter in this preset.
+    /// </summary>
+    public string? Language { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
 }

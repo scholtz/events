@@ -118,6 +118,9 @@ function clearFilterChip(key: string) {
     case 'attendanceMode':
       eventsStore.setFilters({ attendanceMode: '' })
       break
+    case 'language':
+      eventsStore.setFilters({ language: '' })
+      break
   }
 }
 
@@ -303,6 +306,25 @@ function resolveChipLabel(chip: { key: string; label: string }): string {
           <option value="UPCOMING">{{ t('filters.upcoming') }}</option>
           <option value="NEWEST">{{ t('filters.newest') }}</option>
           <option value="RELEVANCE">{{ t('filters.relevance') }}</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="filter-language">{{ t('filters.language') }}</label>
+        <select
+          id="filter-language"
+          class="form-select"
+          :value="eventsStore.filters.language"
+          @change="eventsStore.setFilters({ language: ($event.target as HTMLSelectElement).value })"
+        >
+          <option value="">{{ t('filters.anyLanguage') }}</option>
+          <option value="en">{{ t('filters.langEn') }}</option>
+          <option value="cs">{{ t('filters.langCs') }}</option>
+          <option value="sk">{{ t('filters.langSk') }}</option>
+          <option value="de">{{ t('filters.langDe') }}</option>
+          <option value="fr">{{ t('filters.langFr') }}</option>
+          <option value="es">{{ t('filters.langEs') }}</option>
+          <option value="pl">{{ t('filters.langPl') }}</option>
         </select>
       </div>
     </div>

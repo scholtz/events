@@ -175,6 +175,7 @@ public sealed class AppDbInitializer(
         await EnsureEventColumnAsync("CurrencyCode", cancellationToken);
         await EnsureEventColumnAsync("AttendanceMode", cancellationToken);
         await EnsureEventColumnAsync("Timezone", cancellationToken);
+        await EnsureEventColumnAsync("Language", cancellationToken);
 
         if (!await TableExistsAsync("SavedSearches", cancellationToken))
         {
@@ -197,6 +198,7 @@ public sealed class AppDbInitializer(
                     "PriceMax" TEXT NULL,
                     "SortBy" TEXT NOT NULL,
                     "AttendanceMode" TEXT NULL,
+                    "Language" TEXT NULL,
                     "CreatedAtUtc" TEXT NOT NULL,
                     "UpdatedAtUtc" TEXT NOT NULL,
                     CONSTRAINT "FK_SavedSearches_Users_UserId" FOREIGN KEY ("UserId") REFERENCES "Users" ("Id") ON DELETE CASCADE
@@ -208,6 +210,7 @@ public sealed class AppDbInitializer(
         else
         {
             await EnsureSavedSearchColumnAsync("AttendanceMode", cancellationToken);
+            await EnsureSavedSearchColumnAsync("Language", cancellationToken);
         }
 
         if (!await TableExistsAsync("FavoriteEvents", cancellationToken))
@@ -299,6 +302,7 @@ public sealed class AppDbInitializer(
         var commandText = columnName switch
         {
             "AttendanceMode" => """ALTER TABLE "SavedSearches" ADD COLUMN "AttendanceMode" TEXT NULL;""",
+            "Language" => """ALTER TABLE "SavedSearches" ADD COLUMN "Language" TEXT NULL;""",
             _ => throw new InvalidOperationException($"Unsupported saved-search column '{columnName}'.")
         };
 
@@ -339,6 +343,7 @@ public sealed class AppDbInitializer(
             "CurrencyCode" => """ALTER TABLE "Events" ADD COLUMN "CurrencyCode" TEXT NOT NULL DEFAULT 'EUR';""",
             "AttendanceMode" => """ALTER TABLE "Events" ADD COLUMN "AttendanceMode" TEXT NOT NULL DEFAULT 'InPerson';""",
             "Timezone" => """ALTER TABLE "Events" ADD COLUMN "Timezone" TEXT NULL;""",
+            "Language" => """ALTER TABLE "Events" ADD COLUMN "Language" TEXT NULL;""",
             _ => throw new InvalidOperationException($"Unsupported event column '{columnName}'.")
         };
 

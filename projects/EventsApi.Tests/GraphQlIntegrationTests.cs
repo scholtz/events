@@ -1454,7 +1454,8 @@ public sealed class GraphQlIntegrationTests
         DateTime? submittedAtUtc = null,
         EventStatus status = EventStatus.Published,
         AttendanceMode attendanceMode = AttendanceMode.InPerson,
-        string? timezone = null)
+        string? timezone = null,
+        string? language = null)
         => new()
         {
             Name = name,
@@ -1480,7 +1481,8 @@ public sealed class GraphQlIntegrationTests
             Latitude = 50.0755m,
             Longitude = 14.4378m,
             AttendanceMode = attendanceMode,
-            Timezone = timezone
+            Timezone = timezone,
+            Language = language
         };
 
     [Fact]
@@ -4142,5 +4144,134 @@ public sealed class GraphQlIntegrationTests
 
         var domain = document.RootElement.GetProperty("data").GetProperty("domainBySlug");
         Assert.Equal("Public Domain", domain.GetProperty("name").GetString());
+    }
+
+    // ── Language filter tests ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task LanguageFilter_ReturnsOnlyMatchingLanguage()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("lang-filter@example.com", "Lang Filter");
+            var domain = CreateDomain("Tech", "tech-lang");
+            var future = DateTime.UtcNow.AddDays(10);
+
+            dbContext.Domains.Add(domain);
+            dbContext.Users.Add(user);
+            dbContext.Events.AddRange(
+                CreateEvent("English Event", "english-event", "In English.", "Venue A", "Prague", future, domain, user, language: "en"),
+                CreateEvent("Czech Event", "czech-event", "V cestine.", "Venue B", "Brno", future.AddHours(2), domain, user, language: "cs"),
+                CreateEvent("No Language Event", "no-language-event", "No lang specified.", "Venue C", "Vienna", future.AddHours(4), domain, user, language: null));
+        });
+
+        using var client = factory.CreateClient();
+
+        var enResults = await QueryEventNamesAsync(client, new { language = "en", sortBy = "UPCOMING" });
+        Assert.Contains("English Event", enResults);
+        Assert.DoesNotContain("Czech Event", enResults);
+        Assert.DoesNotContain("No Language Event", enResults);
+
+        var csResults = await QueryEventNamesAsync(client, new { language = "cs", sortBy = "UPCOMING" });
+        Assert.Contains("Czech Event", csResults);
+        Assert.DoesNotContain("English Event", csResults);
+    }
+
+    [Fact]
+    public async Task LanguageFilter_NoFilterReturnsAllEvents()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("lang-all@example.com", "Lang All");
+            var domain = CreateDomain("Tech", "tech-all");
+            var future = DateTime.UtcNow.AddDays(10);
+
+            dbContext.Domains.Add(domain);
+            dbContext.Users.Add(user);
+            dbContext.Events.AddRange(
+                CreateEvent("Event A", "event-a-all", "Desc.", "Venue", "Prague", future, domain, user, language: "en"),
+                CreateEvent("Event B", "event-b-all", "Desc.", "Venue", "Prague", future.AddHours(1), domain, user, language: "de"),
+                CreateEvent("Event C", "event-c-all", "Desc.", "Venue", "Prague", future.AddHours(2), domain, user, language: null));
+        });
+
+        using var client = factory.CreateClient();
+        var results = await QueryEventNamesAsync(client, new { sortBy = "UPCOMING" });
+
+        Assert.Contains("Event A", results);
+        Assert.Contains("Event B", results);
+        Assert.Contains("Event C", results);
+    }
+
+    [Fact]
+    public async Task LanguageFilter_IsCaseInsensitive()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("lang-case@example.com", "Lang Case");
+            var domain = CreateDomain("Tech", "tech-case");
+            var future = DateTime.UtcNow.AddDays(10);
+
+            dbContext.Domains.Add(domain);
+            dbContext.Users.Add(user);
+            dbContext.Events.Add(
+                CreateEvent("German Event", "german-event-ci", "Auf Deutsch.", "Venue", "Berlin", future, domain, user, language: "de"));
+        });
+
+        using var client = factory.CreateClient();
+
+        // Query with uppercase — should still match
+        var results = await QueryEventNamesAsync(client, new { language = "DE", sortBy = "UPCOMING" });
+        Assert.Contains("German Event", results);
+    }
+
+    [Fact]
+    public async Task LanguageFilter_ReturnsEmptyWhenNoMatchingLanguage()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("lang-none@example.com", "Lang None");
+            var domain = CreateDomain("Tech", "tech-none");
+            var future = DateTime.UtcNow.AddDays(10);
+
+            dbContext.Domains.Add(domain);
+            dbContext.Users.Add(user);
+            dbContext.Events.Add(
+                CreateEvent("French Event", "french-event-ni", "En français.", "Venue", "Paris", future, domain, user, language: "fr"));
+        });
+
+        using var client = factory.CreateClient();
+
+        // Query for a language with no events
+        var results = await QueryEventNamesAsync(client, new { language = "ja", sortBy = "UPCOMING" });
+        Assert.Empty(results);
+    }
+
+    [Fact]
+    public async Task LanguageFilter_EventsWithNullLanguageExcludedFromSpecificLanguageQuery()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("lang-null@example.com", "Lang Null");
+            var domain = CreateDomain("Tech", "tech-null");
+            var future = DateTime.UtcNow.AddDays(10);
+
+            dbContext.Domains.Add(domain);
+            dbContext.Users.Add(user);
+            dbContext.Events.AddRange(
+                CreateEvent("Specified Lang", "specified-lang", "Has lang.", "Venue", "Prague", future, domain, user, language: "en"),
+                CreateEvent("No Lang Specified", "no-lang-specified", "No lang.", "Venue", "Prague", future.AddHours(1), domain, user, language: null));
+        });
+
+        using var client = factory.CreateClient();
+
+        var results = await QueryEventNamesAsync(client, new { language = "en", sortBy = "UPCOMING" });
+        Assert.Contains("Specified Lang", results);
+        // Null-language event must NOT appear in a language-specific filter result
+        Assert.DoesNotContain("No Lang Specified", results);
     }
 }

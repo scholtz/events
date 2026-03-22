@@ -105,6 +105,12 @@ public sealed class Query
             query = query.Where(catalogEvent => catalogEvent.AttendanceMode == filter.AttendanceMode.Value);
         }
 
+        if (!string.IsNullOrWhiteSpace(filter?.Language))
+        {
+            var language = filter.Language.Trim().ToLowerInvariant();
+            query = query.Where(catalogEvent => catalogEvent.Language != null && catalogEvent.Language.ToLower() == language);
+        }
+
         return await ApplySorting(query, filter?.SortBy, normalizedSearchText).ToListAsync(cancellationToken);
     }
 
