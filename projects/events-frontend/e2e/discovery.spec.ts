@@ -1811,7 +1811,7 @@ test.describe('Language filter', () => {
     await page.goto('/')
 
     await page.getByRole('button', { name: /more filters/i }).click()
-    await page.getByLabel('Language').selectOption('de')
+    await page.locator('#filter-language').selectOption('de')
 
     await expect(page).toHaveURL(/lang=de/)
   })
