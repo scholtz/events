@@ -8,6 +8,14 @@ import {
   loginAs,
 } from './helpers/mock-api'
 
+/**
+ * Installs a deterministic browser-like push environment for reminder E2E tests.
+ *
+ * This mocks Notification permission state, PushManager subscription methods,
+ * and navigator.serviceWorker.ready so the UI can exercise the real reminder
+ * toggle logic without depending on an actual service worker or browser push
+ * infrastructure inside Playwright.
+ */
 async function mockPushEnvironment(
   page: Page,
   options: {
