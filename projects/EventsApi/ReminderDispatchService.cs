@@ -17,7 +17,8 @@ namespace EventsApi;
 ///  - Dispatches reminders where ScheduledForUtc is within the next 15 minutes (or in the past but not yet sent).
 ///  - Only dispatches reminders for events that are still PUBLISHED and have a future start time.
 ///  - After successful dispatch the SentAtUtc timestamp is set to prevent duplicate sends.
-///  - If the user's push subscription returns 404/410 the stale subscription is removed.
+///  - If the user's push subscription is confirmed stale (404/410), it is removed.
+///  - Retryable or misconfigured delivery failures leave reminders pending for a future retry.
 /// </summary>
 public sealed class ReminderDispatchService(
     IServiceScopeFactory scopeFactory,
@@ -39,7 +40,7 @@ public sealed class ReminderDispatchService(
 
             try
             {
-                await DispatchDueRemindersAsync(stoppingToken).ConfigureAwait(false);
+                await DispatchDueRemindersOnceAsync(stoppingToken).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -50,7 +51,7 @@ public sealed class ReminderDispatchService(
         _logger.LogInformation("ReminderDispatchService stopped");
     }
 
-    private async Task DispatchDueRemindersAsync(CancellationToken cancellationToken)
+    internal async Task DispatchDueRemindersOnceAsync(CancellationToken cancellationToken)
     {
         await using var scope = _scopeFactory.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -105,24 +106,34 @@ public sealed class ReminderDispatchService(
 
             var eventUrl = $"/event/{reminder.Event.Slug}";
 
-            var dispatched = await pushService.SendAsync(
+            var deliveryResult = await pushService.SendAsync(
                 subscription,
                 $"Reminder: {reminder.Event.Name}",
                 body,
                 eventUrl,
                 cancellationToken);
 
-            if (dispatched)
+            if (deliveryResult.Status == PushDeliveryStatus.Success)
             {
                 reminder.SentAtUtc = now;
                 _logger.LogDebug("Reminder dispatched for event '{Event}' to user {UserId}", reminder.Event.Name, reminder.UserId);
             }
-            else
+            else if (deliveryResult.Status == PushDeliveryStatus.StaleSubscription)
             {
-                // Check if subscription is stale (404/410) — push service returns false for those
-                // We mark reminder as sent to prevent repeated failed attempts this cycle
                 reminder.SentAtUtc = now;
                 staleSubscriptionUserIds.Add(reminder.UserId);
+                _logger.LogInformation(
+                    "Push subscription for user {UserId} is stale; reminder {ReminderId} marked complete and subscription will be removed",
+                    reminder.UserId,
+                    reminder.Id);
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "Reminder {ReminderId} for user {UserId} was not delivered due to {DeliveryStatus}; it will remain pending",
+                    reminder.Id,
+                    reminder.UserId,
+                    deliveryResult.Status);
             }
         }
 

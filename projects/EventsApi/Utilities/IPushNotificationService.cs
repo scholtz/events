@@ -4,8 +4,7 @@ namespace EventsApi.Utilities;
 
 /// <summary>
 /// Abstraction over Web Push notification dispatch.
-/// The default implementation uses System.Net.Http with VAPID authentication when keys are configured.
-/// When VAPID keys are absent (development or test) dispatch is skipped silently.
+/// The default implementation uses standards-compliant Web Push delivery with VAPID authentication.
 /// </summary>
 public interface IPushNotificationService
 {
@@ -17,8 +16,11 @@ public interface IPushNotificationService
     /// <param name="body">The notification body text.</param>
     /// <param name="url">The URL to open when the notification is clicked.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>True if the notification was dispatched successfully; false if the subscription is invalid/expired.</returns>
-    Task<bool> SendAsync(
+    /// <returns>
+    /// A delivery result describing whether the notification was delivered,
+    /// the subscription is stale, the failure is retryable, or push delivery is misconfigured.
+    /// </returns>
+    Task<PushDeliveryResult> SendAsync(
         PushSubscription subscription,
         string title,
         string body,

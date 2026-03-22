@@ -99,6 +99,9 @@ builder.Services.AddScoped<JwtTokenService>();
 builder.Services.AddScoped<IPasswordHasher<ApplicationUser>, PasswordHasher<ApplicationUser>>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddHttpClient("push");
+builder.Services.AddScoped<WebPush.IWebPushClient>(serviceProvider =>
+    new WebPush.WebPushClient(
+        serviceProvider.GetRequiredService<IHttpClientFactory>().CreateClient("push")));
 builder.Services.AddScoped<IPushNotificationService, VapidPushNotificationService>();
 builder.Services.AddHostedService<ReminderDispatchService>();
 
