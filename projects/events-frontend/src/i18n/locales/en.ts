@@ -188,6 +188,8 @@ export default {
     offlineStale:
       "You're offline — this event information is from your last online visit and may not reflect the latest changes.",
     openInOsm: 'Open in OpenStreetMap ↗',
+    virtualEvent: 'Virtual Event',
+    virtualEventDescription: 'This event takes place online. No physical venue.',
   },
 
   // ── Login ──────────────────────────────────────────────────────────────────
