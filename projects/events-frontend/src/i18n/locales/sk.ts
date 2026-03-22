@@ -274,6 +274,8 @@ export default {
     past: 'Minulé',
     remove: '★ Odstrániť',
     removeLabel: 'Odstrániť z obľúbených',
+    cachedNotice: 'Zobrazujú sa uložené udalosti z vašej poslednej online návštevy. Obnovte po pripojení.',
+    offlineError: 'Ste offline — vaše uložené udalosti sa zobrazia po opätovnom pripojení.',
   },
 
   dashboard: {

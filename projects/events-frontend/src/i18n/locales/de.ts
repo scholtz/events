@@ -274,6 +274,8 @@ export default {
     past: 'Vergangen',
     remove: '★ Entfernen',
     removeLabel: 'Aus Favoriten entfernen',
+    cachedNotice: 'Gespeicherte Veranstaltungen aus Ihrem letzten Online-Besuch werden angezeigt. Aktualisieren Sie, wenn Sie wieder online sind.',
+    offlineError: 'Sie sind offline — Ihre gespeicherten Veranstaltungen werden angezeigt, sobald Sie sich wieder verbinden.',
   },
 
   dashboard: {

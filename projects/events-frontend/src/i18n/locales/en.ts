@@ -282,6 +282,8 @@ export default {
     past: 'Past',
     remove: '★ Remove',
     removeLabel: 'Remove from favorites',
+    cachedNotice: 'Showing saved events from your last online visit. Refresh when back online.',
+    offlineError: "You're offline — your saved events will reappear once you reconnect.",
   },
 
   // ── Dashboard ──────────────────────────────────────────────────────────────
