@@ -45,6 +45,7 @@ For each repo:
 
 When creating a new issue, use the `gh issue create` command with a highly descriptive body in proper Markdown format, at least 500 words long. The body must include the following sections:
 
+```
 ## Summary
 
 [Brief but clear summary of the issue]
@@ -55,7 +56,7 @@ When creating a new issue, use the `gh issue create` command with a highly descr
 
 ## Product overview
 
-[Link to business-owner-roadmap.md file]
+[Link to ROADMAP.md file]
 
 ## Scope
 
@@ -72,6 +73,9 @@ When creating a new issue, use the `gh issue create` command with a highly descr
 ## Testing
 
 [Detailed testing requirements, including unit tests, integration tests, E2E tests, and any manual testing needed]
+```
+
+#### Create github issue
 
 Ensure the issue description provides comprehensive context, user stories, technical specifications, mockups if applicable, and clear rationale. The description must be at least 1000 words to ensure sufficient detail for implementation.
 
@@ -81,6 +85,8 @@ Example command:
 # write to /tmp/issue.md the content of the issue in the md format
 gh issue create --title $title --body-file /tmp/issue.md --assignee copilot-swe-agent
 ```
+
+#### List github issues
 
 To check if there is more than one active issue, use commands and output it to the console:
 
