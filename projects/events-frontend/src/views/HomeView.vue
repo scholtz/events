@@ -205,10 +205,11 @@ const emptyStateMessage = computed(() => {
     </section>
     <section v-else class="hero">
       <div class="hero-video-wrapper" aria-hidden="true">
-        <div class="hero-video-overlay"></div>
-        <video autoplay muted loop playsinline class="hero-video">
-          <source src="/videos/background-1.mp4" type="video/mp4" />
-        </video>
+        <div class="hero-video-overlay">
+          <video autoplay muted loop playsinline class="hero-video">
+            <source src="/videos/background-1.mp4" type="video/mp4" />
+          </video>
+        </div>
       </div>
       <div class="container hero-content">
         <div class="hero-text">
