@@ -13,6 +13,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<CalendarAnalyticsAction> CalendarAnalyticsActions => Set<CalendarAnalyticsAction>();
     public DbSet<DiscoveryAnalyticsAction> DiscoveryAnalyticsActions => Set<DiscoveryAnalyticsAction>();
     public DbSet<DomainAdministrator> DomainAdministrators => Set<DomainAdministrator>();
+    public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
+    public DbSet<EventReminder> EventReminders => Set<EventReminder>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -147,6 +149,39 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
             entity.HasIndex(action => action.ActionType);
             entity.HasIndex(action => action.TriggeredAtUtc);
+        });
+
+        modelBuilder.Entity<PushSubscription>(entity =>
+        {
+            entity.Property(ps => ps.Endpoint).HasMaxLength(2000);
+            entity.Property(ps => ps.P256dh).HasMaxLength(256);
+            entity.Property(ps => ps.Auth).HasMaxLength(128);
+
+            // One subscription per user (replace on re-subscribe from same browser)
+            entity.HasIndex(ps => ps.UserId).IsUnique();
+
+            entity.HasOne(ps => ps.User)
+                .WithMany(user => user.PushSubscriptions)
+                .HasForeignKey(ps => ps.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<EventReminder>(entity =>
+        {
+            // Unique reminder per user/event/offset combination to prevent duplicate schedules
+            entity.HasIndex(er => new { er.UserId, er.EventId, er.OffsetHours }).IsUnique();
+
+            entity.HasIndex(er => er.ScheduledForUtc);
+
+            entity.HasOne(er => er.User)
+                .WithMany(user => user.EventReminders)
+                .HasForeignKey(er => er.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(er => er.Event)
+                .WithMany()
+                .HasForeignKey(er => er.EventId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

@@ -68,6 +68,68 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
 })
 
 // ---------------------------------------------------------------------------
+// Push notifications: show a notification when a push event is received.
+// The payload is expected to be a JSON object with title, body, and url fields.
+// ---------------------------------------------------------------------------
+self.addEventListener('push', (event: PushEvent) => {
+  let title = 'Events Platform'
+  let body = 'You have a new notification.'
+  let url = '/'
+  let icon = '/pwa-192x192.png'
+
+  if (event.data) {
+    try {
+      const data = event.data.json()
+      title = data.title ?? title
+      body = data.body ?? body
+      url = data.url ?? url
+      icon = data.icon ?? icon
+    } catch {
+      // Malformed payload — use defaults
+    }
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      icon,
+      data: { url },
+      badge: '/pwa-192x192.png',
+      tag: url, // Deduplicate notifications for the same event
+    }),
+  )
+})
+
+// ---------------------------------------------------------------------------
+// Notification click: open (or focus) the relevant event page in the app.
+// ---------------------------------------------------------------------------
+self.addEventListener('notificationclick', (event: NotificationEvent) => {
+  event.notification.close()
+
+  const targetUrl: string = event.notification.data?.url ?? '/'
+
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: 'window', includeUncontrolled: true })
+      .then((clientList) => {
+        // Try to focus an already-open window at the target URL
+        for (const client of clientList) {
+          if (client.url.endsWith(targetUrl) && 'focus' in client) {
+            return client.focus()
+          }
+        }
+        // Otherwise open a new window
+        for (const client of clientList) {
+          if ('navigate' in client) {
+            return (client as WindowClient).navigate(targetUrl).then((c) => c?.focus())
+          }
+        }
+        return self.clients.openWindow(targetUrl)
+      }),
+  )
+})
+
+// ---------------------------------------------------------------------------
 // Google Fonts stylesheets – StaleWhileRevalidate
 // ---------------------------------------------------------------------------
 registerRoute(

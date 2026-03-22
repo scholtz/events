@@ -146,3 +146,34 @@ public sealed class TrackDiscoveryActionInput
     /// <summary>Number of results visible at the time of the interaction. Null for RESULT_CLICK.</summary>
     public int? ResultCount { get; init; }
 }
+
+/// <summary>
+/// Input for registering (or replacing) a browser Web Push subscription for the authenticated user.
+/// Call this after the browser's PushManager.subscribe() resolves.
+/// </summary>
+public sealed class RegisterPushSubscriptionInput
+{
+    /// <summary>The push endpoint URL from PushSubscription.endpoint.</summary>
+    public required string Endpoint { get; init; }
+
+    /// <summary>Base64url-encoded ECDH P-256 key from PushSubscription.getKey("p256dh").</summary>
+    public required string P256dh { get; init; }
+
+    /// <summary>Base64url-encoded authentication secret from PushSubscription.getKey("auth").</summary>
+    public required string Auth { get; init; }
+}
+
+/// <summary>
+/// Input for enabling (or updating) a push reminder for a saved event.
+/// </summary>
+public sealed class EnableEventReminderInput
+{
+    public Guid EventId { get; init; }
+
+    /// <summary>
+    /// How many hours before the event start time the reminder should fire.
+    /// Supported values: 24 (one day before), 1 (one hour before).
+    /// Defaults to 24 if not specified.
+    /// </summary>
+    public int OffsetHours { get; init; } = 24;
+}

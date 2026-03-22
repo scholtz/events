@@ -3,13 +3,16 @@ import { onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useFavoritesStore } from '@/stores/favorites'
 import { useAuthStore } from '@/stores/auth'
+import { useRemindersStore } from '@/stores/reminders'
 import { formatEventPrice } from '@/stores/events'
 import { usePwa } from '@/composables/usePwa'
 import type { AttendanceMode, CatalogEvent } from '@/types'
+import ReminderToggle from '@/components/events/ReminderToggle.vue'
 
 const { t, locale } = useI18n()
 const favoritesStore = useFavoritesStore()
 const authStore = useAuthStore()
+const remindersStore = useRemindersStore()
 const { isOffline } = usePwa()
 
 const upcomingFavorites = computed(() => {
@@ -25,6 +28,7 @@ const pastFavorites = computed(() => {
 onMounted(async () => {
   if (authStore.isAuthenticated) {
     await favoritesStore.fetchFavoriteEvents()
+    await remindersStore.fetchReminders()
   }
 })
 
@@ -151,6 +155,11 @@ function attendanceModeLabel(mode: AttendanceMode): string {
                 >
                   {{ t('favorites.remove') }}
                 </button>
+                <ReminderToggle
+                  :event-id="event.id"
+                  :starts-at-utc="event.startsAtUtc"
+                  :is-saved="true"
+                />
               </div>
             </div>
           </article>

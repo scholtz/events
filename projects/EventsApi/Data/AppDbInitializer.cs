@@ -290,6 +290,48 @@ public sealed class AppDbInitializer(
                 """,
                 cancellationToken);
         }
+
+        // ── PushSubscriptions table ───────────────────────────────────────────
+        if (!await TableExistsAsync("PushSubscriptions", cancellationToken))
+        {
+            await _dbContext.Database.ExecuteSqlRawAsync(
+                """
+                CREATE TABLE "PushSubscriptions" (
+                    "Id" TEXT NOT NULL CONSTRAINT "PK_PushSubscriptions" PRIMARY KEY,
+                    "UserId" TEXT NOT NULL,
+                    "Endpoint" TEXT NOT NULL,
+                    "P256dh" TEXT NOT NULL,
+                    "Auth" TEXT NOT NULL,
+                    "CreatedAtUtc" TEXT NOT NULL,
+                    "UpdatedAtUtc" TEXT NOT NULL,
+                    CONSTRAINT "FK_PushSubscriptions_Users_UserId" FOREIGN KEY ("UserId") REFERENCES "Users" ("Id") ON DELETE CASCADE
+                );
+                CREATE UNIQUE INDEX "IX_PushSubscriptions_UserId" ON "PushSubscriptions" ("UserId");
+                """,
+                cancellationToken);
+        }
+
+        // ── EventReminders table ──────────────────────────────────────────────
+        if (!await TableExistsAsync("EventReminders", cancellationToken))
+        {
+            await _dbContext.Database.ExecuteSqlRawAsync(
+                """
+                CREATE TABLE "EventReminders" (
+                    "Id" TEXT NOT NULL CONSTRAINT "PK_EventReminders" PRIMARY KEY,
+                    "UserId" TEXT NOT NULL,
+                    "EventId" TEXT NOT NULL,
+                    "OffsetHours" INTEGER NOT NULL DEFAULT 24,
+                    "ScheduledForUtc" TEXT NOT NULL,
+                    "SentAtUtc" TEXT NULL,
+                    "CreatedAtUtc" TEXT NOT NULL,
+                    CONSTRAINT "FK_EventReminders_Users_UserId" FOREIGN KEY ("UserId") REFERENCES "Users" ("Id") ON DELETE CASCADE,
+                    CONSTRAINT "FK_EventReminders_Events_EventId" FOREIGN KEY ("EventId") REFERENCES "Events" ("Id") ON DELETE CASCADE
+                );
+                CREATE UNIQUE INDEX "IX_EventReminders_UserId_EventId_OffsetHours" ON "EventReminders" ("UserId", "EventId", "OffsetHours");
+                CREATE INDEX "IX_EventReminders_ScheduledForUtc" ON "EventReminders" ("ScheduledForUtc");
+                """,
+                cancellationToken);
+        }
     }
 
     private async Task EnsureSavedSearchColumnAsync(string columnName, CancellationToken cancellationToken)

@@ -6,16 +6,19 @@ import { formatEventPrice } from '@/stores/events'
 import { useEventsStore } from '@/stores/events'
 import { useFavoritesStore } from '@/stores/favorites'
 import { useAuthStore } from '@/stores/auth'
+import { useRemindersStore } from '@/stores/reminders'
 import { buildGoogleCalendarUrl, buildOutlookCalendarUrl, downloadIcs, eventToCalendarInput } from '@/composables/useCalendar'
 import { useCalendarAnalytics } from '@/composables/useCalendarAnalytics'
 import { buildSubdomainUrl, formatSubdomainHost } from '@/composables/useSubdomain'
 import { usePwa } from '@/composables/usePwa'
+import ReminderToggle from '@/components/events/ReminderToggle.vue'
 
 const { t, locale } = useI18n()
 const route = useRoute()
 const eventsStore = useEventsStore()
 const favoritesStore = useFavoritesStore()
 const authStore = useAuthStore()
+const remindersStore = useRemindersStore()
 const { isOffline } = usePwa()
 
 const slug = computed(() => route.params.id as string)
@@ -30,7 +33,12 @@ async function loadDetail() {
   await eventsStore.fetchEventBySlug(slug.value)
 }
 
-onMounted(loadDetail)
+onMounted(async () => {
+  await loadDetail()
+  if (authStore.isAuthenticated) {
+    await remindersStore.fetchReminders()
+  }
+})
 watch(slug, loadDetail)
 
 const isFavorited = computed(() => event.value ? favoritesStore.isFavorited(event.value.id) : false)
@@ -500,9 +508,16 @@ function domainHostDisplay(event: {
               <p v-else-if="!isFavorited" class="attendee-cta">
                 {{ t('eventDetail.saveToShowInterest') }}
               </p>
-              <p v-else class="attendee-cta attendee-cta--saved">
-                ✓ {{ t('eventDetail.youveSavedThisEvent') }}
-              </p>
+              <div v-else class="attendee-cta-saved">
+                <p class="attendee-cta attendee-cta--saved">
+                  ✓ {{ t('eventDetail.youveSavedThisEvent') }}
+                </p>
+                <ReminderToggle
+                  :event-id="event.id"
+                  :starts-at-utc="event.startsAtUtc"
+                  :is-saved="isFavorited"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -825,6 +840,12 @@ function domainHostDisplay(event: {
 .attendee-cta--saved {
   color: var(--color-success, #22c55e);
   font-weight: 500;
+}
+
+.attendee-cta-saved {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .link-subtle {

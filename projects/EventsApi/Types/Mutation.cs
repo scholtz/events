@@ -692,4 +692,178 @@ public sealed class Mutation
 
         return slug;
     }
+
+    // ── Push notification subscription mutations ──────────────────────────────
+
+    /// <summary>
+    /// Register or replace the authenticated user's browser push subscription.
+    /// Called after the browser's PushManager.subscribe() resolves with a new PushSubscription.
+    /// Only one subscription per user is stored; re-calling overwrites the previous one.
+    /// </summary>
+    [Authorize]
+    public async Task<PushSubscriptionStatus> RegisterPushSubscriptionAsync(
+        RegisterPushSubscriptionInput input,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(input.Endpoint))
+            throw CreateError("Endpoint is required.", "INVALID_SUBSCRIPTION");
+        if (string.IsNullOrWhiteSpace(input.P256dh))
+            throw CreateError("P256dh key is required.", "INVALID_SUBSCRIPTION");
+        if (string.IsNullOrWhiteSpace(input.Auth))
+            throw CreateError("Auth key is required.", "INVALID_SUBSCRIPTION");
+
+        var currentUserId = claimsPrincipal.GetRequiredUserId();
+
+        var existing = await dbContext.PushSubscriptions
+            .SingleOrDefaultAsync(ps => ps.UserId == currentUserId, cancellationToken);
+
+        if (existing is not null)
+        {
+            existing.Endpoint = input.Endpoint.Trim();
+            existing.P256dh = input.P256dh.Trim();
+            existing.Auth = input.Auth.Trim();
+            existing.UpdatedAtUtc = DateTime.UtcNow;
+        }
+        else
+        {
+            existing = new PushSubscription
+            {
+                UserId = currentUserId,
+                Endpoint = input.Endpoint.Trim(),
+                P256dh = input.P256dh.Trim(),
+                Auth = input.Auth.Trim()
+            };
+            dbContext.PushSubscriptions.Add(existing);
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return new PushSubscriptionStatus(true, existing.Endpoint, existing.CreatedAtUtc);
+    }
+
+    /// <summary>
+    /// Remove the authenticated user's push subscription and all their pending reminders.
+    /// </summary>
+    [Authorize]
+    public async Task<bool> RemovePushSubscriptionAsync(
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var currentUserId = claimsPrincipal.GetRequiredUserId();
+
+        var subscription = await dbContext.PushSubscriptions
+            .SingleOrDefaultAsync(ps => ps.UserId == currentUserId, cancellationToken);
+
+        if (subscription is null) return false;
+
+        dbContext.PushSubscriptions.Remove(subscription);
+
+        // Remove all pending (unsent) reminders for this user too
+        var pendingReminders = await dbContext.EventReminders
+            .Where(r => r.UserId == currentUserId && r.SentAtUtc == null)
+            .ToListAsync(cancellationToken);
+        dbContext.EventReminders.RemoveRange(pendingReminders);
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    // ── Event reminder mutations ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Enable a push reminder for a saved event.
+    /// Requires the user to have a registered push subscription.
+    /// Returns the created/updated reminder item.
+    /// </summary>
+    [Authorize]
+    public async Task<EventReminderItem> EnableEventReminderAsync(
+        EnableEventReminderInput input,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        if (input.OffsetHours <= 0)
+            throw CreateError("OffsetHours must be a positive integer.", "INVALID_OFFSET");
+
+        var currentUserId = claimsPrincipal.GetRequiredUserId();
+
+        // User must have an active push subscription
+        var hasSubscription = await dbContext.PushSubscriptions
+            .AnyAsync(ps => ps.UserId == currentUserId, cancellationToken);
+        if (!hasSubscription)
+            throw CreateError("You must enable push notifications before setting reminders.", "NO_PUSH_SUBSCRIPTION");
+
+        // Validate the event exists, is published, and is in the future
+        var catalogEvent = await dbContext.Events
+            .SingleOrDefaultAsync(e => e.Id == input.EventId && e.Status == EventStatus.Published, cancellationToken)
+            ?? throw CreateError("Event not found or not yet published.", "EVENT_NOT_FOUND");
+
+        if (catalogEvent.StartsAtUtc <= DateTime.UtcNow)
+            throw CreateError("Cannot set a reminder for an event that has already started.", "EVENT_IN_PAST");
+
+        var scheduledFor = catalogEvent.StartsAtUtc.AddHours(-input.OffsetHours);
+        if (scheduledFor <= DateTime.UtcNow)
+            throw CreateError(
+                $"The event starts in less than {input.OffsetHours} hour(s). Choose a shorter reminder offset.",
+                "REMINDER_TOO_LATE");
+
+        // Upsert: update if a reminder for this offset already exists
+        var existing = await dbContext.EventReminders
+            .SingleOrDefaultAsync(
+                r => r.UserId == currentUserId && r.EventId == input.EventId && r.OffsetHours == input.OffsetHours,
+                cancellationToken);
+
+        if (existing is not null)
+        {
+            existing.ScheduledForUtc = scheduledFor;
+            existing.SentAtUtc = null; // re-arm if re-enabling
+        }
+        else
+        {
+            existing = new EventReminder
+            {
+                UserId = currentUserId,
+                EventId = input.EventId,
+                OffsetHours = input.OffsetHours,
+                ScheduledForUtc = scheduledFor
+            };
+            dbContext.EventReminders.Add(existing);
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return new EventReminderItem(
+            existing.Id,
+            existing.EventId,
+            existing.OffsetHours,
+            existing.ScheduledForUtc,
+            existing.SentAtUtc,
+            existing.CreatedAtUtc);
+    }
+
+    /// <summary>
+    /// Disable all push reminders for a specific saved event.
+    /// </summary>
+    [Authorize]
+    public async Task<bool> DisableEventReminderAsync(
+        Guid eventId,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var currentUserId = claimsPrincipal.GetRequiredUserId();
+
+        var reminders = await dbContext.EventReminders
+            .Where(r => r.UserId == currentUserId && r.EventId == eventId)
+            .ToListAsync(cancellationToken);
+
+        if (reminders.Count == 0) return false;
+
+        dbContext.EventReminders.RemoveRange(reminders);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
 }
