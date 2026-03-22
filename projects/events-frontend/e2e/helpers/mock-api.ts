@@ -77,6 +77,7 @@ export type MockEvent = {
   interestedCount: number
   attendanceMode: 'IN_PERSON' | 'ONLINE' | 'HYBRID'
   timezone: string | null
+  language: string | null
 }
 
 export type MockSavedSearch = {
@@ -92,6 +93,7 @@ export type MockSavedSearch = {
   priceMax: number | null
   sortBy: 'UPCOMING' | 'NEWEST' | 'RELEVANCE'
   attendanceMode: 'IN_PERSON' | 'ONLINE' | 'HYBRID' | null
+  language: string | null
   createdAtUtc: string
   updatedAtUtc: string
   userId: string
@@ -284,6 +286,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         interestedCount: 0,
         attendanceMode: (input.attendanceMode as MockEvent['attendanceMode']) || 'IN_PERSON',
         timezone: input.timezone ?? null,
+        language: (input.language as string | null) ?? null,
       }
       state.events.unshift(newEvent)
       await route.fulfill({
@@ -347,6 +350,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         priceMax: filter.priceMax ?? null,
         sortBy: filter.sortBy ?? 'UPCOMING',
         attendanceMode: filter.attendanceMode ?? null,
+        language: filter.language ?? null,
         createdAtUtc: new Date().toISOString(),
         updatedAtUtc: new Date().toISOString(),
       }
@@ -903,6 +907,7 @@ export function makeApprovedEvent(overrides: Partial<MockEvent> = {}): MockEvent
     interestedCount: 0,
     attendanceMode: 'IN_PERSON',
     timezone: null,
+    language: null,
     ...overrides,
   }
 }
@@ -936,6 +941,7 @@ function filterEventsForDiscovery(events: MockEvent[], filter?: Record<string, u
   const priceMax = typeof filter?.priceMax === 'number' ? filter.priceMax : null
   const sortBy = String(filter?.sortBy || 'UPCOMING')
   const attendanceMode = typeof filter?.attendanceMode === 'string' ? filter.attendanceMode : null
+  const language = typeof filter?.language === 'string' ? filter.language.toLowerCase() : null
 
   return [...events]
     .filter((event) => event.status === 'PUBLISHED')
@@ -984,6 +990,10 @@ function filterEventsForDiscovery(events: MockEvent[], filter?: Record<string, u
       }
 
       if (attendanceMode && event.attendanceMode !== attendanceMode) {
+        return false
+      }
+
+      if (language && event.language?.toLowerCase() !== language) {
         return false
       }
 

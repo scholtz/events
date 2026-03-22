@@ -1761,3 +1761,58 @@ test.describe('Category landing page — error and SEO', () => {
     await expect(page.getByText('2 events found')).toBeVisible()
   })
 })
+
+test.describe('Language filter', () => {
+  test('language filter shows only events in the selected language', async ({ page }) => {
+    setupMockApi(page, {
+      events: [
+        makeApprovedEvent({ id: 'e-en', name: 'English Event', slug: 'english-event', language: 'en' }),
+        makeApprovedEvent({ id: 'e-cs', name: 'Czech Event', slug: 'czech-event', language: 'cs' }),
+        makeApprovedEvent({ id: 'e-nl', name: 'No Language Event', slug: 'no-language-event', language: null }),
+      ],
+    })
+    await page.goto('/?lang=en')
+
+    await expect(page.locator('.event-card', { hasText: 'English Event' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Czech Event' })).not.toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'No Language Event' })).not.toBeVisible()
+  })
+
+  test('language filter chip is restored from URL on reload', async ({ page }) => {
+    setupMockApi(page, {
+      events: [makeApprovedEvent({ name: 'English Event', slug: 'english-event', language: 'en' })],
+    })
+    await page.goto('/?lang=en')
+
+    await expect(page.locator('.filter-chip', { hasText: 'Language: EN' })).toBeVisible()
+  })
+
+  test('removing language chip restores all events', async ({ page }) => {
+    setupMockApi(page, {
+      events: [
+        makeApprovedEvent({ id: 'e-en', name: 'English Event', slug: 'english-event', language: 'en' }),
+        makeApprovedEvent({ id: 'e-cs', name: 'Czech Event', slug: 'czech-event', language: 'cs' }),
+      ],
+    })
+    await page.goto('/?lang=en')
+
+    await expect(page.locator('.event-card', { hasText: 'Czech Event' })).not.toBeVisible()
+
+    await page.locator('.filter-chip', { hasText: 'Language: EN' }).click()
+
+    await expect(page.locator('.event-card', { hasText: 'English Event' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Czech Event' })).toBeVisible()
+  })
+
+  test('language filter select updates the URL query string', async ({ page }) => {
+    setupMockApi(page, {
+      events: [makeApprovedEvent({ name: 'Test Event', slug: 'test-event', language: 'de' })],
+    })
+    await page.goto('/')
+
+    await page.getByRole('button', { name: /more filters/i }).click()
+    await page.getByLabel('Language').selectOption('de')
+
+    await expect(page).toHaveURL(/lang=de/)
+  })
+})

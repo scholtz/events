@@ -198,6 +198,7 @@ public sealed class AppDbInitializer(
                     "PriceMax" TEXT NULL,
                     "SortBy" TEXT NOT NULL,
                     "AttendanceMode" TEXT NULL,
+                    "Language" TEXT NULL,
                     "CreatedAtUtc" TEXT NOT NULL,
                     "UpdatedAtUtc" TEXT NOT NULL,
                     CONSTRAINT "FK_SavedSearches_Users_UserId" FOREIGN KEY ("UserId") REFERENCES "Users" ("Id") ON DELETE CASCADE

@@ -46,6 +46,7 @@ function fullFilters(overrides: Partial<EventFilters> = {}): EventFilters {
     priceMax: '200',
     sortBy: 'NEWEST',
     attendanceMode: 'HYBRID',
+    language: 'en',
     ...overrides,
   }
 }
@@ -67,6 +68,7 @@ describe('createDefaultEventFilters', () => {
     expect(defaults.priceMax).toBe('')
     expect(defaults.sortBy).toBe('UPCOMING')
     expect(defaults.attendanceMode).toBe('')
+    expect(defaults.language).toBe('')
   })
 
   it('returns a new object on each call (not a shared reference)', () => {
@@ -143,6 +145,10 @@ describe('areEventFiltersEqual', () => {
     expect(
       areEventFiltersEqual(fullFilters({ attendanceMode: 'ONLINE' }), fullFilters({ attendanceMode: 'HYBRID' })),
     ).toBe(false)
+  })
+
+  it('returns false when language differs', () => {
+    expect(areEventFiltersEqual(fullFilters({ language: 'en' }), fullFilters({ language: 'cs' }))).toBe(false)
   })
 
   it('returns false when a filter is active vs default', () => {
@@ -244,6 +250,15 @@ describe('eventFiltersToQuery', () => {
     expect(result).not.toHaveProperty('mode')
   })
 
+  it('serialises language to lang', () => {
+    expect(eventFiltersToQuery(fullFilters({ language: 'de' }))).toMatchObject({ lang: 'de' })
+  })
+
+  it('omits lang when language is empty', () => {
+    const result = eventFiltersToQuery(fullFilters({ language: '' }))
+    expect(result).not.toHaveProperty('lang')
+  })
+
   it('produces a complete query object for all active filters', () => {
     const result = eventFiltersToQuery(fullFilters())
     expect(result).toEqual({
@@ -257,6 +272,7 @@ describe('eventFiltersToQuery', () => {
       maxPrice: '200',
       sort: 'newest',
       mode: 'hybrid',
+      lang: 'en',
     })
   })
 })
@@ -344,6 +360,18 @@ describe('eventFiltersFromQuery', () => {
 
   it('ignores unrecognised mode values', () => {
     expect(eventFiltersFromQuery(q({ mode: 'virtual' })).attendanceMode).toBe('')
+  })
+
+  it('parses lang=en into language en', () => {
+    expect(eventFiltersFromQuery(q({ lang: 'en' })).language).toBe('en')
+  })
+
+  it('parses lang=DE into lowercase language de', () => {
+    expect(eventFiltersFromQuery(q({ lang: 'DE' })).language).toBe('de')
+  })
+
+  it('defaults language to empty string when lang is absent', () => {
+    expect(eventFiltersFromQuery(q({})).language).toBe('')
   })
 
   it('handles array query values by taking the first element', () => {
@@ -451,6 +479,16 @@ describe('buildDiscoveryFilterInput', () => {
     expect(result).not.toHaveProperty('attendanceMode')
   })
 
+  it('maps language to lowercase language', () => {
+    const result = buildDiscoveryFilterInput(fullFilters({ language: 'CS' }))
+    expect(result?.language).toBe('cs')
+  })
+
+  it('omits language when empty', () => {
+    const result = buildDiscoveryFilterInput(fullFilters({ language: '' }))
+    expect(result).not.toHaveProperty('language')
+  })
+
   it('always includes sortBy', () => {
     const result = buildDiscoveryFilterInput(fullFilters({ sortBy: 'UPCOMING' }))
     expect(result?.sortBy).toBe('UPCOMING')
@@ -482,6 +520,7 @@ describe('buildDiscoveryFilterInput', () => {
       priceMax: 200,
       sortBy: 'NEWEST',
       attendanceMode: 'IN_PERSON',
+      language: 'en',
     })
   })
 })
@@ -505,6 +544,7 @@ describe('savedSearchToFilters', () => {
       priceMax: null,
       sortBy: 'UPCOMING',
       attendanceMode: null,
+      language: null,
       createdAtUtc: new Date().toISOString(),
       updatedAtUtc: new Date().toISOString(),
       ...overrides,
@@ -582,10 +622,18 @@ describe('savedSearchToFilters', () => {
     expect(savedSearchToFilters(makeSavedSearch({ attendanceMode: null })).attendanceMode).toBe('')
   })
 
+  it('maps language', () => {
+    expect(savedSearchToFilters(makeSavedSearch({ language: 'de' })).language).toBe('de')
+  })
+
+  it('maps language null to empty string', () => {
+    expect(savedSearchToFilters(makeSavedSearch({ language: null })).language).toBe('')
+  })
+
   it('returns an object with all EventFilters keys', () => {
     const result = savedSearchToFilters(makeSavedSearch())
     expect(Object.keys(result).sort()).toEqual(
-      ['attendanceMode', 'dateFrom', 'dateTo', 'domain', 'location', 'priceMax', 'priceMin', 'priceType', 'search', 'sortBy'],
+      ['attendanceMode', 'dateFrom', 'dateTo', 'domain', 'language', 'location', 'priceMax', 'priceMin', 'priceType', 'search', 'sortBy'],
     )
   })
 })
