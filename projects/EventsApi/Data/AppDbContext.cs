@@ -77,6 +77,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(catalogEvent => catalogEvent.CurrencyCode).HasMaxLength(8);
             entity.Property(catalogEvent => catalogEvent.PriceAmount).HasPrecision(10, 2);
             entity.Property(catalogEvent => catalogEvent.AttendanceMode).HasConversion<string>().HasMaxLength(32);
+            entity.Property(catalogEvent => catalogEvent.Language).HasMaxLength(16);
 
             entity.HasOne(catalogEvent => catalogEvent.Domain)
                 .WithMany(domain => domain.Events)
@@ -103,6 +104,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(savedSearch => savedSearch.PriceMin).HasPrecision(10, 2);
             entity.Property(savedSearch => savedSearch.PriceMax).HasPrecision(10, 2);
             entity.Property(savedSearch => savedSearch.SortBy).HasConversion<string>().HasMaxLength(32);
+            entity.Property(savedSearch => savedSearch.Language).HasMaxLength(16);
 
             entity.HasOne(savedSearch => savedSearch.User)
                 .WithMany(user => user.SavedSearches)

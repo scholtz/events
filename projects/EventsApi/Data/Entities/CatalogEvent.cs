@@ -32,6 +32,12 @@ public sealed class CatalogEvent
     /// a timezone; callers should fall back to UTC in that case.
     /// </summary>
     public string? Timezone { get; set; }
+
+    /// <summary>
+    /// BCP 47 language tag for the primary language of the event (e.g. "en", "cs", "sk", "de").
+    /// Null means the organizer did not specify a language (treated as "any" in filtering).
+    /// </summary>
+    public string? Language { get; set; }
     public Guid DomainId { get; set; }
     public EventDomain Domain { get; set; } = null!;
     public Guid SubmittedByUserId { get; set; }

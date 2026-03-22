@@ -17,6 +17,12 @@ public sealed class EventFilterInput
     public EventSortOption? SortBy { get; init; }
     public EventStatus? Status { get; init; }
     public AttendanceMode? AttendanceMode { get; init; }
+    /// <summary>
+    /// BCP 47 language tag to filter events by their primary language (e.g. "en", "cs", "de").
+    /// When provided, only events with a matching Language value are returned.
+    /// Events with a null Language are excluded from language-specific queries.
+    /// </summary>
+    public string? Language { get; init; }
 }
 
 public sealed class RegisterUserInput
@@ -55,6 +61,11 @@ public sealed class EventSubmissionInput
     /// Optional; legacy events without this field will fall back to UTC for calendar export.
     /// </summary>
     public string? Timezone { get; init; }
+    /// <summary>
+    /// BCP 47 language tag for the primary language of the event (e.g. "en", "cs", "sk", "de").
+    /// Optional; events without a language are shown in all language-filter contexts.
+    /// </summary>
+    public string? Language { get; init; }
 }
 
 public sealed class SavedSearchInput
