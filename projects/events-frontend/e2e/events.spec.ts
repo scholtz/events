@@ -729,6 +729,47 @@ test.describe('Event detail page', () => {
     await expect(page.locator('.badge-mode')).toContainText('Hybrid')
   })
 
+  test('online-only event does not show physical map UI', async ({ page }) => {
+    // Even when coordinates are valid, ONLINE events must not show a physical map
+    const event = makeApprovedEvent({
+      id: 'ev-online-nomap',
+      name: 'Online Webinar No Map',
+      slug: 'online-webinar-no-map',
+      attendanceMode: 'ONLINE',
+      latitude: 50.0755,
+      longitude: 14.4378,
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    // No map iframe for ONLINE events regardless of coordinates
+    await expect(page.locator('iframe')).toBeHidden()
+    // No Google Maps / OpenStreetMap links
+    await expect(page.getByRole('link', { name: /Open in OpenStreetMap/ })).toBeHidden()
+    await expect(page.getByRole('link', { name: /Search on Google Maps/ })).toBeHidden()
+    await expect(page.getByRole('link', { name: /Get Directions/ })).toBeHidden()
+    // Virtual event notice is shown instead (sidebar)
+    await expect(page.locator('.virtual-event-notice')).toBeVisible()
+    await expect(page.locator('.virtual-event-content p')).toContainText('This event takes place online')
+  })
+
+  test('hybrid event still shows physical map when coordinates are valid', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-hybrid-map',
+      name: 'Hybrid Workshop',
+      slug: 'hybrid-workshop',
+      attendanceMode: 'HYBRID',
+      latitude: 50.0755,
+      longitude: 14.4378,
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    // HYBRID events have a physical component — map should be visible
+    await expect(page.locator('iframe[title*="map"]')).toBeVisible()
+    await expect(page.getByRole('link', { name: /Open in OpenStreetMap/ })).toBeVisible()
+  })
+
   test('add to calendar button is visible on event detail page', async ({ page }) => {
     const event = makeApprovedEvent({
       id: 'ev-cal-btn',
