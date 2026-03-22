@@ -4,11 +4,13 @@ import { useI18n } from 'vue-i18n'
 import { useFavoritesStore } from '@/stores/favorites'
 import { useAuthStore } from '@/stores/auth'
 import { formatEventPrice } from '@/stores/events'
+import { usePwa } from '@/composables/usePwa'
 import type { AttendanceMode, CatalogEvent } from '@/types'
 
 const { t, locale } = useI18n()
 const favoritesStore = useFavoritesStore()
 const authStore = useAuthStore()
+const { isOffline } = usePwa()
 
 const upcomingFavorites = computed(() => {
   const now = new Date()
@@ -80,9 +82,9 @@ function attendanceModeLabel(mode: AttendanceMode): string {
 
     <template v-else-if="favoritesStore.error">
       <div class="error-state card">
-        <div class="empty-icon">⚠️</div>
+        <div class="empty-icon">{{ isOffline ? '📡' : '⚠️' }}</div>
         <h2>{{ t('favorites.errorTitle') }}</h2>
-        <p>{{ favoritesStore.error }}</p>
+        <p>{{ isOffline ? t('favorites.offlineError') : favoritesStore.error }}</p>
         <button class="btn btn-primary" @click="favoritesStore.fetchFavoriteEvents()">{{ t('common.tryAgain') }}</button>
       </div>
     </template>
@@ -97,6 +99,16 @@ function attendanceModeLabel(mode: AttendanceMode): string {
     </template>
 
     <template v-else>
+      <!-- Cached results notice: shown when offline with previously loaded favorites -->
+      <div
+        v-if="isOffline"
+        role="status"
+        aria-live="polite"
+        class="cached-results-notice"
+      >
+        📡 {{ t('favorites.cachedNotice') }}
+      </div>
+
       <section v-if="upcomingFavorites.length > 0" class="favorites-section">
         <h2 class="section-heading">{{ t('favorites.upcoming') }} ({{ upcomingFavorites.length }})</h2>
         <div class="favorites-list">
@@ -363,5 +375,19 @@ function attendanceModeLabel(mode: AttendanceMode): string {
 
 .unsave-btn:hover {
   text-decoration: underline;
+}
+
+/* Offline cached-content notice */
+.cached-results-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.875rem;
+  margin-bottom: 1.25rem;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
 }
 </style>
