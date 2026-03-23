@@ -269,7 +269,6 @@ function providerLabel(provider: string): string {
                   >
                     {{ t('dashboard.editEvent') }}
                   </RouterLink>
-                  <span v-if="item.status !== 'PUBLISHED'" class="text-muted btn-sm-placeholder">—</span>
                 </td>
               </tr>
             </tbody>

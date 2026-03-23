@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref, computed, watch } from 'vue'
+import { reactive, ref, computed, watch, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useEventsStore } from '@/stores/events'
@@ -42,8 +42,10 @@ function saveDraft() {
   try {
     localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...form }))
     draftSaved.value = true
-    setTimeout(() => {
+    if (draftSavedTimer !== null) clearTimeout(draftSavedTimer)
+    draftSavedTimer = setTimeout(() => {
       draftSaved.value = false
+      draftSavedTimer = null
     }, 2500)
   } catch {
     // localStorage unavailable
@@ -85,6 +87,11 @@ const submitted = ref(false)
 const submissionError = ref('')
 const draftSaved = ref(false)
 const draftLoaded = ref(false)
+let draftSavedTimer: ReturnType<typeof setTimeout> | null = null
+
+onBeforeUnmount(() => {
+  if (draftSavedTimer !== null) clearTimeout(draftSavedTimer)
+})
 
 // ── Per-step validation errors ─────────────────────────────────────────────
 const errors = reactive<Record<string, string>>({})

@@ -137,23 +137,16 @@ public sealed class Query
         [Service] AppDbContext dbContext,
         CancellationToken cancellationToken)
     {
+        var currentUserId = claimsPrincipal.GetRequiredUserId();
+        var isAdmin = claimsPrincipal.IsAdmin();
+
         var catalogEvent = await dbContext.Events
             .AsNoTracking()
             .Include(e => e.Domain)
             .Include(e => e.SubmittedBy)
-            .SingleOrDefaultAsync(e => e.Id == id, cancellationToken);
-
-        if (catalogEvent is null) return null;
-
-        var currentUserId = claimsPrincipal.GetRequiredUserId();
-        if (catalogEvent.SubmittedByUserId != currentUserId && !claimsPrincipal.IsAdmin())
-        {
-            throw new GraphQLException(
-                ErrorBuilder.New()
-                    .SetMessage("You can only access your own events.")
-                    .SetCode("FORBIDDEN")
-                    .Build());
-        }
+            .SingleOrDefaultAsync(
+                e => e.Id == id && (isAdmin || e.SubmittedByUserId == currentUserId),
+                cancellationToken);
 
         return catalogEvent;
     }

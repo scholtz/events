@@ -1,7 +1,7 @@
 /**
  * Event submission and event detail page tests.
  */
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import {
   loginAs,
   makeAdminUser,
@@ -10,12 +10,17 @@ import {
   setupMockApi,
 } from './helpers/mock-api'
 
+/** Clears any persisted event draft from localStorage. */
+async function clearDraft(page: Page) {
+  await page.evaluate(() => localStorage.removeItem('event_draft'))
+}
+
 /**
  * Navigates through all 5 steps of the event submission wizard, filling in
  * the required fields, and clicks Submit Event on step 5.
  */
 async function fillAndSubmitEventForm(
-  page: Parameters<Parameters<typeof test>[1]>[0]['page'],
+  page: Page,
   opts: {
     title?: string
     description?: string
@@ -156,7 +161,7 @@ test.describe('Submit event form', () => {
 
     // Clear any existing draft
     await page.goto('/submit')
-    await page.evaluate(() => localStorage.removeItem('event_draft'))
+    await clearDraft(page)
     await page.goto('/submit')
 
     await page.locator('#event-attendance-mode').selectOption('ONLINE')
@@ -185,7 +190,7 @@ test.describe('Submit event form', () => {
     state.currentUserId = admin.id
 
     await page.goto('/submit')
-    await page.evaluate(() => localStorage.removeItem('event_draft'))
+    await clearDraft(page)
     await page.goto('/submit')
 
     await fillAndSubmitEventForm(page, {
@@ -234,7 +239,7 @@ test.describe('Submit event form', () => {
     state.currentUserId = admin.id
 
     await page.goto('/submit')
-    await page.evaluate(() => localStorage.removeItem('event_draft'))
+    await clearDraft(page)
     await page.goto('/submit')
 
     await fillAndSubmitEventForm(page, {
@@ -260,7 +265,7 @@ test.describe('Submit event form', () => {
     })
 
     await page.goto('/submit')
-    await page.evaluate(() => localStorage.removeItem('event_draft'))
+    await clearDraft(page)
     await page.goto('/submit')
 
     await fillAndSubmitEventForm(page, {
@@ -282,7 +287,7 @@ test.describe('Submit event form', () => {
     state.currentUserId = admin.id
 
     await page.goto('/submit')
-    await page.evaluate(() => localStorage.removeItem('event_draft'))
+    await clearDraft(page)
     await page.goto('/submit')
 
     // Intentionally leave timezone blank (default)
@@ -301,7 +306,7 @@ test.describe('Submit event form', () => {
     state.currentUserId = admin.id
 
     await page.goto('/submit')
-    await page.evaluate(() => localStorage.removeItem('event_draft'))
+    await clearDraft(page)
     await page.goto('/submit')
 
     // Step 1
@@ -328,7 +333,7 @@ test.describe('Submit event form', () => {
     state.currentUserId = admin.id
 
     await page.goto('/submit')
-    await page.evaluate(() => localStorage.removeItem('event_draft'))
+    await clearDraft(page)
     await page.goto('/submit')
 
     await fillAndSubmitEventForm(page, {

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import {
   setupMockApi,
   makeAdminUser,
@@ -6,6 +6,11 @@ import {
   makeApprovedEvent,
   loginAs,
 } from './helpers/mock-api'
+
+/** Clears any persisted event draft from localStorage. */
+async function clearDraft(page: Page) {
+  await page.evaluate(() => localStorage.removeItem('event_draft'))
+}
 
 test.describe('Mobile-first organizer event creation', () => {
   test('shows 5-step wizard with progress bar on /submit', async ({ page }) => {
@@ -178,7 +183,7 @@ test.describe('Mobile-first organizer event creation', () => {
     await page.goto('/submit')
 
     // Clear any existing draft
-    await page.evaluate(() => localStorage.removeItem('event_draft'))
+    await clearDraft(page)
     await page.goto('/submit')
 
     // Step 1
@@ -230,7 +235,7 @@ test.describe('Mobile-first organizer event creation', () => {
     await loginAs(page, user)
     await page.goto('/submit')
 
-    await page.evaluate(() => localStorage.removeItem('event_draft'))
+    await clearDraft(page)
     await page.goto('/submit')
 
     // Fill all steps
@@ -280,7 +285,7 @@ test.describe('Mobile-first organizer event creation', () => {
     await loginAs(page, user)
     await page.goto('/submit')
 
-    await page.evaluate(() => localStorage.removeItem('event_draft'))
+    await clearDraft(page)
     await page.goto('/submit')
 
     // Fill all steps
