@@ -1793,6 +1793,122 @@ test.describe('Category landing page — error and SEO', () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// Branded domain hub — branding element rendering
+// ---------------------------------------------------------------------------
+
+test.describe('Branded domain hub', () => {
+  test('category page shows domain logo when logoUrl is set', async ({ page }) => {
+    const brandedDomain = {
+      ...makeTechDomain(),
+      logoUrl: 'https://example.com/tech-logo.png',
+    }
+    setupMockApi(page, {
+      domains: [brandedDomain],
+      events: [makeApprovedEvent()],
+    })
+    await page.goto('/category/technology')
+
+    const logo = page.locator('.category-logo')
+    await expect(logo).toBeVisible()
+    await expect(logo).toHaveAttribute('src', 'https://example.com/tech-logo.png')
+    await expect(logo).toHaveAttribute('alt', 'Technology')
+  })
+
+  test('category page shows domain banner on desktop when bannerUrl is set', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 })
+    const brandedDomain = {
+      ...makeTechDomain(),
+      bannerUrl: 'https://example.com/tech-banner.jpg',
+    }
+    setupMockApi(page, {
+      domains: [brandedDomain],
+      events: [makeApprovedEvent()],
+    })
+    await page.goto('/category/technology')
+
+    const banner = page.locator('.category-banner')
+    await expect(banner).toBeVisible()
+    await expect(banner).toHaveAttribute('src', 'https://example.com/tech-banner.jpg')
+    await expect(banner).toHaveAttribute('alt', 'Technology')
+  })
+
+  test('category page does not show banner on mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    const brandedDomain = {
+      ...makeTechDomain(),
+      bannerUrl: 'https://example.com/tech-banner.jpg',
+    }
+    setupMockApi(page, {
+      domains: [brandedDomain],
+      events: [makeApprovedEvent()],
+    })
+    await page.goto('/category/technology')
+
+    // Banner wrap is hidden via CSS on mobile; the heading is still visible
+    await expect(page.getByRole('heading', { name: 'Technology Events' })).toBeVisible()
+    await expect(page.locator('.category-banner-wrap')).toBeHidden()
+  })
+
+  test('category page applies primaryColor as CSS custom property', async ({ page }) => {
+    const brandedDomain = {
+      ...makeTechDomain(),
+      primaryColor: '#c0ffee',
+    }
+    setupMockApi(page, {
+      domains: [brandedDomain],
+      events: [makeApprovedEvent()],
+    })
+    await page.goto('/category/technology')
+
+    await expect(page.getByRole('heading', { name: 'Technology Events' })).toBeVisible()
+    const colorValue = await page
+      .locator('.category-hero')
+      .evaluate((el) => (el as HTMLElement).style.getPropertyValue('--category-color'))
+    expect(colorValue).toBe('#c0ffee')
+  })
+
+  test('category page renders all branding fields together', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 })
+    const brandedDomain = {
+      ...makeTechDomain(),
+      description: 'Cutting-edge technology events curated for developers.',
+      logoUrl: 'https://example.com/tech-logo.png',
+      bannerUrl: 'https://example.com/tech-banner.jpg',
+      primaryColor: '#137fec',
+    }
+    setupMockApi(page, {
+      domains: [brandedDomain],
+      events: [makeApprovedEvent()],
+    })
+    await page.goto('/category/technology')
+
+    await expect(page.getByRole('heading', { name: 'Technology Events' })).toBeVisible()
+    await expect(page.getByText('Cutting-edge technology events curated for developers.')).toBeVisible()
+    await expect(page.locator('.category-logo')).toBeVisible()
+    await expect(page.locator('.category-banner')).toBeVisible()
+  })
+
+  test('category page with no branding assets still renders correctly', async ({ page }) => {
+    const unbranded = {
+      ...makeTechDomain(),
+      logoUrl: null,
+      bannerUrl: null,
+      primaryColor: null,
+      accentColor: null,
+    }
+    setupMockApi(page, {
+      domains: [unbranded],
+      events: [makeApprovedEvent()],
+    })
+    await page.goto('/category/technology')
+
+    await expect(page.getByRole('heading', { name: 'Technology Events' })).toBeVisible()
+    await expect(page.locator('.category-logo')).toBeHidden()
+    await expect(page.locator('.category-banner-wrap')).toBeHidden()
+  })
+})
+
 test.describe('Language filter', () => {
   test('language filter shows only events in the selected language', async ({ page }) => {
     setupMockApi(page, {

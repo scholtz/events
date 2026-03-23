@@ -151,6 +151,77 @@ test.describe('Domain admin management', () => {
     await expect(page.getByText('✓ Saved')).toBeVisible()
   })
 
+  test('admin can set logo and banner URL; branding appears on public category page', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 })
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      domainAdministrators: [],
+      events: [
+        {
+          id: 'event-1',
+          name: 'Tech Conference',
+          slug: 'tech-conference',
+          description: 'A tech event.',
+          eventUrl: 'https://example.com',
+          venueName: 'Tech Hall',
+          addressLine1: '1 Tech St',
+          city: 'Prague',
+          countryCode: 'CZ',
+          latitude: 50.0755,
+          longitude: 14.4378,
+          startsAtUtc: '2026-06-01T10:00:00Z',
+          endsAtUtc: '2026-06-01T18:00:00Z',
+          submittedAtUtc: new Date().toISOString(),
+          updatedAtUtc: new Date().toISOString(),
+          publishedAtUtc: new Date().toISOString(),
+          adminNotes: null,
+          status: 'PUBLISHED' as const,
+          isFree: true,
+          priceAmount: 0,
+          currencyCode: 'EUR',
+          domainId: domain.id,
+          domain: { id: domain.id, name: domain.name, slug: domain.slug, subdomain: domain.subdomain },
+          submittedByUserId: admin.id,
+          submittedBy: { displayName: admin.displayName },
+          reviewedByUserId: null,
+          reviewedBy: null,
+          mapUrl: '',
+          interestedCount: 0,
+          attendanceMode: 'IN_PERSON' as const,
+          timezone: null,
+          language: null,
+        },
+      ],
+    })
+    await loginAs(page, admin)
+    await page.goto('/admin')
+
+    // Navigate to domains tab and open manage panel
+    await page.getByRole('button', { name: /Domains/ }).click()
+    await page.getByRole('button', { name: 'Manage' }).click()
+    await expect(page.getByRole('heading', { name: 'Tag Style' })).toBeVisible()
+
+    // Set logo URL and banner URL
+    await page.getByLabel('Logo URL').fill('https://example.com/logo.png')
+    await page.getByLabel('Banner URL').fill('https://example.com/banner.jpg')
+    await page.getByRole('button', { name: 'Save Style' }).click()
+    await expect(page.getByText('✓ Saved')).toBeVisible()
+
+    // Navigate to the public category page
+    await page.goto('/category/technology')
+
+    // Verify logo and banner are displayed
+    await expect(page.locator('.category-logo')).toBeVisible()
+    await expect(page.locator('.category-logo')).toHaveAttribute('src', 'https://example.com/logo.png')
+    await expect(page.locator('.category-banner')).toBeVisible()
+    await expect(page.locator('.category-banner')).toHaveAttribute('src', 'https://example.com/banner.jpg')
+  })
+
   test('closing domain detail hides the panel', async ({ page }) => {
     const admin = makeAdminUser()
     setupMockApi(page, { users: [admin], domains: [makeTechDomain()] })
