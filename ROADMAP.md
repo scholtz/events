@@ -2,7 +2,15 @@
 
 ## Vision
 
-The Events Platform is a comprehensive event management and discovery system designed to connect event organizers, attendees, and communities. Our vision is to become the leading platform for domain-specific event management, enabling seamless event creation, promotion, and participation across various industries and communities. We aim to foster vibrant communities through intelligent event recommendations, real-time collaboration tools, and integrated analytics, ultimately creating a world where discovering and attending meaningful events is effortless and engaging.
+Biatec Events is building a domain-focused event platform for discovery, submission, moderation, and organizer insight. The product is strongest when it helps users find relevant events quickly, gives organizers a clean workflow for publishing and managing events, and lets communities grow around category-driven hubs such as crypto, AI, or other verticals.
+
+The long-term direction remains the same:
+
+- Make event discovery fast, trustworthy, and relevant
+- Give organizers a practical publishing and analytics workflow
+- Let category or domain owners curate their own event ecosystem
+- Support multilingual audiences and international communities
+- Stay privacy-first by exposing aggregate insights rather than attendee identities
 
 ### Tags
 
@@ -16,151 +24,191 @@ Users can create a community groups. Community group has community group adminis
 
 The events created at other event apps can be synced into the biatec events platform by clicking the button on the frontend in community administration page. Backend app will load all luma or meetup linked group's events and create the events in the biatec events app.
 
-### Key pillars of our vision
+## Product Reality Check
 
-- **Accessibility**: Democratize event management for all users, from individual organizers to large enterprises
-- **Community Building**: Strengthen connections between event organizers and attendees through interactive features
-- **Innovation**: Leverage cutting-edge technology to enhance the event experience
-- **Sustainability**: Promote eco-friendly event practices and virtual attendance options
-- **Multilanguage**: App provides localized environment for event organizers or event attendees, for example English, Slovak, German, Chinesse or Italian.
+The codebase already implements a meaningful part of the platform. This roadmap reflects the current product instead of an aspirational blank slate.
 
-## Current Tech Stack
+### What exists today
+
+- Public event discovery with filtering by category, location, date, attendance mode, price, language, and sort order
+- Event detail pages with organizer context, location data, map support, and interested counts
+- Favorites and saved searches for attendees
+- Category landing pages and subdomain-aware domain catalogs
+- Event submission and editing workflows for contributors
+- Organizer dashboard with aggregate analytics and event-level insights
+- Admin moderation workflow for approving, rejecting, and managing events and users
+- JWT authentication with contributor and admin roles
+- Progressive Web App support with offline-aware GraphQL query caching
+- Multilingual frontend foundations with English, Slovak, and German locales
+- Push notification subscriptions and event reminder infrastructure
+
+### What is not implemented yet
+
+- Community groups with membership, role management, and external event-source ownership
+- Sync from external event platforms such as Meetup or Luma
+- Comments, discussion forums, or real-time collaboration features
+- Ticketing, subscriptions, or other monetization workflows
+- Rich organizer branding tools for domain hubs, despite backend support for some design fields
+- Calendar-provider integrations beyond analytics and reminder tracking
+
+This roadmap focuses on extending the platform from the working baseline above.
+
+## Current Platform Foundation
 
 ### Frontend
-- **Framework**: Vue 3 with Composition API
-- **Language**: TypeScript
-- **Build Tool**: Vite
-- **State Management**: Pinia
-- **Routing**: Vue Router 5
-- **Styling**: CSS Custom Properties with scoped styles
-- **Testing**: Playwright for E2E tests
-- **Deployment**: Vercel
+
+- Vue 3 with TypeScript and Vite
+- Pinia for state management
+- Vue Router for application navigation
+- CSS custom properties with scoped component styles
+- Playwright end-to-end coverage across discovery, auth, dashboard, admin, favorites, i18n, and PWA scenarios
 
 ### Backend
-- **Framework**: ASP.NET Core 10
-- **API**: GraphQL with Hot Chocolate
-- **Database ORM**: Entity Framework Core
-- **Authentication**: JWT Bearer tokens
-- **Deployment**: Kubernetes (K8s)
 
-### Database & Infrastructure
-- **Database**: Supabase (PostgreSQL-based)
-- **GraphQL Client**: Typescript safe generated graphql client
-- **CORS**: Configured for multiple origins including localhost and production domains
+- ASP.NET Core targeting .NET 10
+- Hot Chocolate GraphQL API
+- Entity Framework Core with SQLite as the default storage engine
+- JWT bearer authentication
+- Kubernetes deployment manifests and automated test coverage
 
-### Development & Quality Assurance
-- **Linting**: ESLint
-- **Code Formatting**: Prettier
-- **Version Control**: Git with GitHub
-- **CI/CD**: GitHub Actions with Playwright tests
+### Integration model
 
-## 3-Year Strategic Roadmap
+- Frontend talks to the backend through a lightweight fetch-based GraphQL client
+- Public discovery and authenticated organizer/admin workflows share the same GraphQL API
+- Domain and event moderation are first-class concepts in the data model
+- Analytics are custom platform analytics, not third-party reporting glued on top
 
-### Year 1: Foundation & Core Enhancement (2026)
-**Focus**: Solidify core functionality, improve user experience, and establish market presence.
+## Strategic Product Themes
 
-- **Q1-Q2**: Enhanced event discovery with advanced filtering and search capabilities
-- **Q3-Q4**: Mobile-responsive design improvements and PWA features for offline access
+### 1. Discovery That Feels Curated
 
-### Year 2: Expansion & Integration (2027)
-**Focus**: Scale the platform, integrate with third-party services, and expand user base.
+The discovery experience is already one of the strongest parts of the product. The next step is to make it feel more intentional, more localized, and more domain-aware.
 
-- **Q1-Q2**: API integrations with popular calendar services (Google Calendar, Outlook)
-- **Q3-Q4**: Multi-language support and internationalization
+### Priorities
 
-### Year 3: Innovation & Ecosystem (2028)
-**Focus**: Leverage AI/ML, build a comprehensive ecosystem, and explore new revenue streams.
+- Improve ranking and relevance so the best events surface first within a domain, city, or date window
+- Strengthen category and subdomain landing pages so they feel like dedicated community hubs, not just filtered lists
+- Expand filter quality where the data model already supports it, especially language, timezone, and richer venue context
+- Improve empty, low-signal, and edge-case states so users always understand why results appear or do not appear
+- Continue improving mobile discovery and event detail usability
 
-- **Q1-Q2**: AI-powered event recommendations and automated marketing tools
-- **Q3-Q4**: Partner ecosystem with ticketing platforms and venue management systems
+### Why this matters
 
-## 1-Year Delivery Plan (2026)
+The platform vision depends on trust in discovery. If users can consistently find the right events for their city, language, category, and attendance mode, the platform becomes useful even before social or ecosystem features exist.
 
-### Q1: User Experience Enhancements
-- **Deliverables**:
-  - Implement advanced search with filters (date, location, category, price)
-  - Add event favoriting and personal event lists
-  - Improve event detail pages with interactive maps and attendee lists
-- **Technical Tasks**:
-  - Update GraphQL queries for enhanced filtering
-  - Add new Vue components for search and favorites
-  - Implement responsive design improvements
-- **Business Impact**: Increase user engagement and time spent on platform
+### 2. Organizer Workflow As A Core Product
 
-### Q2: Mobile & PWA Features
-- **Deliverables**:
-  - Progressive Web App (PWA) implementation for offline access
-  - Push notifications for event reminders
-  - Mobile-optimized event creation flow
-- **Technical Tasks**:
-  - Configure Vite PWA plugin
-  - Implement service workers for caching
-  - Add notification permissions and scheduling
-- **Business Impact**: Expand reach to mobile users, improve retention
+The organizer journey is already more advanced than the original roadmap suggested. The platform now needs to deepen that workflow instead of treating it as a side feature.
 
-### Q3: Analytics & Insights
-- **Deliverables**:
-  - Event organizer dashboard with attendance analytics
-  - User behavior tracking and reporting
-  - Integration with Google Analytics
-- **Technical Tasks**:
-  - Add analytics endpoints to GraphQL API
-  - Implement dashboard components in Vue
-  - Set up data collection and privacy compliance
-- **Business Impact**: Provide value to organizers, enable data-driven decisions
+### Priorities
 
-### Q4: Community Features
-- **Deliverables**:
-  - Event discussion forums and comments
-  - User profiles with event history
-  - Social sharing capabilities
-- **Technical Tasks**:
-  - Extend database schema for comments and user profiles
-  - Add real-time features with WebSockets or GraphQL subscriptions
-  - Implement social media integration
-- **Business Impact**: Increase community engagement and viral growth
+- Keep event submission and editing fast, resilient, and mobile-friendly
+- Improve draft handling, validation, and organizer guidance for incomplete or low-quality submissions
+- Expand dashboard insights with clearer trend explanations and practical next actions for organizers
+- Strengthen organizer-facing states for new users, low-data events, and multi-event contributors
+- Make event lifecycle management clearer across draft, pending, published, and rejected states
 
-## Business Plan
+### Why this matters
 
-### Revenue Model
-- **Freemium**: Basic event creation and discovery free; premium features for organizers
-- **Subscriptions**: Tiered plans for individual organizers ($9/month), teams ($29/month), and enterprises ($99/month)
-- **Transaction Fees**: 2-5% commission on paid events and ticket sales
-- **Premium Integrations**: Charge for advanced API access and custom integrations
+Better organizer tooling improves catalog quality. Strong discovery depends on strong submissions, good moderation, and useful feedback loops for contributors.
 
-### Market Strategy
-- **Target Segments**:
-  - Individual event organizers (meetups, workshops)
-  - Small to medium businesses (conferences, corporate events)
-  - Educational institutions (seminars, campus events)
-  - Non-profits (fundraisers, community events)
-- **Go-to-Market**:
-  - Content marketing through event planning blogs and tutorials
-  - Partnerships with event-related platforms (Eventbrite, Meetup)
-  - Social media campaigns targeting event organizers
-  - SEO optimization for event discovery
+### 3. Domain-Centric Community Hubs
 
-### Growth Metrics
-- **User Acquisition**: 50% quarterly growth in registered users
-- **Engagement**: Average 3 events viewed per user session
-- **Conversion**: 15% of free users convert to paid plans within 6 months
-- **Revenue**: $500K ARR by end of Year 1, $2M by end of Year 3
+The roadmap should align more closely with the product's differentiator: domain and category ownership. Categories are not just tags. They are the beginning of community-specific event surfaces.
 
-### Competitive Advantage
-- **Domain-Specific Focus**: Tailored features for different industries
-- **Open GraphQL API**: Easy integration for third-party developers
-- **Community-Driven**: User-generated content and peer recommendations
-- **Privacy-First**: Strong data protection and GDPR compliance
+### Priorities
 
-### Risks & Mitigation
-- **Competition**: Monitor competitors like Eventbrite and Meetup; differentiate through niche features
-- **Technical Scalability**: Regular performance audits and infrastructure upgrades
-- **Regulatory Compliance**: Stay updated on data privacy laws and event industry regulations
-- **Market Adoption**: Continuous user feedback loops and agile feature development
+- Make domain pages feel like lightweight community homepages with stronger identity and curation
+- Expose domain metadata and administrator-managed content more clearly in the frontend
+- Build the missing UI for existing backend design fields such as logos, banners, and color themes
+- Improve domain administration workflows and permissions, especially where domain-specific stewardship should not require global admin access
+- Keep event-to-domain linking consistent across homepage, category pages, and event detail surfaces
 
-### Funding & Investment
-- **Bootstrapping**: Self-funded development for initial launch
-- **Seed Round**: $500K target for Year 2 expansion
-- **Series A**: $3M target for Year 3 scaling and team growth
+### Why this matters
 
-This roadmap represents our commitment to building a world-class event management platform that serves both organizers and attendees. We will regularly review and adapt this plan based on user feedback, market conditions, and technological advancements.
+This is the clearest path from a generic events catalog to a network of focused event ecosystems. It also aligns directly with the product vision around subdomain-driven experiences.
+
+### 4. Analytics That Help People Act
+
+Organizer analytics already exist and should now become more actionable and more trustworthy, not just more extensive.
+
+### Priorities
+
+- Keep all analytics aggregate-only and privacy-safe
+- Improve metric clarity so organizers understand what each number represents and what period it covers
+- Add more guidance for low-volume and empty states so analytics remain useful when events are new or niche
+- Expand discovery and engagement analytics only where they lead to practical organizer decisions
+- Connect reminder, save, and calendar-intent signals into a clearer event-performance narrative
+
+### Why this matters
+
+Organizers do not need vanity metrics. They need signals that help them improve timing, distribution, and category fit without exposing personal attendee data.
+
+### 5. Reliability, Offline Support, And Trust
+
+The platform already includes meaningful PWA and offline-aware behavior. This should remain a product strength rather than a side experiment.
+
+### Priorities
+
+- Harden offline behavior for discovery flows and cached event content
+- Improve clarity around cached versus fresh data so users know what they are seeing
+- Keep service-worker and cache behavior bounded, predictable, and testable
+- Maintain strong error handling across network, auth, and GraphQL failure states
+- Continue end-to-end coverage for critical public and organizer journeys
+
+### Why this matters
+
+Discovery products lose trust quickly when they feel fragile. Reliability, graceful offline behavior, and predictable error states are part of the user experience, not just infrastructure concerns.
+
+### 6. International And Cross-Community Reach
+
+Multilingual support exists in the frontend and should continue growing as part of the core experience rather than being treated as a later add-on.
+
+### Priorities
+
+- Extend translation coverage across the full product surface
+- Improve localized discovery, category content, and organizer workflows
+- Ensure language filtering and event-language presentation are consistent end to end
+- Keep English as the reference copy while maintaining parity across supported locales
+- Prepare the product structure for additional languages without fragmenting quality
+
+### Why this matters
+
+Domain communities are frequently international. Better language support expands both event reach and organizer adoption.
+
+### 7. Community And Ecosystem Expansion
+
+Community groups, external sync, richer collaboration, and ecosystem integrations remain important parts of the vision, but they should be treated as expansion work on top of the current platform foundation, not as features already underway.
+
+### Expansion areas
+
+- Community groups with membership and role management
+- External event-source synchronization from platforms such as Meetup or Luma
+- Calendar export and calendar-provider integrations where they help conversion and retention
+- Social and collaborative features such as comments, discussion, or shared curation
+- Partner integrations for ticketing, venues, or distribution
+
+### Product principle
+
+These features should be added only when they strengthen the core loop of discovery, submission, curation, and organizer insight. They should not dilute the platform into a generic community app.
+
+## Delivery Principles
+
+- Build complete vertical slices across backend, frontend, and tests
+- Prefer trustworthy and well-explained metrics over broad but ambiguous reporting
+- Keep domain ownership and moderation explicit in both the data model and the user experience
+- Preserve privacy by exposing aggregate engagement data only
+- Favor focused, high-quality features over broad speculative surface area
+- Keep the roadmap anchored to implemented platform strengths, not generic event-tech ambition
+
+## Summary
+
+The platform is no longer in an idea stage. It already has a solid foundation in event discovery, submission, moderation, domain categorization, analytics, favorites, reminders, PWA support, and multilingual groundwork.
+
+The most important next moves are:
+
+- Deepen discovery quality
+- Strengthen organizer workflows and analytics
+- Turn category domains into stronger community hubs
+- Improve reliability and multilingual coverage
+- Add community and integration features only when they extend the existing product core in a coherent way
