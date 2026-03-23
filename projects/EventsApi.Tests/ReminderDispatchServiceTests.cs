@@ -103,6 +103,43 @@ public sealed class ReminderDispatchServiceTests
     }
 
     [Fact]
+    public async Task StartAsync_ProcessesDueReminderImmediately_OnHostedServiceStartup()
+    {
+        var pushService = new StubPushNotificationService(PushDeliveryResult.Delivered());
+        await using var provider = BuildServiceProvider(pushService);
+
+        var seeded = await SeedReminderScenarioAsync(provider);
+
+        var service = CreateDispatchService(provider);
+
+        try
+        {
+            await service.StartAsync(CancellationToken.None);
+
+            await WaitForAsync(async () =>
+            {
+                await using var scope = provider.CreateAsyncScope();
+                var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                var reminder = await dbContext.EventReminders.SingleAsync(r => r.Id == seeded.ReminderId);
+                return reminder.SentAtUtc is not null;
+            });
+        }
+        finally
+        {
+            await service.StopAsync(CancellationToken.None);
+        }
+
+        await using var verificationScope = provider.CreateAsyncScope();
+        var verificationDbContext = verificationScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var sentReminder = await verificationDbContext.EventReminders.SingleAsync(r => r.Id == seeded.ReminderId);
+
+        Assert.NotNull(sentReminder.SentAtUtc);
+        Assert.Equal(
+            1,
+            pushService.CallCount); // protects issue #66 against delayed reminders after restarts/autoscaling events
+    }
+
+    [Fact]
     public async Task SendAsync_ReturnsMisconfigured_WhenVapidKeysAreMissing()
     {
         var webPushClient = new StubWebPushClient();
@@ -205,6 +242,24 @@ public sealed class ReminderDispatchServiceTests
         => new(
             provider.GetRequiredService<IServiceScopeFactory>(),
             NullLogger<ReminderDispatchService>.Instance);
+
+    private static async Task WaitForAsync(
+        Func<Task<bool>> condition,
+        int attempts = 20,
+        int delayMilliseconds = 50)
+    {
+        for (var attempt = 0; attempt < attempts; attempt++)
+        {
+            if (await condition())
+            {
+                return;
+            }
+
+            await Task.Delay(delayMilliseconds);
+        }
+
+        Assert.Fail("Timed out waiting for the hosted reminder dispatch cycle to complete.");
+    }
 
     private static ServiceProvider BuildServiceProvider(IPushNotificationService pushService)
     {

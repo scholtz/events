@@ -13,7 +13,7 @@ namespace EventsApi;
 /// push notifications.
 ///
 /// Scheduling rules:
-///  - Runs every 15 minutes.
+///  - Runs one dispatch cycle immediately on startup, then every 15 minutes.
 ///  - Dispatches reminders where ScheduledForUtc is within the next 15 minutes (or in the past but not yet sent).
 ///  - Only dispatches reminders for events that are still PUBLISHED and have a future start time.
 ///  - After successful dispatch the SentAtUtc timestamp is set to prevent duplicate sends.
@@ -34,10 +34,6 @@ public sealed class ReminderDispatchService(
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            await Task.Delay(_interval, stoppingToken).ConfigureAwait(false);
-
-            if (stoppingToken.IsCancellationRequested) break;
-
             try
             {
                 await DispatchDueRemindersOnceAsync(stoppingToken).ConfigureAwait(false);
@@ -46,6 +42,10 @@ public sealed class ReminderDispatchService(
             {
                 _logger.LogError(ex, "Error during reminder dispatch cycle");
             }
+
+            if (stoppingToken.IsCancellationRequested) break;
+
+            await Task.Delay(_interval, stoppingToken).ConfigureAwait(false);
         }
 
         _logger.LogInformation("ReminderDispatchService stopped");
