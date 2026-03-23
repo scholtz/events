@@ -263,7 +263,12 @@ function providerLabel(provider: string): string {
                   >
                     {{ t('dashboard.viewDetails') }}
                   </RouterLink>
-                  <span v-else class="text-muted btn-sm-placeholder">—</span>
+                  <RouterLink
+                    :to="`/edit/${item.eventId}`"
+                    class="btn btn-outline btn-sm btn-edit"
+                  >
+                    {{ t('dashboard.editEvent') }}
+                  </RouterLink>
                 </td>
               </tr>
             </tbody>
@@ -511,6 +516,15 @@ tr:hover td {
   background: var(--color-surface-raised);
   color: var(--color-text);
   text-decoration: none;
+}
+
+.btn-edit {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.btn-edit:hover {
+  background: rgba(19, 127, 236, 0.08);
 }
 
 .btn-sm {

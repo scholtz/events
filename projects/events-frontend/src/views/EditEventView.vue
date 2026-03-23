@@ -1,22 +1,30 @@
 <script setup lang="ts">
-import { reactive, ref, computed, watch, onBeforeUnmount } from 'vue'
+import { reactive, ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useEventsStore } from '@/stores/events'
 import { useDomainsStore } from '@/stores/domains'
+import { gqlRequest } from '@/lib/graphql'
+import type { CatalogEvent } from '@/types'
 
 const { t } = useI18n()
 const router = useRouter()
+const route = useRoute()
 const eventsStore = useEventsStore()
 const domainsStore = useDomainsStore()
+
+const eventId = route.params.id as string
 
 // ── Step management ────────────────────────────────────────────────────────
 const TOTAL_STEPS = 5
 const currentStep = ref(1)
 
-// ── Form state ─────────────────────────────────────────────────────────────
-const DRAFT_KEY = 'event_draft'
+// ── Loading state ──────────────────────────────────────────────────────────
+const loadingEvent = ref(true)
+const loadError = ref('')
+const originalEvent = ref<CatalogEvent | null>(null)
 
+// ── Form state ─────────────────────────────────────────────────────────────
 const form = reactive({
   name: '',
   description: '',
@@ -37,61 +45,10 @@ const form = reactive({
   eventUrl: '',
 })
 
-// ── Draft persistence ──────────────────────────────────────────────────────
-function saveDraft() {
-  try {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...form }))
-    draftSaved.value = true
-    if (draftSavedTimer !== null) clearTimeout(draftSavedTimer)
-    draftSavedTimer = setTimeout(() => {
-      draftSaved.value = false
-      draftSavedTimer = null
-    }, 2500)
-  } catch {
-    // localStorage unavailable
-  }
-}
-
-function loadDraft() {
-  try {
-    const raw = localStorage.getItem(DRAFT_KEY)
-    if (!raw) return
-    const saved = JSON.parse(raw) as Partial<typeof form>
-    Object.assign(form, saved)
-    draftLoaded.value = true
-  } catch {
-    // corrupted draft
-  }
-}
-
-function clearDraft() {
-  try {
-    localStorage.removeItem(DRAFT_KEY)
-  } catch {
-    // noop
-  }
-}
-
-// Auto-save draft whenever form changes
-watch(form, () => {
-  try {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...form }))
-  } catch {
-    // localStorage unavailable
-  }
-})
-
 // ── UI state ───────────────────────────────────────────────────────────────
 const submitting = ref(false)
 const submitted = ref(false)
 const submissionError = ref('')
-const draftSaved = ref(false)
-const draftLoaded = ref(false)
-let draftSavedTimer: ReturnType<typeof setTimeout> | null = null
-
-onBeforeUnmount(() => {
-  if (draftSavedTimer !== null) clearTimeout(draftSavedTimer)
-})
 
 // ── Per-step validation errors ─────────────────────────────────────────────
 const errors = reactive<Record<string, string>>({})
@@ -137,7 +94,6 @@ function validateStep(step: number): boolean {
     return !errors.priceAmount
   }
   if (step === 4) {
-    // location is optional
     return true
   }
   if (step === 5) {
@@ -194,9 +150,68 @@ const stepTitle = computed(() => {
 
 const parsedPrice = computed(() => Number.parseFloat(form.priceAmount))
 
-// ── Submit ─────────────────────────────────────────────────────────────────
-async function handleSubmit() {
-  // Validate all steps before submitting
+// ── Load event data ────────────────────────────────────────────────────────
+const EVENT_FIELDS = `
+  id name slug description eventUrl
+  venueName addressLine1 city countryCode
+  latitude longitude startsAtUtc endsAtUtc
+  submittedAtUtc updatedAtUtc publishedAtUtc
+  adminNotes status isFree priceAmount currencyCode domainId mapUrl
+  attendanceMode timezone language
+  domain { id name slug subdomain }
+  submittedBy { displayName }
+`
+
+async function loadEvent() {
+  loadingEvent.value = true
+  loadError.value = ''
+  try {
+    // First try from the store cache
+    let event = eventsStore.getEventById(eventId)
+    if (!event) {
+      // Fetch from API using the event ID via the myDashboard data or direct query
+      const data = await gqlRequest<{ eventById: CatalogEvent | null }>(
+        `query EventById($id: UUID!) {
+          eventById(id: $id) { ${EVENT_FIELDS} }
+        }`,
+        { id: eventId },
+      )
+      event = data.eventById ?? undefined
+    }
+    if (!event) {
+      loadError.value = t('editEvent.notFound')
+      return
+    }
+    originalEvent.value = event
+    // Pre-fill form
+    form.name = event.name
+    form.description = event.description
+    form.domainSlug = event.domain?.slug ?? ''
+    form.countryCode = event.countryCode ?? 'CZ'
+    form.attendanceMode = event.attendanceMode ?? 'IN_PERSON'
+    // Convert ISO date to date input format (YYYY-MM-DD)
+    form.startsAtUtc = event.startsAtUtc ? event.startsAtUtc.slice(0, 10) : ''
+    form.endsAtUtc = event.endsAtUtc ? event.endsAtUtc.slice(0, 10) : ''
+    form.timezone = event.timezone ?? ''
+    form.isFree = event.isFree
+    form.priceAmount = event.priceAmount != null && !event.isFree ? String(event.priceAmount) : ''
+    form.currencyCode = event.currencyCode ?? 'EUR'
+    form.venueName = event.venueName ?? ''
+    form.addressLine1 = event.addressLine1 ?? ''
+    form.city = event.city ?? ''
+    form.latitude = event.latitude ? String(event.latitude) : ''
+    form.longitude = event.longitude ? String(event.longitude) : ''
+    form.eventUrl = event.eventUrl ?? ''
+  } catch {
+    loadError.value = t('editEvent.loadError')
+  } finally {
+    loadingEvent.value = false
+  }
+}
+
+// ── Save changes ───────────────────────────────────────────────────────────
+async function handleSave() {
+  // Validate all steps before saving
   for (let s = 1; s <= TOTAL_STEPS; s++) {
     if (!validateStep(s)) {
       currentStep.value = s
@@ -208,7 +223,7 @@ async function handleSubmit() {
   submitting.value = true
   submissionError.value = ''
   try {
-    await eventsStore.submitEvent({
+    await eventsStore.updateMyEvent(eventId, {
       domainSlug: form.domainSlug,
       name: form.name,
       description: form.description,
@@ -229,51 +244,51 @@ async function handleSubmit() {
       attendanceMode: form.attendanceMode as 'IN_PERSON' | 'ONLINE' | 'HYBRID',
       timezone: form.timezone.trim() || undefined,
     })
-    clearDraft()
     submitted.value = true
     setTimeout(() => router.push('/dashboard'), 1500)
   } catch (error) {
     submissionError.value =
-      error instanceof Error ? error.message : t('submitEvent.submitError')
+      error instanceof Error ? error.message : t('editEvent.saveError')
   } finally {
     submitting.value = false
   }
 }
 
-// Load draft on mount
-loadDraft()
+onMounted(loadEvent)
 </script>
 
 <template>
-  <div class="submit-view">
+  <div class="edit-view">
     <div class="container">
       <!-- Header -->
-      <div class="submit-header">
+      <div class="edit-header">
         <RouterLink to="/dashboard" class="back-link">{{ t('common.back') }}</RouterLink>
-        <h1>{{ t('submitEvent.title') }}</h1>
-        <p class="submit-subtitle">{{ t('submitEvent.subtitle') }}</p>
+        <h1>{{ t('editEvent.title') }}</h1>
+        <p class="edit-subtitle">{{ t('editEvent.subtitle') }}</p>
       </div>
 
-      <!-- Draft loaded notice -->
-      <div v-if="draftLoaded" class="notice notice--info" role="status">
-        {{ t('submitEvent.draftLoaded') }}
-        <button class="notice-dismiss" @click="draftLoaded = false" :aria-label="t('common.close')">×</button>
+      <!-- Loading state -->
+      <div v-if="loadingEvent" class="card loading-state" role="status">
+        <div class="loading-spinner" aria-hidden="true"></div>
+        <p>{{ t('common.loading') }}</p>
       </div>
 
-      <!-- Draft saved notice -->
-      <div v-if="draftSaved" class="notice notice--success" role="status">
-        {{ t('submitEvent.draftSaved') }}
+      <!-- Load error -->
+      <div v-else-if="loadError" class="card error-state" role="alert">
+        <div class="error-icon">⚠️</div>
+        <p class="error-message">{{ loadError }}</p>
+        <button class="btn btn-outline" @click="loadEvent">{{ t('common.tryAgain') }}</button>
       </div>
 
       <!-- Success state -->
-      <div v-if="submitted" class="success-card card">
-        <div class="success-icon">🎉</div>
-        <h2>{{ t('submitEvent.successTitle') }}</h2>
-        <p>{{ t('submitEvent.successMessage') }}</p>
+      <div v-else-if="submitted" class="success-card card">
+        <div class="success-icon">✅</div>
+        <h2>{{ t('editEvent.successTitle') }}</h2>
+        <p>{{ t('editEvent.successMessage') }}</p>
         <RouterLink to="/dashboard" class="btn btn-primary">{{ t('submitEvent.goToDashboard') }}</RouterLink>
       </div>
 
-      <template v-else>
+      <template v-else-if="!loadError">
         <!-- Progress indicator -->
         <div class="step-progress" role="navigation" :aria-label="t('submitEvent.stepProgress')">
           <div class="step-progress-bar">
@@ -306,7 +321,7 @@ loadDraft()
         </div>
 
         <!-- Form card -->
-        <div class="submit-form card">
+        <div class="edit-form card">
 
           <!-- Step 1: Basic Info -->
           <fieldset v-if="currentStep === 1" class="form-section">
@@ -555,7 +570,7 @@ loadDraft()
             </div>
           </fieldset>
 
-          <!-- Step 5: Event Link -->
+          <!-- Step 5: Event Link + Preview -->
           <fieldset v-else-if="currentStep === 5" class="form-section">
             <legend class="section-legend">{{ t('submitEvent.eventLinkSection') }}</legend>
 
@@ -597,7 +612,7 @@ loadDraft()
             </div>
           </fieldset>
 
-          <!-- Global submission error -->
+          <!-- Global save error -->
           <p v-if="submissionError" class="submit-error" role="alert">{{ submissionError }}</p>
 
           <!-- Step navigation actions -->
@@ -613,15 +628,6 @@ loadDraft()
             <RouterLink v-else to="/dashboard" class="btn btn-ghost">{{ t('common.cancel') }}</RouterLink>
 
             <button
-              type="button"
-              class="btn btn-outline btn-save-draft"
-              @click="saveDraft"
-              :title="t('submitEvent.saveDraftTitle')"
-            >
-              {{ t('submitEvent.saveDraft') }}
-            </button>
-
-            <button
               v-if="currentStep < TOTAL_STEPS"
               type="button"
               class="btn btn-primary"
@@ -634,9 +640,9 @@ loadDraft()
               type="button"
               class="btn btn-primary"
               :disabled="submitting"
-              @click="handleSubmit"
+              @click="handleSave"
             >
-              {{ submitting ? t('submitEvent.submitting') : t('submitEvent.submitButton') }}
+              {{ submitting ? t('editEvent.saving') : t('editEvent.saveButton') }}
             </button>
           </div>
         </div>
@@ -646,11 +652,11 @@ loadDraft()
 </template>
 
 <style scoped>
-.submit-view {
+.edit-view {
   padding: 1.5rem 0 4rem;
 }
 
-.submit-header {
+.edit-header {
   margin-bottom: 1.25rem;
 }
 
@@ -666,51 +672,16 @@ loadDraft()
   color: var(--color-text);
 }
 
-.submit-header h1 {
+.edit-header h1 {
   font-size: 1.5rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   margin-bottom: 0.25rem;
 }
 
-.submit-subtitle {
+.edit-subtitle {
   color: var(--color-text-secondary);
   font-size: 0.9rem;
-}
-
-/* ── Notices ── */
-.notice {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.625rem 1rem;
-  border-radius: var(--radius-sm);
-  font-size: 0.875rem;
-  margin-bottom: 1rem;
-}
-
-.notice--info {
-  background: rgba(19, 127, 236, 0.1);
-  color: var(--color-primary);
-  border: 1px solid rgba(19, 127, 236, 0.25);
-}
-
-.notice--success {
-  background: rgba(74, 222, 128, 0.1);
-  color: #4ade80;
-  border: 1px solid rgba(74, 222, 128, 0.25);
-}
-
-.notice-dismiss {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 1.125rem;
-  line-height: 1;
-  color: inherit;
-  padding: 0;
-  flex-shrink: 0;
 }
 
 /* ── Step progress ── */
@@ -776,7 +747,7 @@ loadDraft()
 }
 
 /* ── Form card ── */
-.submit-form {
+.edit-form {
   max-width: 600px;
 }
 
@@ -825,11 +796,6 @@ loadDraft()
   padding: 1.25rem 1.5rem;
   border-top: 1px solid var(--color-border);
   flex-wrap: wrap;
-}
-
-.btn-save-draft {
-  margin-right: auto;
-  font-size: 0.8125rem;
 }
 
 .submit-error {
@@ -933,7 +899,7 @@ loadDraft()
   word-break: break-word;
 }
 
-/* ── Ghost button ── */
+/* ── Ghost / outline buttons ── */
 .btn-ghost {
   background: transparent;
   color: var(--color-text-secondary);
@@ -961,7 +927,7 @@ loadDraft()
   border: 1px solid var(--color-primary);
   padding: 0.5rem 1rem;
   border-radius: var(--radius-sm);
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s;
@@ -971,7 +937,48 @@ loadDraft()
   background: rgba(19, 127, 236, 0.08);
 }
 
-/* ── Success card ── */
+/* ── Loading / error / success states ── */
+.loading-state {
+  padding: 3rem 2rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  color: var(--color-text-secondary);
+}
+
+.loading-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.error-state {
+  padding: 2rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.error-icon {
+  font-size: 2rem;
+}
+
+.error-message {
+  color: var(--color-danger);
+  font-size: 0.9375rem;
+}
+
 .success-card {
   max-width: 480px;
   margin: 0 auto;
@@ -998,11 +1005,11 @@ loadDraft()
 
 /* ── Mobile first ── */
 @media (max-width: 640px) {
-  .submit-view {
+  .edit-view {
     padding: 1rem 0 5rem;
   }
 
-  .submit-header h1 {
+  .edit-header h1 {
     font-size: 1.25rem;
   }
 
@@ -1025,19 +1032,12 @@ loadDraft()
 
   .form-actions {
     padding: 1rem 1.25rem;
-    /* Sticky bar on mobile */
     position: sticky;
     bottom: 0;
     background: var(--color-surface);
     z-index: 10;
     border-top: 1px solid var(--color-border);
     box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.15);
-  }
-
-  .btn-save-draft {
-    order: -1;
-    width: 100%;
-    text-align: center;
   }
 
   .preview-summary {
@@ -1049,4 +1049,3 @@ loadDraft()
   }
 }
 </style>
-

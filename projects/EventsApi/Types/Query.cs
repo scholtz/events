@@ -126,6 +126,31 @@ public sealed class Query
                 catalogEvent => catalogEvent.Slug == slug && catalogEvent.Status == EventStatus.Published,
                 cancellationToken);
 
+    /// <summary>
+    /// Returns a single event by ID for the authenticated user (for editing).
+    /// Only the event's submitter or a global admin may retrieve it.
+    /// </summary>
+    [Authorize]
+    public async Task<CatalogEvent?> GetEventByIdAsync(
+        Guid id,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var currentUserId = claimsPrincipal.GetRequiredUserId();
+        var isAdmin = claimsPrincipal.IsAdmin();
+
+        var catalogEvent = await dbContext.Events
+            .AsNoTracking()
+            .Include(e => e.Domain)
+            .Include(e => e.SubmittedBy)
+            .SingleOrDefaultAsync(
+                e => e.Id == id && (isAdmin || e.SubmittedByUserId == currentUserId),
+                cancellationToken);
+
+        return catalogEvent;
+    }
+
     public async Task<IReadOnlyList<EventDomain>> GetDomainsAsync(
         ClaimsPrincipal claimsPrincipal,
         [Service] AppDbContext dbContext,
