@@ -448,4 +448,60 @@ public sealed class Query
                     && catalogEvent.PriceAmount.Value <= priceMax))
         };
     }
+
+    // ── Push notification queries ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns the authenticated user's current push subscription status.
+    /// Returns null if the user has no registered subscription.
+    /// </summary>
+    [Authorize]
+    public async Task<PushSubscriptionStatus?> GetMyPushSubscriptionAsync(
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var currentUserId = claimsPrincipal.GetRequiredUserId();
+
+        var subscription = await dbContext.PushSubscriptions
+            .SingleOrDefaultAsync(ps => ps.UserId == currentUserId, cancellationToken);
+
+        if (subscription is null) return null;
+
+        return new PushSubscriptionStatus(true, subscription.Endpoint, subscription.CreatedAtUtc);
+    }
+
+    /// <summary>
+    /// Returns all event reminders for the authenticated user (including sent ones).
+    /// </summary>
+    [Authorize]
+    public async Task<IReadOnlyList<EventReminderItem>> GetMyEventRemindersAsync(
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var currentUserId = claimsPrincipal.GetRequiredUserId();
+
+        var reminders = await dbContext.EventReminders
+            .Where(r => r.UserId == currentUserId)
+            .OrderBy(r => r.ScheduledForUtc)
+            .ToListAsync(cancellationToken);
+
+        return reminders
+            .Select(r => new EventReminderItem(
+                r.Id,
+                r.EventId,
+                r.OffsetHours,
+                r.ScheduledForUtc,
+                r.SentAtUtc,
+                r.CreatedAtUtc))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Returns the VAPID public key that the frontend needs to create a push subscription.
+    /// Empty string means push notifications are not configured on this server.
+    /// </summary>
+    public string GetVapidPublicKey([Service] Microsoft.Extensions.Options.IOptions<EventsApi.Configuration.VapidOptions> vapidOptions)
+        => vapidOptions.Value.PublicKey;
 }

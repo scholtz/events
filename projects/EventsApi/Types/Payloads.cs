@@ -45,3 +45,25 @@ public sealed record AdminOverview(
     IReadOnlyList<ApplicationUser> Users,
     IReadOnlyList<CatalogEvent> PendingReviewEvents,
     IReadOnlyList<EventDomain> Domains);
+
+/// <summary>
+/// Represents the user's current push notification subscription status.
+/// </summary>
+public sealed record PushSubscriptionStatus(
+    /// <summary>True if the user has a registered push subscription.</summary>
+    bool IsSubscribed,
+    /// <summary>The subscription endpoint, or null if not subscribed.</summary>
+    string? Endpoint,
+    /// <summary>UTC timestamp of when the subscription was registered, or null if not subscribed.</summary>
+    DateTime? CreatedAtUtc);
+
+/// <summary>
+/// Represents a single event reminder preference.
+/// </summary>
+public sealed record EventReminderItem(
+    Guid Id,
+    Guid EventId,
+    int OffsetHours,
+    DateTime ScheduledForUtc,
+    DateTime? SentAtUtc,
+    DateTime CreatedAtUtc);

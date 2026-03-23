@@ -4,6 +4,7 @@ using EventsApi.Data;
 using EventsApi.Data.Entities;
 using EventsApi.Security;
 using EventsApi.Types;
+using EventsApi.Utilities;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -13,6 +14,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.Configure<SeedDataOptions>(builder.Configuration.GetSection(SeedDataOptions.SectionName));
+builder.Services.Configure<VapidOptions>(builder.Configuration.GetSection("Vapid"));
 
 var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
     ?? throw new InvalidOperationException("JWT configuration is missing.");
@@ -96,6 +98,12 @@ builder.Services.AddScoped<AppDbInitializer>();
 builder.Services.AddScoped<JwtTokenService>();
 builder.Services.AddScoped<IPasswordHasher<ApplicationUser>, PasswordHasher<ApplicationUser>>();
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddHttpClient("push");
+builder.Services.AddScoped<WebPush.IWebPushClient>(serviceProvider =>
+    new WebPush.WebPushClient(
+        serviceProvider.GetRequiredService<IHttpClientFactory>().CreateClient("push")));
+builder.Services.AddScoped<IPushNotificationService, VapidPushNotificationService>();
+builder.Services.AddHostedService<ReminderDispatchService>();
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)

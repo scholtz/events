@@ -366,4 +366,33 @@ export default {
     notFoundDescription: 'Kategória „{slug}" neexistuje alebo už nie je aktívna.',
     errorLoad: 'Nepodarilo sa načítať kategóriu',
   },
+
+  // ── Push reminders ─────────────────────────────────────────────────────────
+  reminders: {
+    enableReminder: 'Pripomienka',
+    disableReminder: 'Zrušiť pripomienku',
+    reminderEnabled: 'Pripomienka nastavená',
+    reminderEnabledDescription: 'Dostanete upozornenie 24 hodín pred začiatkom tejto udalosti.',
+    reminderDisabledDescription: 'Pripomienka zrušená.',
+    enableNotificationsTitle: 'Povoliť pripomienky udalostí',
+    enableNotificationsDescription:
+      'Dostávajte push upozornenie 24 hodín pred uložením udalostí. Môžete to kedykoľvek vypnúť.',
+    enableNotificationsButton: 'Povoliť pripomienky',
+    notificationsBlocked:
+      'Upozornenia sú v prehliadači zablokované. Pre povolenie pripomienok otvorte nastavenia prehliadača a povolte upozornenia pre túto stránku.',
+    notificationsUnsupported:
+      'Push pripomienky nie sú v tomto prehliadači podporované. Skúste Chrome, Edge alebo Firefox na podporovanom zariadení.',
+    serverNotConfigured:
+      'Push upozornenia na tomto serveri zatiaľ nie sú dostupné.',
+    permissionGranted: 'Upozornenia povolené',
+    permissionDenied: 'Upozornenia zablokované',
+    permissionDefault: 'Upozornenia vypnuté',
+    pastEventNoReminder: 'Pripomienky sú dostupné len pre nadchádzajúce udalosti.',
+    requiresSave: 'Najprv uložte túto udalosť, aby ste mohli nastaviť pripomienku.',
+    loading: 'Nastavujem pripomienku…',
+    manageNotifications: 'Spravovať upozornenia',
+    disableAllNotifications: 'Zakázať všetky upozornenia',
+    disableAllDescription: 'Odstráňte push predplatné a zrušte všetky čakajúce pripomienky.',
+    disabledAll: 'Všetky upozornenia boli zakázané.',
+  },
 }

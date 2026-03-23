@@ -379,4 +379,33 @@ export default {
     notFoundDescription: 'The category "{slug}" does not exist or is no longer active.',
     errorLoad: 'Unable to load category',
   },
+
+  // ── Push reminders ─────────────────────────────────────────────────────────
+  reminders: {
+    enableReminder: 'Remind me',
+    disableReminder: 'Cancel reminder',
+    reminderEnabled: 'Reminder set',
+    reminderEnabledDescription: "You'll receive a notification 24 hours before this event starts.",
+    reminderDisabledDescription: 'Reminder cancelled.',
+    enableNotificationsTitle: 'Enable event reminders',
+    enableNotificationsDescription:
+      'Get a push notification 24 hours before events you have saved. You can turn this off any time.',
+    enableNotificationsButton: 'Enable reminders',
+    notificationsBlocked:
+      'Notifications are blocked in your browser. To enable reminders, open your browser settings and allow notifications for this site.',
+    notificationsUnsupported:
+      'Push reminders are not supported in this browser. Try using Chrome, Edge, or Firefox on a supported device.',
+    serverNotConfigured:
+      'Push notifications are not yet available on this server.',
+    permissionGranted: 'Notifications enabled',
+    permissionDenied: 'Notifications blocked',
+    permissionDefault: 'Notifications off',
+    pastEventNoReminder: 'Reminders are only available for upcoming events.',
+    requiresSave: 'Save this event first to enable reminders.',
+    loading: 'Setting reminder…',
+    manageNotifications: 'Manage notifications',
+    disableAllNotifications: 'Disable all notifications',
+    disableAllDescription: 'Remove your push subscription and cancel all pending reminders.',
+    disabledAll: 'All notifications disabled.',
+  },
 }

@@ -366,4 +366,33 @@ export default {
     notFoundDescription: 'Die Kategorie „{slug}" existiert nicht oder ist nicht mehr aktiv.',
     errorLoad: 'Kategorie konnte nicht geladen werden',
   },
+
+  // ── Push reminders ─────────────────────────────────────────────────────────
+  reminders: {
+    enableReminder: 'Erinnern',
+    disableReminder: 'Erinnerung abbrechen',
+    reminderEnabled: 'Erinnerung gesetzt',
+    reminderEnabledDescription: 'Sie erhalten 24 Stunden vor Beginn dieser Veranstaltung eine Benachrichtigung.',
+    reminderDisabledDescription: 'Erinnerung abgebrochen.',
+    enableNotificationsTitle: 'Veranstaltungserinnerungen aktivieren',
+    enableNotificationsDescription:
+      'Erhalten Sie eine Push-Benachrichtigung 24 Stunden vor gespeicherten Veranstaltungen. Sie können dies jederzeit deaktivieren.',
+    enableNotificationsButton: 'Erinnerungen aktivieren',
+    notificationsBlocked:
+      'Benachrichtigungen sind in Ihrem Browser gesperrt. Öffnen Sie die Browsereinstellungen und erlauben Sie Benachrichtigungen für diese Website.',
+    notificationsUnsupported:
+      'Push-Erinnerungen werden in diesem Browser nicht unterstützt. Verwenden Sie Chrome, Edge oder Firefox auf einem unterstützten Gerät.',
+    serverNotConfigured:
+      'Push-Benachrichtigungen sind auf diesem Server noch nicht verfügbar.',
+    permissionGranted: 'Benachrichtigungen aktiviert',
+    permissionDenied: 'Benachrichtigungen blockiert',
+    permissionDefault: 'Benachrichtigungen deaktiviert',
+    pastEventNoReminder: 'Erinnerungen sind nur für bevorstehende Veranstaltungen verfügbar.',
+    requiresSave: 'Speichern Sie diese Veranstaltung zuerst, um Erinnerungen zu aktivieren.',
+    loading: 'Erinnerung wird gesetzt…',
+    manageNotifications: 'Benachrichtigungen verwalten',
+    disableAllNotifications: 'Alle Benachrichtigungen deaktivieren',
+    disableAllDescription: 'Entfernen Sie Ihr Push-Abonnement und stornieren Sie alle ausstehenden Erinnerungen.',
+    disabledAll: 'Alle Benachrichtigungen wurden deaktiviert.',
+  },
 }

@@ -4274,4 +4274,609 @@ public sealed class GraphQlIntegrationTests
         // Null-language event must NOT appear in a language-specific filter result
         Assert.DoesNotContain("No Lang Specified", results);
     }
+
+    // ── Push subscription tests ──────────────────────────────────────────────
+
+    [Fact]
+    public async Task RegisterPushSubscription_RequiresAuthentication()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            dbContext.Users.Add(CreateUser("push-anon@example.com", "Anon User"));
+        });
+
+        using var client = factory.CreateClient(); // No auth header
+
+        var body = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+            mutation RegisterPushSubscription($input: RegisterPushSubscriptionInput!) {
+              registerPushSubscription(input: $input) {
+                isSubscribed
+              }
+            }
+            """,
+            variables = new
+            {
+                input = new { endpoint = "https://push.example.com/sub", p256dh = "key123", auth = "auth123" }
+            }
+        });
+
+        var json = await JsonDocument.ParseAsync(await body.Content.ReadAsStreamAsync());
+        var hasErrors = json.RootElement.TryGetProperty("errors", out _);
+        Assert.True(hasErrors, "Unauthenticated request should return GraphQL errors");
+    }
+
+    [Fact]
+    public async Task RegisterPushSubscription_CanRegisterAndQueryStatus()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("push-user@example.com", "Push User");
+            userId = user.Id;
+            dbContext.Users.Add(user);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        // Register a subscription
+        using var registerDoc = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation RegisterPushSubscription($input: RegisterPushSubscriptionInput!) {
+              registerPushSubscription(input: $input) {
+                isSubscribed
+                endpoint
+              }
+            }
+            """,
+            new
+            {
+                input = new
+                {
+                    endpoint = "https://push.example.com/subscription/abc123",
+                    p256dh = "BPubKey123",
+                    auth = "authSecret456"
+                }
+            });
+
+        var registered = registerDoc.RootElement.GetProperty("data").GetProperty("registerPushSubscription");
+        Assert.True(registered.GetProperty("isSubscribed").GetBoolean());
+        Assert.Equal("https://push.example.com/subscription/abc123", registered.GetProperty("endpoint").GetString());
+
+        // Query subscription status
+        using var statusDoc = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyPushSubscription {
+              myPushSubscription {
+                isSubscribed
+                endpoint
+              }
+            }
+            """);
+
+        var status = statusDoc.RootElement.GetProperty("data").GetProperty("myPushSubscription");
+        Assert.True(status.GetProperty("isSubscribed").GetBoolean());
+        Assert.Equal("https://push.example.com/subscription/abc123", status.GetProperty("endpoint").GetString());
+    }
+
+    [Fact]
+    public async Task RegisterPushSubscription_ReplacesExistingSubscription()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("push-replace@example.com", "Push Replace");
+            userId = user.Id;
+            dbContext.Users.Add(user);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        // Register first subscription
+        await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation RegisterPushSubscription($input: RegisterPushSubscriptionInput!) {
+              registerPushSubscription(input: $input) { isSubscribed }
+            }
+            """,
+            new { input = new { endpoint = "https://push.example.com/old", p256dh = "old-key", auth = "old-auth" } });
+
+        // Register replacement subscription
+        using var replaceDoc = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation RegisterPushSubscription($input: RegisterPushSubscriptionInput!) {
+              registerPushSubscription(input: $input) {
+                isSubscribed
+                endpoint
+              }
+            }
+            """,
+            new { input = new { endpoint = "https://push.example.com/new", p256dh = "new-key", auth = "new-auth" } });
+
+        var replaced = replaceDoc.RootElement.GetProperty("data").GetProperty("registerPushSubscription");
+        Assert.True(replaced.GetProperty("isSubscribed").GetBoolean());
+        Assert.Equal("https://push.example.com/new", replaced.GetProperty("endpoint").GetString());
+
+        // Verify only one subscription exists in database
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var count = await dbContext.PushSubscriptions.CountAsync(ps => ps.UserId == userId);
+        Assert.Equal(1, count);
+    }
+
+    [Fact]
+    public async Task RemovePushSubscription_RemovesSubscriptionAndPendingReminders()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("push-remove@example.com", "Push Remove");
+            userId = user.Id;
+            var domain = CreateDomain("Remove Domain", "remove-domain");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+
+            var ev = CreateEvent("Remove Event", "remove-event", "Desc", "Venue", "City",
+                DateTime.UtcNow.AddDays(30), domain, user);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        // Register subscription
+        await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation RegisterPushSubscription($input: RegisterPushSubscriptionInput!) {
+              registerPushSubscription(input: $input) { isSubscribed }
+            }
+            """,
+            new { input = new { endpoint = "https://push.example.com/sub", p256dh = "key", auth = "auth" } });
+
+        // Enable a reminder
+        await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation EnableEventReminder($input: EnableEventReminderInput!) {
+              enableEventReminder(input: $input) { id }
+            }
+            """,
+            new { input = new { eventId, offsetHours = 24 } });
+
+        // Remove subscription
+        using var removeDoc = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation RemovePushSubscription {
+              removePushSubscription
+            }
+            """);
+
+        Assert.True(removeDoc.RootElement.GetProperty("data").GetProperty("removePushSubscription").GetBoolean());
+
+        // Verify subscription and pending reminders are gone
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var subCount = await dbContext.PushSubscriptions.CountAsync(ps => ps.UserId == userId);
+        var reminderCount = await dbContext.EventReminders.CountAsync(r => r.UserId == userId && r.SentAtUtc == null);
+        Assert.Equal(0, subCount);
+        Assert.Equal(0, reminderCount);
+    }
+
+    [Fact]
+    public async Task MyPushSubscription_ReturnsNullWhenNotSubscribed()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("push-none@example.com", "No Sub");
+            userId = user.Id;
+            dbContext.Users.Add(user);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyPushSubscription {
+              myPushSubscription {
+                isSubscribed
+              }
+            }
+            """);
+
+        var sub = doc.RootElement.GetProperty("data").GetProperty("myPushSubscription");
+        Assert.Equal(JsonValueKind.Null, sub.ValueKind);
+    }
+
+    // ── Event reminder tests ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task EnableEventReminder_RequiresPushSubscription()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("reminder-nosub@example.com", "No Sub User");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "tech-reminder-nosub");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+
+            var ev = CreateEvent("Future Event", "future-event-nosub", "Desc", "Venue", "City",
+                DateTime.UtcNow.AddDays(10), domain, user);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        // Try to enable reminder without a push subscription
+        var body = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+            mutation EnableEventReminder($input: EnableEventReminderInput!) {
+              enableEventReminder(input: $input) { id }
+            }
+            """,
+            variables = new { input = new { eventId, offsetHours = 24 } }
+        });
+
+        var json = await JsonDocument.ParseAsync(await body.Content.ReadAsStreamAsync());
+        var hasErrors = json.RootElement.TryGetProperty("errors", out var errors);
+        Assert.True(hasErrors);
+        Assert.Contains("NO_PUSH_SUBSCRIPTION", errors.ToString());
+    }
+
+    [Fact]
+    public async Task EnableEventReminder_CanEnableAndListReminder()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("reminder-enable@example.com", "Reminder Enable");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "tech-reminder-enable");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+
+            var ev = CreateEvent("Upcoming Event", "upcoming-event-enable", "Desc", "Venue", "City",
+                DateTime.UtcNow.AddDays(30), domain, user);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        // Register subscription first
+        await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation RegisterPushSubscription($input: RegisterPushSubscriptionInput!) {
+              registerPushSubscription(input: $input) { isSubscribed }
+            }
+            """,
+            new { input = new { endpoint = "https://push.example.com/s1", p256dh = "k1", auth = "a1" } });
+
+        // Enable reminder
+        using var enableDoc = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation EnableEventReminder($input: EnableEventReminderInput!) {
+              enableEventReminder(input: $input) {
+                id
+                eventId
+                offsetHours
+                sentAtUtc
+              }
+            }
+            """,
+            new { input = new { eventId, offsetHours = 24 } });
+
+        var reminder = enableDoc.RootElement.GetProperty("data").GetProperty("enableEventReminder");
+        Assert.Equal(eventId.ToString(), reminder.GetProperty("eventId").GetString());
+        Assert.Equal(24, reminder.GetProperty("offsetHours").GetInt32());
+        Assert.Equal(JsonValueKind.Null, reminder.GetProperty("sentAtUtc").ValueKind);
+
+        // List reminders
+        using var listDoc = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyEventReminders {
+              myEventReminders {
+                eventId
+                offsetHours
+              }
+            }
+            """);
+
+        var reminders = listDoc.RootElement.GetProperty("data").GetProperty("myEventReminders").EnumerateArray().ToList();
+        Assert.Single(reminders);
+        Assert.Equal(eventId.ToString(), reminders[0].GetProperty("eventId").GetString());
+    }
+
+    [Fact]
+    public async Task EnableEventReminder_RejectsEventInPast()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("reminder-past@example.com", "Past User");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "tech-reminder-past");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+
+            // Past event
+            var ev = CreateEvent("Past Event", "past-event-reminder", "Desc", "Venue", "City",
+                DateTime.UtcNow.AddDays(-5), domain, user);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        // Register subscription
+        await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation RegisterPushSubscription($input: RegisterPushSubscriptionInput!) {
+              registerPushSubscription(input: $input) { isSubscribed }
+            }
+            """,
+            new { input = new { endpoint = "https://push.example.com/s2", p256dh = "k2", auth = "a2" } });
+
+        // Try to enable reminder for past event
+        var body = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+            mutation EnableEventReminder($input: EnableEventReminderInput!) {
+              enableEventReminder(input: $input) { id }
+            }
+            """,
+            variables = new { input = new { eventId, offsetHours = 24 } }
+        });
+
+        var json = await JsonDocument.ParseAsync(await body.Content.ReadAsStreamAsync());
+        var hasErrors = json.RootElement.TryGetProperty("errors", out var errors);
+        Assert.True(hasErrors, "Should fail for past event");
+        // past events have started so they're not Published in our test data... verify error returned
+    }
+
+    [Fact]
+    public async Task DisableEventReminder_RemovesRemindersForEvent()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("reminder-disable@example.com", "Reminder Disable");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "tech-reminder-disable");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+
+            var ev = CreateEvent("Disable Reminder Event", "disable-reminder-event", "Desc", "Venue", "City",
+                DateTime.UtcNow.AddDays(20), domain, user);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        // Register subscription
+        await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation RegisterPushSubscription($input: RegisterPushSubscriptionInput!) {
+              registerPushSubscription(input: $input) { isSubscribed }
+            }
+            """,
+            new { input = new { endpoint = "https://push.example.com/s3", p256dh = "k3", auth = "a3" } });
+
+        // Enable reminder
+        await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation EnableEventReminder($input: EnableEventReminderInput!) {
+              enableEventReminder(input: $input) { id }
+            }
+            """,
+            new { input = new { eventId, offsetHours = 24 } });
+
+        // Disable reminder
+        using var disableDoc = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation DisableEventReminder($eventId: UUID!) {
+              disableEventReminder(eventId: $eventId)
+            }
+            """,
+            new { eventId });
+
+        Assert.True(disableDoc.RootElement.GetProperty("data").GetProperty("disableEventReminder").GetBoolean());
+
+        // Verify no reminders remain
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var count = await dbContext.EventReminders.CountAsync(r => r.UserId == userId && r.EventId == eventId);
+        Assert.Equal(0, count);
+    }
+
+    [Fact]
+    public async Task EnableEventReminder_PreventsDuplicateForSameOffset()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("reminder-dupe@example.com", "Dupe User");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "tech-reminder-dupe");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+
+            var ev = CreateEvent("Dupe Reminder Event", "dupe-reminder-event", "Desc", "Venue", "City",
+                DateTime.UtcNow.AddDays(15), domain, user);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        // Register subscription
+        await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation RegisterPushSubscription($input: RegisterPushSubscriptionInput!) {
+              registerPushSubscription(input: $input) { isSubscribed }
+            }
+            """,
+            new { input = new { endpoint = "https://push.example.com/s4", p256dh = "k4", auth = "a4" } });
+
+        // Enable reminder twice for the same offset
+        await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation EnableEventReminder($input: EnableEventReminderInput!) {
+              enableEventReminder(input: $input) { id }
+            }
+            """,
+            new { input = new { eventId, offsetHours = 24 } });
+
+        await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation EnableEventReminder($input: EnableEventReminderInput!) {
+              enableEventReminder(input: $input) { id }
+            }
+            """,
+            new { input = new { eventId, offsetHours = 24 } });
+
+        // Only one reminder should exist
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var count = await dbContext.EventReminders.CountAsync(r => r.UserId == userId && r.EventId == eventId);
+        Assert.Equal(1, count);
+    }
+
+    [Fact]
+    public async Task OrganizerIsolation_RemindersBelongOnlyToOwner()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId1 = Guid.Empty;
+        var userId2 = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user1 = CreateUser("remind-user1@example.com", "User One");
+            var user2 = CreateUser("remind-user2@example.com", "User Two");
+            userId1 = user1.Id;
+            userId2 = user2.Id;
+            var domain = CreateDomain("Tech", "tech-isolate");
+            dbContext.Users.AddRange(user1, user2);
+            dbContext.Domains.Add(domain);
+
+            var ev = CreateEvent("Shared Event", "shared-event-reminder", "Desc", "Venue", "City",
+                DateTime.UtcNow.AddDays(10), domain, user1);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        // User 1 registers subscription and enables reminder
+        using var client1 = factory.CreateClient();
+        client1.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId1));
+        await ExecuteGraphQlAsync(
+            client1,
+            """
+            mutation RegisterPushSubscription($input: RegisterPushSubscriptionInput!) {
+              registerPushSubscription(input: $input) { isSubscribed }
+            }
+            """,
+            new { input = new { endpoint = "https://push.example.com/u1", p256dh = "k1u1", auth = "a1u1" } });
+        await ExecuteGraphQlAsync(
+            client1,
+            """
+            mutation EnableEventReminder($input: EnableEventReminderInput!) {
+              enableEventReminder(input: $input) { id }
+            }
+            """,
+            new { input = new { eventId, offsetHours = 24 } });
+
+        // User 2 queries their reminders — should see none
+        using var client2 = factory.CreateClient();
+        client2.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId2));
+
+        using var doc = await ExecuteGraphQlAsync(
+            client2,
+            """
+            query MyEventReminders {
+              myEventReminders {
+                eventId
+              }
+            }
+            """);
+
+        var reminders = doc.RootElement.GetProperty("data").GetProperty("myEventReminders").EnumerateArray().ToList();
+        Assert.Empty(reminders);
+    }
+
+    [Fact]
+    public async Task VapidPublicKey_IsAccessibleWithoutAuthentication()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        using var client = factory.CreateClient();
+
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            query VapidPublicKey {
+              vapidPublicKey
+            }
+            """);
+
+        // In test config VAPID keys are not set, so the key should be empty string
+        var key = doc.RootElement.GetProperty("data").GetProperty("vapidPublicKey").GetString();
+        Assert.NotNull(key); // may be empty but must not be null
+    }
 }

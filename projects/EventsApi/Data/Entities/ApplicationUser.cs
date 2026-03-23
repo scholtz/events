@@ -25,4 +25,10 @@ public sealed class ApplicationUser
 
     [GraphQLIgnore]
     public List<FavoriteEvent> FavoriteEvents { get; set; } = [];
+
+    [GraphQLIgnore]
+    public List<PushSubscription> PushSubscriptions { get; set; } = [];
+
+    [GraphQLIgnore]
+    public List<EventReminder> EventReminders { get; set; } = [];
 }

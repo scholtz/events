@@ -113,6 +113,26 @@ export type MockCalendarAction = {
   triggeredAtUtc: string
 }
 
+export type MockPushSubscription = {
+  id: string
+  userId: string
+  endpoint: string
+  p256dh: string
+  auth: string
+  createdAtUtc: string
+  updatedAtUtc: string
+}
+
+export type MockEventReminder = {
+  id: string
+  userId: string
+  eventId: string
+  offsetHours: number
+  scheduledForUtc: string
+  sentAtUtc: string | null
+  createdAtUtc: string
+}
+
 export type MockState = {
   users: MockUser[]
   domains: MockDomain[]
@@ -121,6 +141,9 @@ export type MockState = {
   savedSearches: MockSavedSearch[]
   favoriteEvents: MockFavoriteEvent[]
   calendarActions: MockCalendarAction[]
+  pushSubscriptions: MockPushSubscription[]
+  eventReminders: MockEventReminder[]
+  vapidPublicKey: string
   currentUserId: string | null
   currentToken: string | null
 }
@@ -139,9 +162,14 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
     savedSearches: initial?.savedSearches ?? [],
     favoriteEvents: initial?.favoriteEvents ?? [],
     calendarActions: initial?.calendarActions ?? [],
+    pushSubscriptions: initial?.pushSubscriptions ?? [],
+    eventReminders: initial?.eventReminders ?? [],
+    vapidPublicKey: initial?.vapidPublicKey ?? 'SGVsbG9QbGF5d3JpZ2h0S2V5',
     currentUserId: initial?.currentUserId ?? null,
     currentToken: initial?.currentToken ?? null,
   }
+
+  const getActiveUserId = () => state.currentUserId ?? state.users[0]?.id ?? ''
 
   page.route('**/graphql', async (route) => {
     const request = route.request()
@@ -208,7 +236,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       return
     }
 
-    if (query.includes('mutation') && query.includes('Register')) {
+    if (query.includes('mutation') && query.includes('RegisterUser')) {
       const input = variables.input || {}
       const id = `user-${state.users.length + 1}`
       const newUser: MockUser = {
@@ -424,6 +452,166 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       return
     }
 
+    if (query.includes('mutation') && query.includes('RegisterPushSubscription')) {
+      const input = variables.input || {}
+      const activeUserId = getActiveUserId()
+      const existing = state.pushSubscriptions.find((s) => s.userId === activeUserId)
+      const now = new Date().toISOString()
+
+      if (existing) {
+        existing.endpoint = String(input.endpoint || '')
+        existing.p256dh = String(input.p256dh || '')
+        existing.auth = String(input.auth || '')
+        existing.updatedAtUtc = now
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: {
+              registerPushSubscription: {
+                isSubscribed: true,
+                endpoint: existing.endpoint,
+                createdAtUtc: existing.createdAtUtc,
+              },
+            },
+          }),
+        })
+        return
+      }
+
+      const subscription: MockPushSubscription = {
+        id: `push-${state.pushSubscriptions.length + 1}`,
+        userId: activeUserId,
+        endpoint: String(input.endpoint || ''),
+        p256dh: String(input.p256dh || ''),
+        auth: String(input.auth || ''),
+        createdAtUtc: now,
+        updatedAtUtc: now,
+      }
+      state.pushSubscriptions.push(subscription)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            registerPushSubscription: {
+              isSubscribed: true,
+              endpoint: subscription.endpoint,
+              createdAtUtc: subscription.createdAtUtc,
+            },
+          },
+        }),
+      })
+      return
+    }
+
+    if (query.includes('mutation') && query.includes('RemovePushSubscription')) {
+      const activeUserId = getActiveUserId()
+      state.pushSubscriptions = state.pushSubscriptions.filter(
+        (subscription) => subscription.userId !== activeUserId,
+      )
+      state.eventReminders = state.eventReminders.filter(
+        (reminder) => reminder.userId !== activeUserId,
+      )
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { removePushSubscription: true } }),
+      })
+      return
+    }
+
+    if (query.includes('mutation') && query.includes('EnableEventReminder')) {
+      const input = variables.input || {}
+      const eventId = String(input.eventId || '')
+      const offsetHours = Number(input.offsetHours || 24)
+      const activeUserId = getActiveUserId()
+      const currentEvent = state.events.find((event) => event.id === eventId)
+
+      if (!currentEvent) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            errors: [{ message: 'Event not found', extensions: { code: 'EVENT_NOT_FOUND' } }],
+          }),
+        })
+        return
+      }
+
+      const existingSubscription = state.pushSubscriptions.find(
+        (subscription) => subscription.userId === activeUserId,
+      )
+      if (!existingSubscription) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            errors: [
+              {
+                message: 'You must enable push notifications before setting reminders.',
+                extensions: { code: 'NO_PUSH_SUBSCRIPTION' },
+              },
+            ],
+          }),
+        })
+        return
+      }
+
+      const scheduledForUtc = new Date(
+        new Date(currentEvent.startsAtUtc).getTime() - offsetHours * 60 * 60 * 1000,
+      ).toISOString()
+      const existing = state.eventReminders.find(
+        (reminder) =>
+          reminder.userId === activeUserId &&
+          reminder.eventId === eventId &&
+          reminder.offsetHours === offsetHours,
+      )
+
+      if (existing) {
+        existing.scheduledForUtc = scheduledForUtc
+        existing.sentAtUtc = null
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: { enableEventReminder: existing } }),
+        })
+        return
+      }
+
+      const reminder: MockEventReminder = {
+        id: `reminder-${state.eventReminders.length + 1}`,
+        userId: activeUserId,
+        eventId,
+        offsetHours,
+        scheduledForUtc,
+        sentAtUtc: null,
+        createdAtUtc: new Date().toISOString(),
+      }
+      state.eventReminders.push(reminder)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { enableEventReminder: reminder } }),
+      })
+      return
+    }
+
+    if (query.includes('mutation') && query.includes('DisableEventReminder')) {
+      const eventId = String(variables.eventId || '')
+      const activeUserId = getActiveUserId()
+      state.eventReminders = state.eventReminders.filter(
+        (reminder) =>
+          !(reminder.userId === activeUserId && reminder.eventId === eventId),
+      )
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { disableEventReminder: true } }),
+      })
+      return
+    }
+
     if (query.includes('mutation') && query.includes('TrackCalendarAction')) {
       const input = variables.input || {}
       const provider = (input.provider as string)?.toUpperCase() ?? ''
@@ -632,6 +820,50 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({ data: { myFavoriteEvents: favoriteEventsData } }),
+      })
+      return
+    }
+
+    if (query.includes('query') && query.includes('MyPushSubscription')) {
+      const activeUserId = getActiveUserId()
+      const subscription =
+        state.pushSubscriptions.find((item) => item.userId === activeUserId) ?? null
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            myPushSubscription: subscription
+              ? {
+                  isSubscribed: true,
+                  endpoint: subscription.endpoint,
+                  createdAtUtc: subscription.createdAtUtc,
+                }
+              : null,
+          },
+        }),
+      })
+      return
+    }
+
+    if (query.includes('query') && query.includes('MyEventReminders')) {
+      const activeUserId = getActiveUserId()
+      const reminders = state.eventReminders.filter(
+        (reminder) => reminder.userId === activeUserId,
+      )
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { myEventReminders: reminders } }),
+      })
+      return
+    }
+
+    if (query.includes('query') && query.includes('VapidPublicKey')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { vapidPublicKey: state.vapidPublicKey } }),
       })
       return
     }
