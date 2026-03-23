@@ -23,6 +23,12 @@ public sealed class EventFilterInput
     /// Events with a null Language are excluded from language-specific queries.
     /// </summary>
     public string? Language { get; init; }
+    /// <summary>
+    /// IANA timezone identifier to filter events by their configured timezone (e.g. "Europe/Prague").
+    /// When provided, only events with a matching Timezone value are returned.
+    /// Events with a null Timezone are excluded from timezone-specific queries.
+    /// </summary>
+    public string? Timezone { get; init; }
 }
 
 public sealed class RegisterUserInput

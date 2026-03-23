@@ -80,6 +80,8 @@ export default {
     emptyPricePaid: 'Nie sú k dispozícii platené udalosti. Odstráňte cenový filter.',
     emptyDate: 'V tomto časovom rozsahu nie sú žiadne udalosti. Skúste upraviť dátumy.',
     emptyDomain: 'V tejto kategórii nie sú žiadne udalosti. Odstráňte filter domény.',
+    emptyTimezone:
+      'V časovom pásme „{timezone}" sa nenašli žiadne udalosti. Skúste iné časové pásmo alebo odstráňte filter.',
     emptyMultiple:
       'Žiadne udalosti nezodpovedajú všetkým {count} aktívnym filtrom. Skúste odstrániť najšpecifickejší filter.',
     resultsAvailableOne: 'K dispozícii je 1 udalosť',
@@ -117,6 +119,8 @@ export default {
     relevance: 'Relevancia',
     language: 'Jazyk',
     anyLanguage: 'Akýkoľvek jazyk',
+    timezone: 'Časové pásmo',
+    anyTimezone: 'Akékoľvek časové pásmo',
     langEn: 'Angličtina',
     langCs: 'Čeština',
     langSk: 'Slovenčina',
@@ -139,6 +143,7 @@ export default {
     chipModeOnline: 'Režim: Online',
     chipModeHybrid: 'Režim: Hybridný',
     chipLanguage: 'Jazyk: {value}',
+    chipTimezone: 'Časové pásmo: {value}',
     moreFilters: 'Viac filtrov',
     hideFilters: 'Skryť filtre',
     savedSearches: 'Uložené vyhľadávania',

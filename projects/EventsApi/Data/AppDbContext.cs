@@ -107,6 +107,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(savedSearch => savedSearch.PriceMax).HasPrecision(10, 2);
             entity.Property(savedSearch => savedSearch.SortBy).HasConversion<string>().HasMaxLength(32);
             entity.Property(savedSearch => savedSearch.Language).HasMaxLength(16);
+            entity.Property(savedSearch => savedSearch.Timezone).HasMaxLength(64);
 
             entity.HasOne(savedSearch => savedSearch.User)
                 .WithMany(user => user.SavedSearches)

@@ -43,6 +43,7 @@ export function createDefaultEventFilters(): EventFilters {
     sortBy: DEFAULT_SORT,
     attendanceMode: '',
     language: '',
+    timezone: '',
   }
 }
 
@@ -60,6 +61,7 @@ export function buildDiscoveryFilterInput(filters: EventFilters): Record<string,
   if (filters.priceMax) filter.priceMax = Number(filters.priceMax)
   if (filters.attendanceMode) filter.attendanceMode = filters.attendanceMode
   if (filters.language.trim()) filter.language = filters.language.trim().toLowerCase()
+  if (filters.timezone.trim()) filter.timezone = filters.timezone.trim()
   filter.sortBy = filters.sortBy
 
   return Object.keys(filter).length ? filter : undefined
@@ -79,6 +81,7 @@ export function eventFiltersToQuery(filters: EventFilters): LocationQueryRaw {
   if (filters.sortBy !== DEFAULT_SORT) query.sort = filters.sortBy.toLowerCase()
   if (filters.attendanceMode) query.mode = filters.attendanceMode.toLowerCase().replace('_', '-')
   if (filters.language.trim()) query.lang = filters.language.trim().toLowerCase()
+  if (filters.timezone.trim()) query.tz = filters.timezone.trim()
 
   return query
 }
@@ -109,6 +112,7 @@ export function eventFiltersFromQuery(query: LocationQuery): EventFilters {
   }
 
   filters.language = getQueryValue(query.lang).toLowerCase()
+  filters.timezone = getQueryValue(query.tz).trim()
 
   return filters
 }
@@ -127,6 +131,7 @@ export function savedSearchToFilters(savedSearch: SavedSearch): EventFilters {
     sortBy: savedSearch.sortBy ?? DEFAULT_SORT,
     attendanceMode: savedSearch.attendanceMode ?? '',
     language: savedSearch.language ?? '',
+    timezone: savedSearch.timezone ?? '',
   }
 }
 
@@ -142,7 +147,8 @@ export function areEventFiltersEqual(left: EventFilters, right: EventFilters): b
     left.priceMax === right.priceMax &&
     left.sortBy === right.sortBy &&
     left.attendanceMode === right.attendanceMode &&
-    left.language === right.language
+    left.language === right.language &&
+    left.timezone === right.timezone
   )
 }
 
@@ -232,6 +238,7 @@ export const useEventsStore = defineStore('events', () => {
     if (filters.value.attendanceMode === 'ONLINE') chips.push({ key: 'attendanceMode', label: 'Mode: Online' })
     if (filters.value.attendanceMode === 'HYBRID') chips.push({ key: 'attendanceMode', label: 'Mode: Hybrid' })
     if (filters.value.language.trim()) chips.push({ key: 'language', label: `Language: ${filters.value.language.trim().toUpperCase()}` })
+    if (filters.value.timezone.trim()) chips.push({ key: 'timezone', label: `Timezone: ${filters.value.timezone.trim()}` })
 
     return chips
   })

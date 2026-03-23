@@ -47,6 +47,7 @@ function fullFilters(overrides: Partial<EventFilters> = {}): EventFilters {
     sortBy: 'NEWEST',
     attendanceMode: 'HYBRID',
     language: 'en',
+    timezone: 'Europe/Prague',
     ...overrides,
   }
 }
@@ -69,6 +70,7 @@ describe('createDefaultEventFilters', () => {
     expect(defaults.sortBy).toBe('UPCOMING')
     expect(defaults.attendanceMode).toBe('')
     expect(defaults.language).toBe('')
+    expect(defaults.timezone).toBe('')
   })
 
   it('returns a new object on each call (not a shared reference)', () => {
@@ -149,6 +151,15 @@ describe('areEventFiltersEqual', () => {
 
   it('returns false when language differs', () => {
     expect(areEventFiltersEqual(fullFilters({ language: 'en' }), fullFilters({ language: 'cs' }))).toBe(false)
+  })
+
+  it('returns false when timezone differs', () => {
+    expect(
+      areEventFiltersEqual(
+        fullFilters({ timezone: 'Europe/Prague' }),
+        fullFilters({ timezone: 'America/New_York' }),
+      ),
+    ).toBe(false)
   })
 
   it('returns false when a filter is active vs default', () => {
@@ -259,6 +270,17 @@ describe('eventFiltersToQuery', () => {
     expect(result).not.toHaveProperty('lang')
   })
 
+  it('serialises timezone to tz', () => {
+    expect(eventFiltersToQuery(fullFilters({ timezone: 'Europe/Prague' }))).toMatchObject({
+      tz: 'Europe/Prague',
+    })
+  })
+
+  it('omits tz when timezone is empty', () => {
+    const result = eventFiltersToQuery(fullFilters({ timezone: '' }))
+    expect(result).not.toHaveProperty('tz')
+  })
+
   it('produces a complete query object for all active filters', () => {
     const result = eventFiltersToQuery(fullFilters())
     expect(result).toEqual({
@@ -273,6 +295,7 @@ describe('eventFiltersToQuery', () => {
       sort: 'newest',
       mode: 'hybrid',
       lang: 'en',
+      tz: 'Europe/Prague',
     })
   })
 })
@@ -372,6 +395,14 @@ describe('eventFiltersFromQuery', () => {
 
   it('defaults language to empty string when lang is absent', () => {
     expect(eventFiltersFromQuery(q({})).language).toBe('')
+  })
+
+  it('parses tz into timezone', () => {
+    expect(eventFiltersFromQuery(q({ tz: 'Europe/Prague' })).timezone).toBe('Europe/Prague')
+  })
+
+  it('defaults timezone to empty string when tz is absent', () => {
+    expect(eventFiltersFromQuery(q({})).timezone).toBe('')
   })
 
   it('handles array query values by taking the first element', () => {
@@ -489,6 +520,16 @@ describe('buildDiscoveryFilterInput', () => {
     expect(result).not.toHaveProperty('language')
   })
 
+  it('maps timezone to timezone', () => {
+    const result = buildDiscoveryFilterInput(fullFilters({ timezone: 'Europe/Prague' }))
+    expect(result?.timezone).toBe('Europe/Prague')
+  })
+
+  it('omits timezone when empty', () => {
+    const result = buildDiscoveryFilterInput(fullFilters({ timezone: '' }))
+    expect(result).not.toHaveProperty('timezone')
+  })
+
   it('always includes sortBy', () => {
     const result = buildDiscoveryFilterInput(fullFilters({ sortBy: 'UPCOMING' }))
     expect(result?.sortBy).toBe('UPCOMING')
@@ -521,6 +562,7 @@ describe('buildDiscoveryFilterInput', () => {
       sortBy: 'NEWEST',
       attendanceMode: 'IN_PERSON',
       language: 'en',
+      timezone: 'Europe/Prague',
     })
   })
 })
@@ -545,6 +587,7 @@ describe('savedSearchToFilters', () => {
       sortBy: 'UPCOMING',
       attendanceMode: null,
       language: null,
+      timezone: null,
       createdAtUtc: new Date().toISOString(),
       updatedAtUtc: new Date().toISOString(),
       ...overrides,
@@ -630,10 +673,33 @@ describe('savedSearchToFilters', () => {
     expect(savedSearchToFilters(makeSavedSearch({ language: null })).language).toBe('')
   })
 
+  it('maps timezone', () => {
+    expect(savedSearchToFilters(makeSavedSearch({ timezone: 'Europe/Prague' })).timezone).toBe(
+      'Europe/Prague',
+    )
+  })
+
+  it('maps timezone null to empty string', () => {
+    expect(savedSearchToFilters(makeSavedSearch({ timezone: null })).timezone).toBe('')
+  })
+
   it('returns an object with all EventFilters keys', () => {
     const result = savedSearchToFilters(makeSavedSearch())
     expect(Object.keys(result).sort()).toEqual(
-      ['attendanceMode', 'dateFrom', 'dateTo', 'domain', 'language', 'location', 'priceMax', 'priceMin', 'priceType', 'search', 'sortBy'],
+      [
+        'attendanceMode',
+        'dateFrom',
+        'dateTo',
+        'domain',
+        'language',
+        'location',
+        'priceMax',
+        'priceMin',
+        'priceType',
+        'search',
+        'sortBy',
+        'timezone',
+      ],
     )
   })
 })

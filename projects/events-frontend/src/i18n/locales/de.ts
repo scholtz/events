@@ -80,6 +80,8 @@ export default {
     emptyPricePaid: 'Keine kostenpflichtigen Veranstaltungen verfügbar. Entfernen Sie den Preisfilter.',
     emptyDate: 'Keine Veranstaltungen in diesem Zeitraum. Passen Sie die Datumsfilter an.',
     emptyDomain: 'Keine Veranstaltungen in dieser Kategorie. Entfernen Sie den Domänenfilter.',
+    emptyTimezone:
+      'Keine Veranstaltungen in der Zeitzone „{timezone}" gefunden. Versuchen Sie eine andere Zeitzone oder entfernen Sie den Zeitzonenfilter.',
     emptyMultiple:
       'Keine Veranstaltungen entsprechen allen {count} aktiven Filtern. Entfernen Sie den spezifischsten Filter zuerst.',
     resultsAvailableOne: '1 Veranstaltung verfügbar',
@@ -117,6 +119,8 @@ export default {
     relevance: 'Relevanz',
     language: 'Sprache',
     anyLanguage: 'Beliebige Sprache',
+    timezone: 'Zeitzone',
+    anyTimezone: 'Beliebige Zeitzone',
     langEn: 'Englisch',
     langCs: 'Tschechisch',
     langSk: 'Slowakisch',
@@ -139,6 +143,7 @@ export default {
     chipModeOnline: 'Modus: Online',
     chipModeHybrid: 'Modus: Hybrid',
     chipLanguage: 'Sprache: {value}',
+    chipTimezone: 'Zeitzone: {value}',
     moreFilters: 'Mehr Filter',
     hideFilters: 'Filter ausblenden',
     savedSearches: 'Gespeicherte Suchen',

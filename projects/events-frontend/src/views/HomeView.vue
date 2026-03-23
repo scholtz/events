@@ -211,6 +211,9 @@ const emptyStateMessage = computed(() => {
     if (chip.key === 'domain') {
       return t('home.emptyDomain')
     }
+    if (chip.key === 'timezone') {
+      return t('home.emptyTimezone', { timezone: filters.timezone })
+    }
   }
 
   if (filterCount > 1) {

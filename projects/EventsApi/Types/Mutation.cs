@@ -397,7 +397,8 @@ public sealed class Mutation
             PriceMax = input.Filter?.PriceMax,
             SortBy = input.Filter?.SortBy ?? EventSortOption.Upcoming,
             AttendanceMode = input.Filter?.AttendanceMode,
-            Language = NormalizeOptionalValue(input.Filter?.Language)
+            Language = NormalizeOptionalValue(input.Filter?.Language),
+            Timezone = NormalizeOptionalValue(input.Filter?.Timezone)
         };
 
         dbContext.SavedSearches.Add(savedSearch);

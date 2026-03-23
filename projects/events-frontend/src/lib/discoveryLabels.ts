@@ -68,6 +68,8 @@ export function formatDiscoveryChipLabel(
       return t('filters.chipModeHybrid')
     case 'language':
       return t('filters.chipLanguage', { value: getLanguageLabel(filters.language.trim(), t) })
+    case 'timezone':
+      return t('filters.chipTimezone', { value: filters.timezone.trim() })
     default:
       return ''
   }

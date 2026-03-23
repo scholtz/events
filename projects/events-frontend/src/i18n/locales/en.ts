@@ -84,6 +84,8 @@ export default {
     emptyPricePaid: 'No paid events available. Remove the price filter to see all events.',
     emptyDate: 'No events in this date range. Try adjusting or removing the date filters.',
     emptyDomain: 'No events in this category. Remove the domain filter to see all categories.',
+    emptyTimezone:
+      'No events found in timezone "{timezone}". Try a different timezone or remove the timezone filter.',
     emptyMultiple:
       'No events match all {count} active filters. Try removing your most specific filter first, or clear all to start over.',
     resultsAvailableOne: '1 event available',
@@ -122,6 +124,8 @@ export default {
     relevance: 'Relevance',
     language: 'Language',
     anyLanguage: 'Any language',
+    timezone: 'Timezone',
+    anyTimezone: 'Any timezone',
     langEn: 'English',
     langCs: 'Czech',
     langSk: 'Slovak',
@@ -144,6 +148,7 @@ export default {
     chipModeOnline: 'Mode: Online',
     chipModeHybrid: 'Mode: Hybrid',
     chipLanguage: 'Language: {value}',
+    chipTimezone: 'Timezone: {value}',
     moreFilters: 'More filters',
     hideFilters: 'Hide filters',
     savedSearches: 'Saved searches',

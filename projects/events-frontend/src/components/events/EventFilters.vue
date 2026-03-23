@@ -18,6 +18,32 @@ const savedSearchesStore = useSavedSearchesStore()
 const savedSearchName = ref('')
 const savingSearch = ref(false)
 const filtersExpanded = ref(false)
+const fallbackTimezones = [
+  'Europe/Prague',
+  'Europe/London',
+  'America/New_York',
+  'America/Los_Angeles',
+  'Asia/Tokyo',
+  'Australia/Sydney',
+]
+
+const timezoneOptions = computed(() => {
+  const supportedValuesOf = (
+    Intl as typeof Intl & {
+      supportedValuesOf?: (key: 'timeZone') => string[]
+    }
+  ).supportedValuesOf
+
+  if (typeof supportedValuesOf === 'function') {
+    try {
+      return supportedValuesOf('timeZone')
+    } catch {
+      return fallbackTimezones
+    }
+  }
+
+  return fallbackTimezones
+})
 
 // Local refs that hold the raw input values for the two free-text fields.
 // Changes are debounced before being committed to the store so that the
@@ -121,6 +147,9 @@ function clearFilterChip(key: string) {
       break
     case 'language':
       eventsStore.setFilters({ language: '' })
+      break
+    case 'timezone':
+      eventsStore.setFilters({ timezone: '' })
       break
   }
 }
@@ -327,6 +356,21 @@ function resolveChipLabel(chip: { key: string; label: string }): string {
           <option value="fr">{{ t('filters.langFr') }}</option>
           <option value="es">{{ t('filters.langEs') }}</option>
           <option value="pl">{{ t('filters.langPl') }}</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="filter-timezone">{{ t('filters.timezone') }}</label>
+        <select
+          id="filter-timezone"
+          class="form-select"
+          :value="eventsStore.filters.timezone"
+          @change="eventsStore.setFilters({ timezone: ($event.target as HTMLSelectElement).value })"
+        >
+          <option value="">{{ t('filters.anyTimezone') }}</option>
+          <option v-for="timezone in timezoneOptions" :key="timezone" :value="timezone">
+            {{ timezone }}
+          </option>
         </select>
       </div>
     </div>
