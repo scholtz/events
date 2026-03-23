@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { formatDiscoveryChipLabel } from '@/lib/discoveryLabels'
 import {
   areEventFiltersEqual,
   createDefaultEventFilters,
@@ -10,6 +11,7 @@ import {
   eventFiltersToQuery,
   useEventsStore,
 } from '@/stores/events'
+import { useDomainsStore } from '@/stores/domains'
 import { useSavedSearchesStore } from '@/stores/savedSearches'
 import { useDiscoveryAnalytics } from '@/composables/useDiscoveryAnalytics'
 import { buildMainSiteUrl, formatMainSiteHost, useSubdomain } from '@/composables/useSubdomain'
@@ -21,6 +23,7 @@ const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
+const domainsStore = useDomainsStore()
 const eventsStore = useEventsStore()
 const savedSearchesStore = useSavedSearchesStore()
 const { trackSearch, trackFilterChange, trackFilterClear } = useDiscoveryAnalytics()
@@ -145,6 +148,34 @@ watch(
 function clearDiscoveryFilters() {
   eventsStore.clearFilters()
 }
+
+const resultsSummary = computed(() => {
+  const count = eventsStore.discoveryEvents.length
+
+  if (!eventsStore.hasActiveFilters) {
+    return count === 1 ? t('home.resultsAvailableOne') : t('home.resultsAvailableMany', { count })
+  }
+
+  const filterLabels = eventsStore.activeFilterChips
+    .filter((chip) => chip.key !== 'sortBy')
+    .map((chip) =>
+      formatDiscoveryChipLabel(
+        chip,
+        eventsStore.filters,
+        t,
+        (slug) => domainsStore.domains.find((domain) => domain.slug === slug)?.name,
+      ),
+    )
+    .filter(Boolean)
+
+  if (filterLabels.length === 0) {
+    return count === 1 ? t('home.resultsFoundOne') : t('home.resultsFoundMany', { count })
+  }
+
+  return count === 1
+    ? t('home.resultsMatchingOne', { filters: filterLabels.join(', ') })
+    : t('home.resultsMatchingMany', { count, filters: filterLabels.join(', ') })
+})
 
 const emptyStateMessage = computed(() => {
   if (!eventsStore.hasActiveFilters) {
@@ -280,7 +311,7 @@ const emptyStateMessage = computed(() => {
               {{ t('home.cachedResultsNotice') }}
             </div>
             <p class="results-summary" role="status" aria-live="polite">
-              {{ eventsStore.resultsSummary }}
+              {{ resultsSummary }}
             </p>
             <div class="events-grid">
               <EventCard

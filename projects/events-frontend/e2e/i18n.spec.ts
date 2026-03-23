@@ -94,6 +94,24 @@ test.describe('Slovak translations', () => {
     await expect(page.getByLabel('Doména')).toBeVisible()
   })
 
+  test('active filter chips and results summary are localized in Slovak', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ name: 'Crypto Summit', slug: 'crypto-summit' }),
+        makeApprovedEvent({ name: 'AI Meetup', slug: 'ai-meetup' }),
+      ],
+    })
+    await page.goto('/?q=crypto')
+
+    await page.locator('#language-select').selectOption('sk')
+
+    await expect(page.locator('.filter-chip')).toContainText('Kľúčové slovo: crypto')
+    await expect(page.locator('.results-summary')).toContainText(
+      'Našla sa 1 udalosť pre Kľúčové slovo: crypto',
+    )
+  })
+
   test('empty state is localized in Slovak', async ({ page }) => {
     setupMockApi(page, { domains: [makeTechDomain()] })
     await page.goto('/')

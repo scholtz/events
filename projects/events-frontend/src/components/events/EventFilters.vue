@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
+import { formatDiscoveryChipLabel } from '@/lib/discoveryLabels'
 import { savedSearchToFilters, useEventsStore } from '@/stores/events'
 import { useDomainsStore } from '@/stores/domains'
 import { useSavedSearchesStore } from '@/stores/savedSearches'
@@ -130,11 +131,12 @@ function clearFilterChip(key: string) {
  * (e.g. "Domain: Crypto & Blockchain" instead of "Domain: crypto-blockchain").
  */
 function resolveChipLabel(chip: { key: string; label: string }): string {
-  if (chip.key === 'domain' && eventsStore.filters.domain) {
-    const domainName = domainsStore.domains.find((d) => d.slug === eventsStore.filters.domain)?.name
-    if (domainName) return `Domain: ${domainName}`
-  }
-  return chip.label
+  return formatDiscoveryChipLabel(
+    chip,
+    eventsStore.filters,
+    t,
+    (slug) => domainsStore.domains.find((domain) => domain.slug === slug)?.name,
+  )
 }
 </script>
 
