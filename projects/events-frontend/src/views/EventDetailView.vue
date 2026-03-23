@@ -519,6 +519,36 @@ function domainHostDisplay(event: {
                 />
               </div>
             </div>
+
+            <!-- Hub context card: links event back to its branded category hub -->
+            <div
+              v-if="event.domain?.slug"
+              class="hub-context"
+              :style="event.domain.primaryColor ? `--hub-accent: ${event.domain.primaryColor}` : ''"
+              aria-label="Community hub"
+            >
+              <h3 class="map-heading">{{ t('eventDetail.hubContextHeading') }}</h3>
+              <div class="hub-context-body">
+                <img
+                  v-if="event.domain.logoUrl"
+                  :src="event.domain.logoUrl"
+                  :alt="event.domain.name"
+                  class="hub-context-logo"
+                />
+                <div class="hub-context-info">
+                  <p class="hub-context-name">{{ event.domain.name }}</p>
+                  <p v-if="event.domain.description" class="hub-context-description">
+                    {{ event.domain.description }}
+                  </p>
+                </div>
+              </div>
+              <RouterLink
+                :to="`/category/${event.domain.slug}`"
+                class="hub-context-link"
+              >
+                {{ t('eventDetail.hubContextExplore', { name: event.domain.name }) }}
+              </RouterLink>
+            </div>
           </div>
         </div>
       </div>
@@ -857,6 +887,71 @@ function domainHostDisplay(event: {
   text-decoration: underline;
 }
 
+/* Hub context card */
+.hub-context {
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.hub-context-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.875rem;
+}
+
+.hub-context-logo {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  border: 1px solid var(--color-border);
+}
+
+.hub-context-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.hub-context-name {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.hub-context-description {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+  margin: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.hub-context-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--hub-accent, var(--color-primary));
+  text-decoration: none;
+  transition: opacity 0.15s;
+}
+
+.hub-context-link:hover {
+  opacity: 0.8;
+  text-decoration: none;
+}
+
 /* Empty state */
 .empty-state {
   padding: 4rem 2rem;
@@ -1005,7 +1100,8 @@ function domainHostDisplay(event: {
   }
 
   .event-map,
-  .attendee-context {
+  .attendee-context,
+  .hub-context {
     padding: 1.5rem;
   }
 }

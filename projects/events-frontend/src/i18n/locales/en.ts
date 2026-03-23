@@ -224,6 +224,8 @@ export default {
     openInOsm: 'Open in OpenStreetMap ↗',
     virtualEvent: 'Virtual Event',
     virtualEventDescription: 'This event takes place online. No physical venue.',
+    hubContextHeading: 'About this Hub',
+    hubContextExplore: 'Explore {name} Events →',
   },
 
   // ── Login ──────────────────────────────────────────────────────────────────
