@@ -23,7 +23,14 @@ const EVENT_FIELDS = `
 `
 
 const DETAIL_EVENT_FIELDS = `
-  ${EVENT_FIELDS}
+  id name slug description eventUrl
+  venueName addressLine1 city countryCode
+  latitude longitude startsAtUtc endsAtUtc
+  submittedAtUtc updatedAtUtc publishedAtUtc
+  adminNotes status isFree priceAmount currencyCode domainId mapUrl
+  attendanceMode timezone language
+  domain { id name slug subdomain description logoUrl primaryColor }
+  submittedBy { displayName }
   interestedCount
 `
 

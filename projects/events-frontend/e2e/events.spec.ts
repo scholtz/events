@@ -1202,3 +1202,159 @@ test.describe('Event detail page', () => {
     await expect(page.getByRole('heading', { name: 'Analytics No Error Event' })).toBeVisible()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Hub context card on event detail page
+// ---------------------------------------------------------------------------
+
+test.describe('Event detail hub context card', () => {
+  const cryptoDomain = {
+    id: 'dom-crypto-hub',
+    name: 'Crypto',
+    slug: 'crypto-hub',
+    subdomain: 'crypto',
+    description: 'Blockchain and crypto events',
+    isActive: true,
+    createdAtUtc: new Date().toISOString(),
+    logoUrl: 'https://example.com/crypto-logo.png',
+    primaryColor: '#f7931a',
+  }
+
+  test('hub context card shows domain name and explore link to /category/:slug', async ({
+    page,
+  }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-hub-1',
+      name: 'Hub Context Event',
+      slug: 'hub-context-event',
+      domainId: cryptoDomain.id,
+      domain: {
+        id: cryptoDomain.id,
+        name: cryptoDomain.name,
+        slug: cryptoDomain.slug,
+        subdomain: cryptoDomain.subdomain,
+        description: cryptoDomain.description,
+        logoUrl: cryptoDomain.logoUrl,
+        primaryColor: cryptoDomain.primaryColor,
+      },
+    })
+    setupMockApi(page, { domains: [cryptoDomain], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    // Hub context heading is present
+    await expect(page.locator('.hub-context')).toBeVisible()
+    // Domain name displayed
+    await expect(page.locator('.hub-context-name')).toContainText('Crypto')
+    // Description is shown
+    await expect(page.locator('.hub-context-description')).toContainText('Blockchain and crypto events')
+    // The explore link points to /category/:slug
+    const exploreLink = page.locator('.hub-context-link')
+    await expect(exploreLink).toBeVisible()
+    await expect(exploreLink).toContainText('Crypto')
+    await expect(exploreLink).toHaveAttribute('href', '/category/crypto-hub')
+  })
+
+  test('hub context card shows logo when logoUrl is set', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-hub-logo',
+      name: 'Hub Logo Event',
+      slug: 'hub-logo-event',
+      domainId: cryptoDomain.id,
+      domain: {
+        id: cryptoDomain.id,
+        name: cryptoDomain.name,
+        slug: cryptoDomain.slug,
+        subdomain: cryptoDomain.subdomain,
+        logoUrl: 'https://example.com/crypto-logo.png',
+      },
+    })
+    setupMockApi(page, { domains: [cryptoDomain], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    const logo = page.locator('.hub-context-logo')
+    await expect(logo).toBeVisible()
+    await expect(logo).toHaveAttribute('src', 'https://example.com/crypto-logo.png')
+  })
+
+  test('hub context card renders gracefully without logo or description', async ({ page }) => {
+    const minimalDomain = {
+      id: 'dom-minimal',
+      name: 'Tech',
+      slug: 'tech-hub',
+      subdomain: 'tech',
+      description: null,
+      isActive: true,
+      createdAtUtc: new Date().toISOString(),
+    }
+    const event = makeApprovedEvent({
+      id: 'ev-hub-fallback',
+      name: 'Hub Fallback Event',
+      slug: 'hub-fallback-event',
+      domainId: minimalDomain.id,
+      domain: {
+        id: minimalDomain.id,
+        name: minimalDomain.name,
+        slug: minimalDomain.slug,
+        subdomain: minimalDomain.subdomain,
+      },
+    })
+    setupMockApi(page, { domains: [minimalDomain], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    // Card still renders
+    await expect(page.locator('.hub-context')).toBeVisible()
+    // No broken image element
+    await expect(page.locator('.hub-context-logo')).toBeHidden()
+    // Description element not rendered
+    await expect(page.locator('.hub-context-description')).toBeHidden()
+    // Explore link still works
+    await expect(page.locator('.hub-context-link')).toHaveAttribute('href', '/category/tech-hub')
+  })
+
+  test('explore link navigates to the category landing page', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-hub-nav',
+      name: 'Hub Nav Event',
+      slug: 'hub-nav-event',
+      domainId: cryptoDomain.id,
+      domain: {
+        id: cryptoDomain.id,
+        name: cryptoDomain.name,
+        slug: cryptoDomain.slug,
+        subdomain: cryptoDomain.subdomain,
+      },
+    })
+    setupMockApi(page, {
+      domains: [cryptoDomain],
+      events: [event],
+    })
+    await page.goto(`/event/${event.slug}`)
+
+    await page.locator('.hub-context-link').click()
+    await expect(page).toHaveURL(/\/category\/crypto-hub$/)
+  })
+
+  test('hub context card is visible on mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    const event = makeApprovedEvent({
+      id: 'ev-hub-mobile',
+      name: 'Hub Mobile Event',
+      slug: 'hub-mobile-event',
+      domainId: cryptoDomain.id,
+      domain: {
+        id: cryptoDomain.id,
+        name: cryptoDomain.name,
+        slug: cryptoDomain.slug,
+        subdomain: cryptoDomain.subdomain,
+        description: cryptoDomain.description,
+        logoUrl: cryptoDomain.logoUrl,
+      },
+    })
+    setupMockApi(page, { domains: [cryptoDomain], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await expect(page.locator('.hub-context')).toBeVisible()
+    await expect(page.locator('.hub-context-name')).toContainText('Crypto')
+    await expect(page.locator('.hub-context-link')).toBeVisible()
+  })
+})
