@@ -172,7 +172,7 @@ function providerLabel(provider: string): string {
         <!-- Analytics section -->
         <div class="section-header">
           <h2>{{ t('dashboard.eventPerformance') }}</h2>
-          <p class="section-subtitle">{{ t('dashboard.performanceDescription') }}</p>
+          <p class="section-subtitle performance-description">{{ t('dashboard.performanceDescription') }}</p>
         </div>
 
         <!-- No events empty state -->

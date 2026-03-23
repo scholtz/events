@@ -1201,6 +1201,108 @@ test.describe('Event detail page', () => {
     // Page heading remains accessible — no crash
     await expect(page.getByRole('heading', { name: 'Analytics No Error Event' })).toBeVisible()
   })
+
+  test('in-person event Google Calendar link includes venue and city in location', async ({
+    page,
+  }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-inperson-cal',
+      name: 'In-Person Conference',
+      slug: 'in-person-conference',
+      attendanceMode: 'IN_PERSON',
+      venueName: 'Grand Hall',
+      addressLine1: '123 Main Street',
+      city: 'Berlin',
+      countryCode: 'DE',
+      eventUrl: 'https://example.com/in-person',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await page.getByRole('button', { name: /Add to calendar/i }).click()
+
+    const googleLink = page.getByRole('menuitem', { name: /Google Calendar/i })
+    const href = await googleLink.getAttribute('href')
+    // In-person location: venue + city should appear in the Google Calendar link
+    expect(href).toContain('Grand+Hall')
+    expect(href).toContain('Berlin')
+    // Should NOT put the event URL as the location
+    expect(href).not.toContain('location=https%3A%2F%2Fexample.com%2Fin-person')
+  })
+
+  test('in-person event Outlook link includes venue in location parameter', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-inperson-outlook',
+      name: 'In-Person Workshop',
+      slug: 'in-person-workshop-outlook',
+      attendanceMode: 'IN_PERSON',
+      venueName: 'Workshop Room',
+      city: 'Vienna',
+      countryCode: 'AT',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await page.getByRole('button', { name: /Add to calendar/i }).click()
+
+    const outlookLink = page.getByRole('menuitem', { name: /Outlook/i })
+    const href = await outlookLink.getAttribute('href')
+    expect(href).toContain('outlook.live.com')
+    expect(href).toContain('Workshop+Room')
+    expect(href).toContain('Vienna')
+  })
+
+  test('virtual event does not show physical venue in Google Calendar location', async ({
+    page,
+  }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-virtual-cal',
+      name: 'Virtual Summit',
+      slug: 'virtual-summit-cal',
+      attendanceMode: 'ONLINE',
+      venueName: 'Should Not Appear',
+      city: 'Prague',
+      eventUrl: 'https://virtual.example.com/join',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await page.getByRole('button', { name: /Add to calendar/i }).click()
+
+    const googleLink = page.getByRole('menuitem', { name: /Google Calendar/i })
+    const href = await googleLink.getAttribute('href')
+    // For online events, location must be the join URL — NOT the physical venue name
+    expect(href).toContain('virtual.example.com')
+    const decoded = decodeURIComponent(href ?? '')
+    expect(decoded).not.toContain('Should Not Appear')
+  })
+
+  test('hybrid event Google Calendar link includes both venue and join URL in description', async ({
+    page,
+  }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-hybrid-cal',
+      name: 'Hybrid Conference',
+      slug: 'hybrid-conference-cal',
+      attendanceMode: 'HYBRID',
+      venueName: 'Hybrid Hall',
+      city: 'Bratislava',
+      countryCode: 'SK',
+      eventUrl: 'https://hybrid.example.com/join',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await page.getByRole('button', { name: /Add to calendar/i }).click()
+
+    const googleLink = page.getByRole('menuitem', { name: /Google Calendar/i })
+    const href = await googleLink.getAttribute('href')
+    // Hybrid events: venue should be in location
+    expect(href).toContain('Hybrid+Hall')
+    // Join URL should be in details/description
+    const decoded = decodeURIComponent(href ?? '')
+    expect(decoded).toContain('hybrid.example.com')
+  })
 })
 
 // ---------------------------------------------------------------------------
