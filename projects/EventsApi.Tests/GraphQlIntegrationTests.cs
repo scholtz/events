@@ -709,6 +709,8 @@ public sealed class GraphQlIntegrationTests
                 isFree
                 priceMax
                 sortBy
+                language
+                timezone
               }
             }
             """,
@@ -724,7 +726,9 @@ public sealed class GraphQlIntegrationTests
                         locationText = "Prague",
                         isFree = false,
                         priceMax = 150m,
-                        sortBy = "UPCOMING"
+                        sortBy = "UPCOMING",
+                        language = "en",
+                        timezone = "Europe/Prague"
                     }
                 }
             });
@@ -750,6 +754,8 @@ public sealed class GraphQlIntegrationTests
                 isFree
                 priceMax
                 sortBy
+                language
+                timezone
               }
             }
             """);
@@ -768,6 +774,8 @@ public sealed class GraphQlIntegrationTests
         Assert.False(savedSearch.GetProperty("isFree").GetBoolean());
         Assert.Equal(150m, savedSearch.GetProperty("priceMax").GetDecimal());
         Assert.Equal("UPCOMING", savedSearch.GetProperty("sortBy").GetString());
+        Assert.Equal("en", savedSearch.GetProperty("language").GetString());
+        Assert.Equal("Europe/Prague", savedSearch.GetProperty("timezone").GetString());
 
         using var deleteDocument = await ExecuteGraphQlAsync(
             client,
@@ -871,6 +879,75 @@ public sealed class GraphQlIntegrationTests
         var restored = Assert.Single(savedSearches);
         Assert.Equal("Online Events Only", restored.GetProperty("name").GetString());
         Assert.Equal("ONLINE", restored.GetProperty("attendanceMode").GetString());
+    }
+
+    [Fact]
+    public async Task SavedSearch_PersistsAndRestoresTimezone()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("timezone-search@example.com", "Timezone Search User");
+            userId = user.Id;
+            dbContext.Users.Add(user);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        using var createDocument = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation SaveSearch($input: SavedSearchInput!) {
+              saveSearch(input: $input) {
+                id
+                name
+                timezone
+              }
+            }
+            """,
+            new
+            {
+                input = new
+                {
+                    name = "Prague Timezone Events",
+                    filter = new
+                    {
+                        timezone = "Europe/Prague"
+                    }
+                }
+            });
+
+        var savedSearch = createDocument.RootElement
+            .GetProperty("data")
+            .GetProperty("saveSearch");
+
+        Assert.Equal("Prague Timezone Events", savedSearch.GetProperty("name").GetString());
+        Assert.Equal("Europe/Prague", savedSearch.GetProperty("timezone").GetString());
+
+        using var listDocument = await ExecuteGraphQlAsync(
+            client,
+            """
+            query SavedSearches {
+              mySavedSearches {
+                id
+                name
+                timezone
+              }
+            }
+            """);
+
+        var restored = Assert.Single(
+            listDocument.RootElement
+                .GetProperty("data")
+                .GetProperty("mySavedSearches")
+                .EnumerateArray()
+                .ToArray());
+
+        Assert.Equal("Prague Timezone Events", restored.GetProperty("name").GetString());
+        Assert.Equal("Europe/Prague", restored.GetProperty("timezone").GetString());
     }
 
     // -----------------------------------------------------------------------
@@ -4273,6 +4350,102 @@ public sealed class GraphQlIntegrationTests
         Assert.Contains("Specified Lang", results);
         // Null-language event must NOT appear in a language-specific filter result
         Assert.DoesNotContain("No Lang Specified", results);
+    }
+
+    [Fact]
+    public async Task TimezoneFilter_ReturnsOnlyMatchingTimezone()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("timezone-filter@example.com", "Timezone Filter");
+            var domain = CreateDomain("Tech", "tech-timezone");
+            var future = DateTime.UtcNow.AddDays(10);
+
+            dbContext.Domains.Add(domain);
+            dbContext.Users.Add(user);
+            dbContext.Events.AddRange(
+                CreateEvent("Prague Event", "prague-event-timezone", "CET.", "Venue A", "Prague", future, domain, user, timezone: "Europe/Prague"),
+                CreateEvent("New York Event", "new-york-event-timezone", "ET.", "Venue B", "New York", future.AddHours(2), domain, user, timezone: "America/New_York"),
+                CreateEvent("No Timezone Event", "no-timezone-event-timezone", "Legacy.", "Venue C", "Vienna", future.AddHours(4), domain, user, timezone: null));
+        });
+
+        using var client = factory.CreateClient();
+
+        var pragueResults = await QueryEventNamesAsync(client, new { timezone = "Europe/Prague", sortBy = "UPCOMING" });
+        Assert.Contains("Prague Event", pragueResults);
+        Assert.DoesNotContain("New York Event", pragueResults);
+        Assert.DoesNotContain("No Timezone Event", pragueResults);
+    }
+
+    [Fact]
+    public async Task TimezoneFilter_NoFilterReturnsAllEvents()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("timezone-all@example.com", "Timezone All");
+            var domain = CreateDomain("Tech", "tech-timezone-all");
+            var future = DateTime.UtcNow.AddDays(10);
+
+            dbContext.Domains.Add(domain);
+            dbContext.Users.Add(user);
+            dbContext.Events.AddRange(
+                CreateEvent("Event A", "event-a-timezone-all", "Desc.", "Venue", "Prague", future, domain, user, timezone: "Europe/Prague"),
+                CreateEvent("Event B", "event-b-timezone-all", "Desc.", "Venue", "New York", future.AddHours(1), domain, user, timezone: "America/New_York"),
+                CreateEvent("Event C", "event-c-timezone-all", "Desc.", "Venue", "Berlin", future.AddHours(2), domain, user, timezone: null));
+        });
+
+        using var client = factory.CreateClient();
+        var results = await QueryEventNamesAsync(client, new { sortBy = "UPCOMING" });
+
+        Assert.Contains("Event A", results);
+        Assert.Contains("Event B", results);
+        Assert.Contains("Event C", results);
+    }
+
+    [Fact]
+    public async Task TimezoneFilter_IsCaseInsensitive()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("timezone-case@example.com", "Timezone Case");
+            var domain = CreateDomain("Tech", "tech-timezone-case");
+            var future = DateTime.UtcNow.AddDays(10);
+
+            dbContext.Domains.Add(domain);
+            dbContext.Users.Add(user);
+            dbContext.Events.Add(
+                CreateEvent("London Event", "london-event-timezone-ci", "UK timezone.", "Venue", "London", future, domain, user, timezone: "Europe/London"));
+        });
+
+        using var client = factory.CreateClient();
+
+        var results = await QueryEventNamesAsync(client, new { timezone = "europe/london", sortBy = "UPCOMING" });
+        Assert.Contains("London Event", results);
+    }
+
+    [Fact]
+    public async Task TimezoneFilter_ReturnsEmptyWhenNoMatchingTimezone()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("timezone-none@example.com", "Timezone None");
+            var domain = CreateDomain("Tech", "tech-timezone-none");
+            var future = DateTime.UtcNow.AddDays(10);
+
+            dbContext.Domains.Add(domain);
+            dbContext.Users.Add(user);
+            dbContext.Events.Add(
+                CreateEvent("Sydney Event", "sydney-event-timezone", "AEST.", "Venue", "Sydney", future, domain, user, timezone: "Australia/Sydney"));
+        });
+
+        using var client = factory.CreateClient();
+
+        var results = await QueryEventNamesAsync(client, new { timezone = "Asia/Tokyo", sortBy = "UPCOMING" });
+        Assert.Empty(results);
     }
 
     // ── Push subscription tests ──────────────────────────────────────────────

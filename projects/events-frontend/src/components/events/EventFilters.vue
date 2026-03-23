@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
+import { formatDiscoveryChipLabel } from '@/lib/discoveryLabels'
 import { savedSearchToFilters, useEventsStore } from '@/stores/events'
 import { useDomainsStore } from '@/stores/domains'
 import { useSavedSearchesStore } from '@/stores/savedSearches'
@@ -17,6 +18,32 @@ const savedSearchesStore = useSavedSearchesStore()
 const savedSearchName = ref('')
 const savingSearch = ref(false)
 const filtersExpanded = ref(false)
+const fallbackTimezones = [
+  'Europe/Prague',
+  'Europe/London',
+  'America/New_York',
+  'America/Los_Angeles',
+  'Asia/Tokyo',
+  'Australia/Sydney',
+]
+
+const timezoneOptions = computed(() => {
+  const supportedValuesOf = (
+    Intl as typeof Intl & {
+      supportedValuesOf?: (key: 'timeZone') => string[]
+    }
+  ).supportedValuesOf
+
+  if (typeof supportedValuesOf === 'function') {
+    try {
+      return supportedValuesOf('timeZone')
+    } catch {
+      return fallbackTimezones
+    }
+  }
+
+  return fallbackTimezones
+})
 
 // Local refs that hold the raw input values for the two free-text fields.
 // Changes are debounced before being committed to the store so that the
@@ -121,6 +148,9 @@ function clearFilterChip(key: string) {
     case 'language':
       eventsStore.setFilters({ language: '' })
       break
+    case 'timezone':
+      eventsStore.setFilters({ timezone: '' })
+      break
   }
 }
 
@@ -130,11 +160,12 @@ function clearFilterChip(key: string) {
  * (e.g. "Domain: Crypto & Blockchain" instead of "Domain: crypto-blockchain").
  */
 function resolveChipLabel(chip: { key: string; label: string }): string {
-  if (chip.key === 'domain' && eventsStore.filters.domain) {
-    const domainName = domainsStore.domains.find((d) => d.slug === eventsStore.filters.domain)?.name
-    if (domainName) return `Domain: ${domainName}`
-  }
-  return chip.label
+  return formatDiscoveryChipLabel(
+    chip,
+    eventsStore.filters,
+    t,
+    (slug) => domainsStore.domains.find((domain) => domain.slug === slug)?.name,
+  )
 }
 </script>
 
@@ -325,6 +356,21 @@ function resolveChipLabel(chip: { key: string; label: string }): string {
           <option value="fr">{{ t('filters.langFr') }}</option>
           <option value="es">{{ t('filters.langEs') }}</option>
           <option value="pl">{{ t('filters.langPl') }}</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="filter-timezone">{{ t('filters.timezone') }}</label>
+        <select
+          id="filter-timezone"
+          class="form-select"
+          :value="eventsStore.filters.timezone"
+          @change="eventsStore.setFilters({ timezone: ($event.target as HTMLSelectElement).value })"
+        >
+          <option value="">{{ t('filters.anyTimezone') }}</option>
+          <option v-for="timezone in timezoneOptions" :key="timezone" :value="timezone">
+            {{ timezone }}
+          </option>
         </select>
       </div>
     </div>

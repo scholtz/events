@@ -17,6 +17,8 @@ const SAVED_SEARCH_FIELDS = `
   priceMax
   sortBy
   attendanceMode
+  language
+  timezone
   createdAtUtc
   updatedAtUtc
 `

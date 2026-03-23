@@ -111,6 +111,12 @@ public sealed class Query
             query = query.Where(catalogEvent => catalogEvent.Language != null && catalogEvent.Language.ToLower() == language);
         }
 
+        if (!string.IsNullOrWhiteSpace(filter?.Timezone))
+        {
+            var timezone = filter.Timezone.Trim().ToLowerInvariant();
+            query = query.Where(catalogEvent => catalogEvent.Timezone != null && catalogEvent.Timezone.ToLower() == timezone);
+        }
+
         return await ApplySorting(query, filter?.SortBy, normalizedSearchText).ToListAsync(cancellationToken);
     }
 

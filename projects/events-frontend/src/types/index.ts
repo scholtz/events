@@ -150,6 +150,8 @@ export interface EventFilters {
   attendanceMode: AttendanceMode | ''
   /** BCP 47 language tag, e.g. "en", "cs", "de". Empty string means no language filter. */
   language: string
+  /** IANA timezone identifier, e.g. "Europe/Prague". Empty string means no timezone filter. */
+  timezone: string
 }
 
 export interface SavedSearch {
@@ -167,6 +169,8 @@ export interface SavedSearch {
   attendanceMode: AttendanceMode | null
   /** BCP 47 language tag stored with this saved search preset (e.g. "en", "cs", "de"). */
   language: string | null
+  /** IANA timezone identifier stored with this saved search preset (e.g. "Europe/Prague"). */
+  timezone: string | null
   createdAtUtc: string
   updatedAtUtc: string
 }

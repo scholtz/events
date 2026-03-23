@@ -26,6 +26,11 @@ public sealed class SavedSearch
     /// Null means the user did not include a language filter in this preset.
     /// </summary>
     public string? Language { get; set; }
+    /// <summary>
+    /// IANA timezone identifier stored with this saved search preset (e.g. "Europe/Prague").
+    /// Null means the user did not include a timezone filter in this preset.
+    /// </summary>
+    public string? Timezone { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
 }

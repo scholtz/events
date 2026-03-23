@@ -1230,6 +1230,25 @@ test.describe('Contextual empty-state guidance', () => {
     await expect(page.locator('.empty-state')).toContainText('online')
   })
 
+  test('single timezone filter shows timezone-specific hint', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-1',
+          name: 'Prague Event',
+          slug: 'prague-event',
+          timezone: 'Europe/Prague',
+        }),
+      ],
+    })
+    await page.goto('/?tz=America%2FNew_York')
+
+    await expect(page.getByRole('heading', { name: 'No events found' })).toBeVisible()
+    await expect(page.locator('.empty-state')).toContainText('America/New_York')
+    await expect(page.locator('.empty-state')).toContainText('timezone')
+  })
+
   test('multiple active filters show the multi-filter removal hint', async ({ page }) => {
     setupMockApi(page, {
       domains: [makeTechDomain()],
@@ -1340,7 +1359,7 @@ test.describe('Subdomain catalog + additional filtering', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('Multi-filter saved search full restoration', () => {
-  test('saved search with keyword + location + mode + price fully restores all filters', async ({
+  test('saved search with keyword + location + mode + price + language + timezone fully restores all filters', async ({
     page,
   }) => {
     const admin = makeAdminUser()
@@ -1358,6 +1377,8 @@ test.describe('Multi-filter saved search full restoration', () => {
           isFree: true,
           priceAmount: 0,
           attendanceMode: 'ONLINE',
+          language: 'de',
+          timezone: 'Europe/Prague',
         }),
         makeApprovedEvent({
           id: 'e-no-match-1',
@@ -1367,6 +1388,8 @@ test.describe('Multi-filter saved search full restoration', () => {
           isFree: false,
           priceAmount: 100,
           attendanceMode: 'IN_PERSON',
+          language: 'en',
+          timezone: 'Europe/London',
         }),
         makeApprovedEvent({
           id: 'e-no-match-2',
@@ -1376,6 +1399,8 @@ test.describe('Multi-filter saved search full restoration', () => {
           isFree: false,
           priceAmount: 50,
           attendanceMode: 'IN_PERSON',
+          language: 'sk',
+          timezone: 'Europe/Prague',
         }),
       ],
     })
@@ -1387,8 +1412,8 @@ test.describe('Multi-filter saved search full restoration', () => {
       { token: `token-${admin.id}` },
     )
 
-    // Navigate with all 4 filter types active
-    await page.goto('/?q=summit&location=Prague&mode=online&price=free')
+    // Navigate with all 6 filter types active
+    await page.goto('/?q=summit&location=Prague&mode=online&price=free&lang=de&tz=Europe%2FPrague')
 
     // Only the matching event should be visible
     await expect(page.locator('.event-card', { hasText: 'Prague Free Online Summit' })).toBeVisible()
@@ -1403,6 +1428,8 @@ test.describe('Multi-filter saved search full restoration', () => {
     await expect(page.getByLabel('Location')).toHaveValue('Prague')
     await expect(page.locator('select#filter-attendance-mode')).toHaveValue('ONLINE')
     await expect(page.getByLabel('Price', { exact: true })).toHaveValue('FREE')
+    await expect(page.locator('#filter-language')).toHaveValue('de')
+    await expect(page.locator('#filter-timezone')).toHaveValue('Europe/Prague')
 
     // Save the search
     await page.getByLabel('Preset name').fill('Prague Free Online Summit Search')
@@ -1425,17 +1452,21 @@ test.describe('Multi-filter saved search full restoration', () => {
     await expect(page).toHaveURL(/location=Prague/)
     await expect(page).toHaveURL(/mode=online/)
     await expect(page).toHaveURL(/price=free/)
+    await expect(page).toHaveURL(/lang=de/)
+    await expect(page).toHaveURL(/tz=Europe\/Prague/)
 
     // Results should be filtered correctly again
     await expect(page.locator('.event-card', { hasText: 'Prague Free Online Summit' })).toBeVisible()
     await expect(page.locator('.event-card', { hasText: 'Berlin Paid Conf' })).toBeHidden()
     await expect(page.locator('.event-card', { hasText: 'Prague Paid In-Person Event' })).toBeHidden()
 
-    // All four filter chips should be visible
+    // All six filter chips should be visible
     await expect(page.locator('.filter-chip', { hasText: /keyword/i })).toBeVisible()
     await expect(page.locator('.filter-chip', { hasText: /location/i })).toBeVisible()
     await expect(page.locator('.filter-chip', { hasText: /mode/i })).toBeVisible()
     await expect(page.locator('.filter-chip', { hasText: /price/i })).toBeVisible()
+    await expect(page.locator('.filter-chip', { hasText: /language/i })).toBeVisible()
+    await expect(page.locator('.filter-chip', { hasText: /timezone/i })).toBeVisible()
   })
 })
 
@@ -1814,5 +1845,85 @@ test.describe('Language filter', () => {
     await page.locator('#filter-language').selectOption('de')
 
     await expect(page).toHaveURL(/lang=de/)
+  })
+})
+
+test.describe('Timezone filter', () => {
+  test('timezone filter shows only events in the selected timezone', async ({ page }) => {
+    setupMockApi(page, {
+      events: [
+        makeApprovedEvent({
+          id: 'e-prague',
+          name: 'Prague Event',
+          slug: 'prague-event',
+          timezone: 'Europe/Prague',
+        }),
+        makeApprovedEvent({
+          id: 'e-ny',
+          name: 'New York Event',
+          slug: 'new-york-event',
+          timezone: 'America/New_York',
+        }),
+        makeApprovedEvent({
+          id: 'e-null',
+          name: 'Legacy Event',
+          slug: 'legacy-event',
+          timezone: null,
+        }),
+      ],
+    })
+    await page.goto('/?tz=Europe%2FPrague')
+
+    await expect(page.locator('.event-card', { hasText: 'Prague Event' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'New York Event' })).toBeHidden()
+    await expect(page.locator('.event-card', { hasText: 'Legacy Event' })).toBeHidden()
+  })
+
+  test('timezone filter chip is restored from URL on reload', async ({ page }) => {
+    setupMockApi(page, {
+      events: [makeApprovedEvent({ name: 'Prague Event', slug: 'prague-event', timezone: 'Europe/Prague' })],
+    })
+    await page.goto('/?tz=Europe%2FPrague')
+
+    await expect(page.locator('.filter-chip', { hasText: 'Timezone: Europe/Prague' })).toBeVisible()
+  })
+
+  test('removing timezone chip restores all events', async ({ page }) => {
+    setupMockApi(page, {
+      events: [
+        makeApprovedEvent({
+          id: 'e-prague',
+          name: 'Prague Event',
+          slug: 'prague-event',
+          timezone: 'Europe/Prague',
+        }),
+        makeApprovedEvent({
+          id: 'e-ny',
+          name: 'New York Event',
+          slug: 'new-york-event',
+          timezone: 'America/New_York',
+        }),
+      ],
+    })
+    await page.goto('/?tz=Europe%2FPrague')
+
+    await expect(page.locator('.event-card', { hasText: 'New York Event' })).toBeHidden()
+
+    await page.locator('.filter-chip', { hasText: 'Timezone: Europe/Prague' }).click()
+
+    await expect(page.locator('.event-card', { hasText: 'Prague Event' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'New York Event' })).toBeVisible()
+  })
+
+  test('timezone filter select updates the URL query string', async ({ page }) => {
+    setupMockApi(page, {
+      events: [makeApprovedEvent({ name: 'Prague Event', slug: 'prague-event', timezone: 'Europe/Prague' })],
+    })
+    await page.goto('/')
+
+    await page.getByRole('button', { name: /more filters/i }).click()
+    await page.locator('#filter-timezone').selectOption('Europe/Prague')
+
+    await expect(page).toHaveURL(/tz=Europe\/Prague/)
   })
 })

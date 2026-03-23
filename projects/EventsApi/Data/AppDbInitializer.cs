@@ -199,6 +199,7 @@ public sealed class AppDbInitializer(
                     "SortBy" TEXT NOT NULL,
                     "AttendanceMode" TEXT NULL,
                     "Language" TEXT NULL,
+                    "Timezone" TEXT NULL,
                     "CreatedAtUtc" TEXT NOT NULL,
                     "UpdatedAtUtc" TEXT NOT NULL,
                     CONSTRAINT "FK_SavedSearches_Users_UserId" FOREIGN KEY ("UserId") REFERENCES "Users" ("Id") ON DELETE CASCADE
@@ -211,6 +212,7 @@ public sealed class AppDbInitializer(
         {
             await EnsureSavedSearchColumnAsync("AttendanceMode", cancellationToken);
             await EnsureSavedSearchColumnAsync("Language", cancellationToken);
+            await EnsureSavedSearchColumnAsync("Timezone", cancellationToken);
         }
 
         if (!await TableExistsAsync("FavoriteEvents", cancellationToken))
@@ -345,6 +347,7 @@ public sealed class AppDbInitializer(
         {
             "AttendanceMode" => """ALTER TABLE "SavedSearches" ADD COLUMN "AttendanceMode" TEXT NULL;""",
             "Language" => """ALTER TABLE "SavedSearches" ADD COLUMN "Language" TEXT NULL;""",
+            "Timezone" => """ALTER TABLE "SavedSearches" ADD COLUMN "Timezone" TEXT NULL;""",
             _ => throw new InvalidOperationException($"Unsupported saved-search column '{columnName}'.")
         };
 

@@ -94,6 +94,7 @@ export type MockSavedSearch = {
   sortBy: 'UPCOMING' | 'NEWEST' | 'RELEVANCE'
   attendanceMode: 'IN_PERSON' | 'ONLINE' | 'HYBRID' | null
   language: string | null
+  timezone: string | null
   createdAtUtc: string
   updatedAtUtc: string
   userId: string
@@ -432,6 +433,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         sortBy: filter.sortBy ?? 'UPCOMING',
         attendanceMode: filter.attendanceMode ?? null,
         language: filter.language ?? null,
+        timezone: filter.timezone ?? null,
         createdAtUtc: new Date().toISOString(),
         updatedAtUtc: new Date().toISOString(),
       }
@@ -1238,6 +1240,7 @@ function filterEventsForDiscovery(events: MockEvent[], filter?: Record<string, u
   const sortBy = String(filter?.sortBy || 'UPCOMING')
   const attendanceMode = typeof filter?.attendanceMode === 'string' ? filter.attendanceMode : null
   const language = typeof filter?.language === 'string' ? filter.language.toLowerCase() : null
+  const timezone = typeof filter?.timezone === 'string' ? filter.timezone.toLowerCase() : null
 
   return [...events]
     .filter((event) => event.status === 'PUBLISHED')
@@ -1290,6 +1293,10 @@ function filterEventsForDiscovery(events: MockEvent[], filter?: Record<string, u
       }
 
       if (language && event.language?.toLowerCase() !== language) {
+        return false
+      }
+
+      if (timezone && event.timezone?.toLowerCase() !== timezone) {
         return false
       }
 
