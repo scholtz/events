@@ -1909,6 +1909,178 @@ test.describe('Branded domain hub', () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// Curator-managed hub overview modules
+// ---------------------------------------------------------------------------
+
+test.describe('Hub overview modules', () => {
+  test('shows About this hub section when overviewContent is set', async ({ page }) => {
+    const hubDomain = {
+      ...makeTechDomain(),
+      overviewContent: 'A curated community for developer-focused technology events.',
+    }
+    setupMockApi(page, {
+      domains: [hubDomain],
+      events: [makeApprovedEvent()],
+    })
+    await page.goto('/category/technology')
+
+    await expect(page.getByRole('heading', { name: 'About this hub' })).toBeVisible()
+    await expect(page.getByText('A curated community for developer-focused technology events.')).toBeVisible()
+  })
+
+  test('shows What belongs here section when whatBelongsHere is set', async ({ page }) => {
+    const hubDomain = {
+      ...makeTechDomain(),
+      whatBelongsHere: 'Developer meetups, hackathons, and engineering conferences.',
+    }
+    setupMockApi(page, {
+      domains: [hubDomain],
+      events: [makeApprovedEvent()],
+    })
+    await page.goto('/category/technology')
+
+    await expect(page.getByRole('heading', { name: 'What belongs here' })).toBeVisible()
+    await expect(page.getByText('Developer meetups, hackathons, and engineering conferences.')).toBeVisible()
+  })
+
+  test('shows both overview modules together when both fields are set', async ({ page }) => {
+    const hubDomain = {
+      ...makeTechDomain(),
+      overviewContent: 'About this technology hub.',
+      whatBelongsHere: 'Tech talks and workshops.',
+    }
+    setupMockApi(page, {
+      domains: [hubDomain],
+      events: [makeApprovedEvent()],
+    })
+    await page.goto('/category/technology')
+
+    await expect(page.getByRole('heading', { name: 'About this hub' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'What belongs here' })).toBeVisible()
+    await expect(page.locator('.hub-overview-modules')).toBeVisible()
+  })
+
+  test('hides hub overview modules when neither field is set', async ({ page }) => {
+    const hubDomain = makeTechDomain() // no overviewContent or whatBelongsHere
+    setupMockApi(page, {
+      domains: [hubDomain],
+      events: [makeApprovedEvent()],
+    })
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.hub-overview-modules')).toBeHidden()
+  })
+
+  test('shows curator credit trust cue when curatorCredit is set', async ({ page }) => {
+    const hubDomain = {
+      ...makeTechDomain(),
+      curatorCredit: 'Prague Tech Community',
+    }
+    setupMockApi(page, {
+      domains: [hubDomain],
+      events: [makeApprovedEvent()],
+    })
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.curator-credit')).toBeVisible()
+    await expect(page.locator('.curator-credit')).toContainText('Prague Tech Community')
+  })
+
+  test('does not show curator credit when curatorCredit is null', async ({ page }) => {
+    const hubDomain = { ...makeTechDomain(), curatorCredit: null }
+    setupMockApi(page, {
+      domains: [hubDomain],
+      events: [makeApprovedEvent()],
+    })
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.curator-credit')).toBeHidden()
+  })
+
+  test('shows custom submitEventCta in the organizer CTA section', async ({ page }) => {
+    const hubDomain = {
+      ...makeTechDomain(),
+      submitEventCta: 'Running a tech talk in Prague? Submit it here!',
+    }
+    setupMockApi(page, {
+      domains: [hubDomain],
+      events: [makeApprovedEvent()],
+    })
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.organizer-cta')).toBeVisible()
+    await expect(page.locator('.organizer-cta-text')).toContainText('Running a tech talk in Prague? Submit it here!')
+  })
+
+  test('shows default organizer CTA when submitEventCta is null', async ({ page }) => {
+    const hubDomain = { ...makeTechDomain(), submitEventCta: null }
+    setupMockApi(page, {
+      domains: [hubDomain],
+      events: [makeApprovedEvent()],
+    })
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.organizer-cta')).toBeVisible()
+    await expect(page.locator('.organizer-cta-text')).toContainText('Technology')
+  })
+
+  test('organizer CTA Submit an Event link navigates to submit page', async ({ page }) => {
+    const hubDomain = makeTechDomain()
+    setupMockApi(page, {
+      domains: [hubDomain],
+      events: [makeApprovedEvent()],
+    })
+    await page.goto('/category/technology')
+
+    const ctaLink = page.getByRole('link', { name: 'Submit an Event' })
+    await expect(ctaLink).toBeVisible()
+    await ctaLink.click()
+    await expect(page).toHaveURL(/\/submit/)
+  })
+
+  test('empty state hub message differs from filter-specific empty message', async ({ page }) => {
+    const aiDomain = {
+      id: 'dom-ai',
+      name: 'AI',
+      slug: 'ai',
+      subdomain: 'ai',
+      description: 'AI events',
+      isActive: true,
+      createdAtUtc: new Date().toISOString(),
+    }
+    setupMockApi(page, {
+      domains: [aiDomain],
+      events: [],
+    })
+    await page.goto('/category/ai')
+
+    // Hub-level empty state: mention of submission
+    await expect(page.getByRole('heading', { name: 'No upcoming events' })).toBeVisible()
+    await expect(page.locator('.empty-state')).toContainText('first')
+  })
+
+  test('hub overview modules render correctly on mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    const hubDomain = {
+      ...makeTechDomain(),
+      overviewContent: 'Mobile-visible overview content.',
+      whatBelongsHere: 'Mobile-visible guidance text.',
+      curatorCredit: 'Mobile Curators',
+    }
+    setupMockApi(page, {
+      domains: [hubDomain],
+      events: [makeApprovedEvent()],
+    })
+    await page.goto('/category/technology')
+
+    await expect(page.getByRole('heading', { name: 'About this hub' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'What belongs here' })).toBeVisible()
+    await expect(page.locator('.curator-credit')).toBeVisible()
+    await expect(page.locator('.organizer-cta')).toBeVisible()
+  })
+})
+
 test.describe('Language filter', () => {
   test('language filter shows only events in the selected language', async ({ page }) => {
     setupMockApi(page, {

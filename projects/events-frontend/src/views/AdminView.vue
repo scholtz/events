@@ -34,6 +34,14 @@ const domainStyleForm = ref({
   logoUrl: '',
   bannerUrl: '',
 })
+const domainOverviewSaving = ref(false)
+const domainOverviewSuccess = ref(false)
+const domainOverviewForm = ref({
+  overviewContent: '',
+  whatBelongsHere: '',
+  submitEventCta: '',
+  curatorCredit: '',
+})
 
 async function selectDomain(domainId: string) {
   if (selectedDomainId.value === domainId) {
@@ -43,6 +51,7 @@ async function selectDomain(domainId: string) {
   selectedDomainId.value = domainId
   domainAdminError.value = ''
   domainStyleSuccess.value = false
+  domainOverviewSuccess.value = false
 
   const domain = domainsStore.domains.find((d) => d.id === domainId)
   if (domain) {
@@ -51,6 +60,12 @@ async function selectDomain(domainId: string) {
       accentColor: domain.accentColor ?? '',
       logoUrl: domain.logoUrl ?? '',
       bannerUrl: domain.bannerUrl ?? '',
+    }
+    domainOverviewForm.value = {
+      overviewContent: domain.overviewContent ?? '',
+      whatBelongsHere: domain.whatBelongsHere ?? '',
+      submitEventCta: domain.submitEventCta ?? '',
+      curatorCredit: domain.curatorCredit ?? '',
     }
   }
 
@@ -109,6 +124,27 @@ async function handleSaveDomainStyle() {
     domainAdminError.value = 'Failed to save domain style.'
   } finally {
     domainStyleSaving.value = false
+  }
+}
+
+async function handleSaveDomainOverview() {
+  if (!selectedDomainId.value) return
+  domainOverviewSaving.value = true
+  domainOverviewSuccess.value = false
+  domainAdminError.value = ''
+  try {
+    await domainsStore.updateDomainOverview({
+      domainId: selectedDomainId.value,
+      overviewContent: domainOverviewForm.value.overviewContent || null,
+      whatBelongsHere: domainOverviewForm.value.whatBelongsHere || null,
+      submitEventCta: domainOverviewForm.value.submitEventCta || null,
+      curatorCredit: domainOverviewForm.value.curatorCredit || null,
+    })
+    domainOverviewSuccess.value = true
+  } catch {
+    domainAdminError.value = 'Failed to save hub overview.'
+  } finally {
+    domainOverviewSaving.value = false
   }
 }
 
@@ -480,6 +516,65 @@ async function handleReviewEvent(eventId: string, status: string) {
                   {{ domainStyleSaving ? 'Saving…' : 'Save Style' }}
                 </button>
                 <span v-if="domainStyleSuccess" class="save-success">✓ Saved</span>
+              </div>
+            </form>
+          </div>
+
+          <!-- Hub overview content editor -->
+          <div class="domain-style-section">
+            <h3>{{ t('admin.hubOverview') }}</h3>
+            <form class="style-form" @submit.prevent="handleSaveDomainOverview">
+              <div class="overview-form-grid">
+                <label class="form-field">
+                  <span>{{ t('admin.domainOverviewContent') }}</span>
+                  <textarea
+                    v-model="domainOverviewForm.overviewContent"
+                    class="form-input form-textarea"
+                    rows="3"
+                    maxlength="2000"
+                    placeholder="A short editorial overview about this hub…"
+                  ></textarea>
+                </label>
+                <label class="form-field">
+                  <span>{{ t('admin.domainWhatBelongsHere') }}</span>
+                  <textarea
+                    v-model="domainOverviewForm.whatBelongsHere"
+                    class="form-input form-textarea"
+                    rows="3"
+                    maxlength="2000"
+                    placeholder="Describe what types of events belong in this hub…"
+                  ></textarea>
+                </label>
+                <label class="form-field">
+                  <span>{{ t('admin.domainSubmitEventCta') }}</span>
+                  <input
+                    v-model="domainOverviewForm.submitEventCta"
+                    class="form-input"
+                    type="text"
+                    maxlength="200"
+                    placeholder="e.g. Organizing a blockchain event? Submit it here."
+                  />
+                </label>
+                <label class="form-field">
+                  <span>{{ t('admin.domainCuratorCredit') }}</span>
+                  <input
+                    v-model="domainOverviewForm.curatorCredit"
+                    class="form-input"
+                    type="text"
+                    maxlength="200"
+                    placeholder="e.g. Prague Blockchain Week organizers"
+                  />
+                </label>
+              </div>
+              <div class="style-form-actions">
+                <button
+                  type="submit"
+                  class="btn btn-primary btn-sm"
+                  :disabled="domainOverviewSaving"
+                >
+                  {{ domainOverviewSaving ? 'Saving…' : t('admin.saveOverview') }}
+                </button>
+                <span v-if="domainOverviewSuccess" class="save-success">✓ Saved</span>
               </div>
             </form>
           </div>
@@ -961,6 +1056,19 @@ tr:hover td {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 0.75rem;
+}
+
+.overview-form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+.form-textarea {
+  resize: vertical;
+  min-height: 72px;
+  font-family: inherit;
+  line-height: 1.5;
 }
 
 .form-field {

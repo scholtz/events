@@ -274,6 +274,11 @@ public sealed class AppDbInitializer(
         await EnsureDomainColumnAsync("AccentColor", cancellationToken);
         await EnsureDomainColumnAsync("LogoUrl", cancellationToken);
         await EnsureDomainColumnAsync("BannerUrl", cancellationToken);
+        // ── Domain hub overview content columns ───────────────────────────────
+        await EnsureDomainColumnAsync("OverviewContent", cancellationToken);
+        await EnsureDomainColumnAsync("WhatBelongsHere", cancellationToken);
+        await EnsureDomainColumnAsync("SubmitEventCta", cancellationToken);
+        await EnsureDomainColumnAsync("CuratorCredit", cancellationToken);
 
         // ── DomainAdministrators join table ──────────────────────────────────
         if (!await TableExistsAsync("DomainAdministrators", cancellationToken))
@@ -368,6 +373,10 @@ public sealed class AppDbInitializer(
             "AccentColor" => """ALTER TABLE "Domains" ADD COLUMN "AccentColor" TEXT NULL;""",
             "LogoUrl" => """ALTER TABLE "Domains" ADD COLUMN "LogoUrl" TEXT NULL;""",
             "BannerUrl" => """ALTER TABLE "Domains" ADD COLUMN "BannerUrl" TEXT NULL;""",
+            "OverviewContent" => """ALTER TABLE "Domains" ADD COLUMN "OverviewContent" TEXT NULL;""",
+            "WhatBelongsHere" => """ALTER TABLE "Domains" ADD COLUMN "WhatBelongsHere" TEXT NULL;""",
+            "SubmitEventCta" => """ALTER TABLE "Domains" ADD COLUMN "SubmitEventCta" TEXT NULL;""",
+            "CuratorCredit" => """ALTER TABLE "Domains" ADD COLUMN "CuratorCredit" TEXT NULL;""",
             _ => throw new InvalidOperationException($"Unsupported domain column '{columnName}'.")
         };
 

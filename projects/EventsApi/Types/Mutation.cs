@@ -224,6 +224,10 @@ public sealed class Mutation
                 Subdomain = subdomain,
                 Description = input.Description?.Trim(),
                 IsActive = input.IsActive,
+                OverviewContent = NormalizeOptionalValue(input.OverviewContent),
+                WhatBelongsHere = NormalizeOptionalValue(input.WhatBelongsHere),
+                SubmitEventCta = NormalizeOptionalValue(input.SubmitEventCta),
+                CuratorCredit = NormalizeOptionalValue(input.CuratorCredit),
                 CreatedByUserId = claimsPrincipal.GetRequiredUserId()
             };
 
@@ -244,6 +248,10 @@ public sealed class Mutation
             existingDomain.Subdomain = subdomain;
             existingDomain.Description = input.Description?.Trim();
             existingDomain.IsActive = input.IsActive;
+            existingDomain.OverviewContent = NormalizeOptionalValue(input.OverviewContent);
+            existingDomain.WhatBelongsHere = NormalizeOptionalValue(input.WhatBelongsHere);
+            existingDomain.SubmitEventCta = NormalizeOptionalValue(input.SubmitEventCta);
+            existingDomain.CuratorCredit = NormalizeOptionalValue(input.CuratorCredit);
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -366,6 +374,31 @@ public sealed class Mutation
         domain.AccentColor = NormalizeOptionalValue(input.AccentColor);
         domain.LogoUrl = NormalizeOptionalValue(input.LogoUrl);
         domain.BannerUrl = NormalizeOptionalValue(input.BannerUrl);
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return domain;
+    }
+
+    /// <summary>
+    /// Updates curator-managed hub overview content for a domain.
+    /// Only global admins or domain administrators can call this.
+    /// </summary>
+    [Authorize]
+    public async Task<EventDomain> UpdateDomainOverviewAsync(
+        UpdateDomainOverviewInput input,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        await EnsureDomainAdminOrGlobalAdminAsync(input.DomainId, claimsPrincipal, dbContext, cancellationToken);
+
+        var domain = await dbContext.Domains.SingleOrDefaultAsync(d => d.Id == input.DomainId, cancellationToken)
+            ?? throw CreateError("Domain was not found.", "DOMAIN_NOT_FOUND");
+
+        domain.OverviewContent = NormalizeOptionalValue(input.OverviewContent);
+        domain.WhatBelongsHere = NormalizeOptionalValue(input.WhatBelongsHere);
+        domain.SubmitEventCta = NormalizeOptionalValue(input.SubmitEventCta);
+        domain.CuratorCredit = NormalizeOptionalValue(input.CuratorCredit);
 
         await dbContext.SaveChangesAsync(cancellationToken);
         return domain;

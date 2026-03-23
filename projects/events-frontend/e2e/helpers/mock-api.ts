@@ -35,6 +35,10 @@ export type MockDomain = {
   accentColor?: string | null
   logoUrl?: string | null
   bannerUrl?: string | null
+  overviewContent?: string | null
+  whatBelongsHere?: string | null
+  submitEventCta?: string | null
+  curatorCredit?: string | null
 }
 
 export type MockDomainAdministrator = {
@@ -820,6 +824,23 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({ data: { updateDomainStyle: domain } }),
+      })
+      return
+    }
+
+    if (query.includes('mutation') && query.includes('UpdateDomainOverview')) {
+      const input = variables.input || {}
+      const domain = state.domains.find((d) => d.id === input.domainId)
+      if (domain) {
+        domain.overviewContent = input.overviewContent ?? null
+        domain.whatBelongsHere = input.whatBelongsHere ?? null
+        domain.submitEventCta = input.submitEventCta ?? null
+        domain.curatorCredit = input.curatorCredit ?? null
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { updateDomainOverview: domain } }),
       })
       return
     }

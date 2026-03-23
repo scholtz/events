@@ -4,7 +4,8 @@ import { gqlRequest } from '@/lib/graphql'
 import type { DomainAdministrator, EventDomain } from '@/types'
 
 const DOMAIN_FIELDS = `id name slug subdomain description isActive createdAtUtc
-  createdByUserId primaryColor accentColor logoUrl bannerUrl`
+  createdByUserId primaryColor accentColor logoUrl bannerUrl
+  overviewContent whatBelongsHere submitEventCta curatorCredit`
 
 export const useDomainsStore = defineStore('domains', () => {
   const domains = ref<EventDomain[]>([])
@@ -110,6 +111,26 @@ export const useDomainsStore = defineStore('domains', () => {
     return data.updateDomainStyle
   }
 
+  async function updateDomainOverview(input: {
+    domainId: string
+    overviewContent?: string | null
+    whatBelongsHere?: string | null
+    submitEventCta?: string | null
+    curatorCredit?: string | null
+  }) {
+    const data = await gqlRequest<{ updateDomainOverview: EventDomain }>(
+      `mutation UpdateDomainOverview($input: UpdateDomainOverviewInput!) {
+        updateDomainOverview(input: $input) { ${DOMAIN_FIELDS} }
+      }`,
+      { input },
+    )
+    const idx = domains.value.findIndex((d) => d.id === data.updateDomainOverview.id)
+    if (idx >= 0) {
+      domains.value[idx] = data.updateDomainOverview
+    }
+    return data.updateDomainOverview
+  }
+
   return {
     domains,
     loading,
@@ -120,5 +141,6 @@ export const useDomainsStore = defineStore('domains', () => {
     addDomainAdministrator,
     removeDomainAdministrator,
     updateDomainStyle,
+    updateDomainOverview,
   }
 })
