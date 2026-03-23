@@ -42,6 +42,10 @@ export interface EventDomain {
   accentColor: string | null
   logoUrl: string | null
   bannerUrl: string | null
+  overviewContent: string | null
+  whatBelongsHere: string | null
+  submitEventCta: string | null
+  curatorCredit: string | null
 }
 
 /** Matches backend DomainAdministrator entity */

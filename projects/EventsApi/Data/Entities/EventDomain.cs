@@ -26,6 +26,16 @@ public sealed class EventDomain
     /// <summary>Absolute URL to the domain banner/hero image.</summary>
     public string? BannerUrl { get; set; }
 
+    // ── Curator-managed hub overview content ──────────────────────────────
+    /// <summary>Short editorial "About this hub" overview shown on the category landing page.</summary>
+    public string? OverviewContent { get; set; }
+    /// <summary>Guidance about what types of events belong in this hub.</summary>
+    public string? WhatBelongsHere { get; set; }
+    /// <summary>Optional custom call-to-action text for the organizer submission prompt.</summary>
+    public string? SubmitEventCta { get; set; }
+    /// <summary>Optional curator/admin attribution shown as a trust cue on the public hub page.</summary>
+    public string? CuratorCredit { get; set; }
+
     [GraphQLIgnore]
     public List<CatalogEvent> Events { get; set; } = [];
 

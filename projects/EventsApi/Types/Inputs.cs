@@ -94,6 +94,28 @@ public sealed class DomainInput
     public required string Subdomain { get; init; }
     public string? Description { get; init; }
     public bool IsActive { get; init; } = true;
+    /// <summary>Short editorial "About this hub" overview.</summary>
+    public string? OverviewContent { get; init; }
+    /// <summary>Guidance about what types of events belong in this hub.</summary>
+    public string? WhatBelongsHere { get; init; }
+    /// <summary>Optional custom call-to-action text for the organizer submission prompt.</summary>
+    public string? SubmitEventCta { get; init; }
+    /// <summary>Optional curator/admin attribution shown as a trust cue.</summary>
+    public string? CuratorCredit { get; init; }
+}
+
+/// <summary>Input for updating curator-managed hub overview content for a domain.</summary>
+public sealed class UpdateDomainOverviewInput
+{
+    public Guid DomainId { get; init; }
+    /// <summary>Short editorial "About this hub" overview. Pass null to clear.</summary>
+    public string? OverviewContent { get; init; }
+    /// <summary>Guidance about what types of events belong in this hub. Pass null to clear.</summary>
+    public string? WhatBelongsHere { get; init; }
+    /// <summary>Optional custom call-to-action text for the organizer submission prompt. Pass null to clear.</summary>
+    public string? SubmitEventCta { get; init; }
+    /// <summary>Optional curator/admin attribution shown as a trust cue. Pass null to clear.</summary>
+    public string? CuratorCredit { get; init; }
 }
 
 /// <summary>Input for adding or removing a domain administrator.</summary>

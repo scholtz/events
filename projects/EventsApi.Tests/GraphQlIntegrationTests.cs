@@ -1508,6 +1508,15 @@ public sealed class GraphQlIntegrationTests
             Role = ApplicationUserRole.Contributor
         };
 
+    private static ApplicationUser CreateUser(string email, string displayName, ApplicationUserRole role)
+        => new()
+        {
+            Email = email,
+            DisplayName = displayName,
+            PasswordHash = "hashed",
+            Role = role
+        };
+
     private static EventDomain CreateDomain(string name, string slug)
         => new()
         {
@@ -5051,5 +5060,344 @@ public sealed class GraphQlIntegrationTests
         // In test config VAPID keys are not set, so the key should be empty string
         var key = doc.RootElement.GetProperty("data").GetProperty("vapidPublicKey").GetString();
         Assert.NotNull(key); // may be empty but must not be null
+    }
+
+    // -----------------------------------------------------------------------
+    // Domain Hub Overview Tests
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public async Task UpdateDomainOverview_PersistsAllFields_ForGlobalAdmin()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var adminId = Guid.Empty;
+        var domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("hub-admin@example.com", "Hub Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var domain = CreateDomain("Crypto", "hub-overview-crypto");
+            domainId = domain.Id;
+            dbContext.Users.Add(admin);
+            dbContext.Domains.Add(domain);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation UpdateDomainOverview($input: UpdateDomainOverviewInput!) {
+              updateDomainOverview(input: $input) {
+                id
+                overviewContent
+                whatBelongsHere
+                submitEventCta
+                curatorCredit
+              }
+            }
+            """,
+            new
+            {
+                input = new
+                {
+                    domainId,
+                    overviewContent = "A community for blockchain and crypto events.",
+                    whatBelongsHere = "Blockchain meetups, DeFi talks, and crypto networking events.",
+                    submitEventCta = "Organizing a crypto event? Submit it here.",
+                    curatorCredit = "Prague Blockchain Week organizers"
+                }
+            });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("updateDomainOverview");
+        Assert.Equal("A community for blockchain and crypto events.", result.GetProperty("overviewContent").GetString());
+        Assert.Equal("Blockchain meetups, DeFi talks, and crypto networking events.", result.GetProperty("whatBelongsHere").GetString());
+        Assert.Equal("Organizing a crypto event? Submit it here.", result.GetProperty("submitEventCta").GetString());
+        Assert.Equal("Prague Blockchain Week organizers", result.GetProperty("curatorCredit").GetString());
+
+        // Verify persistence
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var persisted = await db.Domains.FindAsync(domainId);
+        Assert.Equal("A community for blockchain and crypto events.", persisted!.OverviewContent);
+        Assert.Equal("Prague Blockchain Week organizers", persisted.CuratorCredit);
+    }
+
+    [Fact]
+    public async Task UpdateDomainOverview_AllowsDomainAdministrator()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var adminId = Guid.Empty;
+        var domainAdminId = Guid.Empty;
+        var domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var globalAdmin = CreateUser("global-admin-hub@example.com", "Global Admin", ApplicationUserRole.Admin);
+            adminId = globalAdmin.Id;
+            var domainAdmin = CreateUser("domain-admin-hub@example.com", "Domain Admin");
+            domainAdminId = domainAdmin.Id;
+            var domain = CreateDomain("AI", "hub-overview-ai");
+            domainId = domain.Id;
+            dbContext.Users.AddRange(globalAdmin, domainAdmin);
+            dbContext.Domains.Add(domain);
+            dbContext.DomainAdministrators.Add(new DomainAdministrator
+            {
+                DomainId = domain.Id,
+                UserId = domainAdmin.Id
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, domainAdminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation UpdateDomainOverview($input: UpdateDomainOverviewInput!) {
+              updateDomainOverview(input: $input) {
+                id
+                overviewContent
+                curatorCredit
+              }
+            }
+            """,
+            new
+            {
+                input = new
+                {
+                    domainId,
+                    overviewContent = "Domain admin-authored overview.",
+                    curatorCredit = "AI community team"
+                }
+            });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("updateDomainOverview");
+        Assert.Equal("Domain admin-authored overview.", result.GetProperty("overviewContent").GetString());
+        Assert.Equal("AI community team", result.GetProperty("curatorCredit").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateDomainOverview_RejectsUnauthenticatedRequest()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domain = CreateDomain("Cooking", "hub-overview-cooking");
+            domainId = domain.Id;
+            dbContext.Domains.Add(domain);
+        });
+
+        using var client = factory.CreateClient();
+        // No auth header
+
+        var body = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+            mutation UpdateDomainOverview($input: UpdateDomainOverviewInput!) {
+              updateDomainOverview(input: $input) { id }
+            }
+            """,
+            variables = new { input = new { domainId, overviewContent = "Unauthorized" } }
+        });
+
+        var json = await JsonDocument.ParseAsync(await body.Content.ReadAsStreamAsync());
+        Assert.True(json.RootElement.TryGetProperty("errors", out _), "Should return errors for unauthenticated request");
+    }
+
+    [Fact]
+    public async Task UpdateDomainOverview_RejectsNonDomainAdminContributor()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var contributorId = Guid.Empty;
+        var domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var contributor = CreateUser("contributor-hub@example.com", "Contributor");
+            contributorId = contributor.Id;
+            var domain = CreateDomain("Tech", "hub-overview-tech-nonadmin");
+            domainId = domain.Id;
+            dbContext.Users.Add(contributor);
+            dbContext.Domains.Add(domain);
+            // Contributor is NOT added to DomainAdministrators
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, contributorId));
+
+        var body = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+            mutation UpdateDomainOverview($input: UpdateDomainOverviewInput!) {
+              updateDomainOverview(input: $input) { id }
+            }
+            """,
+            variables = new { input = new { domainId, overviewContent = "Should not be allowed" } }
+        });
+
+        var json = await JsonDocument.ParseAsync(await body.Content.ReadAsStreamAsync());
+        Assert.True(json.RootElement.TryGetProperty("errors", out _), "Contributor who is not a domain admin should be rejected");
+    }
+
+    [Fact]
+    public async Task UpdateDomainOverview_ClearsFieldsWhenPassingNull()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var adminId = Guid.Empty;
+        var domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("hub-clear-admin@example.com", "Hub Clear Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var domain = new EventDomain
+            {
+                Name = "ClearTest",
+                Slug = "hub-clear-test",
+                Subdomain = "hub-clear-test",
+                OverviewContent = "Initial overview",
+                WhatBelongsHere = "Initial what",
+                SubmitEventCta = "Initial CTA",
+                CuratorCredit = "Initial credit"
+            };
+            domainId = domain.Id;
+            dbContext.Users.Add(admin);
+            dbContext.Domains.Add(domain);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation UpdateDomainOverview($input: UpdateDomainOverviewInput!) {
+              updateDomainOverview(input: $input) {
+                overviewContent
+                whatBelongsHere
+                submitEventCta
+                curatorCredit
+              }
+            }
+            """,
+            new
+            {
+                input = new
+                {
+                    domainId,
+                    overviewContent = (string?)null,
+                    whatBelongsHere = (string?)null,
+                    submitEventCta = (string?)null,
+                    curatorCredit = (string?)null
+                }
+            });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("updateDomainOverview");
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("overviewContent").ValueKind);
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("whatBelongsHere").ValueKind);
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("submitEventCta").ValueKind);
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("curatorCredit").ValueKind);
+    }
+
+    [Fact]
+    public async Task DomainBySlug_ReturnsOverviewContentFields()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domain = new EventDomain
+            {
+                Name = "Overview Test",
+                Slug = "overview-test-slug",
+                Subdomain = "overview-test",
+                OverviewContent = "About this overview hub.",
+                WhatBelongsHere = "Events about overview testing.",
+                SubmitEventCta = "Submit an overview event.",
+                CuratorCredit = "Test curators",
+                IsActive = true
+            };
+            dbContext.Domains.Add(domain);
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query DomainBySlug($slug: String!) {
+              domainBySlug(slug: $slug) {
+                slug
+                overviewContent
+                whatBelongsHere
+                submitEventCta
+                curatorCredit
+              }
+            }
+            """,
+            new { slug = "overview-test-slug" });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("domainBySlug");
+        Assert.Equal("About this overview hub.", result.GetProperty("overviewContent").GetString());
+        Assert.Equal("Events about overview testing.", result.GetProperty("whatBelongsHere").GetString());
+        Assert.Equal("Submit an overview event.", result.GetProperty("submitEventCta").GetString());
+        Assert.Equal("Test curators", result.GetProperty("curatorCredit").GetString());
+    }
+
+    [Fact]
+    public async Task UpsertDomain_PersistsOverviewFields()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var adminId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("upsert-overview-admin@example.com", "Upsert Overview Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation UpsertDomain($input: DomainInput!) {
+              upsertDomain(input: $input) {
+                slug
+                overviewContent
+                whatBelongsHere
+                submitEventCta
+                curatorCredit
+              }
+            }
+            """,
+            new
+            {
+                input = new
+                {
+                    name = "Upsert Overview Hub",
+                    slug = "upsert-overview-hub",
+                    subdomain = "upsert-overview-hub",
+                    description = "A hub for upsert testing.",
+                    isActive = true,
+                    overviewContent = "Upsert overview content.",
+                    whatBelongsHere = "Upsert what belongs here.",
+                    submitEventCta = "Upsert CTA.",
+                    curatorCredit = "Upsert curator"
+                }
+            });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("upsertDomain");
+        Assert.Equal("Upsert overview content.", result.GetProperty("overviewContent").GetString());
+        Assert.Equal("Upsert what belongs here.", result.GetProperty("whatBelongsHere").GetString());
+        Assert.Equal("Upsert CTA.", result.GetProperty("submitEventCta").GetString());
+        Assert.Equal("Upsert curator", result.GetProperty("curatorCredit").GetString());
     }
 }

@@ -30,7 +30,8 @@ const EVENT_FIELDS = `
 `
 
 const DOMAIN_FIELDS = `id name slug subdomain description isActive createdAtUtc
-  createdByUserId primaryColor accentColor logoUrl bannerUrl`
+  createdByUserId primaryColor accentColor logoUrl bannerUrl
+  overviewContent whatBelongsHere submitEventCta curatorCredit`
 
 async function fetchCategoryData() {
   loading.value = true
@@ -130,6 +131,11 @@ const upcomingCount = computed(() => {
                   : t('category.upcomingEventCount', { count: upcomingCount })
               }}
             </p>
+            <!-- Curator credit trust cue -->
+            <p v-if="domain.curatorCredit" class="curator-credit">
+              <span class="curator-icon" aria-hidden="true">✓</span>
+              {{ t('category.curatedBy', { credit: domain.curatorCredit }) }}
+            </p>
           </template>
 
           <div v-else-if="!loading">
@@ -172,6 +178,24 @@ const upcomingCount = computed(() => {
 
       <!-- Events section -->
       <template v-else>
+        <!-- Hub overview modules (About & What belongs here) -->
+        <div v-if="domain?.overviewContent || domain?.whatBelongsHere" class="hub-overview-modules">
+          <div v-if="domain.overviewContent" class="hub-module card">
+            <h2 class="hub-module-title">
+              <span class="hub-module-icon" aria-hidden="true">📌</span>
+              {{ t('category.aboutHub') }}
+            </h2>
+            <p class="hub-module-body">{{ domain.overviewContent }}</p>
+          </div>
+          <div v-if="domain.whatBelongsHere" class="hub-module card">
+            <h2 class="hub-module-title">
+              <span class="hub-module-icon" aria-hidden="true">🎯</span>
+              {{ t('category.whatBelongsHere') }}
+            </h2>
+            <p class="hub-module-body">{{ domain.whatBelongsHere }}</p>
+          </div>
+        </div>
+
         <div class="category-filters-row">
           <p class="results-summary" role="status" aria-live="polite">
             {{
@@ -189,11 +213,22 @@ const upcomingCount = computed(() => {
           <EventCard v-for="event in events" :key="event.id" :event="event" />
         </div>
 
+        <!-- Hub-level empty state: hub exists but has no upcoming events -->
         <div v-else class="results-state card empty-state">
           <div class="empty-icon">📅</div>
           <h2>{{ t('category.noEvents') }}</h2>
-          <p>{{ t('category.noEventsDescription', { name: domain!.name }) }}</p>
-          <RouterLink to="/" class="btn btn-primary">{{ t('category.browseAll') }}</RouterLink>
+          <p>{{ t('category.noEventsHubDescription', { name: domain?.name ?? '' }) }}</p>
+          <RouterLink to="/" class="btn btn-outline">{{ t('category.browseAll') }}</RouterLink>
+        </div>
+
+        <!-- Organizer submission CTA -->
+        <div class="organizer-cta">
+          <p class="organizer-cta-text">
+            {{ domain?.submitEventCta || t('category.submitEventCtaDefault', { name: domain?.name ?? slug }) }}
+          </p>
+          <RouterLink to="/submit" class="btn btn-primary">
+            {{ t('category.submitEvent') }}
+          </RouterLink>
         </div>
       </template>
     </div>
@@ -363,6 +398,76 @@ const upcomingCount = computed(() => {
   align-items: center;
 }
 
+/* ── Curator credit ─────────────────────────────────────── */
+.curator-credit {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  margin-top: 0.5rem;
+}
+
+.curator-icon {
+  color: var(--color-primary);
+  font-size: 0.9375rem;
+}
+
+/* ── Hub overview modules ────────────────────────────────── */
+.hub-overview-modules {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.hub-module {
+  padding: 1.25rem 1.5rem;
+}
+
+.hub-module-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 0.625rem;
+  color: var(--color-text);
+}
+
+.hub-module-icon {
+  font-size: 1.125rem;
+}
+
+.hub-module-body {
+  font-size: 0.9375rem;
+  color: var(--color-text-secondary);
+  line-height: 1.65;
+  margin: 0;
+}
+
+/* ── Organizer CTA ───────────────────────────────────────── */
+.organizer-cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 2rem;
+  padding: 1.25rem 1.5rem;
+  background: rgba(19, 127, 236, 0.06);
+  border: 1px solid rgba(19, 127, 236, 0.18);
+  border-radius: var(--radius-md);
+  flex-wrap: wrap;
+}
+
+.organizer-cta-text {
+  font-size: 0.9375rem;
+  color: var(--color-text-secondary);
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
@@ -383,6 +488,15 @@ const upcomingCount = computed(() => {
   }
 
   .error-state {
+    grid-template-columns: 1fr;
+  }
+
+  .organizer-cta {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .hub-overview-modules {
     grid-template-columns: 1fr;
   }
 }
