@@ -126,6 +126,38 @@ public sealed class Query
                 catalogEvent => catalogEvent.Slug == slug && catalogEvent.Status == EventStatus.Published,
                 cancellationToken);
 
+    /// <summary>
+    /// Returns a single event by ID for the authenticated user (for editing).
+    /// Only the event's submitter or a global admin may retrieve it.
+    /// </summary>
+    [Authorize]
+    public async Task<CatalogEvent?> GetEventByIdAsync(
+        Guid id,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var catalogEvent = await dbContext.Events
+            .AsNoTracking()
+            .Include(e => e.Domain)
+            .Include(e => e.SubmittedBy)
+            .SingleOrDefaultAsync(e => e.Id == id, cancellationToken);
+
+        if (catalogEvent is null) return null;
+
+        var currentUserId = claimsPrincipal.GetRequiredUserId();
+        if (catalogEvent.SubmittedByUserId != currentUserId && !claimsPrincipal.IsAdmin())
+        {
+            throw new GraphQLException(
+                ErrorBuilder.New()
+                    .SetMessage("You can only access your own events.")
+                    .SetCode("FORBIDDEN")
+                    .Build());
+        }
+
+        return catalogEvent;
+    }
+
     public async Task<IReadOnlyList<EventDomain>> GetDomainsAsync(
         ClaimsPrincipal claimsPrincipal,
         [Service] AppDbContext dbContext,

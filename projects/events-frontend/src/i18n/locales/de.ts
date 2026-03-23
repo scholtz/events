@@ -255,7 +255,32 @@ export default {
     validationPrice: 'Bitte geben Sie einen gültigen, nicht negativen Preis ein.',
     validationTimezone:
       '„{tz}" ist keine gültige IANA-Zeitzone. Versuchen Sie einen Wert wie Europe/Prague oder America/New_York.',
+    validationRequired: '{field} ist erforderlich.',
+    validationUrl: 'Bitte geben Sie eine gültige URL ein (z. B. https://example.com/event).',
     submitError: 'Die Veranstaltung konnte gerade nicht eingereicht werden.',
+    stepOf: 'Schritt {current} von {total}',
+    stepProgress: 'Formularschritte',
+    next: 'Weiter',
+    back: 'Zurück',
+    saveDraft: 'Entwurf speichern',
+    saveDraftTitle: 'Fortschritt lokal speichern',
+    draftSaved: 'Entwurf gespeichert!',
+    draftLoaded: 'Entwurf wiederhergestellt — Sie können dort weitermachen, wo Sie aufgehört haben.',
+    freeEventNote: 'Diese Veranstaltung ist kostenlos — kein Preis erforderlich.',
+    previewTitle: 'Veranstaltung überprüfen',
+  },
+
+  // ── Edit Event ─────────────────────────────────────────────────────────────
+  editEvent: {
+    title: 'Veranstaltung bearbeiten',
+    subtitle: 'Aktualisieren Sie Ihre Veranstaltungsdetails. Änderungen werden vor der Veröffentlichung überprüft.',
+    successTitle: 'Veranstaltung aktualisiert!',
+    successMessage: 'Ihre Änderungen wurden gespeichert und werden überprüft.',
+    saveButton: 'Änderungen speichern',
+    saving: 'Wird gespeichert...',
+    saveError: 'Die Änderungen konnten gerade nicht gespeichert werden.',
+    notFound: 'Diese Veranstaltung konnte nicht gefunden werden.',
+    loadError: 'Laden der Veranstaltungsdetails fehlgeschlagen.',
   },
 
   favorites: {

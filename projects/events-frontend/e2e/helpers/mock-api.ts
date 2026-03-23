@@ -272,6 +272,59 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       return
     }
 
+    if (query.includes('mutation') && query.includes('UpdateMyEvent')) {
+      const eventId = variables.eventId
+      const input = variables.input || {}
+      const event = state.events.find((e) => e.id === eventId)
+      if (!event) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Event was not found.', extensions: { code: 'EVENT_NOT_FOUND' } }] }),
+        })
+        return
+      }
+      if (event.submittedByUserId !== state.currentUserId) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'You can only update your own events.', extensions: { code: 'FORBIDDEN' } }] }),
+        })
+        return
+      }
+      const domain = state.domains.find((d) => d.slug === input.domainSlug)
+      Object.assign(event, {
+        name: input.name ?? event.name,
+        description: input.description ?? event.description,
+        eventUrl: input.eventUrl ?? event.eventUrl,
+        venueName: input.venueName ?? event.venueName,
+        addressLine1: input.addressLine1 ?? event.addressLine1,
+        city: input.city ?? event.city,
+        countryCode: input.countryCode ?? event.countryCode,
+        latitude: input.latitude ?? event.latitude,
+        longitude: input.longitude ?? event.longitude,
+        startsAtUtc: input.startsAtUtc ?? event.startsAtUtc,
+        endsAtUtc: input.endsAtUtc ?? event.endsAtUtc,
+        isFree: input.isFree ?? event.isFree,
+        priceAmount: input.priceAmount ?? event.priceAmount,
+        currencyCode: input.currencyCode ?? event.currencyCode,
+        attendanceMode: (input.attendanceMode as MockEvent['attendanceMode']) ?? event.attendanceMode,
+        timezone: input.timezone ?? event.timezone,
+        domainId: domain?.id ?? event.domainId,
+        domain: domain
+          ? { id: domain.id, name: domain.name, slug: domain.slug, subdomain: domain.subdomain }
+          : event.domain,
+        status: 'PENDING_APPROVAL',
+        updatedAtUtc: new Date().toISOString(),
+      })
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { updateMyEvent: event } }),
+      })
+      return
+    }
+
     if (query.includes('mutation') && query.includes('SubmitEvent')) {
       const input = variables.input || {}
       const slug = input.name
@@ -994,6 +1047,17 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
           body: JSON.stringify({ data: { eventBySlug: null } }),
         })
       }
+      return
+    }
+
+    if (query.includes('query') && query.includes('EventById')) {
+      const id = variables.id
+      const found = state.events.find((e) => e.id === id) ?? null
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { eventById: found } }),
+      })
       return
     }
 

@@ -309,6 +309,39 @@ export const useEventsStore = defineStore('events', () => {
     return data.submitEvent
   }
 
+  async function updateMyEvent(
+    eventId: string,
+    input: {
+      domainSlug: string
+      name: string
+      description: string
+      eventUrl: string
+      venueName: string
+      addressLine1: string
+      city: string
+      countryCode?: string
+      isFree?: boolean
+      priceAmount?: number | null
+      currencyCode?: string
+      latitude: number
+      longitude: number
+      startsAtUtc: string
+      endsAtUtc: string
+      attendanceMode?: 'IN_PERSON' | 'ONLINE' | 'HYBRID'
+      timezone?: string | null
+    },
+  ) {
+    const data = await gqlRequest<{ updateMyEvent: CatalogEvent }>(
+      `mutation UpdateMyEvent($eventId: UUID!, $input: EventSubmissionInput!) {
+        updateMyEvent(eventId: $eventId, input: $input) { ${EVENT_FIELDS} }
+      }`,
+      { eventId, input },
+    )
+    const idx = events.value.findIndex((e) => e.id === eventId)
+    if (idx >= 0) events.value[idx] = data.updateMyEvent
+    return data.updateMyEvent
+  }
+
   async function reviewEvent(eventId: string, status: string, adminNotes?: string) {
     const data = await gqlRequest<{ reviewEvent: CatalogEvent }>(
       `mutation ReviewEvent($eventId: UUID!, $input: ReviewEventInput!) {
@@ -354,6 +387,7 @@ export const useEventsStore = defineStore('events', () => {
     fetchDiscoveryEvents,
     fetchEventBySlug,
     submitEvent,
+    updateMyEvent,
     reviewEvent,
     setFilters,
     replaceFilters,

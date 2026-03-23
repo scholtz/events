@@ -255,7 +255,32 @@ export default {
     validationPrice: 'Zadajte platnú nezápornú cenu pre platené udalosti.',
     validationTimezone:
       '„{tz}" nie je platné IANA časové pásmo. Skúste hodnotu ako Europe/Prague alebo America/New_York.',
+    validationRequired: '{field} je povinné.',
+    validationUrl: 'Zadajte platnú URL adresu (napr. https://example.com/event).',
     submitError: 'Udalosť sa momentálne nepodarilo odoslať.',
+    stepOf: 'Krok {current} z {total}',
+    stepProgress: 'Kroky formulára',
+    next: 'Ďalej',
+    back: 'Späť',
+    saveDraft: 'Uložiť koncept',
+    saveDraftTitle: 'Uložiť váš postup lokálne',
+    draftSaved: 'Koncept uložený!',
+    draftLoaded: 'Koncept obnovený — môžete pokračovať tam, kde ste prestali.',
+    freeEventNote: 'Táto udalosť je zadarmo — cena nie je potrebná.',
+    previewTitle: 'Skontrolujte svoju udalosť',
+  },
+
+  // ── Edit Event ─────────────────────────────────────────────────────────────
+  editEvent: {
+    title: 'Upraviť udalosť',
+    subtitle: 'Aktualizujte podrobnosti udalosti. Zmeny budú preskúmané pred zverejnením.',
+    successTitle: 'Udalosť aktualizovaná!',
+    successMessage: 'Vaše zmeny sú uložené a čakajú na kontrolu.',
+    saveButton: 'Uložiť zmeny',
+    saving: 'Ukladá sa...',
+    saveError: 'Zmeny sa momentálne nepodarilo uložiť.',
+    notFound: 'Túto udalosť sa nepodarilo nájsť.',
+    loadError: 'Načítanie podrobností udalosti zlyhalo.',
   },
 
   favorites: {

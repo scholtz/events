@@ -10,16 +10,129 @@ import {
   setupMockApi,
 } from './helpers/mock-api'
 
+/**
+ * Navigates through all 5 steps of the event submission wizard, filling in
+ * the required fields, and clicks Submit Event on step 5.
+ */
+async function fillAndSubmitEventForm(
+  page: Parameters<Parameters<typeof test>[1]>[0]['page'],
+  opts: {
+    title?: string
+    description?: string
+    domain?: string
+    attendanceMode?: string
+    startDate?: string
+    timezone?: string
+    city?: string
+    latitude?: string
+    longitude?: string
+    venueName?: string
+    address?: string
+    eventUrl?: string
+  } = {},
+) {
+  const {
+    title = 'Test Event',
+    description = 'Test description.',
+    domain = 'technology',
+    attendanceMode,
+    startDate = '2026-06-01',
+    timezone,
+    city,
+    latitude,
+    longitude,
+    venueName,
+    address,
+    eventUrl = 'https://example.com',
+  } = opts
+
+  // Step 1: Basic Info
+  await page.locator('#event-title').fill(title)
+  await page.locator('#event-description').fill(description)
+  await page.locator('#event-domain').selectOption(domain)
+  if (attendanceMode) {
+    await page.locator('#event-attendance-mode').selectOption(attendanceMode)
+  }
+  await page.getByRole('button', { name: 'Next' }).click()
+
+  // Step 2: Date & Time
+  await page.locator('#event-date').fill(startDate)
+  if (timezone !== undefined) {
+    await page.locator('#event-timezone').fill(timezone)
+  }
+  await page.getByRole('button', { name: 'Next' }).click()
+
+  // Step 3: Pricing (default free — just click next)
+  await page.getByRole('button', { name: 'Next' }).click()
+
+  // Step 4: Location
+  if (venueName) await page.locator('#event-location-name').fill(venueName)
+  if (address) await page.locator('#event-location-address').fill(address)
+  if (city) await page.locator('#event-city').fill(city)
+  if (latitude) await page.locator('#event-lat').fill(latitude)
+  if (longitude) await page.locator('#event-lng').fill(longitude)
+  await page.getByRole('button', { name: 'Next' }).click()
+
+  // Step 5: Event Link
+  await page.locator('#event-link').fill(eventUrl)
+  await page.getByRole('button', { name: 'Submit Event' }).click()
+}
+
 test.describe('Submit event form', () => {
-  test('renders all required fields', async ({ page }) => {
+  test('renders step 1 required fields on load', async ({ page }) => {
     setupMockApi(page, { domains: [makeTechDomain()] })
     await page.goto('/submit')
 
+    // Step 1 fields should be visible
+    await expect(page.locator('#event-title')).toBeVisible()
     await expect(page.getByLabel('Event Title *')).toBeVisible()
     await expect(page.getByLabel('Description *')).toBeVisible()
     await expect(page.getByLabel('Domain *')).toBeVisible()
+    // Step indicator
+    await expect(page.locator('.step-label')).toContainText('Step 1 of 5')
+  })
+
+  test('step 2 shows date and timezone fields', async ({ page }) => {
+    setupMockApi(page, { domains: [makeTechDomain()] })
+    await page.goto('/submit')
+
+    // Navigate to step 2
+    await page.locator('#event-title').fill('Test')
+    await page.locator('#event-description').fill('Desc')
+    await page.locator('#event-domain').selectOption('technology')
+    await page.getByRole('button', { name: 'Next' }).click()
+
     await expect(page.getByLabel('Start Date *')).toBeVisible()
+    await expect(page.locator('#event-timezone')).toBeVisible()
+  })
+
+  test('step 3 shows free event checkbox', async ({ page }) => {
+    setupMockApi(page, { domains: [makeTechDomain()] })
+    await page.goto('/submit')
+
+    await page.locator('#event-title').fill('Test')
+    await page.locator('#event-description').fill('Desc')
+    await page.locator('#event-domain').selectOption('technology')
+    await page.getByRole('button', { name: 'Next' }).click()
+    await page.locator('#event-date').fill('2026-06-01')
+    await page.getByRole('button', { name: 'Next' }).click()
+
     await expect(page.getByLabel('Free event')).toBeVisible()
+  })
+
+  test('step 5 shows website URL field', async ({ page }) => {
+    setupMockApi(page, { domains: [makeTechDomain()] })
+    await page.goto('/submit')
+
+    await page.locator('#event-title').fill('Test')
+    await page.locator('#event-description').fill('Desc')
+    await page.locator('#event-domain').selectOption('technology')
+    await page.getByRole('button', { name: 'Next' }).click()
+    await page.locator('#event-date').fill('2026-06-01')
+    await page.getByRole('button', { name: 'Next' }).click()
+    await page.getByRole('button', { name: 'Next' }).click()
+    await page.getByRole('button', { name: 'Next' }).click()
+
     await expect(page.getByLabel('Website / Registration URL *')).toBeVisible()
   })
 
@@ -41,18 +154,20 @@ test.describe('Submit event form', () => {
     const state = setupMockApi(page, { users: [admin], domains: [makeTechDomain()] })
     state.currentUserId = admin.id
 
+    // Clear any existing draft
+    await page.goto('/submit')
+    await page.evaluate(() => localStorage.removeItem('event_draft'))
     await page.goto('/submit')
 
-    await page.getByLabel('Event Title *').fill('Online Webinar')
-    await page.getByLabel('Description *').fill('A fully remote event.')
-    await page.getByLabel('Domain *').selectOption('technology')
-    await page.getByLabel('Start Date *').fill('2026-06-01')
-    await page.getByLabel('Website / Registration URL *').fill('https://example.com')
-    await page.getByLabel('Attendance Mode').selectOption('ONLINE')
+    await page.locator('#event-attendance-mode').selectOption('ONLINE')
+    await expect(page.locator('#event-attendance-mode')).toHaveValue('ONLINE')
 
-    await expect(page.getByLabel('Attendance Mode')).toHaveValue('ONLINE')
+    await fillAndSubmitEventForm(page, {
+      title: 'Online Webinar',
+      description: 'A fully remote event.',
+      attendanceMode: 'ONLINE',
+    })
 
-    await page.getByRole('button', { name: 'Submit Event' }).click()
     await expect(page.getByRole('heading', { name: 'Event Submitted!' })).toBeVisible()
   })
 
@@ -64,44 +179,49 @@ test.describe('Submit event form', () => {
     await expect(select.getByRole('option', { name: 'Technology' })).toBeAttached()
   })
 
-  test('submit button is disabled mid-submission', async ({ page }) => {
+  test('submit button is present on step 5 and submits successfully', async ({ page }) => {
     const admin = makeAdminUser()
     const state = setupMockApi(page, { users: [admin], domains: [makeTechDomain()] })
     state.currentUserId = admin.id
 
     await page.goto('/submit')
+    await page.evaluate(() => localStorage.removeItem('event_draft'))
+    await page.goto('/submit')
 
-    await page.getByLabel('Event Title *').fill('Async Test Event')
-    await page.getByLabel('Description *').fill('Testing async disable.')
-    await page.getByLabel('Domain *').selectOption('technology')
-    await page.getByLabel('Start Date *').fill('2026-05-01')
-    await page.getByLabel('Website / Registration URL *').fill('https://example.com')
+    await fillAndSubmitEventForm(page, {
+      title: 'Async Test Event',
+      description: 'Testing async disable.',
+    })
 
-    const submitBtn = page.getByRole('button', { name: 'Submit Event' })
-    await submitBtn.click()
-    // After submission, success state should appear (button is replaced)
+    // After submission, success state should appear
     await expect(page.getByRole('heading', { name: 'Event Submitted!' })).toBeVisible()
   })
 
-  test('back link navigates to home', async ({ page }) => {
+  test('back link navigates to dashboard', async ({ page }) => {
     setupMockApi(page, { domains: [makeTechDomain()] })
     await page.goto('/submit')
 
     await page.getByRole('link', { name: '← Back' }).click()
-    await expect(page).toHaveURL(/\/$/)
+    await expect(page).toHaveURL(/\/dashboard$/)
   })
 
-  test('cancel button navigates to home', async ({ page }) => {
+  test('cancel button navigates to dashboard', async ({ page }) => {
     setupMockApi(page, { domains: [makeTechDomain()] })
     await page.goto('/submit')
 
     await page.getByRole('link', { name: 'Cancel' }).click()
-    await expect(page).toHaveURL(/\/$/)
+    await expect(page).toHaveURL(/\/dashboard$/)
   })
 
-  test('timezone field is present in submit form', async ({ page }) => {
+  test('timezone field is present in step 2 of submit form', async ({ page }) => {
     setupMockApi(page, { domains: [makeTechDomain()] })
     await page.goto('/submit')
+
+    // Navigate to step 2
+    await page.locator('#event-title').fill('Test')
+    await page.locator('#event-description').fill('Desc')
+    await page.locator('#event-domain').selectOption('technology')
+    await page.getByRole('button', { name: 'Next' }).click()
 
     const timezoneInput = page.getByLabel(/Timezone/i)
     await expect(timezoneInput).toBeVisible()
@@ -114,17 +234,16 @@ test.describe('Submit event form', () => {
     state.currentUserId = admin.id
 
     await page.goto('/submit')
+    await page.evaluate(() => localStorage.removeItem('event_draft'))
+    await page.goto('/submit')
 
-    await page.getByLabel('Event Title *').fill('Prague Summit with TZ')
-    await page.getByLabel('Description *').fill('An event with a timezone.')
-    await page.getByLabel('Domain *').selectOption('technology')
-    await page.getByLabel('Start Date *').fill('2026-09-01')
-    await page.getByLabel('Website / Registration URL *').fill('https://example.com')
-    await page.getByLabel(/Timezone/i).fill('Europe/Prague')
+    await fillAndSubmitEventForm(page, {
+      title: 'Prague Summit with TZ',
+      description: 'An event with a timezone.',
+      startDate: '2026-09-01',
+      timezone: 'Europe/Prague',
+    })
 
-    await expect(page.getByLabel(/Timezone/i)).toHaveValue('Europe/Prague')
-
-    await page.getByRole('button', { name: 'Submit Event' }).click()
     await expect(page.getByRole('heading', { name: 'Event Submitted!' })).toBeVisible()
   })
 
@@ -141,15 +260,16 @@ test.describe('Submit event form', () => {
     })
 
     await page.goto('/submit')
+    await page.evaluate(() => localStorage.removeItem('event_draft'))
+    await page.goto('/submit')
 
-    await page.getByLabel('Event Title *').fill('London Conference')
-    await page.getByLabel('Description *').fill('An event in London.')
-    await page.getByLabel('Domain *').selectOption('technology')
-    await page.getByLabel('Start Date *').fill('2026-10-01')
-    await page.getByLabel('Website / Registration URL *').fill('https://example.com')
-    await page.getByLabel(/Timezone/i).fill('Europe/London')
+    await fillAndSubmitEventForm(page, {
+      title: 'London Conference',
+      description: 'An event in London.',
+      startDate: '2026-10-01',
+      timezone: 'Europe/London',
+    })
 
-    await page.getByRole('button', { name: 'Submit Event' }).click()
     await expect(page.getByRole('heading', { name: 'Event Submitted!' })).toBeVisible()
 
     expect(capturedBodies.length).toBeGreaterThan(0)
@@ -162,15 +282,16 @@ test.describe('Submit event form', () => {
     state.currentUserId = admin.id
 
     await page.goto('/submit')
+    await page.evaluate(() => localStorage.removeItem('event_draft'))
+    await page.goto('/submit')
 
-    await page.getByLabel('Event Title *').fill('No Timezone Event')
-    await page.getByLabel('Description *').fill('No timezone provided.')
-    await page.getByLabel('Domain *').selectOption('technology')
-    await page.getByLabel('Start Date *').fill('2026-08-01')
-    await page.getByLabel('Website / Registration URL *').fill('https://example.com')
-    // Intentionally leave timezone blank
+    // Intentionally leave timezone blank (default)
+    await fillAndSubmitEventForm(page, {
+      title: 'No Timezone Event',
+      description: 'No timezone provided.',
+      startDate: '2026-08-01',
+    })
 
-    await page.getByRole('button', { name: 'Submit Event' }).click()
     await expect(page.getByRole('heading', { name: 'Event Submitted!' })).toBeVisible()
   })
 
@@ -180,21 +301,25 @@ test.describe('Submit event form', () => {
     state.currentUserId = admin.id
 
     await page.goto('/submit')
+    await page.evaluate(() => localStorage.removeItem('event_draft'))
+    await page.goto('/submit')
 
-    await page.getByLabel('Event Title *').fill('Bad TZ Event')
-    await page.getByLabel('Description *').fill('Has a typo in timezone.')
-    await page.getByLabel('Domain *').selectOption('technology')
-    await page.getByLabel('Start Date *').fill('2026-11-01')
-    await page.getByLabel('Website / Registration URL *').fill('https://example.com')
-    await page.getByLabel(/Timezone/i).fill('Europe/Prgaue')
+    // Step 1
+    await page.locator('#event-title').fill('Bad TZ Event')
+    await page.locator('#event-description').fill('Has a typo in timezone.')
+    await page.locator('#event-domain').selectOption('technology')
+    await page.getByRole('button', { name: 'Next' }).click()
 
-    await page.getByRole('button', { name: 'Submit Event' }).click()
+    // Step 2: enter invalid timezone
+    await page.locator('#event-date').fill('2026-11-01')
+    await page.locator('#event-timezone').fill('Europe/Prgaue')
+    await page.getByRole('button', { name: 'Next' }).click()
 
-    // Should show error and NOT submit
+    // Should show error and NOT proceed past step 2
     const error = page.locator('.field-error')
     await expect(error).toBeVisible()
     await expect(error).toContainText('Europe/Prgaue')
-    await expect(page.getByRole('heading', { name: 'Event Submitted!' })).toBeHidden()
+    await expect(page.locator('.step-label')).toContainText('Step 2 of 5')
   })
 
   test('accepts valid canonical IANA timezone values', async ({ page }) => {
@@ -203,15 +328,16 @@ test.describe('Submit event form', () => {
     state.currentUserId = admin.id
 
     await page.goto('/submit')
+    await page.evaluate(() => localStorage.removeItem('event_draft'))
+    await page.goto('/submit')
 
-    await page.getByLabel('Event Title *').fill('New York Event')
-    await page.getByLabel('Description *').fill('Happening in New York.')
-    await page.getByLabel('Domain *').selectOption('technology')
-    await page.getByLabel('Start Date *').fill('2026-12-01')
-    await page.getByLabel('Website / Registration URL *').fill('https://example.com')
-    await page.getByLabel(/Timezone/i).fill('America/New_York')
+    await fillAndSubmitEventForm(page, {
+      title: 'New York Event',
+      description: 'Happening in New York.',
+      startDate: '2026-12-01',
+      timezone: 'America/New_York',
+    })
 
-    await page.getByRole('button', { name: 'Submit Event' }).click()
     await expect(page.getByRole('heading', { name: 'Event Submitted!' })).toBeVisible()
     await expect(page.locator('.field-error')).toBeHidden()
   })

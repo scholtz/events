@@ -35,12 +35,24 @@ test('full flow: signup, submit event, approve, list and filter', async ({ page 
   await page.getByLabel('Event Title *').fill(title)
   await page.getByLabel('Description *').fill('End-to-end submitted event for UI coverage.')
   await page.getByLabel('Domain *').selectOption('technology')
+  await page.getByRole('button', { name: 'Next' }).click()
+
+  // Step 2: Date & Time
   await page.getByLabel('Start Date *').fill('2026-03-15')
+  await page.getByRole('button', { name: 'Next' }).click()
+
+  // Step 3: Pricing (free — default)
+  await page.getByRole('button', { name: 'Next' }).click()
+
+  // Step 4: Location
   await page.getByLabel('Venue Name').fill('Stitch Hall')
   await page.getByLabel('Address').fill('Design Street 123')
   await page.getByLabel('City').fill('Prague')
   await page.getByLabel('Latitude').fill('50.0755')
   await page.getByLabel('Longitude').fill('14.4378')
+  await page.getByRole('button', { name: 'Next' }).click()
+
+  // Step 5: Event Link
   await page.getByLabel('Website / Registration URL *').fill('https://example.com/event')
   await page.getByRole('button', { name: 'Submit Event' }).click()
 

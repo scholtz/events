@@ -263,7 +263,32 @@ export default {
     validationPrice: 'Please enter a valid non-negative price for paid events.',
     validationTimezone:
       '"{tz}" is not a recognised IANA timezone. Try a value like Europe/Prague or America/New_York.',
+    validationRequired: '{field} is required.',
+    validationUrl: 'Please enter a valid URL (e.g. https://example.com/event).',
     submitError: 'We could not submit the event right now.',
+    stepOf: 'Step {current} of {total}',
+    stepProgress: 'Form steps',
+    next: 'Next',
+    back: 'Back',
+    saveDraft: 'Save Draft',
+    saveDraftTitle: 'Save your progress locally',
+    draftSaved: 'Draft saved!',
+    draftLoaded: 'Draft restored — you can continue where you left off.',
+    freeEventNote: 'This event is free — no price needed.',
+    previewTitle: 'Review Your Event',
+  },
+
+  // ── Edit Event ─────────────────────────────────────────────────────────────
+  editEvent: {
+    title: 'Edit Event',
+    subtitle: 'Update your event details. Changes will be reviewed before publishing.',
+    successTitle: 'Event Updated!',
+    successMessage: 'Your changes are saved and under review.',
+    saveButton: 'Save Changes',
+    saving: 'Saving...',
+    saveError: 'We could not save the changes right now.',
+    notFound: 'This event could not be found.',
+    loadError: 'Failed to load event details.',
   },
 
   // ── Favorites ──────────────────────────────────────────────────────────────
