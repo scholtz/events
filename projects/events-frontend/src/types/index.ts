@@ -214,6 +214,7 @@ export interface CommunityMembership {
   groupId: string
   group: CommunityGroup
   userId: string
+  user?: { id: string; displayName: string; email: string }
   role: CommunityMemberRole
   status: CommunityMemberStatus
   createdAtUtc: string

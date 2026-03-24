@@ -15,6 +15,7 @@ const COMMUNITY_GROUP_FIELDS = `
 
 const MEMBERSHIP_FIELDS = `
   id groupId userId role status createdAtUtc reviewedAtUtc
+  user { id displayName email }
   group { ${COMMUNITY_GROUP_FIELDS} }
 `
 
@@ -179,6 +180,26 @@ export const useCommunitiesStore = defineStore('communities', () => {
     )
   }
 
+  async function fetchPendingRequests(groupId: string): Promise<CommunityMembership[]> {
+    const data = await gqlRequest<{ pendingMembershipRequests: CommunityMembership[] }>(
+      `query PendingMembershipRequests($groupId: UUID!) {
+        pendingMembershipRequests(groupId: $groupId) { ${MEMBERSHIP_FIELDS} }
+      }`,
+      { groupId },
+    )
+    return data.pendingMembershipRequests
+  }
+
+  async function fetchGroupMembers(groupId: string): Promise<CommunityMembership[]> {
+    const data = await gqlRequest<{ groupMembers: CommunityMembership[] }>(
+      `query GroupMembers($groupId: UUID!) {
+        groupMembers(groupId: $groupId) { ${MEMBERSHIP_FIELDS} }
+      }`,
+      { groupId },
+    )
+    return data.groupMembers
+  }
+
   return {
     groups,
     loading,
@@ -186,6 +207,8 @@ export const useCommunitiesStore = defineStore('communities', () => {
     fetchGroups,
     fetchGroupBySlug,
     fetchMyMemberships,
+    fetchPendingRequests,
+    fetchGroupMembers,
     createGroup,
     updateGroup,
     joinGroup,

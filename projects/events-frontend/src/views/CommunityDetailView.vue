@@ -60,10 +60,14 @@ async function loadMembers() {
   if (!detail.value) return
   membersLoading.value = true
   try {
-    // Member lists will be loaded via dedicated admin queries in a future extension.
-    // For now the admin panel shows what's available from the detail query.
-    pendingMembers.value = []
-    activeMembers.value = []
+    const [pending, active] = await Promise.all([
+      communitiesStore.fetchPendingRequests(detail.value.group.id),
+      communitiesStore.fetchGroupMembers(detail.value.group.id),
+    ])
+    pendingMembers.value = pending
+    activeMembers.value = active
+  } catch (err) {
+    actionError.value = err instanceof Error ? err.message : t('community.errorLoad')
   } finally {
     membersLoading.value = false
   }
@@ -271,16 +275,20 @@ function memberCountText(count: number): string {
 
           <!-- Admin panel -->
           <template v-if="isAdmin">
-            <!-- Pending requests -->
-            <section v-if="pendingMembers.length > 0" class="admin-section">
+            <!-- Pending requests section (always visible to admin) -->
+            <section class="admin-section">
               <h2 class="section-heading">{{ t('community.pendingRequestsHeading') }}</h2>
-              <div class="members-list">
+              <p v-if="membersLoading" class="members-loading">{{ t('common.loading') }}</p>
+              <p v-else-if="pendingMembers.length === 0" class="empty-members">
+                {{ t('community.noPendingRequests') }}
+              </p>
+              <div v-else class="members-list">
                 <div
                   v-for="member in pendingMembers"
                   :key="member.id"
                   class="member-row"
                 >
-                  <span class="member-name">{{ member.userId }}</span>
+                  <span class="member-name">{{ member.user?.displayName ?? member.userId }}</span>
                   <div class="member-actions">
                     <button
                       class="btn btn-sm btn-primary"
@@ -299,16 +307,20 @@ function memberCountText(count: number): string {
               </div>
             </section>
 
-            <!-- Active members -->
-            <section v-if="activeMembers.length > 0" class="admin-section">
+            <!-- Active members section (always visible to admin) -->
+            <section class="admin-section">
               <h2 class="section-heading">{{ t('community.manageMembersHeading') }}</h2>
-              <div class="members-list">
+              <p v-if="membersLoading" class="members-loading">{{ t('common.loading') }}</p>
+              <p v-else-if="activeMembers.length === 0" class="empty-members">
+                {{ t('community.noGroups') }}
+              </p>
+              <div v-else class="members-list">
                 <div
                   v-for="member in activeMembers"
                   :key="member.id"
                   class="member-row"
                 >
-                  <span class="member-name">{{ member.userId }}</span>
+                  <span class="member-name">{{ member.user?.displayName ?? member.userId }}</span>
                   <span class="member-role-badge">{{ roleLabel(member.role) }}</span>
                   <div class="member-actions">
                     <select
@@ -627,6 +639,13 @@ function memberCountText(count: number): string {
 
 .btn-secondary:hover {
   background: var(--color-surface-raised);
+}
+
+.members-loading,
+.empty-members {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  padding: 0.5rem 0;
 }
 
 @media (max-width: 640px) {
