@@ -81,6 +81,8 @@ test.describe('Domain admin management', () => {
     // Select user from dropdown and add
     const select = page.locator('.add-admin-form select')
     await expect(select).toBeVisible()
+    // Wait for adminOverview users to be loaded (options populated)
+    await expect(select.locator(`option[value="${contributor.id}"]`)).toBeAttached()
     await select.selectOption(contributor.id)
     await page.getByRole('button', { name: 'Add Admin' }).click()
 
@@ -235,5 +237,55 @@ test.describe('Domain admin management', () => {
     // Click Close
     await page.getByRole('button', { name: 'Close' }).click()
     await expect(page.getByRole('heading', { name: 'Tag Style' })).toBeHidden()
+  })
+
+  test('can update hub overview content', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      domainAdministrators: [],
+    })
+    await loginAs(page, admin)
+    await page.goto('/admin')
+
+    await page.getByRole('button', { name: /Domains/ }).click()
+    await page.getByRole('button', { name: 'Manage' }).click()
+    await expect(page.getByRole('heading', { name: 'Hub Overview Content' })).toBeVisible()
+
+    // Fill overview form
+    await page.getByLabel('About this hub').fill('This hub is about technology events in Prague.')
+    await page.getByLabel('What belongs here').fill('Tech talks, hackathons, and innovation meetups.')
+    await page.getByRole('button', { name: 'Save Overview' }).click()
+
+    // Success indicator
+    await expect(page.getByText('✓ Saved').nth(1)).toBeVisible()
+  })
+
+  test('hub overview content appears on public category page', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 })
+    const admin = makeAdminUser()
+    const domain = {
+      ...makeTechDomain(),
+      overviewContent: 'Welcome to the Technology hub.',
+      whatBelongsHere: 'Tech conferences, hackathons, and workshops.',
+      curatorCredit: 'Prague Tech Community',
+    }
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      domainAdministrators: [],
+    })
+
+    await page.goto('/category/technology')
+
+    // Hub overview modules should be visible
+    await expect(page.getByRole('heading', { name: 'About this hub' })).toBeVisible()
+    await expect(page.getByText('Welcome to the Technology hub.')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'What belongs here' })).toBeVisible()
+    await expect(page.getByText('Tech conferences, hackathons, and workshops.')).toBeVisible()
+    // Curator credit
+    await expect(page.getByText('Prague Tech Community')).toBeVisible()
   })
 })
