@@ -263,14 +263,23 @@ public sealed class ReminderDispatchServiceTests
 
     private static ServiceProvider BuildServiceProvider(IPushNotificationService pushService)
     {
-        var connection = new SqliteConnection("Data Source=:memory:");
-        connection.Open();
+        // Use a per-test named in-memory database with Cache=Shared so every AppDbContext
+        // opens its own SqliteConnection. This avoids the SQLITE_BUSY race that occurs when
+        // multiple EF Core SqliteRelationalConnection instances call CreateFunction() on the
+        // same shared SqliteConnection object concurrently (background dispatch + WaitForAsync).
+        var dbName = $"reminder_test_{Guid.NewGuid():N}";
+        var connectionString = $"Data Source={dbName};Mode=Memory;Cache=Shared";
+
+        // Keep one persistent connection open so the named in-memory database is not dropped
+        // while scoped contexts open and close their own connections.
+        var keepAlive = new SqliteConnection(connectionString);
+        keepAlive.Open();
 
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddSingleton(connection);
+        services.AddSingleton(keepAlive); // disposed with the ServiceProvider, closing the keep-alive
         services.AddDbContext<AppDbContext>(options =>
-            options.UseSqlite(connection));
+            options.UseSqlite(connectionString));
         services.AddScoped(_ => pushService);
         var provider = services.BuildServiceProvider();
 
