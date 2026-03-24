@@ -67,3 +67,13 @@ public sealed record EventReminderItem(
     DateTime ScheduledForUtc,
     DateTime? SentAtUtc,
     DateTime CreatedAtUtc);
+
+/// <summary>
+/// Detail view for a single community group, including associated published events,
+/// member count, and the calling user's own membership record (if any).
+/// </summary>
+public sealed record CommunityGroupDetail(
+    CommunityGroup Group,
+    IReadOnlyList<CatalogEvent> Events,
+    int MemberCount,
+    CommunityMembership? MyMembership);

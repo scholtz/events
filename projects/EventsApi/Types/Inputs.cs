@@ -222,3 +222,55 @@ public sealed class EnableEventReminderInput
     /// </summary>
     public int OffsetHours { get; init; } = 24;
 }
+
+// ── Community group inputs ────────────────────────────────────────────────────
+
+/// <summary>
+/// Input for creating a new community group. The creator automatically becomes the group admin.
+/// </summary>
+public sealed class CreateCommunityGroupInput
+{
+    public required string Name { get; init; }
+
+    /// <summary>
+    /// URL-friendly identifier for the group. Must be unique and contain only lowercase
+    /// letters, digits, and hyphens.
+    /// </summary>
+    public required string Slug { get; init; }
+
+    public string? Summary { get; init; }
+    public string? Description { get; init; }
+    public CommunityVisibility Visibility { get; init; } = CommunityVisibility.Public;
+}
+
+/// <summary>
+/// Input for editing community group metadata. Only group admins may call this.
+/// </summary>
+public sealed class UpdateCommunityGroupInput
+{
+    public string? Name { get; init; }
+    public string? Summary { get; init; }
+    public string? Description { get; init; }
+    public CommunityVisibility? Visibility { get; init; }
+    public bool? IsActive { get; init; }
+}
+
+/// <summary>
+/// Input for reviewing a pending membership request (approve or reject).
+/// Only group admins may call this.
+/// </summary>
+public sealed class ReviewMembershipRequestInput
+{
+    public bool Approve { get; init; }
+}
+
+/// <summary>
+/// Input for associating a published event with a community group.
+/// The caller must be a group admin or event manager for the group,
+/// and must own the event (or be a global admin).
+/// </summary>
+public sealed class CommunityGroupEventInput
+{
+    public Guid GroupId { get; init; }
+    public Guid EventId { get; init; }
+}

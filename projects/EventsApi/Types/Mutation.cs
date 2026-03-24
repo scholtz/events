@@ -1016,4 +1016,397 @@ public sealed class Mutation
         await dbContext.SaveChangesAsync(cancellationToken);
         return true;
     }
+
+    // ── Community group mutations ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Creates a new community group. The caller automatically becomes the group admin.
+    /// Duplicate slugs return a SLUG_TAKEN error.
+    /// </summary>
+    [Authorize]
+    public async Task<CommunityGroup> CreateCommunityGroupAsync(
+        CreateCommunityGroupInput input,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var name = input.Name.Trim();
+        if (string.IsNullOrWhiteSpace(name))
+            throw CreateError("Group name is required.", "VALIDATION_ERROR");
+
+        var slug = SlugGenerator.Generate(input.Slug);
+        if (string.IsNullOrEmpty(slug))
+            throw CreateError("A valid slug is required.", "VALIDATION_ERROR");
+
+        if (await dbContext.CommunityGroups.AnyAsync(cg => cg.Slug == slug, cancellationToken))
+            throw CreateError($"The slug '{slug}' is already taken.", "SLUG_TAKEN");
+
+        var userId = claimsPrincipal.GetRequiredUserId();
+
+        var group = new CommunityGroup
+        {
+            Name = name,
+            Slug = slug,
+            Summary = input.Summary?.Trim(),
+            Description = input.Description?.Trim(),
+            Visibility = input.Visibility,
+            IsActive = true,
+            CreatedByUserId = userId,
+        };
+
+        dbContext.CommunityGroups.Add(group);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        // Creator becomes first admin
+        dbContext.CommunityMemberships.Add(new CommunityMembership
+        {
+            GroupId = group.Id,
+            UserId = userId,
+            Role = CommunityMemberRole.Admin,
+            Status = CommunityMemberStatus.Active,
+        });
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return group;
+    }
+
+    /// <summary>
+    /// Updates community group metadata. Only group admins (or global admins) may call this.
+    /// </summary>
+    [Authorize]
+    public async Task<CommunityGroup> UpdateCommunityGroupAsync(
+        Guid groupId,
+        UpdateCommunityGroupInput input,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var group = await dbContext.CommunityGroups.SingleOrDefaultAsync(cg => cg.Id == groupId, cancellationToken)
+            ?? throw CreateError("Community group not found.", "GROUP_NOT_FOUND");
+
+        var userId = claimsPrincipal.GetRequiredUserId();
+        if (!claimsPrincipal.IsAdmin())
+        {
+            var isGroupAdmin = await dbContext.CommunityMemberships.AnyAsync(
+                cm => cm.GroupId == groupId && cm.UserId == userId &&
+                      cm.Role == CommunityMemberRole.Admin && cm.Status == CommunityMemberStatus.Active,
+                cancellationToken);
+            if (!isGroupAdmin)
+                throw CreateError("Only group administrators can update the group.", "FORBIDDEN");
+        }
+
+        if (input.Name is not null) group.Name = input.Name.Trim();
+        if (input.Summary is not null) group.Summary = input.Summary.Trim();
+        if (input.Description is not null) group.Description = input.Description.Trim();
+        if (input.Visibility is not null) group.Visibility = input.Visibility.Value;
+        if (input.IsActive is not null) group.IsActive = input.IsActive.Value;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return group;
+    }
+
+    /// <summary>
+    /// Joins a public community group directly. Only works for Public groups.
+    /// Returns the created membership (status=Active).
+    /// </summary>
+    [Authorize]
+    public async Task<CommunityMembership> JoinCommunityGroupAsync(
+        Guid groupId,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var group = await dbContext.CommunityGroups.SingleOrDefaultAsync(
+            cg => cg.Id == groupId && cg.IsActive, cancellationToken)
+            ?? throw CreateError("Community group not found.", "GROUP_NOT_FOUND");
+
+        if (group.Visibility != CommunityVisibility.Public)
+            throw CreateError("This group is private. Use requestCommunityMembership instead.", "GROUP_PRIVATE");
+
+        var userId = claimsPrincipal.GetRequiredUserId();
+
+        var existing = await dbContext.CommunityMemberships.SingleOrDefaultAsync(
+            cm => cm.GroupId == groupId && cm.UserId == userId, cancellationToken);
+
+        if (existing is not null)
+        {
+            if (existing.Status == CommunityMemberStatus.Active)
+                throw CreateError("You are already a member of this group.", "ALREADY_MEMBER");
+
+            // Re-activate rejected or pending
+            existing.Status = CommunityMemberStatus.Active;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return existing;
+        }
+
+        var membership = new CommunityMembership
+        {
+            GroupId = groupId,
+            UserId = userId,
+            Role = CommunityMemberRole.Member,
+            Status = CommunityMemberStatus.Active,
+        };
+        dbContext.CommunityMemberships.Add(membership);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return membership;
+    }
+
+    /// <summary>
+    /// Requests membership in a private community group. The request enters Pending state
+    /// and must be approved by a group admin.
+    /// </summary>
+    [Authorize]
+    public async Task<CommunityMembership> RequestCommunityMembershipAsync(
+        Guid groupId,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var group = await dbContext.CommunityGroups.SingleOrDefaultAsync(
+            cg => cg.Id == groupId && cg.IsActive, cancellationToken)
+            ?? throw CreateError("Community group not found.", "GROUP_NOT_FOUND");
+
+        var userId = claimsPrincipal.GetRequiredUserId();
+
+        var existing = await dbContext.CommunityMemberships.SingleOrDefaultAsync(
+            cm => cm.GroupId == groupId && cm.UserId == userId, cancellationToken);
+
+        if (existing is not null)
+        {
+            if (existing.Status == CommunityMemberStatus.Active)
+                throw CreateError("You are already a member of this group.", "ALREADY_MEMBER");
+            if (existing.Status == CommunityMemberStatus.Pending)
+                throw CreateError("Your membership request is already pending.", "REQUEST_PENDING");
+
+            // Re-request after rejection
+            existing.Status = CommunityMemberStatus.Pending;
+            existing.ReviewedAtUtc = null;
+            existing.ReviewedByUserId = null;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return existing;
+        }
+
+        var membership = new CommunityMembership
+        {
+            GroupId = groupId,
+            UserId = userId,
+            Role = CommunityMemberRole.Member,
+            Status = CommunityMemberStatus.Pending,
+        };
+        dbContext.CommunityMemberships.Add(membership);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return membership;
+    }
+
+    /// <summary>
+    /// Approves or rejects a pending membership request. Only group admins may call this.
+    /// </summary>
+    [Authorize]
+    public async Task<CommunityMembership> ReviewMembershipRequestAsync(
+        Guid membershipId,
+        ReviewMembershipRequestInput input,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var membership = await dbContext.CommunityMemberships
+            .Include(cm => cm.Group)
+            .SingleOrDefaultAsync(cm => cm.Id == membershipId, cancellationToken)
+            ?? throw CreateError("Membership not found.", "MEMBERSHIP_NOT_FOUND");
+
+        if (membership.Status != CommunityMemberStatus.Pending)
+            throw CreateError("Only pending membership requests can be reviewed.", "INVALID_STATE");
+
+        var userId = claimsPrincipal.GetRequiredUserId();
+        if (!claimsPrincipal.IsAdmin())
+        {
+            var isGroupAdmin = await dbContext.CommunityMemberships.AnyAsync(
+                cm => cm.GroupId == membership.GroupId && cm.UserId == userId &&
+                      cm.Role == CommunityMemberRole.Admin && cm.Status == CommunityMemberStatus.Active,
+                cancellationToken);
+            if (!isGroupAdmin)
+                throw CreateError("Only group administrators can review membership requests.", "FORBIDDEN");
+        }
+
+        membership.Status = input.Approve ? CommunityMemberStatus.Active : CommunityMemberStatus.Rejected;
+        membership.ReviewedAtUtc = DateTime.UtcNow;
+        membership.ReviewedByUserId = userId;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return membership;
+    }
+
+    /// <summary>
+    /// Assigns a new role to an active group member. Only group admins may call this.
+    /// A group admin cannot demote themselves if they are the last admin.
+    /// </summary>
+    [Authorize]
+    public async Task<CommunityMembership> AssignMemberRoleAsync(
+        Guid membershipId,
+        CommunityMemberRole role,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var membership = await dbContext.CommunityMemberships
+            .Include(cm => cm.Group)
+            .SingleOrDefaultAsync(cm => cm.Id == membershipId, cancellationToken)
+            ?? throw CreateError("Membership not found.", "MEMBERSHIP_NOT_FOUND");
+
+        if (membership.Status != CommunityMemberStatus.Active)
+            throw CreateError("Role can only be changed for active members.", "INVALID_STATE");
+
+        var userId = claimsPrincipal.GetRequiredUserId();
+        if (!claimsPrincipal.IsAdmin())
+        {
+            var isGroupAdmin = await dbContext.CommunityMemberships.AnyAsync(
+                cm => cm.GroupId == membership.GroupId && cm.UserId == userId &&
+                      cm.Role == CommunityMemberRole.Admin && cm.Status == CommunityMemberStatus.Active,
+                cancellationToken);
+            if (!isGroupAdmin)
+                throw CreateError("Only group administrators can assign member roles.", "FORBIDDEN");
+        }
+
+        // Prevent demoting the last admin
+        if (membership.Role == CommunityMemberRole.Admin && role != CommunityMemberRole.Admin)
+        {
+            var adminCount = await dbContext.CommunityMemberships.CountAsync(
+                cm => cm.GroupId == membership.GroupId && cm.Role == CommunityMemberRole.Admin &&
+                      cm.Status == CommunityMemberStatus.Active,
+                cancellationToken);
+            if (adminCount <= 1)
+                throw CreateError("Cannot demote the last group administrator.", "LAST_ADMIN");
+        }
+
+        membership.Role = role;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return membership;
+    }
+
+    /// <summary>
+    /// Removes a member from a community group. Only group admins may call this.
+    /// A group admin cannot revoke the last admin membership.
+    /// </summary>
+    [Authorize]
+    public async Task<bool> RevokeMembershipAsync(
+        Guid membershipId,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var membership = await dbContext.CommunityMemberships
+            .Include(cm => cm.Group)
+            .SingleOrDefaultAsync(cm => cm.Id == membershipId, cancellationToken)
+            ?? throw CreateError("Membership not found.", "MEMBERSHIP_NOT_FOUND");
+
+        var userId = claimsPrincipal.GetRequiredUserId();
+        if (!claimsPrincipal.IsAdmin())
+        {
+            var isGroupAdmin = await dbContext.CommunityMemberships.AnyAsync(
+                cm => cm.GroupId == membership.GroupId && cm.UserId == userId &&
+                      cm.Role == CommunityMemberRole.Admin && cm.Status == CommunityMemberStatus.Active,
+                cancellationToken);
+            if (!isGroupAdmin)
+                throw CreateError("Only group administrators can revoke memberships.", "FORBIDDEN");
+        }
+
+        if (membership.Role == CommunityMemberRole.Admin && membership.Status == CommunityMemberStatus.Active)
+        {
+            var adminCount = await dbContext.CommunityMemberships.CountAsync(
+                cm => cm.GroupId == membership.GroupId && cm.Role == CommunityMemberRole.Admin &&
+                      cm.Status == CommunityMemberStatus.Active,
+                cancellationToken);
+            if (adminCount <= 1)
+                throw CreateError("Cannot remove the last group administrator.", "LAST_ADMIN");
+        }
+
+        dbContext.CommunityMemberships.Remove(membership);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    /// <summary>
+    /// Associates a published event with a community group.
+    /// The caller must be a group admin or event manager, and must own the event (or be global admin).
+    /// </summary>
+    [Authorize]
+    public async Task<CommunityGroupEvent> AssociateEventWithGroupAsync(
+        CommunityGroupEventInput input,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var group = await dbContext.CommunityGroups.SingleOrDefaultAsync(
+            cg => cg.Id == input.GroupId && cg.IsActive, cancellationToken)
+            ?? throw CreateError("Community group not found.", "GROUP_NOT_FOUND");
+
+        var catalogEvent = await dbContext.Events.SingleOrDefaultAsync(
+            e => e.Id == input.EventId, cancellationToken)
+            ?? throw CreateError("Event not found.", "EVENT_NOT_FOUND");
+
+        if (catalogEvent.Status != EventStatus.Published)
+            throw CreateError("Only published events can be associated with a community group.", "EVENT_NOT_PUBLISHED");
+
+        var userId = claimsPrincipal.GetRequiredUserId();
+        var isGlobalAdmin = claimsPrincipal.IsAdmin();
+
+        if (!isGlobalAdmin)
+        {
+            var membership = await dbContext.CommunityMemberships.SingleOrDefaultAsync(
+                cm => cm.GroupId == input.GroupId && cm.UserId == userId && cm.Status == CommunityMemberStatus.Active,
+                cancellationToken);
+
+            var hasGroupRole = membership?.Role is CommunityMemberRole.Admin or CommunityMemberRole.EventManager;
+            var isEventOwner = catalogEvent.SubmittedByUserId == userId;
+
+            if (!hasGroupRole || !isEventOwner)
+                throw CreateError("You must be a group admin or event manager and own the event to associate it.", "FORBIDDEN");
+        }
+
+        if (await dbContext.CommunityGroupEvents.AnyAsync(
+            cge => cge.GroupId == input.GroupId && cge.EventId == input.EventId, cancellationToken))
+            throw CreateError("This event is already associated with the group.", "ALREADY_ASSOCIATED");
+
+        var link = new CommunityGroupEvent
+        {
+            GroupId = input.GroupId,
+            EventId = input.EventId,
+            AddedByUserId = userId,
+        };
+        dbContext.CommunityGroupEvents.Add(link);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return link;
+    }
+
+    /// <summary>
+    /// Removes the association between a community group and an event.
+    /// The caller must be a group admin (or global admin).
+    /// </summary>
+    [Authorize]
+    public async Task<bool> DisassociateEventFromGroupAsync(
+        CommunityGroupEventInput input,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var link = await dbContext.CommunityGroupEvents.SingleOrDefaultAsync(
+            cge => cge.GroupId == input.GroupId && cge.EventId == input.EventId, cancellationToken)
+            ?? throw CreateError("Association not found.", "NOT_FOUND");
+
+        var userId = claimsPrincipal.GetRequiredUserId();
+        var isGlobalAdmin = claimsPrincipal.IsAdmin();
+
+        if (!isGlobalAdmin)
+        {
+            var isGroupAdmin = await dbContext.CommunityMemberships.AnyAsync(
+                cm => cm.GroupId == input.GroupId && cm.UserId == userId &&
+                      cm.Role == CommunityMemberRole.Admin && cm.Status == CommunityMemberStatus.Active,
+                cancellationToken);
+            if (!isGroupAdmin)
+                throw CreateError("Only group administrators can remove event associations.", "FORBIDDEN");
+        }
+
+        dbContext.CommunityGroupEvents.Remove(link);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
 }

@@ -359,6 +359,71 @@ public sealed class AppDbInitializer(
                 """,
                 cancellationToken);
         }
+
+        // ── CommunityGroups table ─────────────────────────────────────────────
+        if (!await TableExistsAsync("CommunityGroups", cancellationToken))
+        {
+            await _dbContext.Database.ExecuteSqlRawAsync(
+                """
+                CREATE TABLE "CommunityGroups" (
+                    "Id" TEXT NOT NULL CONSTRAINT "PK_CommunityGroups" PRIMARY KEY,
+                    "Name" TEXT NOT NULL,
+                    "Slug" TEXT NOT NULL,
+                    "Summary" TEXT NULL,
+                    "Description" TEXT NULL,
+                    "Visibility" TEXT NOT NULL DEFAULT 'Public',
+                    "IsActive" INTEGER NOT NULL DEFAULT 1,
+                    "CreatedAtUtc" TEXT NOT NULL,
+                    "CreatedByUserId" TEXT NULL,
+                    CONSTRAINT "FK_CommunityGroups_Users_CreatedByUserId" FOREIGN KEY ("CreatedByUserId") REFERENCES "Users" ("Id") ON DELETE SET NULL
+                );
+                CREATE UNIQUE INDEX "IX_CommunityGroups_Slug" ON "CommunityGroups" ("Slug");
+                """,
+                cancellationToken);
+        }
+
+        // ── CommunityMemberships table ────────────────────────────────────────
+        if (!await TableExistsAsync("CommunityMemberships", cancellationToken))
+        {
+            await _dbContext.Database.ExecuteSqlRawAsync(
+                """
+                CREATE TABLE "CommunityMemberships" (
+                    "Id" TEXT NOT NULL CONSTRAINT "PK_CommunityMemberships" PRIMARY KEY,
+                    "GroupId" TEXT NOT NULL,
+                    "UserId" TEXT NOT NULL,
+                    "Role" TEXT NOT NULL DEFAULT 'Member',
+                    "Status" TEXT NOT NULL DEFAULT 'Pending',
+                    "CreatedAtUtc" TEXT NOT NULL,
+                    "ReviewedAtUtc" TEXT NULL,
+                    "ReviewedByUserId" TEXT NULL,
+                    CONSTRAINT "FK_CommunityMemberships_CommunityGroups_GroupId" FOREIGN KEY ("GroupId") REFERENCES "CommunityGroups" ("Id") ON DELETE CASCADE,
+                    CONSTRAINT "FK_CommunityMemberships_Users_UserId" FOREIGN KEY ("UserId") REFERENCES "Users" ("Id") ON DELETE CASCADE,
+                    CONSTRAINT "FK_CommunityMemberships_Users_ReviewedByUserId" FOREIGN KEY ("ReviewedByUserId") REFERENCES "Users" ("Id") ON DELETE SET NULL
+                );
+                CREATE UNIQUE INDEX "IX_CommunityMemberships_GroupId_UserId" ON "CommunityMemberships" ("GroupId", "UserId");
+                """,
+                cancellationToken);
+        }
+
+        // ── CommunityGroupEvents table ────────────────────────────────────────
+        if (!await TableExistsAsync("CommunityGroupEvents", cancellationToken))
+        {
+            await _dbContext.Database.ExecuteSqlRawAsync(
+                """
+                CREATE TABLE "CommunityGroupEvents" (
+                    "Id" TEXT NOT NULL CONSTRAINT "PK_CommunityGroupEvents" PRIMARY KEY,
+                    "GroupId" TEXT NOT NULL,
+                    "EventId" TEXT NOT NULL,
+                    "AddedAtUtc" TEXT NOT NULL,
+                    "AddedByUserId" TEXT NULL,
+                    CONSTRAINT "FK_CommunityGroupEvents_CommunityGroups_GroupId" FOREIGN KEY ("GroupId") REFERENCES "CommunityGroups" ("Id") ON DELETE CASCADE,
+                    CONSTRAINT "FK_CommunityGroupEvents_Events_EventId" FOREIGN KEY ("EventId") REFERENCES "Events" ("Id") ON DELETE CASCADE,
+                    CONSTRAINT "FK_CommunityGroupEvents_Users_AddedByUserId" FOREIGN KEY ("AddedByUserId") REFERENCES "Users" ("Id") ON DELETE SET NULL
+                );
+                CREATE UNIQUE INDEX "IX_CommunityGroupEvents_GroupId_EventId" ON "CommunityGroupEvents" ("GroupId", "EventId");
+                """,
+                cancellationToken);
+        }
     }
 
     private async Task EnsureSavedSearchColumnAsync(string columnName, CancellationToken cancellationToken)
