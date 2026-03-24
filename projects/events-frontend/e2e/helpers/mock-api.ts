@@ -138,11 +138,18 @@ export type MockEventReminder = {
   createdAtUtc: string
 }
 
+export type MockFeaturedEvent = {
+  domainSlug: string
+  eventId: string
+  displayOrder: number
+}
+
 export type MockState = {
   users: MockUser[]
   domains: MockDomain[]
   domainAdministrators: MockDomainAdministrator[]
   events: MockEvent[]
+  featuredEvents: MockFeaturedEvent[]
   savedSearches: MockSavedSearch[]
   favoriteEvents: MockFavoriteEvent[]
   calendarActions: MockCalendarAction[]
@@ -164,6 +171,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
     domains: initial?.domains ?? [],
     domainAdministrators: initial?.domainAdministrators ?? [],
     events: initial?.events ?? [],
+    featuredEvents: initial?.featuredEvents ?? [],
     savedSearches: initial?.savedSearches ?? [],
     favoriteEvents: initial?.favoriteEvents ?? [],
     calendarActions: initial?.calendarActions ?? [],
@@ -845,6 +853,38 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       return
     }
 
+    if (query.includes('mutation') && query.includes('SetDomainFeaturedEvents')) {
+      const input = variables.input || {}
+      const domain = state.domains.find((d) => d.id === input.domainId)
+      const currentUser = state.users.find((u) => u.id === state.currentUserId)
+      if (!currentUser) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Not authorized', extensions: { code: 'AUTH_NOT_AUTHORIZED' } }] }),
+        })
+        return
+      }
+      if (domain) {
+        // Replace featured events for this domain
+        const slug = domain.slug
+        state.featuredEvents = state.featuredEvents.filter((fe) => fe.domainSlug !== slug)
+        const eventIds: string[] = input.eventIds ?? []
+        eventIds.forEach((eventId: string, i: number) => {
+          state.featuredEvents.push({ domainSlug: slug, eventId, displayOrder: i })
+        })
+      }
+      const featuredEventObjs = (input.eventIds ?? [])
+        .map((id: string) => state.events.find((e) => e.id === id))
+        .filter(Boolean)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { setDomainFeaturedEvents: featuredEventObjs } }),
+      })
+      return
+    }
+
     // ── Queries ──
     if (query.includes('query') && query.includes('AdminOverview')) {
       const currentUser = state.users.find((u) => u.id === state.currentUserId)
@@ -1049,6 +1089,23 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
             },
           },
         }),
+      })
+      return
+    }
+
+    if (query.includes('query') && query.includes('FeaturedEventsForDomain')) {
+      const domainSlug = variables.domainSlug as string | undefined
+      const fes = domainSlug
+        ? state.featuredEvents
+            .filter((fe) => fe.domainSlug === domainSlug)
+            .sort((a, b) => a.displayOrder - b.displayOrder)
+            .map((fe) => state.events.find((e) => e.id === fe.eventId && e.status === 'PUBLISHED'))
+            .filter((e): e is MockEvent => e !== undefined)
+        : []
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { featuredEventsForDomain: fes } }),
       })
       return
     }

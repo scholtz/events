@@ -435,6 +435,87 @@ public sealed class Mutation
         return domain;
     }
 
+    /// <summary>
+    /// Replaces the full ordered featured-events list for a domain hub.
+    /// Only global admins or domain administrators can call this.
+    /// Maximum 5 events. Events must be published and belong to the domain.
+    /// Pass an empty EventIds list to clear all featured events.
+    /// </summary>
+    [Authorize]
+    public async Task<IReadOnlyList<CatalogEvent>> SetDomainFeaturedEventsAsync(
+        SetDomainFeaturedEventsInput input,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        await EnsureDomainAdminOrGlobalAdminAsync(input.DomainId, claimsPrincipal, dbContext, cancellationToken);
+
+        var domain = await dbContext.Domains.SingleOrDefaultAsync(d => d.Id == input.DomainId, cancellationToken)
+            ?? throw CreateError("Domain was not found.", "DOMAIN_NOT_FOUND");
+
+        // De-duplicate while preserving order
+        var orderedEventIds = input.EventIds.Distinct().ToList();
+
+        if (orderedEventIds.Count > 5)
+        {
+            throw CreateError("A domain hub can feature at most 5 events.", "TOO_MANY_FEATURED_EVENTS");
+        }
+
+        // Load candidate events once
+        var candidateEvents = orderedEventIds.Count > 0
+            ? await dbContext.Events
+                .Include(e => e.Domain)
+                .Include(e => e.SubmittedBy)
+                .Where(e => orderedEventIds.Contains(e.Id))
+                .ToListAsync(cancellationToken)
+            : [];
+
+        // Validate each event: must be published and belong to this domain
+        foreach (var eventId in orderedEventIds)
+        {
+            var catalogEvent = candidateEvents.Find(e => e.Id == eventId)
+                ?? throw CreateError($"Event {eventId} was not found.", "EVENT_NOT_FOUND");
+
+            if (catalogEvent.DomainId != input.DomainId)
+            {
+                throw CreateError(
+                    $"Event '{catalogEvent.Name}' does not belong to this domain and cannot be featured here.",
+                    "EVENT_WRONG_DOMAIN");
+            }
+
+            if (catalogEvent.Status != EventStatus.Published)
+            {
+                throw CreateError(
+                    $"Event '{catalogEvent.Name}' is not published and cannot be featured.",
+                    "EVENT_NOT_PUBLISHED");
+            }
+        }
+
+        // Replace existing featured events for this domain
+        var existing = await dbContext.DomainFeaturedEvents
+            .Where(fe => fe.DomainId == input.DomainId)
+            .ToListAsync(cancellationToken);
+
+        dbContext.DomainFeaturedEvents.RemoveRange(existing);
+
+        for (var i = 0; i < orderedEventIds.Count; i++)
+        {
+            dbContext.DomainFeaturedEvents.Add(new DomainFeaturedEvent
+            {
+                DomainId = input.DomainId,
+                EventId = orderedEventIds[i],
+                DisplayOrder = i
+            });
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        // Return the events in the new display order
+        return orderedEventIds
+            .Select(id => candidateEvents.First(e => e.Id == id))
+            .ToList();
+    }
+
     [Authorize]
     public async Task<SavedSearch> SaveSearchAsync(
         SavedSearchInput input,

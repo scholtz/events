@@ -139,6 +139,23 @@ public sealed class UpdateDomainStyleInput
     public string? BannerUrl { get; init; }
 }
 
+/// <summary>
+/// Input for replacing the full ordered featured-events list for a domain hub.
+/// Only global admins or domain administrators can call this.
+/// Maximum 5 events per domain. Events must be published and belong to this domain.
+/// Pass an empty list to clear all featured events.
+/// </summary>
+public sealed class SetDomainFeaturedEventsInput
+{
+    public Guid DomainId { get; init; }
+
+    /// <summary>
+    /// Ordered list of event IDs to feature. The first ID gets DisplayOrder 0.
+    /// Maximum 5 entries. Duplicate IDs are silently de-duplicated.
+    /// </summary>
+    public List<Guid> EventIds { get; init; } = [];
+}
+
 public sealed class UpdateUserRoleInput
 {
     public Guid UserId { get; init; }

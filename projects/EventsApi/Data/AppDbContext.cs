@@ -13,6 +13,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<CalendarAnalyticsAction> CalendarAnalyticsActions => Set<CalendarAnalyticsAction>();
     public DbSet<DiscoveryAnalyticsAction> DiscoveryAnalyticsActions => Set<DiscoveryAnalyticsAction>();
     public DbSet<DomainAdministrator> DomainAdministrators => Set<DomainAdministrator>();
+    public DbSet<DomainFeaturedEvent> DomainFeaturedEvents => Set<DomainFeaturedEvent>();
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
     public DbSet<EventReminder> EventReminders => Set<EventReminder>();
 
@@ -48,6 +49,22 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .WithMany()
                 .HasForeignKey(domain => domain.CreatedByUserId)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<DomainFeaturedEvent>(entity =>
+        {
+            // Each event can only be featured once per domain
+            entity.HasIndex(fe => new { fe.DomainId, fe.EventId }).IsUnique();
+
+            entity.HasOne(fe => fe.Domain)
+                .WithMany()
+                .HasForeignKey(fe => fe.DomainId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(fe => fe.Event)
+                .WithMany()
+                .HasForeignKey(fe => fe.EventId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<DomainAdministrator>(entity =>

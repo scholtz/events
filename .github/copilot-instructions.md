@@ -450,3 +450,51 @@ When adding a new filter field (e.g. `language`, `country`, `eventType`) to the 
 - [ ] Update unit test `makeSavedSearch()` fixture in `src/stores/__tests__/events.test.ts`
 - [ ] Add unit tests for the new field in `areEventFiltersEqual`, `eventFiltersToQuery`, `eventFiltersFromQuery`, `buildDiscoveryFilterInput`, and `savedSearchToFilters`
 - [ ] Add E2E tests in `e2e/discovery.spec.ts` covering: URL direct navigation, chip display, chip removal, URL update on select change
+
+## Featured events curation quality standards
+
+When implementing or extending featured events for domain hubs (`DomainFeaturedEvent`, `setDomainFeaturedEvents`, `featuredEventsForDomain`), always follow these standards to ship complete, production-quality work.
+
+### Full vertical slice requirement
+Every PR that adds featured events capability must include ALL of the following:
+1. **Backend entity** (`DomainFeaturedEvent`) + EF Core registration + schema migration in `AppDbInitializer.EnsureSchemaAsync`
+2. **Backend mutation** `setDomainFeaturedEvents` with authorization (domain admin or global admin), ≤5 limit, published-only enforcement, domain membership check
+3. **Backend query** `featuredEventsForDomain` — public, ordered, published-only
+4. **Backend integration tests** (see checklist below)
+5. **Frontend** `CategoryLandingView.vue` featuring section above main grid with deduplication
+6. **Frontend** `AdminView.vue` panel with ordered list, add/remove, save
+7. **Frontend CSS** for the featured panel (`.featured-event-item`, `.featured-order-badge`, `.featured-event-name`, `.add-featured-form`)
+8. **i18n** keys in `en.ts`, `sk.ts`, `de.ts` for all admin and category labels
+9. **mock-api.ts** handlers for both `FeaturedEventsForDomain` (query) and `SetDomainFeaturedEvents` (mutation) — including `MockFeaturedEvent` type and `featuredEvents` array in `MockState`
+10. **E2E tests** in `domain-admin.spec.ts` and `category.spec.ts` (see checklist below)
+11. **`vue-tsc --build` passes** — never ship without running it
+
+### TypeScript: always import all used types and functions
+- All Vue 3 composables used in `<script setup>` (`computed`, `ref`, `onMounted`, `watch`, etc.) must be explicitly imported from `'vue'`. Missing `computed` is a common CI-breaking mistake.
+- All TypeScript types used as explicit generic parameters or type annotations in `<script setup>` must be imported via `import type { … }`. Do not rely on ambient availability.
+- Use `computed<ReturnType>(() => …)` with an explicit type argument whenever the computed has a conditional branch that returns `[]` — TypeScript infers this as `never[]` in one branch, and vue-tsc may then widen the callback parameter type to `any` in template filter expressions (triggering TS7006).
+- In Vue templates, `.filter((e) => …)` callbacks on computed arrays must be typed through the computed generic. Never leave the return type of a computed implicitly as `CatalogEvent[] | never[]`.
+
+### mock-api.ts handler ordering
+- `FeaturedEventsForDomain` contains the substring `Events`. Place the `FeaturedEventsForDomain` handler **before** the generic `Events` handler, `EventBySlug`, and `EventById` to prevent the shorter substring from intercepting it first.
+- Verify ordering by listing all `query.includes(...)` calls and confirming no earlier handler's string is a substring of a later one.
+
+### Backend integration test requirements for featured events
+Every featured events mutation/query must have tests covering:
+1. Global admin can set featured events
+2. Domain admin can set featured events for their domain
+3. Unauthenticated request returns AUTH_NOT_AUTHORIZED
+4. Regular user (non-admin) returns FORBIDDEN
+5. >5 event IDs returns a validation error
+6. Events from wrong domain returns a validation error
+7. Unpublished event in the list returns a validation error
+8. Empty `eventIds` clears the featured list (returns empty array)
+9. `featuredEventsForDomain` query returns events in `DisplayOrder` order
+10. `featuredEventsForDomain` returns empty array for domain with no featured events
+11. `featuredEventsForDomain` only returns published events (silently excludes others)
+12. `featuredEventsForDomain` is accessible without authentication
+
+### E2E test requirements for featured events
+- **`domain-admin.spec.ts`**: Featured Events section visible in domain detail panel; admin can add event from picker and save (sees ✓ Saved); admin can remove event and save
+- **`category.spec.ts`**: Featured section appears when events configured; section hidden when none configured; featured badge visible on featured event cards; featured event NOT duplicated in main events grid; mobile viewport shows both sections
+

@@ -3,6 +3,7 @@ import {
   setupMockApi,
   makeAdminUser,
   makeTechDomain,
+  makeApprovedEvent,
   loginAs,
 } from './helpers/mock-api'
 import type { MockDomainAdministrator } from './helpers/mock-api'
@@ -333,5 +334,138 @@ test.describe('Domain admin management', () => {
     await page.locator('input[placeholder="#137fec"]').fill('#e44d26')
     await page.getByRole('button', { name: 'Save Style' }).click()
     await expect(page.getByText('✓ Saved')).toBeVisible()
+  })
+
+  // ── Featured events curation ────────────────────────────────────────────────
+
+  test('domain detail panel shows Featured Events section', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      domainAdministrators: [],
+    })
+    await loginAs(page, admin)
+    await page.goto('/admin')
+
+    await page.getByRole('button', { name: /Domains/ }).click()
+    await page.getByRole('button', { name: 'Manage' }).click()
+
+    await expect(page.getByRole('heading', { name: 'Featured Events' })).toBeVisible()
+    await expect(page.getByText('No featured events yet')).toBeVisible()
+  })
+
+  test('admin can add a featured event and save', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'evt-feat-1',
+      name: 'Featured Summit',
+      slug: 'featured-summit',
+      domainId: domain.id,
+      domain: { id: domain.id, name: domain.name, slug: domain.slug, subdomain: domain.subdomain },
+    })
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      events: [event],
+      domainAdministrators: [],
+    })
+    await loginAs(page, admin)
+    await page.goto('/admin')
+
+    await page.getByRole('button', { name: /Domains/ }).click()
+    await page.getByRole('button', { name: 'Manage' }).click()
+
+    await expect(page.getByRole('heading', { name: 'Featured Events' })).toBeVisible()
+
+    // Select event from picker and click Add (scoped to the form to avoid ambiguity with other Add buttons)
+    await page.locator('.add-featured-form select').selectOption({ label: 'Featured Summit' })
+    await page.locator('.add-featured-form').getByRole('button', { name: 'Add', exact: true }).click()
+
+    // Event should now appear in the featured list
+    await expect(page.locator('.featured-events-list').getByText('Featured Summit')).toBeVisible()
+
+    // Save featured events
+    await page.getByRole('button', { name: 'Save Featured Events' }).click()
+    await expect(page.getByText('✓ Saved')).toBeVisible()
+  })
+
+  test('admin can remove a featured event', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'evt-feat-remove',
+      name: 'Event To Remove',
+      slug: 'event-to-remove',
+      domainId: domain.id,
+      domain: { id: domain.id, name: domain.name, slug: domain.slug, subdomain: domain.subdomain },
+    })
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      events: [event],
+      featuredEvents: [{ domainSlug: domain.slug, eventId: event.id, displayOrder: 0 }],
+      domainAdministrators: [],
+    })
+    await loginAs(page, admin)
+    await page.goto('/admin')
+
+    await page.getByRole('button', { name: /Domains/ }).click()
+    await page.getByRole('button', { name: 'Manage' }).click()
+
+    // After loading, the featured event should be listed (loaded via FeaturedEventsForDomain query)
+    await expect(page.getByRole('heading', { name: 'Featured Events' })).toBeVisible()
+    await expect(page.locator('.featured-events-list').getByText('Event To Remove')).toBeVisible()
+
+    // Click the Remove button to remove the event from the list
+    await page.locator('.featured-events-list').getByRole('button', { name: 'Remove', exact: true }).click()
+
+    // Event should disappear from the list and empty message should appear
+    await expect(page.locator('.featured-events-list').getByText('Event To Remove')).toBeHidden()
+    await expect(page.getByText('No featured events yet')).toBeVisible()
+
+    // Save the cleared list
+    await page.getByRole('button', { name: 'Save Featured Events' }).click()
+    await expect(page.getByText('✓ Saved')).toBeVisible()
+  })
+
+  test('add featured event picker is hidden when 5 events are already featured', async ({
+    page,
+  }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    const events = Array.from({ length: 5 }, (_, i) =>
+      makeApprovedEvent({
+        id: `evt-max-${i}`,
+        name: `Max Event ${i + 1}`,
+        slug: `max-event-${i}`,
+        domainId: domain.id,
+        domain: { id: domain.id, name: domain.name, slug: domain.slug, subdomain: domain.subdomain },
+      }),
+    )
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      events,
+      featuredEvents: events.map((e, i) => ({
+        domainSlug: domain.slug,
+        eventId: e.id,
+        displayOrder: i,
+      })),
+      domainAdministrators: [],
+    })
+    await loginAs(page, admin)
+    await page.goto('/admin')
+
+    await page.getByRole('button', { name: /Domains/ }).click()
+    await page.getByRole('button', { name: 'Manage' }).click()
+
+    // All 5 are featured — add picker should be hidden
+    await expect(page.getByRole('heading', { name: 'Featured Events' })).toBeVisible()
+    await expect(page.locator('.add-featured-form')).toBeHidden()
+    // All 5 events are listed
+    await expect(page.locator('.featured-events-list .featured-event-item')).toHaveCount(5)
   })
 })

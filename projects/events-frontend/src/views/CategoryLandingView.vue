@@ -15,6 +15,7 @@ const slug = computed(() => route.params.slug as string)
 
 const domain = ref<EventDomain | null>(null)
 const events = ref<CatalogEvent[]>([])
+const featuredEvents = ref<CatalogEvent[]>([])
 const loading = ref(false)
 const error = ref('')
 
@@ -64,17 +65,27 @@ async function fetchCategoryData() {
       return
     }
 
-    // Fetch events for this domain
-    const eventsData = await gqlRequest<{ events: CatalogEvent[] }>(
-      `query CategoryEvents($filter: EventFilterInput) {
-        events(filter: $filter) { ${EVENT_FIELDS} }
-      }`,
-      { filter: { domainSlug: slug.value, sortBy: 'UPCOMING' } },
-    )
+    // Fetch events and featured events in parallel
+    const [eventsData, featuredData] = await Promise.all([
+      gqlRequest<{ events: CatalogEvent[] }>(
+        `query CategoryEvents($filter: EventFilterInput) {
+          events(filter: $filter) { ${EVENT_FIELDS} }
+        }`,
+        { filter: { domainSlug: slug.value, sortBy: 'UPCOMING' } },
+      ),
+      gqlRequest<{ featuredEventsForDomain: CatalogEvent[] }>(
+        `query FeaturedEventsForDomain($domainSlug: String!) {
+          featuredEventsForDomain(domainSlug: $domainSlug) { ${EVENT_FIELDS} }
+        }`,
+        { domainSlug: slug.value },
+      ),
+    ])
     events.value = eventsData.events
+    featuredEvents.value = featuredData.featuredEventsForDomain
   } catch (err) {
     error.value = err instanceof Error ? err.message : t('category.errorLoad')
     events.value = []
+    featuredEvents.value = []
   } finally {
     loading.value = false
   }
@@ -105,6 +116,14 @@ const upcomingCount = computed(() => {
   const now = new Date()
   return events.value.filter((e) => new Date(e.startsAtUtc) >= now).length
 })
+
+/** Featured event IDs set for fast deduplication in the main list */
+const featuredEventIds = computed(() => new Set(featuredEvents.value.map((e) => e.id)))
+
+/** All events excluding already-featured ones */
+const nonFeaturedEvents = computed(() =>
+  events.value.filter((e) => !featuredEventIds.value.has(e.id)),
+)
 </script>
 
 <template>
@@ -208,6 +227,25 @@ const upcomingCount = computed(() => {
           </div>
         </div>
 
+        <!-- Featured Events section -->
+        <section v-if="featuredEvents.length" class="featured-section" aria-labelledby="featured-heading">
+          <div class="featured-header">
+            <div>
+              <h2 id="featured-heading" class="featured-title">
+                <span class="featured-icon" aria-hidden="true">⭐</span>
+                {{ t('category.featuredEventsHeading') }}
+              </h2>
+              <p class="featured-subheading">{{ t('category.featuredEventsSubheading') }}</p>
+            </div>
+          </div>
+          <div class="featured-grid">
+            <div v-for="event in featuredEvents" :key="event.id" class="featured-card-wrap">
+              <span class="featured-badge" aria-label="Featured">⭐ {{ t('category.featuredEventsHeading') }}</span>
+              <EventCard :event="event" />
+            </div>
+          </div>
+        </section>
+
         <div class="category-filters-row">
           <p class="results-summary" role="status" aria-live="polite">
             {{
@@ -222,7 +260,14 @@ const upcomingCount = computed(() => {
         </div>
 
         <div v-if="events.length" class="events-grid">
-          <EventCard v-for="event in events" :key="event.id" :event="event" />
+          <EventCard v-for="event in nonFeaturedEvents" :key="event.id" :event="event" />
+          <!-- If all events are featured, show a note instead of an empty grid -->
+          <p
+            v-if="!nonFeaturedEvents.length && featuredEvents.length"
+            class="all-featured-note text-secondary"
+          >
+            {{ t('category.eventsFound', { count: events.length }) }}
+          </p>
         </div>
 
         <!-- Hub-level empty state: hub exists but has no upcoming events -->
@@ -461,6 +506,74 @@ const upcomingCount = computed(() => {
   margin: 0;
 }
 
+/* ── Featured events section ─────────────────────────────── */
+.featured-section {
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  background: rgba(255, 215, 0, 0.04);
+  border: 1px solid rgba(255, 215, 0, 0.15);
+  border-radius: var(--radius-md);
+}
+
+.featured-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+  gap: 1rem;
+}
+
+.featured-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--color-text);
+  margin-bottom: 0.25rem;
+}
+
+.featured-icon {
+  font-size: 1.125rem;
+}
+
+.featured-subheading {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.featured-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.featured-card-wrap {
+  position: relative;
+}
+
+.featured-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #b8860b;
+  background: rgba(255, 215, 0, 0.15);
+  border: 1px solid rgba(255, 215, 0, 0.3);
+  border-radius: var(--radius-sm);
+  padding: 0.2rem 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.all-featured-note {
+  font-size: 0.875rem;
+  padding: 0.5rem 0;
+}
+
 /* ── Organizer CTA ───────────────────────────────────────── */
 .organizer-cta {
   display: flex;
@@ -512,6 +625,10 @@ const upcomingCount = computed(() => {
   }
 
   .hub-overview-modules {
+    grid-template-columns: 1fr;
+  }
+
+  .featured-grid {
     grid-template-columns: 1fr;
   }
 }

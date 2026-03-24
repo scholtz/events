@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useEventsStore } from '@/stores/events'
 import { useAuthStore } from '@/stores/auth'
 import { useDomainsStore } from '@/stores/domains'
 import { gqlRequest } from '@/lib/graphql'
-import type { AdminOverview, DomainAdministrator, User } from '@/types'
+import type { AdminOverview, CatalogEvent, DomainAdministrator, User } from '@/types'
 
 const { t, locale } = useI18n()
 const eventsStore = useEventsStore()
@@ -43,6 +43,14 @@ const domainOverviewForm = ref({
   curatorCredit: '',
 })
 
+// ── Featured events curation state ────────────────────────────────────────
+const featuredEvents = ref<import('@/types').CatalogEvent[]>([])
+const featuredEventsLoading = ref(false)
+const featuredEventsSaving = ref(false)
+const featuredEventsSuccess = ref(false)
+const featuredEventsError = ref('')
+const addFeaturedEventId = ref('')
+
 async function selectDomain(domainId: string) {
   if (selectedDomainId.value === domainId) {
     selectedDomainId.value = null
@@ -52,6 +60,9 @@ async function selectDomain(domainId: string) {
   domainAdminError.value = ''
   domainStyleSuccess.value = false
   domainOverviewSuccess.value = false
+  featuredEventsSuccess.value = false
+  featuredEventsError.value = ''
+  addFeaturedEventId.value = ''
 
   const domain = domainsStore.domains.find((d) => d.id === domainId)
   if (domain) {
@@ -69,7 +80,7 @@ async function selectDomain(domainId: string) {
     }
   }
 
-  await loadDomainAdmins(domainId)
+  await Promise.all([loadDomainAdmins(domainId), loadFeaturedEvents(domainId)])
 }
 
 async function loadDomainAdmins(domainId: string) {
@@ -147,6 +158,76 @@ async function handleSaveDomainOverview() {
     domainOverviewSaving.value = false
   }
 }
+
+async function loadFeaturedEvents(domainId: string) {
+  const domain = domainsStore.domains.find((d) => d.id === domainId)
+  if (!domain) return
+  featuredEventsLoading.value = true
+  try {
+    const data = await gqlRequest<{ featuredEventsForDomain: import('@/types').CatalogEvent[] }>(
+      `query FeaturedEventsForDomain($domainSlug: String!) {
+        featuredEventsForDomain(domainSlug: $domainSlug) {
+          id name slug status startsAtUtc
+        }
+      }`,
+      { domainSlug: domain.slug },
+    )
+    featuredEvents.value = data.featuredEventsForDomain
+  } catch {
+    featuredEvents.value = []
+  } finally {
+    featuredEventsLoading.value = false
+  }
+}
+
+async function handleAddFeaturedEvent() {
+  if (!selectedDomainId.value || !addFeaturedEventId.value) return
+  if (featuredEvents.value.length >= 5) {
+    featuredEventsError.value = t('admin.featuredEventsHint')
+    return
+  }
+  if (featuredEvents.value.some((e) => e.id === addFeaturedEventId.value)) {
+    addFeaturedEventId.value = ''
+    return
+  }
+  const eventToAdd = allAdminEvents().find((e) => e.id === addFeaturedEventId.value)
+  if (eventToAdd) {
+    featuredEvents.value = [...featuredEvents.value, eventToAdd]
+    addFeaturedEventId.value = ''
+    featuredEventsSuccess.value = false
+  }
+}
+
+function handleRemoveFeaturedEvent(eventId: string) {
+  featuredEvents.value = featuredEvents.value.filter((e) => e.id !== eventId)
+  featuredEventsSuccess.value = false
+}
+
+async function handleSaveFeaturedEvents() {
+  if (!selectedDomainId.value) return
+  featuredEventsSaving.value = true
+  featuredEventsSuccess.value = false
+  featuredEventsError.value = ''
+  try {
+    await domainsStore.setDomainFeaturedEvents(
+      selectedDomainId.value,
+      featuredEvents.value.map((e) => e.id),
+    )
+    featuredEventsSuccess.value = true
+  } catch {
+    featuredEventsError.value = t('admin.featuredEventsError')
+  } finally {
+    featuredEventsSaving.value = false
+  }
+}
+
+/** Published events that belong to the currently selected domain */
+const domainPublishedEvents = computed<CatalogEvent[]>(() => {
+  if (!selectedDomainId.value) return []
+  return allAdminEvents().filter(
+    (e) => e.domainId === selectedDomainId.value && e.status === 'PUBLISHED',
+  )
+})
 
 async function fetchAdminOverview() {
   if (!auth.isAdmin) return
@@ -577,6 +658,75 @@ async function handleReviewEvent(eventId: string, status: string) {
                 <span v-if="domainOverviewSuccess" class="save-success">✓ Saved</span>
               </div>
             </form>
+          </div>
+
+          <!-- Featured Events curation section -->
+          <div class="domain-style-section domain-featured-section">
+            <h3>{{ t('admin.featuredEvents') }}</h3>
+            <p class="featured-hint text-secondary">{{ t('admin.featuredEventsHint') }}</p>
+            <div v-if="featuredEventsLoading" class="loading-state">
+              <p>Loading featured events…</p>
+            </div>
+            <template v-else>
+              <p v-if="featuredEventsError" class="role-error" role="alert">{{ featuredEventsError }}</p>
+              <div class="featured-events-list">
+                <div
+                  v-for="(fe, idx) in featuredEvents"
+                  :key="fe.id"
+                  class="featured-event-item"
+                >
+                  <span class="featured-order-badge">{{ idx + 1 }}</span>
+                  <div class="featured-event-name">
+                    <strong>{{ fe.name }}</strong>
+                    <span class="text-secondary">{{ new Date(fe.startsAtUtc).toLocaleDateString(locale) }}</span>
+                  </div>
+                  <button
+                    class="btn btn-outline btn-sm"
+                    type="button"
+                    @click="handleRemoveFeaturedEvent(fe.id)"
+                  >
+                    {{ t('admin.removeFeaturedEvent') }}
+                  </button>
+                </div>
+                <p v-if="!featuredEvents.length" class="text-secondary featured-empty">
+                  {{ t('admin.featuredEventsEmpty') }}
+                </p>
+              </div>
+              <!-- Add featured event picker -->
+              <div v-if="featuredEvents.length < 5" class="add-featured-form">
+                <select v-model="addFeaturedEventId" class="form-input">
+                  <option value="" disabled>Select an event to feature…</option>
+                  <option
+                    v-for="ev in domainPublishedEvents.filter(
+                      (e) => !featuredEvents.some((fe) => fe.id === e.id)
+                    )"
+                    :key="ev.id"
+                    :value="ev.id"
+                  >
+                    {{ ev.name }}
+                  </option>
+                </select>
+                <button
+                  class="btn btn-outline btn-sm"
+                  type="button"
+                  :disabled="!addFeaturedEventId"
+                  @click="handleAddFeaturedEvent"
+                >
+                  {{ t('admin.addFeaturedEvent') }}
+                </button>
+              </div>
+              <div class="style-form-actions">
+                <button
+                  class="btn btn-primary btn-sm"
+                  type="button"
+                  :disabled="featuredEventsSaving"
+                  @click="handleSaveFeaturedEvents"
+                >
+                  {{ featuredEventsSaving ? t('admin.featuredEventsSaving') : t('admin.saveFeaturedEvents') }}
+                </button>
+                <span v-if="featuredEventsSuccess" class="save-success">{{ t('admin.featuredEventsSaved') }}</span>
+              </div>
+            </template>
           </div>
 
           <!-- Domain administrators -->
@@ -1117,6 +1267,79 @@ tr:hover td {
 }
 
 .add-admin-form select {
+  flex: 1;
+}
+
+/* ── Featured events curation ──────────────────────────── */
+.domain-featured-section h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.featured-hint {
+  font-size: 0.8125rem;
+  margin-bottom: 0.75rem;
+}
+
+.featured-events-list {
+  margin-bottom: 0.75rem;
+}
+
+.featured-event-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
+}
+
+.featured-order-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  background: rgba(255, 215, 0, 0.18);
+  border-radius: 50%;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #b8860b;
+  flex-shrink: 0;
+}
+
+.featured-event-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.featured-event-name strong {
+  font-size: 0.875rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.featured-event-name span {
+  font-size: 0.75rem;
+}
+
+.featured-empty {
+  font-size: 0.875rem;
+  padding: 0.5rem 0;
+}
+
+.add-featured-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.add-featured-form select {
   flex: 1;
 }
 </style>

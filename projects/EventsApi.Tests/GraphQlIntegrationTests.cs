@@ -5776,4 +5776,481 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal(1, domains.GetArrayLength());
         Assert.Equal("domain-a", domains[0].GetProperty("slug").GetString());
     }
+
+    // ── SetDomainFeaturedEvents mutation ─────────────────────────────────────
+
+    [Fact]
+    public async Task SetDomainFeaturedEvents_GlobalAdmin_SetsFeaturedEvents()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty, domainId = Guid.Empty, eventId1 = Guid.Empty, eventId2 = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("feat-admin@example.com", "Featured Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var domain = CreateDomain("Featured Hub", "featured-hub");
+            domainId = domain.Id;
+
+            var event1 = CreateEvent("Event One", "event-one", "Description one", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(10), domain, admin);
+            var event2 = CreateEvent("Event Two", "event-two", "Description two", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(20), domain, admin);
+            eventId1 = event1.Id;
+            eventId2 = event2.Id;
+
+            dbContext.Users.Add(admin);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.AddRange(event1, event2);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation SetFeatured($input: SetDomainFeaturedEventsInput!) {
+              setDomainFeaturedEvents(input: $input) { id name }
+            }
+            """,
+            new { input = new { domainId, eventIds = new[] { eventId1, eventId2 } } });
+
+        var events = document.RootElement.GetProperty("data").GetProperty("setDomainFeaturedEvents");
+        Assert.Equal(2, events.GetArrayLength());
+        Assert.Equal("Event One", events[0].GetProperty("name").GetString());
+        Assert.Equal("Event Two", events[1].GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task SetDomainFeaturedEvents_DomainAdmin_CanSetFeaturedEvents()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid domainAdminId = Guid.Empty, domainId = Guid.Empty, eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domainAdmin = CreateUser("feat-domainadmin@example.com", "Domain Admin");
+            domainAdminId = domainAdmin.Id;
+            var domain = CreateDomain("Domain Admin Hub", "domainadmin-hub");
+            domainId = domain.Id;
+
+            var ev = CreateEvent("Featured Event", "featured-event", "Description", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(5), domain, domainAdmin);
+            eventId = ev.Id;
+
+            dbContext.Users.Add(domainAdmin);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.Add(ev);
+            dbContext.Set<DomainAdministrator>().Add(new DomainAdministrator
+            {
+                DomainId = domain.Id,
+                UserId = domainAdmin.Id
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, domainAdminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation SetFeatured($input: SetDomainFeaturedEventsInput!) {
+              setDomainFeaturedEvents(input: $input) { id name }
+            }
+            """,
+            new { input = new { domainId, eventIds = new[] { eventId } } });
+
+        var events = document.RootElement.GetProperty("data").GetProperty("setDomainFeaturedEvents");
+        Assert.Equal(1, events.GetArrayLength());
+        Assert.Equal("Featured Event", events[0].GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task SetDomainFeaturedEvents_Unauthenticated_ReturnsAuthError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domain = CreateDomain("Auth Hub", "auth-hub");
+            domainId = domain.Id;
+            dbContext.Domains.Add(domain);
+        });
+
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+            mutation SetFeatured($input: SetDomainFeaturedEventsInput!) {
+              setDomainFeaturedEvents(input: $input) { id }
+            }
+            """,
+            variables = new { input = new { domainId, eventIds = Array.Empty<Guid>() } }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        var errorMessage = errors.ToString();
+        Assert.True(
+            errorMessage.Contains("AUTH_NOT_AUTHORIZED", StringComparison.OrdinalIgnoreCase)
+            || errorMessage.Contains("not authorized", StringComparison.OrdinalIgnoreCase)
+            || errorMessage.Contains("unauthorized", StringComparison.OrdinalIgnoreCase),
+            $"Expected auth error but got: {errorMessage}");
+    }
+
+    [Fact]
+    public async Task SetDomainFeaturedEvents_RegularUser_Forbidden()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid userId = Guid.Empty, domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("feat-user@example.com", "Regular User");
+            userId = user.Id;
+            var domain = CreateDomain("Forbidden Hub", "forbidden-hub");
+            domainId = domain.Id;
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+            mutation SetFeatured($input: SetDomainFeaturedEventsInput!) {
+              setDomainFeaturedEvents(input: $input) { id }
+            }
+            """,
+            variables = new { input = new { domainId, eventIds = Array.Empty<Guid>() } }
+        });
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("FORBIDDEN", body);
+    }
+
+    [Fact]
+    public async Task SetDomainFeaturedEvents_TooManyEvents_ReturnsError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty, domainId = Guid.Empty;
+        var sixEventIds = new List<Guid>();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("feat-many@example.com", "Many Events Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var domain = CreateDomain("Many Hub", "many-hub");
+            domainId = domain.Id;
+
+            dbContext.Users.Add(admin);
+            dbContext.Domains.Add(domain);
+
+            for (var i = 0; i < 6; i++)
+            {
+                var ev = CreateEvent($"Event {i}", $"event-many-{i}", "Desc", "Venue", "Prague",
+                    DateTime.UtcNow.AddDays(i + 1), domain, admin);
+                sixEventIds.Add(ev.Id);
+                dbContext.Events.Add(ev);
+            }
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+            mutation SetFeatured($input: SetDomainFeaturedEventsInput!) {
+              setDomainFeaturedEvents(input: $input) { id }
+            }
+            """,
+            variables = new { input = new { domainId, eventIds = sixEventIds } }
+        });
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("TOO_MANY_FEATURED_EVENTS", body);
+    }
+
+    [Fact]
+    public async Task SetDomainFeaturedEvents_EventFromOtherDomain_ReturnsError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty, domainId = Guid.Empty, otherEventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("feat-cross@example.com", "Cross Domain Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var domain = CreateDomain("Hub A", "hub-a-cross");
+            var otherDomain = CreateDomain("Hub B", "hub-b-cross");
+            domainId = domain.Id;
+
+            var otherEvent = CreateEvent("Other Event", "other-event-cross", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(3), otherDomain, admin);
+            otherEventId = otherEvent.Id;
+
+            dbContext.Users.Add(admin);
+            dbContext.Domains.AddRange(domain, otherDomain);
+            dbContext.Events.Add(otherEvent);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+            mutation SetFeatured($input: SetDomainFeaturedEventsInput!) {
+              setDomainFeaturedEvents(input: $input) { id }
+            }
+            """,
+            variables = new { input = new { domainId, eventIds = new[] { otherEventId } } }
+        });
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("EVENT_WRONG_DOMAIN", body);
+    }
+
+    [Fact]
+    public async Task SetDomainFeaturedEvents_UnpublishedEvent_ReturnsError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty, domainId = Guid.Empty, pendingEventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("feat-unpub@example.com", "Unpub Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var domain = CreateDomain("Unpub Hub", "unpub-hub");
+            domainId = domain.Id;
+
+            var pendingEvent = CreateEvent("Pending Event", "pending-event-unpub", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(5), domain, admin, status: EventStatus.PendingApproval);
+            pendingEventId = pendingEvent.Id;
+
+            dbContext.Users.Add(admin);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.Add(pendingEvent);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+            mutation SetFeatured($input: SetDomainFeaturedEventsInput!) {
+              setDomainFeaturedEvents(input: $input) { id }
+            }
+            """,
+            variables = new { input = new { domainId, eventIds = new[] { pendingEventId } } }
+        });
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("EVENT_NOT_PUBLISHED", body);
+    }
+
+    [Fact]
+    public async Task SetDomainFeaturedEvents_EmptyList_ClearsExistingFeaturedEvents()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty, domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("feat-clear@example.com", "Clear Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var domain = CreateDomain("Clear Hub", "clear-hub");
+            domainId = domain.Id;
+
+            var ev = CreateEvent("Clear Event", "clear-event", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(5), domain, admin);
+
+            dbContext.Users.Add(admin);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.Add(ev);
+            dbContext.Set<DomainFeaturedEvent>().Add(new DomainFeaturedEvent
+            {
+                DomainId = domain.Id,
+                EventId = ev.Id,
+                DisplayOrder = 0
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation SetFeatured($input: SetDomainFeaturedEventsInput!) {
+              setDomainFeaturedEvents(input: $input) { id }
+            }
+            """,
+            new { input = new { domainId, eventIds = Array.Empty<Guid>() } });
+
+        var events = document.RootElement.GetProperty("data").GetProperty("setDomainFeaturedEvents");
+        Assert.Equal(0, events.GetArrayLength());
+    }
+
+    // ── featuredEventsForDomain query ─────────────────────────────────────────
+
+    [Fact]
+    public async Task FeaturedEventsForDomain_ReturnsFeaturedPublishedEventsInOrder()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("feat-query@example.com", "Featured Query User");
+            var domain = CreateDomain("Query Hub", "query-hub");
+
+            var event1 = CreateEvent("Second Event", "second-event-q", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(10), domain, user);
+            var event2 = CreateEvent("First Event", "first-event-q", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(5), domain, user);
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.AddRange(event1, event2);
+
+            // Featured order: event2 first, then event1
+            dbContext.Set<DomainFeaturedEvent>().AddRange(
+                new DomainFeaturedEvent { DomainId = domain.Id, EventId = event2.Id, DisplayOrder = 0 },
+                new DomainFeaturedEvent { DomainId = domain.Id, EventId = event1.Id, DisplayOrder = 1 }
+            );
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query FeaturedEventsForDomain($domainSlug: String!) {
+              featuredEventsForDomain(domainSlug: $domainSlug) { id name }
+            }
+            """,
+            new { domainSlug = "query-hub" });
+
+        var events = document.RootElement.GetProperty("data").GetProperty("featuredEventsForDomain");
+        Assert.Equal(2, events.GetArrayLength());
+        Assert.Equal("First Event", events[0].GetProperty("name").GetString());
+        Assert.Equal("Second Event", events[1].GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task FeaturedEventsForDomain_EmptyWhenNoFeaturedEvents()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("feat-empty@example.com", "Featured Empty User");
+            var domain = CreateDomain("Empty Featured Hub", "empty-featured-hub");
+
+            var ev = CreateEvent("Unfeatured Event", "unfeatured-event", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(5), domain, user);
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query FeaturedEventsForDomain($domainSlug: String!) {
+              featuredEventsForDomain(domainSlug: $domainSlug) { id name }
+            }
+            """,
+            new { domainSlug = "empty-featured-hub" });
+
+        var events = document.RootElement.GetProperty("data").GetProperty("featuredEventsForDomain");
+        Assert.Equal(0, events.GetArrayLength());
+    }
+
+    [Fact]
+    public async Task FeaturedEventsForDomain_ExcludesUnpublishedEvents()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("feat-excl@example.com", "Featured Excl User");
+            var domain = CreateDomain("Excl Hub", "excl-hub");
+
+            var publishedEvent = CreateEvent("Published Event", "published-feat", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(5), domain, user);
+            var pendingEvent = CreateEvent("Pending Event", "pending-feat", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(8), domain, user, status: EventStatus.PendingApproval);
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.AddRange(publishedEvent, pendingEvent);
+
+            dbContext.Set<DomainFeaturedEvent>().AddRange(
+                new DomainFeaturedEvent { DomainId = domain.Id, EventId = publishedEvent.Id, DisplayOrder = 0 },
+                new DomainFeaturedEvent { DomainId = domain.Id, EventId = pendingEvent.Id, DisplayOrder = 1 }
+            );
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query FeaturedEventsForDomain($domainSlug: String!) {
+              featuredEventsForDomain(domainSlug: $domainSlug) { id name }
+            }
+            """,
+            new { domainSlug = "excl-hub" });
+
+        var events = document.RootElement.GetProperty("data").GetProperty("featuredEventsForDomain");
+        Assert.Equal(1, events.GetArrayLength());
+        Assert.Equal("Published Event", events[0].GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task FeaturedEventsForDomain_AccessibleWithoutAuthentication()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("feat-noauth@example.com", "Featured No Auth User");
+            var domain = CreateDomain("No Auth Hub", "no-auth-hub");
+            var ev = CreateEvent("Public Featured Event", "public-featured-event", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(5), domain, user);
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.Add(ev);
+            dbContext.Set<DomainFeaturedEvent>().Add(
+                new DomainFeaturedEvent { DomainId = domain.Id, EventId = ev.Id, DisplayOrder = 0 });
+        });
+
+        using var client = factory.CreateClient(); // no auth header
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query FeaturedEventsForDomain($domainSlug: String!) {
+              featuredEventsForDomain(domainSlug: $domainSlug) { id name }
+            }
+            """,
+            new { domainSlug = "no-auth-hub" });
+
+        var events = document.RootElement.GetProperty("data").GetProperty("featuredEventsForDomain");
+        Assert.Equal(1, events.GetArrayLength());
+        Assert.Equal("Public Featured Event", events[0].GetProperty("name").GetString());
+    }
 }
