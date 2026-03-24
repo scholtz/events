@@ -315,6 +315,112 @@ test.describe('Organizer analytics dashboard', () => {
     const savesCard = page.locator('.stat-card', { has: page.locator('.stat-label', { hasText: 'Total Saves' }) })
     await expect(savesCard.locator('.stat-number--primary')).toContainText('3')
   })
+
+  test('KPI cards show helper text describing what each metric measures', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-helper-1',
+      slug: 'helper-event-1',
+      name: 'Helper Text Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Each KPI card should have a .stat-helper element describing the metric
+    await expect(page.locator('.stat-helper', { hasText: 'All events you have submitted' })).toBeVisible()
+    await expect(page.locator('.stat-helper', { hasText: 'Live on the platform, visible to the public' })).toBeVisible()
+    await expect(page.locator('.stat-helper', { hasText: 'Awaiting moderator approval' })).toBeVisible()
+    await expect(page.locator('.stat-helper', { hasText: 'All-time saves across your published events' })).toBeVisible()
+    await expect(page.locator('.stat-helper', { hasText: 'All-time calendar exports across your published events' })).toBeVisible()
+  })
+
+  test('shows guidance when saves exist but no calendar adds yet', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-cal-guidance-1',
+      slug: 'cal-guidance-event-1',
+      name: 'Saves No Cal Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    const state = setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+
+    // Add saves but no calendar actions
+    state.favoriteEvents.push(
+      { id: 'fav-cg-1', userId: 'u1', eventId: event.id, createdAtUtc: new Date().toISOString() },
+      { id: 'fav-cg-2', userId: 'u2', eventId: event.id, createdAtUtc: new Date().toISOString() },
+    )
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Calendar guidance should appear (saves exist but no calendar adds)
+    await expect(page.locator('.low-data-guidance--calendar')).toBeVisible()
+    await expect(page.locator('.low-data-guidance--calendar')).toContainText(
+      'Attendees are saving your events but none have added them to their calendar yet',
+    )
+  })
+
+  test('calendar guidance does not appear when calendar adds exist', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-cal-no-guidance-1',
+      slug: 'cal-no-guidance-event-1',
+      name: 'Saves And Cal Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    const state = setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    state.favoriteEvents.push({
+      id: 'fav-ng-1', userId: 'u1', eventId: event.id, createdAtUtc: new Date().toISOString(),
+    })
+    state.calendarActions.push({
+      id: 'ca-ng-1', eventId: event.id, provider: 'GOOGLE', triggeredAtUtc: new Date().toISOString(),
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Calendar guidance should NOT appear (calendar adds already exist)
+    await expect(page.locator('.low-data-guidance--calendar')).toHaveCount(0)
+  })
+
+  test('dashboard is usable on mobile viewport', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-mobile-1',
+      slug: 'mobile-event-1',
+      name: 'Mobile Test Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+
+    await page.setViewportSize({ width: 390, height: 844 })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // KPI cards should be visible on mobile
+    await expect(page.getByText('Total Events')).toBeVisible()
+    await expect(page.getByText('Total Saves')).toBeVisible()
+
+    // Performance section heading should be visible
+    await expect(page.getByRole('heading', { name: 'Event Performance' })).toBeVisible()
+
+    // Event row should be visible (table horizontally scrollable)
+    await expect(page.locator('.events-table')).toBeVisible()
+  })
 })
 
 // ── Calendar Analytics dashboard tests ───────────────────────────────────────
