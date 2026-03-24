@@ -49,7 +49,10 @@ async function handleSaveHubStyle(domainId: string) {
   hubManageError.value[domainId] = ''
   try {
     const form = hubStyleForms.value[domainId]
-    if (!form) return
+    if (!form) {
+      hubManageError.value[domainId] = t('dashboard.hubManageError')
+      return
+    }
     await domainsStore.updateDomainStyle({
       domainId,
       primaryColor: form.primaryColor || null,
@@ -71,7 +74,10 @@ async function handleSaveHubOverview(domainId: string) {
   hubManageError.value[domainId] = ''
   try {
     const form = hubOverviewForms.value[domainId]
-    if (!form) return
+    if (!form) {
+      hubManageError.value[domainId] = t('dashboard.hubManageError')
+      return
+    }
     await domainsStore.updateDomainOverview({
       domainId,
       overviewContent: form.overviewContent || null,
@@ -415,11 +421,7 @@ function providerLabel(provider: string): string {
           <!-- Style form -->
           <div class="hub-form-section">
             <h4 class="hub-form-title">{{ t('dashboard.hubStyleTitle') }}</h4>
-            <form
-              v-if="hubStyleForms[hub.id]"
-              class="hub-style-form"
-              @submit.prevent="handleSaveHubStyle(hub.id)"
-            >
+            <form class="hub-style-form" @submit.prevent="handleSaveHubStyle(hub.id)">
               <div class="hub-form-grid">
                 <label class="form-field">
                   <span>{{ t('dashboard.hubPrimaryColor') }}</span>
@@ -476,11 +478,7 @@ function providerLabel(provider: string): string {
           <!-- Overview / content form -->
           <div class="hub-form-section">
             <h4 class="hub-form-title">{{ t('dashboard.hubOverviewTitle') }}</h4>
-            <form
-              v-if="hubOverviewForms[hub.id]"
-              class="hub-overview-form"
-              @submit.prevent="handleSaveHubOverview(hub.id)"
-            >
+            <form class="hub-overview-form" @submit.prevent="handleSaveHubOverview(hub.id)">
               <div class="hub-form-grid hub-form-grid--full">
                 <label class="form-field">
                   <span>{{ t('dashboard.hubOverviewContent') }}</span>
