@@ -45,6 +45,16 @@ const router = createRouter({
       name: 'category',
       component: () => import('@/views/CategoryLandingView.vue'),
     },
+    {
+      path: '/communities',
+      name: 'communities',
+      component: () => import('@/views/CommunitiesView.vue'),
+    },
+    {
+      path: '/community/:slug',
+      name: 'community-detail',
+      component: () => import('@/views/CommunityDetailView.vue'),
+    },
   ],
   scrollBehavior() {
     return { top: 0 }

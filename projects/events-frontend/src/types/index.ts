@@ -186,3 +186,44 @@ export interface FavoriteEvent {
   eventId: string
   createdAtUtc: string
 }
+
+// ── Community groups ──────────────────────────────────────────────────────────
+
+export type CommunityVisibility = 'PUBLIC' | 'PRIVATE'
+
+export type CommunityMemberRole = 'ADMIN' | 'EVENT_MANAGER' | 'MEMBER'
+
+export type CommunityMemberStatus = 'ACTIVE' | 'PENDING' | 'REJECTED'
+
+/** Matches backend CommunityGroup entity */
+export interface CommunityGroup {
+  id: string
+  name: string
+  slug: string
+  summary: string | null
+  description: string | null
+  visibility: CommunityVisibility
+  isActive: boolean
+  createdAtUtc: string
+  createdByUserId: string | null
+}
+
+/** Matches backend CommunityMembership entity */
+export interface CommunityMembership {
+  id: string
+  groupId: string
+  group: CommunityGroup
+  userId: string
+  role: CommunityMemberRole
+  status: CommunityMemberStatus
+  createdAtUtc: string
+  reviewedAtUtc: string | null
+}
+
+/** Matches backend CommunityGroupDetail payload */
+export interface CommunityGroupDetail {
+  group: CommunityGroup
+  events: CatalogEvent[]
+  memberCount: number
+  myMembership: CommunityMembership | null
+}
