@@ -332,6 +332,12 @@ The browser Cache Storage API **only supports caching GET responses**. GraphQL u
 - Client (includes SW): `npm run build:client` — outputs `dist/sw.js` alongside the app bundle.
 - SSR (no SW, no PWA plugin): `npm run build:ssr` — outputs `dist/server/`.
 - Both builds must pass before merging a PWA-related PR.
+- **Critical**: `npm run build:client` does NOT run `vue-tsc`. Only `npm run build:ssr` runs `vue-tsc --build` (type checking). Always run **both** builds locally before pushing to catch TypeScript template errors. Running only `build:client` + Playwright gives a false green; CI will still fail on `build:ssr`.
+
+### TypeScript in Vue templates and Record index types
+- In Vue 3 templates under `vue-tsc` strict mode, accessing a `Record<string, T>` by index (e.g. `myRecord[key].field`) is typed as `T | undefined` — `v-if="myRecord[key]"` does NOT narrow the type in sibling bindings.
+- To fix `TS2532 Object is possibly 'undefined'` on template `v-model` bindings backed by a Record, use the non-null assertion `!` on the index access: `v-model="myRecord[key]!.field"`.
+- Always add a defensive guard in the corresponding handler function: `if (!form) { errorRef.value[id] = t('someErrorKey'); return }` — never silently ignore a missing form object.
 
 ### Offline-aware UI text: always use straight apostrophes
 - When adding user-visible strings to Vue templates (e.g. `"You're offline"`, `"Couldn't load"`), always use the straight ASCII apostrophe `'` (U+0027), never curly/smart quotes `'` (U+2019).
