@@ -707,7 +707,7 @@ test.describe('Hub Management section in dashboard', () => {
     await overviewTextarea.fill('This is the Technology hub — curated for developers.')
     await page.locator('.hub-overview-form').getByRole('button', { name: 'Save Content' }).click()
 
-    await expect(page.locator('.hub-save-success').nth(1)).toBeVisible()
+    await expect(page.locator('.hub-overview-form .hub-save-success')).toBeVisible()
   })
 
   test('hub management section shows View hub link to category page', async ({ page }) => {
