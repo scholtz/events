@@ -291,6 +291,13 @@ npm run test:e2e
 ./node_modules/.bin/playwright test --project=chromium --grep="your pattern" --list
 ```
 
+### Mock handler ordering in mock-api.ts
+The `setupMockApi` handler chain uses `query.includes('OperationName')` to route GraphQL requests. **Handler order matters**: a shorter substring will match before a longer one that contains it. When adding a new handler, check whether the new operation name is a substring of any existing handler's check (or vice versa).
+
+Common pitfall: `"MyManagedDomains".includes("Domains")` is `true`, so a `Domains` handler placed before `MyManagedDomains` will intercept `MyManagedDomains` queries. **Always place more-specific (longer) operation names before their substrings.**
+
+After adding a new handler, verify ordering by searching for all `query.includes(...)` calls and ensuring no earlier handler is a substring of your new operation name.
+
 ### Grep-filtered Playwright runs
 - When asked to run a filtered subset with `--grep`, **always** run the same command with `--list` first and confirm the expected tests are selected before executing the real run.
 - Do not claim that `npm run test:e2e -- --grep=...` or Playwright ignored the grep filter unless you have reproduced it locally. In this repo, `npm run test:e2e -- --project=chromium --grep="a|b|c" --list` correctly limits the selection.
@@ -325,6 +332,12 @@ The browser Cache Storage API **only supports caching GET responses**. GraphQL u
 - Client (includes SW): `npm run build:client` — outputs `dist/sw.js` alongside the app bundle.
 - SSR (no SW, no PWA plugin): `npm run build:ssr` — outputs `dist/server/`.
 - Both builds must pass before merging a PWA-related PR.
+- **Critical**: `npm run build:client` does NOT run `vue-tsc`. Only `npm run build:ssr` runs `vue-tsc --build` (type checking). Always run **both** builds locally before pushing to catch TypeScript template errors. Running only `build:client` + Playwright gives a false green; CI will still fail on `build:ssr`.
+
+### TypeScript in Vue templates and Record index types
+- In Vue 3 templates under `vue-tsc` strict mode, accessing a `Record<string, T>` by index (e.g. `myRecord[key].field`) is typed as `T | undefined` — `v-if="myRecord[key]"` does NOT narrow the type in sibling bindings.
+- To fix `TS2532 Object is possibly 'undefined'` on template `v-model` bindings backed by a Record, use the non-null assertion `!` on the index access: `v-model="myRecord[key]!.field"`.
+- Always add a defensive guard in the corresponding handler function: `if (!form) { errorRef.value[id] = t('someErrorKey'); return }` — never silently ignore a missing form object.
 
 ### Offline-aware UI text: always use straight apostrophes
 - When adding user-visible strings to Vue templates (e.g. `"You're offline"`, `"Couldn't load"`), always use the straight ASCII apostrophe `'` (U+0027), never curly/smart quotes `'` (U+2019).

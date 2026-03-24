@@ -599,3 +599,140 @@ test.describe('Calendar analytics dashboard', () => {
     ).toContainText('Calendar adds show how many attendees added an event to their personal calendar')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Hub Management section (domain admin panel in dashboard)
+// ---------------------------------------------------------------------------
+
+test.describe('Hub Management section in dashboard', () => {
+  test('hub management section is not visible for users with no managed domains', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    setupMockApi(page, {
+      users: [user],
+      domains: [domain],
+      domainAdministrators: [],
+      events: [],
+    })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    await expect(page.locator('.hub-management-section')).toBeHidden()
+  })
+
+  test('hub management section appears when user is a domain administrator', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    setupMockApi(page, {
+      users: [user],
+      domains: [domain],
+      domainAdministrators: [
+        {
+          id: 'da-1',
+          domainId: domain.id,
+          userId: user.id,
+          user: { displayName: user.displayName, email: user.email },
+          createdAtUtc: new Date().toISOString(),
+        },
+      ],
+      events: [],
+    })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    await expect(page.locator('.hub-management-section')).toBeVisible()
+    await expect(
+      page.getByRole('heading', { name: 'Hub Management' }),
+    ).toBeVisible()
+    await expect(page.locator('.hub-card')).toBeVisible()
+    await expect(page.locator('.hub-card-name')).toContainText('Technology')
+  })
+
+  test('domain admin can update hub style via dashboard', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    setupMockApi(page, {
+      users: [user],
+      domains: [domain],
+      domainAdministrators: [
+        {
+          id: 'da-1',
+          domainId: domain.id,
+          userId: user.id,
+          user: { displayName: user.displayName, email: user.email },
+          createdAtUtc: new Date().toISOString(),
+        },
+      ],
+      events: [],
+    })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    await expect(page.locator('.hub-management-section')).toBeVisible()
+
+    // Fill in primary color and save
+    const primaryColorInput = page.locator('.hub-style-form input[placeholder="#137fec"]')
+    await primaryColorInput.fill('#ff5500')
+    await page.locator('.hub-style-form').getByRole('button', { name: 'Save Style' }).click()
+
+    await expect(page.locator('.hub-save-success').first()).toBeVisible()
+  })
+
+  test('domain admin can update hub content via dashboard', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    setupMockApi(page, {
+      users: [user],
+      domains: [domain],
+      domainAdministrators: [
+        {
+          id: 'da-1',
+          domainId: domain.id,
+          userId: user.id,
+          user: { displayName: user.displayName, email: user.email },
+          createdAtUtc: new Date().toISOString(),
+        },
+      ],
+      events: [],
+    })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    await expect(page.locator('.hub-management-section')).toBeVisible()
+
+    // Fill in overview content and save
+    const overviewTextarea = page.locator('.hub-overview-form textarea').first()
+    await overviewTextarea.fill('This is the Technology hub — curated for developers.')
+    await page.locator('.hub-overview-form').getByRole('button', { name: 'Save Content' }).click()
+
+    await expect(page.locator('.hub-overview-form .hub-save-success')).toBeVisible()
+  })
+
+  test('hub management section shows View hub link to category page', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    setupMockApi(page, {
+      users: [user],
+      domains: [domain],
+      domainAdministrators: [
+        {
+          id: 'da-1',
+          domainId: domain.id,
+          userId: user.id,
+          user: { displayName: user.displayName, email: user.email },
+          createdAtUtc: new Date().toISOString(),
+        },
+      ],
+      events: [],
+    })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    await expect(page.locator('.hub-management-section')).toBeVisible()
+    const viewHubLink = page.locator('.hub-card').getByRole('link', { name: 'View hub' })
+    await expect(viewHubLink).toBeVisible()
+    await expect(viewHubLink).toHaveAttribute('href', /\/category\/technology/)
+  })
+})

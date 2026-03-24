@@ -530,6 +530,25 @@ public sealed class Query
     }
 
     /// <summary>
+    /// Returns the domains where the current authenticated user is a domain administrator.
+    /// This allows non-global-admin domain stewards to manage their hub's branding and metadata.
+    /// </summary>
+    [Authorize]
+    public async Task<IReadOnlyList<EventDomain>> GetMyManagedDomainsAsync(
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var userId = claimsPrincipal.GetRequiredUserId();
+        return await dbContext.DomainAdministrators
+            .AsNoTracking()
+            .Where(da => da.UserId == userId)
+            .Select(da => da.Domain)
+            .OrderBy(d => d.Name)
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>
     /// Returns the VAPID public key that the frontend needs to create a push subscription.
     /// Empty string means push notifications are not configured on this server.
     /// </summary>
