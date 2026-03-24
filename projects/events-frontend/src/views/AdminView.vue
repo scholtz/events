@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useEventsStore } from '@/stores/events'
 import { useAuthStore } from '@/stores/auth'
 import { useDomainsStore } from '@/stores/domains'
 import { gqlRequest } from '@/lib/graphql'
-import type { AdminOverview, DomainAdministrator, User } from '@/types'
+import type { AdminOverview, CatalogEvent, DomainAdministrator, User } from '@/types'
 
 const { t, locale } = useI18n()
 const eventsStore = useEventsStore()
@@ -222,7 +222,7 @@ async function handleSaveFeaturedEvents() {
 }
 
 /** Published events that belong to the currently selected domain */
-const domainPublishedEvents = computed(() => {
+const domainPublishedEvents = computed<CatalogEvent[]>(() => {
   if (!selectedDomainId.value) return []
   return allAdminEvents().filter(
     (e) => e.domainId === selectedDomainId.value && e.status === 'PUBLISHED',
