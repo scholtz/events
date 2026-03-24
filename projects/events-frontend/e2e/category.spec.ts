@@ -360,4 +360,107 @@ test.describe('Category landing page', () => {
     await expect(page.locator('.featured-grid .event-card', { hasText: 'Mobile Featured Event' })).toBeVisible()
     await expect(page.locator('.events-grid .event-card', { hasText: 'Mobile Normal Event' })).toBeVisible()
   })
+
+  test('shows "all events featured" note when every domain event is featured', async ({ page }) => {
+    const domain = makeTechDomain()
+    const featuredEvent = makeApprovedEvent({
+      id: 'evt-only-featured',
+      name: 'Only Featured Event',
+      slug: 'only-featured-event',
+      domainId: domain.id,
+      domain: { id: domain.id, name: domain.name, slug: domain.slug, subdomain: domain.subdomain },
+    })
+    setupMockApi(page, {
+      domains: [domain],
+      events: [featuredEvent],
+      featuredEvents: [{ domainSlug: domain.slug, eventId: featuredEvent.id, displayOrder: 0 }],
+    })
+
+    await page.goto('/category/technology')
+
+    // Featured section shows the event
+    await expect(page.locator('.featured-grid .event-card', { hasText: 'Only Featured Event' })).toBeVisible()
+    // No duplicate in main grid — instead shows count note
+    await expect(page.locator('.events-grid .event-card', { hasText: 'Only Featured Event' })).toBeHidden()
+    await expect(page.locator('.all-featured-note')).toBeVisible()
+  })
+
+  test('featured events appear in displayOrder', async ({ page }) => {
+    const domain = makeTechDomain()
+    const eventA = makeApprovedEvent({
+      id: 'ord-a',
+      name: 'Event Order A',
+      slug: 'event-order-a',
+      domainId: domain.id,
+      domain: { id: domain.id, name: domain.name, slug: domain.slug, subdomain: domain.subdomain },
+    })
+    const eventB = makeApprovedEvent({
+      id: 'ord-b',
+      name: 'Event Order B',
+      slug: 'event-order-b',
+      domainId: domain.id,
+      domain: { id: domain.id, name: domain.name, slug: domain.slug, subdomain: domain.subdomain },
+    })
+    setupMockApi(page, {
+      domains: [domain],
+      events: [eventA, eventB],
+      // B has lower displayOrder (0) so it should appear first, then A (1)
+      featuredEvents: [
+        { domainSlug: domain.slug, eventId: eventB.id, displayOrder: 0 },
+        { domainSlug: domain.slug, eventId: eventA.id, displayOrder: 1 },
+      ],
+    })
+
+    await page.goto('/category/technology')
+
+    const cards = page.locator('.featured-grid .event-card')
+    await expect(cards.nth(0)).toContainText('Event Order B')
+    await expect(cards.nth(1)).toContainText('Event Order A')
+  })
+
+  test('featured events for other domains do not appear on this page', async ({ page }) => {
+    const domain = makeTechDomain()
+    const otherDomainEvent = makeApprovedEvent({
+      id: 'other-domain-event',
+      name: 'Other Domain Featured',
+      slug: 'other-domain-featured',
+    })
+    setupMockApi(page, {
+      domains: [domain],
+      events: [otherDomainEvent],
+      // Featured for a different domain slug, not "technology"
+      featuredEvents: [{ domainSlug: 'crypto', eventId: otherDomainEvent.id, displayOrder: 0 }],
+    })
+
+    await page.goto('/category/technology')
+
+    // No featured section since the technology domain has no featured events
+    await expect(page.getByRole('heading', { name: 'Featured Events' })).toBeHidden()
+  })
+
+  test('i18n: Slovak locale shows translated featured events heading', async ({ page }) => {
+    const domain = makeTechDomain()
+    const featuredEvent = makeApprovedEvent({
+      id: 'evt-i18n-feat',
+      name: 'I18n Featured Event',
+      slug: 'i18n-featured-event',
+      domainId: domain.id,
+      domain: { id: domain.id, name: domain.name, slug: domain.slug, subdomain: domain.subdomain },
+    })
+    setupMockApi(page, {
+      domains: [domain],
+      events: [featuredEvent],
+      featuredEvents: [{ domainSlug: domain.slug, eventId: featuredEvent.id, displayOrder: 0 }],
+    })
+
+    // Set Slovak locale before navigation
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'sk')
+    })
+
+    await page.goto('/category/technology')
+
+    // Slovak translation: "Odporúčané podujatia"
+    await expect(page.getByRole('heading', { name: 'Odporúčané podujatia' })).toBeVisible()
+  })
 })

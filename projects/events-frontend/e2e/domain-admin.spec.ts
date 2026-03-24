@@ -416,9 +416,56 @@ test.describe('Domain admin management', () => {
     await page.getByRole('button', { name: 'Manage' }).click()
 
     // After loading, the featured event should be listed (loaded via FeaturedEventsForDomain query)
-    // We can verify the section is visible and the save button works
     await expect(page.getByRole('heading', { name: 'Featured Events' })).toBeVisible()
+    await expect(page.locator('.featured-events-list').getByText('Event To Remove')).toBeVisible()
+
+    // Click the Remove button to remove the event from the list
+    await page.locator('.featured-events-list').getByRole('button', { name: 'Remove', exact: true }).click()
+
+    // Event should disappear from the list and empty message should appear
+    await expect(page.locator('.featured-events-list').getByText('Event To Remove')).toBeHidden()
+    await expect(page.getByText('No featured events yet')).toBeVisible()
+
+    // Save the cleared list
     await page.getByRole('button', { name: 'Save Featured Events' }).click()
     await expect(page.getByText('✓ Saved')).toBeVisible()
+  })
+
+  test('add featured event picker is hidden when 5 events are already featured', async ({
+    page,
+  }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    const events = Array.from({ length: 5 }, (_, i) =>
+      makeApprovedEvent({
+        id: `evt-max-${i}`,
+        name: `Max Event ${i + 1}`,
+        slug: `max-event-${i}`,
+        domainId: domain.id,
+        domain: { id: domain.id, name: domain.name, slug: domain.slug, subdomain: domain.subdomain },
+      }),
+    )
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      events,
+      featuredEvents: events.map((e, i) => ({
+        domainSlug: domain.slug,
+        eventId: e.id,
+        displayOrder: i,
+      })),
+      domainAdministrators: [],
+    })
+    await loginAs(page, admin)
+    await page.goto('/admin')
+
+    await page.getByRole('button', { name: /Domains/ }).click()
+    await page.getByRole('button', { name: 'Manage' }).click()
+
+    // All 5 are featured — add picker should be hidden
+    await expect(page.getByRole('heading', { name: 'Featured Events' })).toBeVisible()
+    await expect(page.locator('.add-featured-form')).toBeHidden()
+    // All 5 events are listed
+    await expect(page.locator('.featured-events-list .featured-event-item')).toHaveCount(5)
   })
 })
