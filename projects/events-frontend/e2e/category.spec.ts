@@ -263,4 +263,101 @@ test.describe('Category landing page', () => {
     // Curator credit visible
     await expect(page.locator('.curator-credit')).toContainText('Mobile Curator')
   })
+
+  // ── Featured events on public category page ────────────────────────────────
+
+  test('shows featured events section when featured events exist', async ({ page }) => {
+    const domain = makeTechDomain()
+    const featuredEvent = makeApprovedEvent({
+      id: 'evt-feat-pub-1',
+      name: 'Featured Keynote',
+      slug: 'featured-keynote',
+      domainId: domain.id,
+      domain: { id: domain.id, name: domain.name, slug: domain.slug, subdomain: domain.subdomain },
+    })
+    const normalEvent = makeApprovedEvent({
+      id: 'evt-normal-1',
+      name: 'Regular Event',
+      slug: 'regular-event',
+      domainId: domain.id,
+      domain: { id: domain.id, name: domain.name, slug: domain.slug, subdomain: domain.subdomain },
+    })
+    setupMockApi(page, {
+      domains: [domain],
+      events: [featuredEvent, normalEvent],
+      featuredEvents: [{ domainSlug: domain.slug, eventId: featuredEvent.id, displayOrder: 0 }],
+    })
+
+    await page.goto('/category/technology')
+
+    // Featured section heading is shown
+    await expect(page.getByRole('heading', { name: 'Featured Events' })).toBeVisible()
+    // Featured event appears in the featured section
+    await expect(page.locator('.featured-grid .event-card', { hasText: 'Featured Keynote' })).toBeVisible()
+    // Non-featured event is in the main grid (not featured)
+    await expect(page.locator('.events-grid .event-card', { hasText: 'Regular Event' })).toBeVisible()
+    // Featured event is NOT duplicated in the main grid
+    await expect(page.locator('.events-grid .event-card', { hasText: 'Featured Keynote' })).toBeHidden()
+  })
+
+  test('does not show featured section when no featured events configured', async ({ page }) => {
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({ name: 'Plain Event', slug: 'plain-event' })
+    setupMockApi(page, { domains: [domain], events: [event], featuredEvents: [] })
+
+    await page.goto('/category/technology')
+
+    await expect(page.getByRole('heading', { name: 'Featured Events' })).toBeHidden()
+    await expect(page.locator('.event-card', { hasText: 'Plain Event' })).toBeVisible()
+  })
+
+  test('featured event badge is visible on featured event card', async ({ page }) => {
+    const domain = makeTechDomain()
+    const featuredEvent = makeApprovedEvent({
+      id: 'evt-badge',
+      name: 'Badge Event',
+      slug: 'badge-event',
+      domainId: domain.id,
+      domain: { id: domain.id, name: domain.name, slug: domain.slug, subdomain: domain.subdomain },
+    })
+    setupMockApi(page, {
+      domains: [domain],
+      events: [featuredEvent],
+      featuredEvents: [{ domainSlug: domain.slug, eventId: featuredEvent.id, displayOrder: 0 }],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.featured-badge').first()).toBeVisible()
+  })
+
+  test('mobile viewport: featured section and main list are both visible', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    const domain = makeTechDomain()
+    const featuredEvent = makeApprovedEvent({
+      id: 'evt-feat-mobile',
+      name: 'Mobile Featured Event',
+      slug: 'mobile-featured-event',
+      domainId: domain.id,
+      domain: { id: domain.id, name: domain.name, slug: domain.slug, subdomain: domain.subdomain },
+    })
+    const normalEvent = makeApprovedEvent({
+      id: 'evt-normal-mobile',
+      name: 'Mobile Normal Event',
+      slug: 'mobile-normal-event',
+      domainId: domain.id,
+      domain: { id: domain.id, name: domain.name, slug: domain.slug, subdomain: domain.subdomain },
+    })
+    setupMockApi(page, {
+      domains: [domain],
+      events: [featuredEvent, normalEvent],
+      featuredEvents: [{ domainSlug: domain.slug, eventId: featuredEvent.id, displayOrder: 0 }],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.getByRole('heading', { name: 'Featured Events' })).toBeVisible()
+    await expect(page.locator('.featured-grid .event-card', { hasText: 'Mobile Featured Event' })).toBeVisible()
+    await expect(page.locator('.events-grid .event-card', { hasText: 'Mobile Normal Event' })).toBeVisible()
+  })
 })

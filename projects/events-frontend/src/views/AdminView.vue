@@ -1269,4 +1269,77 @@ tr:hover td {
 .add-admin-form select {
   flex: 1;
 }
+
+/* ── Featured events curation ──────────────────────────── */
+.domain-featured-section h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.featured-hint {
+  font-size: 0.8125rem;
+  margin-bottom: 0.75rem;
+}
+
+.featured-events-list {
+  margin-bottom: 0.75rem;
+}
+
+.featured-event-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
+}
+
+.featured-order-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  background: rgba(255, 215, 0, 0.18);
+  border-radius: 50%;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #b8860b;
+  flex-shrink: 0;
+}
+
+.featured-event-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.featured-event-name strong {
+  font-size: 0.875rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.featured-event-name span {
+  font-size: 0.75rem;
+}
+
+.featured-empty {
+  font-size: 0.875rem;
+  padding: 0.5rem 0;
+}
+
+.add-featured-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.add-featured-form select {
+  flex: 1;
+}
 </style>
