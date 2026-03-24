@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.RegularExpressions;
 using EventsApi.Data;
 using EventsApi.Data.Entities;
 using EventsApi.Security;
@@ -370,6 +371,16 @@ public sealed class Mutation
             throw CreateError("Banner URL must be an absolute URL.", "INVALID_BANNER_URL");
         }
 
+        if (input.PrimaryColor is not null && !string.IsNullOrWhiteSpace(input.PrimaryColor) && !IsValidHexColor(input.PrimaryColor))
+        {
+            throw CreateError("Primary color must be a valid CSS hex color (e.g. \"#137fec\" or \"#fff\").", "INVALID_COLOR");
+        }
+
+        if (input.AccentColor is not null && !string.IsNullOrWhiteSpace(input.AccentColor) && !IsValidHexColor(input.AccentColor))
+        {
+            throw CreateError("Accent color must be a valid CSS hex color (e.g. \"#ff5500\" or \"#f50\").", "INVALID_COLOR");
+        }
+
         domain.PrimaryColor = NormalizeOptionalValue(input.PrimaryColor);
         domain.AccentColor = NormalizeOptionalValue(input.AccentColor);
         domain.LogoUrl = NormalizeOptionalValue(input.LogoUrl);
@@ -394,6 +405,26 @@ public sealed class Mutation
 
         var domain = await dbContext.Domains.SingleOrDefaultAsync(d => d.Id == input.DomainId, cancellationToken)
             ?? throw CreateError("Domain was not found.", "DOMAIN_NOT_FOUND");
+
+        if (input.OverviewContent is not null && input.OverviewContent.Length > 2000)
+        {
+            throw CreateError("Overview content must not exceed 2000 characters.", "INVALID_OVERVIEW_CONTENT");
+        }
+
+        if (input.WhatBelongsHere is not null && input.WhatBelongsHere.Length > 1000)
+        {
+            throw CreateError("'What belongs here' must not exceed 1000 characters.", "INVALID_WHAT_BELONGS_HERE");
+        }
+
+        if (input.SubmitEventCta is not null && input.SubmitEventCta.Length > 300)
+        {
+            throw CreateError("Submission CTA must not exceed 300 characters.", "INVALID_SUBMIT_EVENT_CTA");
+        }
+
+        if (input.CuratorCredit is not null && input.CuratorCredit.Length > 200)
+        {
+            throw CreateError("Curator credit must not exceed 200 characters.", "INVALID_CURATOR_CREDIT");
+        }
 
         domain.OverviewContent = NormalizeOptionalValue(input.OverviewContent);
         domain.WhatBelongsHere = NormalizeOptionalValue(input.WhatBelongsHere);
@@ -675,6 +706,10 @@ public sealed class Mutation
 
     private static string? NormalizeOptionalValue(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>Returns true for 3- or 6-digit CSS hex colors, e.g. "#fff" or "#137fec".</summary>
+    private static bool IsValidHexColor(string value)
+        => Regex.IsMatch(value.Trim(), @"^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$");
 
     private static GraphQLException CreateError(string message, string code)
         => new(ErrorBuilder.New().SetMessage(message).SetCode(code).Build());

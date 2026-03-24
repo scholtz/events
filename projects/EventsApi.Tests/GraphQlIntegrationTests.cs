@@ -3821,6 +3821,131 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task UpdateDomainStyle_InvalidPrimaryColor_ReturnsError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid domainAdminId = Guid.Empty, domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domainAdmin = CreateUser("colortest@example.com", "Color Tester");
+            var domain = CreateDomain("Crypto", "crypto-color-test");
+
+            dbContext.Users.Add(domainAdmin);
+            dbContext.Domains.Add(domain);
+
+            domainAdminId = domainAdmin.Id;
+            domainId = domain.Id;
+
+            dbContext.Set<DomainAdministrator>().Add(new DomainAdministrator
+            {
+                DomainId = domain.Id,
+                UserId = domainAdmin.Id
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, domainAdminId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+            mutation UpdateStyle($input: UpdateDomainStyleInput!) {
+              updateDomainStyle(input: $input) { id }
+            }
+            """,
+            variables = new { input = new { domainId, primaryColor = "notacolor" } }
+        });
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("INVALID_COLOR", body);
+    }
+
+    [Fact]
+    public async Task UpdateDomainStyle_InvalidAccentColor_ReturnsError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid domainAdminId = Guid.Empty, domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domainAdmin = CreateUser("accentcolor@example.com", "Accent Tester");
+            var domain = CreateDomain("Crypto", "crypto-accent-test");
+
+            dbContext.Users.Add(domainAdmin);
+            dbContext.Domains.Add(domain);
+
+            domainAdminId = domainAdmin.Id;
+            domainId = domain.Id;
+
+            dbContext.Set<DomainAdministrator>().Add(new DomainAdministrator
+            {
+                DomainId = domain.Id,
+                UserId = domainAdmin.Id
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, domainAdminId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+            mutation UpdateStyle($input: UpdateDomainStyleInput!) {
+              updateDomainStyle(input: $input) { id }
+            }
+            """,
+            variables = new { input = new { domainId, accentColor = "rgb(255,0,0)" } }
+        });
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("INVALID_COLOR", body);
+    }
+
+    [Fact]
+    public async Task UpdateDomainStyle_ValidShortHexColor_Succeeds()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid domainAdminId = Guid.Empty, domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domainAdmin = CreateUser("shorthex@example.com", "Short Hex Tester");
+            var domain = CreateDomain("Crypto", "crypto-short-hex");
+
+            dbContext.Users.Add(domainAdmin);
+            dbContext.Domains.Add(domain);
+
+            domainAdminId = domainAdmin.Id;
+            domainId = domain.Id;
+
+            dbContext.Set<DomainAdministrator>().Add(new DomainAdministrator
+            {
+                DomainId = domain.Id,
+                UserId = domainAdmin.Id
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, domainAdminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation UpdateStyle($input: UpdateDomainStyleInput!) {
+              updateDomainStyle(input: $input) {
+                id primaryColor accentColor
+              }
+            }
+            """,
+            new { input = new { domainId, primaryColor = "#fff", accentColor = "#f50" } });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("updateDomainStyle");
+        Assert.Equal("#fff", result.GetProperty("primaryColor").GetString());
+        Assert.Equal("#f50", result.GetProperty("accentColor").GetString());
+    }
+
+    [Fact]
     public async Task GetDomainAdministrators_ReturnsAdminsForDomain()
     {
         await using var factory = new EventsApiWebApplicationFactory();
@@ -5302,6 +5427,102 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal(JsonValueKind.Null, result.GetProperty("whatBelongsHere").ValueKind);
         Assert.Equal(JsonValueKind.Null, result.GetProperty("submitEventCta").ValueKind);
         Assert.Equal(JsonValueKind.Null, result.GetProperty("curatorCredit").ValueKind);
+    }
+
+    [Fact]
+    public async Task UpdateDomainOverview_OverviewContentTooLong_ReturnsError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid domainAdminId = Guid.Empty, domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domainAdmin = CreateUser("lentest-overview@example.com", "Length Tester");
+            var domain = CreateDomain("Length Hub", "length-hub-overview");
+
+            dbContext.Users.Add(domainAdmin);
+            dbContext.Domains.Add(domain);
+
+            domainAdminId = domainAdmin.Id;
+            domainId = domain.Id;
+
+            dbContext.Set<DomainAdministrator>().Add(new DomainAdministrator
+            {
+                DomainId = domain.Id,
+                UserId = domainAdmin.Id
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, domainAdminId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+            mutation UpdateDomainOverview($input: UpdateDomainOverviewInput!) {
+              updateDomainOverview(input: $input) { id }
+            }
+            """,
+            variables = new
+            {
+                input = new
+                {
+                    domainId,
+                    overviewContent = new string('x', 2001)
+                }
+            }
+        });
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("INVALID_OVERVIEW_CONTENT", body);
+    }
+
+    [Fact]
+    public async Task UpdateDomainOverview_CuratorCreditTooLong_ReturnsError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid domainAdminId = Guid.Empty, domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domainAdmin = CreateUser("lentest-credit@example.com", "Credit Length Tester");
+            var domain = CreateDomain("Credit Hub", "credit-hub-len");
+
+            dbContext.Users.Add(domainAdmin);
+            dbContext.Domains.Add(domain);
+
+            domainAdminId = domainAdmin.Id;
+            domainId = domain.Id;
+
+            dbContext.Set<DomainAdministrator>().Add(new DomainAdministrator
+            {
+                DomainId = domain.Id,
+                UserId = domainAdmin.Id
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, domainAdminId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+            mutation UpdateDomainOverview($input: UpdateDomainOverviewInput!) {
+              updateDomainOverview(input: $input) { id }
+            }
+            """,
+            variables = new
+            {
+                input = new
+                {
+                    domainId,
+                    curatorCredit = new string('y', 201)
+                }
+            }
+        });
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("INVALID_CURATOR_CREDIT", body);
     }
 
     [Fact]

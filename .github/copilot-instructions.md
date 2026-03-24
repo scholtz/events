@@ -257,6 +257,10 @@ Use Playwright's accessible locators in this order of preference:
 4. `page.locator('.css-class', { hasText: '…' })` — acceptable for component-level checks (e.g., event cards)
 5. Avoid `page.locator('[data-testid="…"]`)` unless the above are insufficient
 
+**Strict mode and ambiguous locators**: Playwright runs in strict mode by default — if a locator matches more than one element, `toBeVisible()` and `.click()` throw. Always use `{ exact: true }` when the link/button text could be a substring of another element's text (e.g. `getByRole('link', { name: 'All Events', exact: true })` to avoid also matching "Browse All Events").
+
+**`nth()` index on `v-if` elements**: `v-if` removes the element from the DOM entirely. A `.nth(1)` locator will fail when the preceding sibling is hidden by `v-if` because there is only one matching element in the DOM. In tests that trigger only one of several possible success indicators (e.g. style vs. overview form), use `.first()` instead of a hard-coded index.
+
 ### Assertions
 - Always `await expect(...)` — never use bare `expect()` in async tests.
 - Use `toBeVisible()` to confirm rendered UI, `toContainText()` for partial text.
