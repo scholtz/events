@@ -1,19 +1,95 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useAuthStore } from '@/stores/auth'
-import type { EventAnalyticsItem } from '@/types'
+import { useDomainsStore } from '@/stores/domains'
+import type { EventAnalyticsItem, EventDomain } from '@/types'
 
 const { t, locale } = useI18n()
 const dashboardStore = useDashboardStore()
 const auth = useAuthStore()
+const domainsStore = useDomainsStore()
 
 const overview = computed(() => dashboardStore.overview)
+
+// ── Hub management state ─────────────────────────────────────────────────────
+const hubStyleForms = ref<Record<string, { primaryColor: string; accentColor: string; logoUrl: string; bannerUrl: string }>>({})
+const hubOverviewForms = ref<Record<string, { overviewContent: string; whatBelongsHere: string; submitEventCta: string; curatorCredit: string }>>({})
+const hubStyleSaving = ref<Record<string, boolean>>({})
+const hubStyleSuccess = ref<Record<string, boolean>>({})
+const hubOverviewSaving = ref<Record<string, boolean>>({})
+const hubOverviewSuccess = ref<Record<string, boolean>>({})
+const hubManageError = ref<Record<string, string>>({})
+
+function initHubForms(domains: EventDomain[]) {
+  for (const d of domains) {
+    if (!hubStyleForms.value[d.id]) {
+      hubStyleForms.value[d.id] = {
+        primaryColor: d.primaryColor ?? '',
+        accentColor: d.accentColor ?? '',
+        logoUrl: d.logoUrl ?? '',
+        bannerUrl: d.bannerUrl ?? '',
+      }
+    }
+    if (!hubOverviewForms.value[d.id]) {
+      hubOverviewForms.value[d.id] = {
+        overviewContent: d.overviewContent ?? '',
+        whatBelongsHere: d.whatBelongsHere ?? '',
+        submitEventCta: d.submitEventCta ?? '',
+        curatorCredit: d.curatorCredit ?? '',
+      }
+    }
+  }
+}
+
+async function handleSaveHubStyle(domainId: string) {
+  hubStyleSaving.value[domainId] = true
+  hubStyleSuccess.value[domainId] = false
+  hubManageError.value[domainId] = ''
+  try {
+    const form = hubStyleForms.value[domainId]
+    await domainsStore.updateDomainStyle({
+      domainId,
+      primaryColor: form.primaryColor || null,
+      accentColor: form.accentColor || null,
+      logoUrl: form.logoUrl || null,
+      bannerUrl: form.bannerUrl || null,
+    })
+    hubStyleSuccess.value[domainId] = true
+  } catch {
+    hubManageError.value[domainId] = t('dashboard.hubManageError')
+  } finally {
+    hubStyleSaving.value[domainId] = false
+  }
+}
+
+async function handleSaveHubOverview(domainId: string) {
+  hubOverviewSaving.value[domainId] = true
+  hubOverviewSuccess.value[domainId] = false
+  hubManageError.value[domainId] = ''
+  try {
+    const form = hubOverviewForms.value[domainId]
+    await domainsStore.updateDomainOverview({
+      domainId,
+      overviewContent: form.overviewContent || null,
+      whatBelongsHere: form.whatBelongsHere || null,
+      submitEventCta: form.submitEventCta || null,
+      curatorCredit: form.curatorCredit || null,
+    })
+    hubOverviewSuccess.value[domainId] = true
+  } catch {
+    hubManageError.value[domainId] = t('dashboard.hubManageError')
+  } finally {
+    hubOverviewSaving.value[domainId] = false
+  }
+}
 
 onMounted(async () => {
   if (auth.isAuthenticated) {
     await dashboardStore.fetchDashboard()
+    await domainsStore.fetchMyManagedDomains()
+    initHubForms(domainsStore.myManagedDomains)
   }
 })
 
@@ -290,6 +366,169 @@ function providerLabel(provider: string): string {
           </div>
         </div>
       </template>
+
+      <!-- ── Hub Management (for domain administrators) ──────────────────── -->
+      <section
+        v-if="!dashboardStore.loading && !dashboardStore.error && domainsStore.myManagedDomains.length > 0"
+        class="hub-management-section"
+        aria-labelledby="hub-management-heading"
+      >
+        <div class="section-header">
+          <h2 id="hub-management-heading">{{ t('dashboard.hubManagementTitle') }}</h2>
+          <p class="section-subtitle">{{ t('dashboard.hubManagementDescription') }}</p>
+        </div>
+
+        <div
+          v-for="hub in domainsStore.myManagedDomains"
+          :key="hub.id"
+          class="hub-card card"
+        >
+          <div class="hub-card-header">
+            <div class="hub-card-identity">
+              <img
+                v-if="hub.logoUrl"
+                :src="hub.logoUrl"
+                :alt="hub.name"
+                class="hub-card-logo"
+              />
+              <div>
+                <h3 class="hub-card-name">{{ hub.name }}</h3>
+                <p v-if="hub.description" class="hub-card-description">{{ hub.description }}</p>
+              </div>
+            </div>
+            <RouterLink
+              :to="`/category/${hub.slug}`"
+              class="btn btn-outline btn-sm"
+              target="_blank"
+              rel="noopener"
+            >
+              {{ t('dashboard.hubViewHub') }}
+            </RouterLink>
+          </div>
+
+          <p v-if="hubManageError[hub.id]" class="hub-manage-error" role="alert">
+            {{ hubManageError[hub.id] }}
+          </p>
+
+          <!-- Style form -->
+          <div class="hub-form-section">
+            <h4 class="hub-form-title">{{ t('dashboard.hubStyleTitle') }}</h4>
+            <form class="hub-style-form" @submit.prevent="handleSaveHubStyle(hub.id)">
+              <div class="hub-form-grid">
+                <label class="form-field">
+                  <span>{{ t('dashboard.hubPrimaryColor') }}</span>
+                  <input
+                    v-model="hubStyleForms[hub.id].primaryColor"
+                    class="form-input"
+                    type="text"
+                    placeholder="#137fec"
+                  />
+                </label>
+                <label class="form-field">
+                  <span>{{ t('dashboard.hubAccentColor') }}</span>
+                  <input
+                    v-model="hubStyleForms[hub.id].accentColor"
+                    class="form-input"
+                    type="text"
+                    placeholder="#ff5500"
+                  />
+                </label>
+                <label class="form-field">
+                  <span>{{ t('dashboard.hubLogoUrl') }}</span>
+                  <input
+                    v-model="hubStyleForms[hub.id].logoUrl"
+                    class="form-input"
+                    type="url"
+                    placeholder="https://example.com/logo.png"
+                  />
+                </label>
+                <label class="form-field">
+                  <span>{{ t('dashboard.hubBannerUrl') }}</span>
+                  <input
+                    v-model="hubStyleForms[hub.id].bannerUrl"
+                    class="form-input"
+                    type="url"
+                    placeholder="https://example.com/banner.jpg"
+                  />
+                </label>
+              </div>
+              <div class="hub-form-actions">
+                <button
+                  type="submit"
+                  class="btn btn-primary btn-sm"
+                  :disabled="hubStyleSaving[hub.id]"
+                >
+                  {{ hubStyleSaving[hub.id] ? t('dashboard.hubSaving') : t('dashboard.hubSaveStyle') }}
+                </button>
+                <span v-if="hubStyleSuccess[hub.id]" class="hub-save-success">
+                  {{ t('dashboard.hubSaved') }}
+                </span>
+              </div>
+            </form>
+          </div>
+
+          <!-- Overview / content form -->
+          <div class="hub-form-section">
+            <h4 class="hub-form-title">{{ t('dashboard.hubOverviewTitle') }}</h4>
+            <form class="hub-overview-form" @submit.prevent="handleSaveHubOverview(hub.id)">
+              <div class="hub-form-grid hub-form-grid--full">
+                <label class="form-field">
+                  <span>{{ t('dashboard.hubOverviewContent') }}</span>
+                  <textarea
+                    v-model="hubOverviewForms[hub.id].overviewContent"
+                    class="form-input form-textarea"
+                    rows="3"
+                    maxlength="2000"
+                    placeholder="A short editorial overview about this hub…"
+                  ></textarea>
+                </label>
+                <label class="form-field">
+                  <span>{{ t('dashboard.hubWhatBelongsHere') }}</span>
+                  <textarea
+                    v-model="hubOverviewForms[hub.id].whatBelongsHere"
+                    class="form-input form-textarea"
+                    rows="3"
+                    maxlength="2000"
+                    placeholder="Describe what types of events belong in this hub…"
+                  ></textarea>
+                </label>
+                <label class="form-field">
+                  <span>{{ t('dashboard.hubSubmitEventCta') }}</span>
+                  <input
+                    v-model="hubOverviewForms[hub.id].submitEventCta"
+                    class="form-input"
+                    type="text"
+                    maxlength="200"
+                    placeholder="e.g. Organizing a blockchain event? Submit it here."
+                  />
+                </label>
+                <label class="form-field">
+                  <span>{{ t('dashboard.hubCuratorCredit') }}</span>
+                  <input
+                    v-model="hubOverviewForms[hub.id].curatorCredit"
+                    class="form-input"
+                    type="text"
+                    maxlength="200"
+                    placeholder="e.g. Prague Blockchain Week organizers"
+                  />
+                </label>
+              </div>
+              <div class="hub-form-actions">
+                <button
+                  type="submit"
+                  class="btn btn-primary btn-sm"
+                  :disabled="hubOverviewSaving[hub.id]"
+                >
+                  {{ hubOverviewSaving[hub.id] ? t('dashboard.hubSaving') : t('dashboard.hubSaveOverview') }}
+                </button>
+                <span v-if="hubOverviewSuccess[hub.id]" class="hub-save-success">
+                  {{ t('dashboard.hubSaved') }}
+                </span>
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
     </template>
 
     <!-- Not authenticated -->
@@ -702,6 +941,105 @@ tr:hover td {
   cursor: default;
 }
 
+/* ── Hub management ── */
+.hub-management-section {
+  margin-top: 2.5rem;
+}
+
+.hub-card {
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.hub-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.hub-card-identity {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.hub-card-logo {
+  height: 40px;
+  width: auto;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.hub-card-name {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  margin: 0 0 0.125rem;
+}
+
+.hub-card-description {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.hub-form-section {
+  border-top: 1px solid var(--color-border);
+  padding-top: 1.25rem;
+  margin-top: 1.25rem;
+}
+
+.hub-form-section:first-of-type {
+  border-top: none;
+  padding-top: 0;
+  margin-top: 0;
+}
+
+.hub-form-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
+  margin: 0 0 1rem;
+}
+
+.hub-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.hub-form-grid--full {
+  grid-template-columns: 1fr;
+}
+
+.hub-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.hub-save-success {
+  color: #4ade80;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.hub-manage-error {
+  color: var(--color-danger, #f87171);
+  font-size: 0.875rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(248, 113, 113, 0.1);
+  border-radius: var(--radius-sm, 4px);
+  margin-bottom: 1rem;
+}
+
 /* ── Responsive ── */
 @media (max-width: 640px) {
   .stats-grid {
@@ -713,6 +1051,10 @@ tr:hover td {
   .col-calendar,
   .col-cal-trend {
     display: none;
+  }
+
+  .hub-form-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

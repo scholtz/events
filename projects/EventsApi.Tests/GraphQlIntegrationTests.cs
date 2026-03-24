@@ -5400,4 +5400,159 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal("Upsert CTA.", result.GetProperty("submitEventCta").GetString());
         Assert.Equal("Upsert curator", result.GetProperty("curatorCredit").GetString());
     }
+
+    // ── myManagedDomains query ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task MyManagedDomains_ReturnsDomainsThatUserAdministers()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid domainAdminId = Guid.Empty;
+        Guid domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("mmd-admin@example.com", "Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var domainAdmin = CreateUser("mmd-domainadmin@example.com", "Domain Admin");
+            domainAdminId = domainAdmin.Id;
+
+            var domain = CreateDomain("Hub Alpha", "hub-alpha");
+            domainId = domain.Id;
+
+            dbContext.Users.AddRange(admin, domainAdmin);
+            dbContext.Domains.Add(domain);
+            dbContext.Set<DomainAdministrator>().Add(new DomainAdministrator
+            {
+                DomainId = domain.Id,
+                UserId = domainAdmin.Id,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer", await CreateTokenAsync(factory, domainAdminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyManagedDomains {
+              myManagedDomains {
+                id name slug primaryColor logoUrl bannerUrl
+                overviewContent whatBelongsHere submitEventCta curatorCredit
+              }
+            }
+            """);
+
+        var domains = document.RootElement.GetProperty("data").GetProperty("myManagedDomains");
+        Assert.Equal(1, domains.GetArrayLength());
+        Assert.Equal("Hub Alpha", domains[0].GetProperty("name").GetString());
+        Assert.Equal("hub-alpha", domains[0].GetProperty("slug").GetString());
+    }
+
+    [Fact]
+    public async Task MyManagedDomains_ReturnsEmptyWhenUserAdministersNoDomains()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid userId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("mmd-nodomains@example.com", "No Domains User");
+            userId = user.Id;
+            dbContext.Users.Add(user);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer", await CreateTokenAsync(factory, userId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyManagedDomains {
+              myManagedDomains { id name }
+            }
+            """);
+
+        var domains = document.RootElement.GetProperty("data").GetProperty("myManagedDomains");
+        Assert.Equal(0, domains.GetArrayLength());
+    }
+
+    [Fact]
+    public async Task MyManagedDomains_RequiresAuthentication()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        using var client = factory.CreateClient();
+        // No auth header — unauthenticated
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                query MyManagedDomains {
+                  myManagedDomains { id name }
+                }
+                """
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        var errorMessage = errors.ToString();
+        Assert.True(
+            errorMessage.Contains("AUTH_NOT_AUTHENTICATED", StringComparison.OrdinalIgnoreCase)
+            || errorMessage.Contains("AUTH_NOT_AUTHORIZED", StringComparison.OrdinalIgnoreCase)
+            || errorMessage.Contains("not authorized", StringComparison.OrdinalIgnoreCase),
+            $"Expected auth error but got: {errorMessage}");
+    }
+
+    [Fact]
+    public async Task MyManagedDomains_ReturnsOnlyOwnManagedDomains_NotOtherUsersDomains()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid userAId = Guid.Empty;
+        Guid userBId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var userA = CreateUser("mmd-usera@example.com", "User A");
+            userAId = userA.Id;
+            var userB = CreateUser("mmd-userb@example.com", "User B");
+            userBId = userB.Id;
+
+            var domainA = CreateDomain("Domain A", "domain-a");
+            var domainB = CreateDomain("Domain B", "domain-b");
+
+            dbContext.Users.AddRange(userA, userB);
+            dbContext.Domains.AddRange(domainA, domainB);
+            dbContext.Set<DomainAdministrator>().Add(new DomainAdministrator
+            {
+                DomainId = domainA.Id,
+                UserId = userA.Id,
+            });
+            dbContext.Set<DomainAdministrator>().Add(new DomainAdministrator
+            {
+                DomainId = domainB.Id,
+                UserId = userB.Id,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer", await CreateTokenAsync(factory, userAId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyManagedDomains {
+              myManagedDomains { id name slug }
+            }
+            """);
+
+        var domains = document.RootElement.GetProperty("data").GetProperty("myManagedDomains");
+        Assert.Equal(1, domains.GetArrayLength());
+        Assert.Equal("domain-a", domains[0].GetProperty("slug").GetString());
+    }
 }

@@ -1156,6 +1156,22 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       return
     }
 
+    if (query.includes('query') && query.includes('MyManagedDomains')) {
+      const userId = state.currentUserId
+      const managed = userId
+        ? state.domainAdministrators
+            .filter((da) => da.userId === userId)
+            .map((da) => state.domains.find((d) => d.id === da.domainId))
+            .filter((d): d is MockDomain => d !== undefined)
+        : []
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { myManagedDomains: managed } }),
+      })
+      return
+    }
+
     // Fallback
     await route.fulfill({
       status: 200,

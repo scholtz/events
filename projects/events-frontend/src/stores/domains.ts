@@ -10,6 +10,8 @@ const DOMAIN_FIELDS = `id name slug subdomain description isActive createdAtUtc
 export const useDomainsStore = defineStore('domains', () => {
   const domains = ref<EventDomain[]>([])
   const loading = ref(false)
+  const myManagedDomains = ref<EventDomain[]>([])
+  const myManagedDomainsLoading = ref(false)
 
   async function fetchDomains() {
     loading.value = true
@@ -22,6 +24,22 @@ export const useDomainsStore = defineStore('domains', () => {
       domains.value = data.domains
     } finally {
       loading.value = false
+    }
+  }
+
+  async function fetchMyManagedDomains() {
+    myManagedDomainsLoading.value = true
+    try {
+      const data = await gqlRequest<{ myManagedDomains: EventDomain[] }>(
+        `query MyManagedDomains {
+          myManagedDomains { ${DOMAIN_FIELDS} }
+        }`,
+      )
+      myManagedDomains.value = data.myManagedDomains
+    } catch {
+      myManagedDomains.value = []
+    } finally {
+      myManagedDomainsLoading.value = false
     }
   }
 
@@ -108,6 +126,11 @@ export const useDomainsStore = defineStore('domains', () => {
     if (idx >= 0) {
       domains.value[idx] = data.updateDomainStyle
     }
+    // Also update myManagedDomains if present there
+    const mIdx = myManagedDomains.value.findIndex((d) => d.id === data.updateDomainStyle.id)
+    if (mIdx >= 0) {
+      myManagedDomains.value[mIdx] = data.updateDomainStyle
+    }
     return data.updateDomainStyle
   }
 
@@ -128,13 +151,21 @@ export const useDomainsStore = defineStore('domains', () => {
     if (idx >= 0) {
       domains.value[idx] = data.updateDomainOverview
     }
+    // Also update myManagedDomains if present there
+    const mIdx = myManagedDomains.value.findIndex((d) => d.id === data.updateDomainOverview.id)
+    if (mIdx >= 0) {
+      myManagedDomains.value[mIdx] = data.updateDomainOverview
+    }
     return data.updateDomainOverview
   }
 
   return {
     domains,
     loading,
+    myManagedDomains,
+    myManagedDomainsLoading,
     fetchDomains,
+    fetchMyManagedDomains,
     getDomainBySlug,
     upsertDomain,
     fetchDomainAdministrators,
