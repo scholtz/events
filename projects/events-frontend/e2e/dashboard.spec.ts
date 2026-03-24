@@ -575,4 +575,27 @@ test.describe('Calendar analytics dashboard', () => {
     // Other organizer's event should not appear in table
     await expect(page.getByText("Other's Cal Event")).toBeHidden()
   })
+
+  test('dashboard shows explanatory copy describing what calendar adds measure', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-cal-explain',
+      slug: 'cal-explain-event',
+      name: 'Cal Explain Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // The performance description must explain what "calendar adds" means in plain language
+    await expect(
+      page.locator('.performance-description'),
+    ).toContainText('Calendar adds show how many attendees added an event to their personal calendar')
+  })
 })
