@@ -380,9 +380,9 @@ test.describe('Domain admin management', () => {
 
     await expect(page.getByRole('heading', { name: 'Featured Events' })).toBeVisible()
 
-    // Select event from picker and click Add
+    // Select event from picker and click Add (scoped to the form to avoid ambiguity with other Add buttons)
     await page.locator('.add-featured-form select').selectOption({ label: 'Featured Summit' })
-    await page.getByRole('button', { name: 'Add' }).click()
+    await page.locator('.add-featured-form').getByRole('button', { name: 'Add', exact: true }).click()
 
     // Event should now appear in the featured list
     await expect(page.locator('.featured-events-list').getByText('Featured Summit')).toBeVisible()
