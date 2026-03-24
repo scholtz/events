@@ -49,6 +49,7 @@ async function handleSaveHubStyle(domainId: string) {
   hubManageError.value[domainId] = ''
   try {
     const form = hubStyleForms.value[domainId]
+    if (!form) return
     await domainsStore.updateDomainStyle({
       domainId,
       primaryColor: form.primaryColor || null,
@@ -70,6 +71,7 @@ async function handleSaveHubOverview(domainId: string) {
   hubManageError.value[domainId] = ''
   try {
     const form = hubOverviewForms.value[domainId]
+    if (!form) return
     await domainsStore.updateDomainOverview({
       domainId,
       overviewContent: form.overviewContent || null,
@@ -413,12 +415,16 @@ function providerLabel(provider: string): string {
           <!-- Style form -->
           <div class="hub-form-section">
             <h4 class="hub-form-title">{{ t('dashboard.hubStyleTitle') }}</h4>
-            <form class="hub-style-form" @submit.prevent="handleSaveHubStyle(hub.id)">
+            <form
+              v-if="hubStyleForms[hub.id]"
+              class="hub-style-form"
+              @submit.prevent="handleSaveHubStyle(hub.id)"
+            >
               <div class="hub-form-grid">
                 <label class="form-field">
                   <span>{{ t('dashboard.hubPrimaryColor') }}</span>
                   <input
-                    v-model="hubStyleForms[hub.id].primaryColor"
+                    v-model="hubStyleForms[hub.id]!.primaryColor"
                     class="form-input"
                     type="text"
                     placeholder="#137fec"
@@ -427,7 +433,7 @@ function providerLabel(provider: string): string {
                 <label class="form-field">
                   <span>{{ t('dashboard.hubAccentColor') }}</span>
                   <input
-                    v-model="hubStyleForms[hub.id].accentColor"
+                    v-model="hubStyleForms[hub.id]!.accentColor"
                     class="form-input"
                     type="text"
                     placeholder="#ff5500"
@@ -436,7 +442,7 @@ function providerLabel(provider: string): string {
                 <label class="form-field">
                   <span>{{ t('dashboard.hubLogoUrl') }}</span>
                   <input
-                    v-model="hubStyleForms[hub.id].logoUrl"
+                    v-model="hubStyleForms[hub.id]!.logoUrl"
                     class="form-input"
                     type="url"
                     placeholder="https://example.com/logo.png"
@@ -445,7 +451,7 @@ function providerLabel(provider: string): string {
                 <label class="form-field">
                   <span>{{ t('dashboard.hubBannerUrl') }}</span>
                   <input
-                    v-model="hubStyleForms[hub.id].bannerUrl"
+                    v-model="hubStyleForms[hub.id]!.bannerUrl"
                     class="form-input"
                     type="url"
                     placeholder="https://example.com/banner.jpg"
@@ -470,12 +476,16 @@ function providerLabel(provider: string): string {
           <!-- Overview / content form -->
           <div class="hub-form-section">
             <h4 class="hub-form-title">{{ t('dashboard.hubOverviewTitle') }}</h4>
-            <form class="hub-overview-form" @submit.prevent="handleSaveHubOverview(hub.id)">
+            <form
+              v-if="hubOverviewForms[hub.id]"
+              class="hub-overview-form"
+              @submit.prevent="handleSaveHubOverview(hub.id)"
+            >
               <div class="hub-form-grid hub-form-grid--full">
                 <label class="form-field">
                   <span>{{ t('dashboard.hubOverviewContent') }}</span>
                   <textarea
-                    v-model="hubOverviewForms[hub.id].overviewContent"
+                    v-model="hubOverviewForms[hub.id]!.overviewContent"
                     class="form-input form-textarea"
                     rows="3"
                     maxlength="2000"
@@ -485,7 +495,7 @@ function providerLabel(provider: string): string {
                 <label class="form-field">
                   <span>{{ t('dashboard.hubWhatBelongsHere') }}</span>
                   <textarea
-                    v-model="hubOverviewForms[hub.id].whatBelongsHere"
+                    v-model="hubOverviewForms[hub.id]!.whatBelongsHere"
                     class="form-input form-textarea"
                     rows="3"
                     maxlength="2000"
@@ -495,7 +505,7 @@ function providerLabel(provider: string): string {
                 <label class="form-field">
                   <span>{{ t('dashboard.hubSubmitEventCta') }}</span>
                   <input
-                    v-model="hubOverviewForms[hub.id].submitEventCta"
+                    v-model="hubOverviewForms[hub.id]!.submitEventCta"
                     class="form-input"
                     type="text"
                     maxlength="200"
@@ -505,7 +515,7 @@ function providerLabel(provider: string): string {
                 <label class="form-field">
                   <span>{{ t('dashboard.hubCuratorCredit') }}</span>
                   <input
-                    v-model="hubOverviewForms[hub.id].curatorCredit"
+                    v-model="hubOverviewForms[hub.id]!.curatorCredit"
                     class="form-input"
                     type="text"
                     maxlength="200"
