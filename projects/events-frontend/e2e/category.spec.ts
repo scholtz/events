@@ -20,7 +20,7 @@ test.describe('Category landing page', () => {
 
     await page.goto('/category/technology')
 
-    const breadcrumb = page.getByRole('link', { name: 'All Events' })
+    const breadcrumb = page.getByRole('link', { name: 'All Events', exact: true })
     await expect(breadcrumb).toBeVisible()
     await breadcrumb.click()
     await expect(page).toHaveURL('/')
@@ -42,7 +42,9 @@ test.describe('Category landing page', () => {
     await page.goto('/category/nonexistent-slug')
 
     await expect(page.getByRole('heading', { name: 'Category not found' })).toBeVisible()
-    await expect(page.getByText('nonexistent-slug')).toBeVisible()
+    await expect(
+      page.getByText(/The category "nonexistent-slug" does not exist/),
+    ).toBeVisible()
     await expect(page.getByRole('link', { name: 'Browse All Events' })).toBeVisible()
   })
 

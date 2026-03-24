@@ -259,8 +259,8 @@ test.describe('Domain admin management', () => {
     await page.getByLabel('What belongs here').fill('Tech talks, hackathons, and innovation meetups.')
     await page.getByRole('button', { name: 'Save Overview' }).click()
 
-    // Success indicator
-    await expect(page.getByText('✓ Saved').nth(1)).toBeVisible()
+    // Success indicator (overview form's ✓ Saved - style form is not submitted here)
+    await expect(page.getByText('✓ Saved').first()).toBeVisible()
   })
 
   test('hub overview content appears on public category page', async ({ page }) => {
