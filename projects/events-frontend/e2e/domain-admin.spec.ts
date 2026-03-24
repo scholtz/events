@@ -42,7 +42,7 @@ test.describe('Domain admin management', () => {
     await page.getByRole('button', { name: 'Manage' }).click()
 
     // Style form is visible
-    await expect(page.getByRole('heading', { name: 'Tag Style' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Hub Branding' })).toBeVisible()
     // Admin section is visible
     await expect(page.getByRole('heading', { name: 'Tag Administrators' })).toBeVisible()
     // Current admin is listed in the domain admins section
@@ -206,7 +206,7 @@ test.describe('Domain admin management', () => {
     // Navigate to domains tab and open manage panel
     await page.getByRole('button', { name: /Domains/ }).click()
     await page.getByRole('button', { name: 'Manage' }).click()
-    await expect(page.getByRole('heading', { name: 'Tag Style' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Hub Branding' })).toBeVisible()
 
     // Set logo URL and banner URL
     await page.getByLabel('Logo URL').fill('https://example.com/logo.png')
@@ -232,11 +232,11 @@ test.describe('Domain admin management', () => {
 
     await page.getByRole('button', { name: /Domains/ }).click()
     await page.getByRole('button', { name: 'Manage' }).click()
-    await expect(page.getByRole('heading', { name: 'Tag Style' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Hub Branding' })).toBeVisible()
 
     // Click Close
     await page.getByRole('button', { name: 'Close' }).click()
-    await expect(page.getByRole('heading', { name: 'Tag Style' })).toBeHidden()
+    await expect(page.getByRole('heading', { name: 'Hub Branding' })).toBeHidden()
   })
 
   test('can update hub overview content', async ({ page }) => {
