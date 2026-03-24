@@ -467,11 +467,11 @@ async function handleReviewEvent(eventId: string, status: string) {
 
           <!-- Domain style editor -->
           <div class="domain-style-section">
-            <h3>Tag Style</h3>
+            <h3>{{ t('admin.domainStyleTitle') }}</h3>
             <form class="style-form" @submit.prevent="handleSaveDomainStyle">
               <div class="style-form-grid">
                 <label class="form-field">
-                  <span>Primary Color</span>
+                  <span>{{ t('admin.domainPrimaryColor') }}</span>
                   <input
                     v-model="domainStyleForm.primaryColor"
                     class="form-input"
@@ -480,7 +480,7 @@ async function handleReviewEvent(eventId: string, status: string) {
                   />
                 </label>
                 <label class="form-field">
-                  <span>Accent Color</span>
+                  <span>{{ t('admin.domainAccentColor') }}</span>
                   <input
                     v-model="domainStyleForm.accentColor"
                     class="form-input"
@@ -489,7 +489,7 @@ async function handleReviewEvent(eventId: string, status: string) {
                   />
                 </label>
                 <label class="form-field">
-                  <span>Logo URL</span>
+                  <span>{{ t('admin.domainLogoUrl') }}</span>
                   <input
                     v-model="domainStyleForm.logoUrl"
                     class="form-input"
@@ -498,7 +498,7 @@ async function handleReviewEvent(eventId: string, status: string) {
                   />
                 </label>
                 <label class="form-field">
-                  <span>Banner URL</span>
+                  <span>{{ t('admin.domainBannerUrl') }}</span>
                   <input
                     v-model="domainStyleForm.bannerUrl"
                     class="form-input"
@@ -513,7 +513,7 @@ async function handleReviewEvent(eventId: string, status: string) {
                   class="btn btn-primary btn-sm"
                   :disabled="domainStyleSaving"
                 >
-                  {{ domainStyleSaving ? 'Saving…' : 'Save Style' }}
+                  {{ domainStyleSaving ? t('admin.domainSaving') : t('admin.domainSaveStyle') }}
                 </button>
                 <span v-if="domainStyleSuccess" class="save-success">✓ Saved</span>
               </div>

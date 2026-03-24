@@ -224,4 +224,43 @@ test.describe('Category landing page', () => {
     const hero = page.locator('.category-hero')
     await expect(hero).toHaveAttribute('style', /--category-color:\s*#ff5500/)
   })
+
+  test('accent color is applied as CSS custom property when configured', async ({ page }) => {
+    const domain: MockDomain = {
+      ...makeTechDomain(),
+      primaryColor: '#ff5500',
+      accentColor: '#0055ff',
+    }
+    setupMockApi(page, { domains: [domain], events: [] })
+
+    await page.goto('/category/technology')
+
+    const hero = page.locator('.category-hero')
+    await expect(hero).toHaveAttribute('style', /--category-accent-color:\s*#0055ff/)
+  })
+
+  test('mobile viewport: branded header and hub overview are both visible', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    const domain: MockDomain = {
+      ...makeTechDomain(),
+      primaryColor: '#e44d26',
+      accentColor: '#f16529',
+      overviewContent: 'Tech community for mobile test.',
+      curatorCredit: 'Mobile Curator',
+    }
+    const event = makeApprovedEvent({ name: 'Mobile Branded Event' })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    await page.goto('/category/technology')
+
+    // Heading and event card should be visible on mobile
+    await expect(page.getByRole('heading', { name: 'Technology Events', level: 1 })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Mobile Branded Event' })).toBeVisible()
+    // Branding color is applied
+    await expect(page.locator('.category-hero')).toHaveAttribute('style', /--category-color:\s*#e44d26/)
+    // Hub overview module visible on mobile
+    await expect(page.getByRole('heading', { name: 'About this hub' })).toBeVisible()
+    // Curator credit visible
+    await expect(page.locator('.curator-credit')).toContainText('Mobile Curator')
+  })
 })

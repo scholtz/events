@@ -42,7 +42,7 @@ test.describe('Domain admin management', () => {
     await page.getByRole('button', { name: 'Manage' }).click()
 
     // Style form is visible
-    await expect(page.getByRole('heading', { name: 'Tag Style' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Hub Branding' })).toBeVisible()
     // Admin section is visible
     await expect(page.getByRole('heading', { name: 'Tag Administrators' })).toBeVisible()
     // Current admin is listed in the domain admins section
@@ -206,7 +206,7 @@ test.describe('Domain admin management', () => {
     // Navigate to domains tab and open manage panel
     await page.getByRole('button', { name: /Domains/ }).click()
     await page.getByRole('button', { name: 'Manage' }).click()
-    await expect(page.getByRole('heading', { name: 'Tag Style' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Hub Branding' })).toBeVisible()
 
     // Set logo URL and banner URL
     await page.getByLabel('Logo URL').fill('https://example.com/logo.png')
@@ -232,11 +232,11 @@ test.describe('Domain admin management', () => {
 
     await page.getByRole('button', { name: /Domains/ }).click()
     await page.getByRole('button', { name: 'Manage' }).click()
-    await expect(page.getByRole('heading', { name: 'Tag Style' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Hub Branding' })).toBeVisible()
 
     // Click Close
     await page.getByRole('button', { name: 'Close' }).click()
-    await expect(page.getByRole('heading', { name: 'Tag Style' })).toBeHidden()
+    await expect(page.getByRole('heading', { name: 'Hub Branding' })).toBeHidden()
   })
 
   test('can update hub overview content', async ({ page }) => {
@@ -287,5 +287,51 @@ test.describe('Domain admin management', () => {
     await expect(page.getByText('Tech conferences, hackathons, and workshops.')).toBeVisible()
     // Curator credit
     await expect(page.getByText('Prague Tech Community')).toBeVisible()
+  })
+
+  test('non-admin contributor cannot access domain branding controls', async ({ page }) => {
+    const contributor = {
+      id: 'user-contrib',
+      email: 'contrib@example.com',
+      password: 'Pass123!',
+      displayName: 'Contributor User',
+      role: 'CONTRIBUTOR' as const,
+      createdAtUtc: new Date().toISOString(),
+    }
+    setupMockApi(page, {
+      users: [contributor],
+      domains: [makeTechDomain()],
+      domainAdministrators: [],
+    })
+    await loginAs(page, contributor)
+    await page.goto('/admin')
+
+    // Non-admin sees the access-required gate, not the domain branding form
+    await expect(page.getByRole('heading', { name: 'Admin access required' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Hub Branding' })).toBeHidden()
+  })
+
+  test('mobile viewport: domain branding admin form is usable on small screens', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      domainAdministrators: [],
+    })
+    await loginAs(page, admin)
+    await page.goto('/admin')
+
+    await page.getByRole('button', { name: /Domains/ }).click()
+    await page.getByRole('button', { name: 'Manage' }).click()
+
+    // Branding form is visible and inputs are accessible on mobile
+    await expect(page.getByRole('heading', { name: 'Hub Branding' })).toBeVisible()
+    await page.locator('input[placeholder="#137fec"]').fill('#e44d26')
+    await page.getByRole('button', { name: 'Save Style' }).click()
+    await expect(page.getByText('✓ Saved')).toBeVisible()
   })
 })

@@ -18,6 +18,12 @@ const events = ref<CatalogEvent[]>([])
 const loading = ref(false)
 const error = ref('')
 
+/** Guard against CSS injection: only allow valid 3- or 6-digit hex colors. */
+function safeHexColor(value: string | null | undefined): string | null {
+  if (!value) return null
+  return /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(value.trim()) ? value.trim() : null
+}
+
 const EVENT_FIELDS = `
   id name slug description eventUrl
   venueName addressLine1 city countryCode
@@ -104,7 +110,13 @@ const upcomingCount = computed(() => {
 <template>
   <div class="category-landing-view">
     <!-- Domain header -->
-    <section class="category-hero" :style="domain?.primaryColor ? `--category-color: ${domain.primaryColor}` : ''">
+    <section
+      class="category-hero"
+      :style="[
+        safeHexColor(domain?.primaryColor) ? `--category-color: ${safeHexColor(domain?.primaryColor)}` : '',
+        safeHexColor(domain?.accentColor) ? `--category-accent-color: ${safeHexColor(domain?.accentColor)}` : '',
+      ]"
+    >
       <div class="container category-hero-content">
         <div class="category-hero-text">
           <nav class="category-breadcrumb" aria-label="Breadcrumb">
@@ -237,8 +249,10 @@ const upcomingCount = computed(() => {
 
 <style scoped>
 .category-hero {
+  --category-color: var(--color-primary);
+  --category-accent-color: var(--color-primary);
   background: linear-gradient(160deg, #0d0f14 0%, rgba(19, 127, 236, 0.12) 100%);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 3px solid var(--category-color);
   padding: 2.5rem 0 2rem;
 }
 
@@ -311,7 +325,7 @@ const upcomingCount = computed(() => {
 
 .category-event-count {
   font-size: 0.9375rem;
-  color: var(--color-primary);
+  color: var(--category-color);
   font-weight: 600;
 }
 
@@ -409,7 +423,7 @@ const upcomingCount = computed(() => {
 }
 
 .curator-icon {
-  color: var(--color-primary);
+  color: var(--category-color);
   font-size: 0.9375rem;
 }
 
@@ -423,6 +437,7 @@ const upcomingCount = computed(() => {
 
 .hub-module {
   padding: 1.25rem 1.5rem;
+  border-left: 3px solid var(--category-accent-color);
 }
 
 .hub-module-title {
