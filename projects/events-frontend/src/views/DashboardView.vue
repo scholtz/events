@@ -221,6 +221,7 @@ function providerLabel(provider: string): string {
             <div class="stat-info">
               <div class="stat-number">{{ overview.totalSubmittedEvents }}</div>
               <div class="stat-label">{{ t('dashboard.totalEvents') }}</div>
+              <div class="stat-helper">{{ t('dashboard.totalEventsHelper') }}</div>
             </div>
           </div>
           <div class="stat-card card">
@@ -228,6 +229,7 @@ function providerLabel(provider: string): string {
             <div class="stat-info">
               <div class="stat-number stat-number--success">{{ overview.publishedEvents }}</div>
               <div class="stat-label">{{ t('dashboard.published') }}</div>
+              <div class="stat-helper">{{ t('dashboard.publishedHelper') }}</div>
             </div>
           </div>
           <div class="stat-card card">
@@ -235,6 +237,7 @@ function providerLabel(provider: string): string {
             <div class="stat-info">
               <div class="stat-number stat-number--warning">{{ overview.pendingApprovalEvents }}</div>
               <div class="stat-label">{{ t('dashboard.pendingReview') }}</div>
+              <div class="stat-helper">{{ t('dashboard.pendingReviewHelper') }}</div>
             </div>
           </div>
           <div class="stat-card card">
@@ -242,6 +245,7 @@ function providerLabel(provider: string): string {
             <div class="stat-info">
               <div class="stat-number stat-number--primary">{{ overview.totalInterestedCount }}</div>
               <div class="stat-label">{{ t('dashboard.totalSaves') }}</div>
+              <div class="stat-helper">{{ t('dashboard.totalSavesHelper') }}</div>
             </div>
           </div>
           <div class="stat-card card">
@@ -249,6 +253,7 @@ function providerLabel(provider: string): string {
             <div class="stat-info">
               <div class="stat-number stat-number--calendar">{{ overview.totalCalendarActions }}</div>
               <div class="stat-label">{{ t('dashboard.calendarAdds') }}</div>
+              <div class="stat-helper">{{ t('dashboard.calendarAddsHelper') }}</div>
             </div>
           </div>
         </div>
@@ -275,12 +280,12 @@ function providerLabel(provider: string): string {
                 <th scope="col">{{ t('dashboard.tableEvent') }}</th>
                 <th scope="col">{{ t('dashboard.tableStatus') }}</th>
                 <th scope="col">{{ t('dashboard.tableDate') }}</th>
-                <th scope="col" class="col-saves" :title="t('dashboard.tableSaves')">
+                <th scope="col" class="col-saves" :title="t('dashboard.tableSavesTitle')">
                   {{ t('dashboard.tableSaves') }}
                 </th>
-                <th scope="col" class="col-momentum" :title="t('dashboard.tableMomentum')">{{ t('dashboard.tableMomentum') }}</th>
-                <th scope="col" class="col-calendar" :title="t('dashboard.tableCalendar')">{{ t('dashboard.tableCalendar') }}</th>
-                <th scope="col" class="col-cal-trend" :title="t('dashboard.tableCalTrend')">{{ t('dashboard.tableCalTrend') }}</th>
+                <th scope="col" class="col-momentum" :title="t('dashboard.tableMomentumTitle')">{{ t('dashboard.tableMomentum') }}</th>
+                <th scope="col" class="col-calendar" :title="t('dashboard.tableCalendarTitle')">{{ t('dashboard.tableCalendar') }}</th>
+                <th scope="col" class="col-cal-trend" :title="t('dashboard.tableCalTrendTitle')">{{ t('dashboard.tableCalTrend') }}</th>
                 <th scope="col">{{ t('dashboard.tableActions') }}</th>
               </tr>
             </thead>
@@ -371,6 +376,17 @@ function providerLabel(provider: string): string {
               Share your event link, improve your description, or ensure the date and venue are
               clear to attract interest.
             </div>
+          </div>
+
+          <!-- Guidance: saves exist but no calendar adds -->
+          <div
+            v-if="overview.totalInterestedCount > 0 && overview.totalCalendarActions === 0"
+            class="low-data-guidance low-data-guidance--calendar"
+            role="note"
+            aria-label="Calendar engagement guidance"
+          >
+            <span class="guidance-icon" aria-hidden="true">📅</span>
+            <div>{{ t('dashboard.guidanceNoCalendarAdds') }}</div>
           </div>
         </div>
       </template>
@@ -635,6 +651,14 @@ function providerLabel(provider: string): string {
   font-size: 0.8125rem;
   color: var(--color-text-secondary);
   margin-top: 0.25rem;
+}
+
+.stat-helper {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  margin-top: 0.125rem;
+  line-height: 1.3;
+  opacity: 0.8;
 }
 
 /* ── Section header ── */
