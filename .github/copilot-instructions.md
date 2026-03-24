@@ -291,6 +291,13 @@ npm run test:e2e
 ./node_modules/.bin/playwright test --project=chromium --grep="your pattern" --list
 ```
 
+### Mock handler ordering in mock-api.ts
+The `setupMockApi` handler chain uses `query.includes('OperationName')` to route GraphQL requests. **Handler order matters**: a shorter substring will match before a longer one that contains it. When adding a new handler, check whether the new operation name is a substring of any existing handler's check (or vice versa).
+
+Common pitfall: `"MyManagedDomains".includes("Domains")` is `true`, so a `Domains` handler placed before `MyManagedDomains` will intercept `MyManagedDomains` queries. **Always place more-specific (longer) operation names before their substrings.**
+
+After adding a new handler, verify ordering by searching for all `query.includes(...)` calls and ensuring no earlier handler is a substring of your new operation name.
+
 ### Grep-filtered Playwright runs
 - When asked to run a filtered subset with `--grep`, **always** run the same command with `--list` first and confirm the expected tests are selected before executing the real run.
 - Do not claim that `npm run test:e2e -- --grep=...` or Playwright ignored the grep filter unless you have reproduced it locally. In this repo, `npm run test:e2e -- --project=chromium --grep="a|b|c" --list` correctly limits the selection.
