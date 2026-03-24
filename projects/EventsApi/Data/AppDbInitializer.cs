@@ -280,6 +280,26 @@ public sealed class AppDbInitializer(
         await EnsureDomainColumnAsync("SubmitEventCta", cancellationToken);
         await EnsureDomainColumnAsync("CuratorCredit", cancellationToken);
 
+        // ── DomainFeaturedEvents table ────────────────────────────────────────
+        if (!await TableExistsAsync("DomainFeaturedEvents", cancellationToken))
+        {
+            await _dbContext.Database.ExecuteSqlRawAsync(
+                """
+                CREATE TABLE "DomainFeaturedEvents" (
+                    "Id" TEXT NOT NULL CONSTRAINT "PK_DomainFeaturedEvents" PRIMARY KEY,
+                    "DomainId" TEXT NOT NULL,
+                    "EventId" TEXT NOT NULL,
+                    "DisplayOrder" INTEGER NOT NULL DEFAULT 0,
+                    "CreatedAtUtc" TEXT NOT NULL,
+                    CONSTRAINT "FK_DomainFeaturedEvents_Domains_DomainId" FOREIGN KEY ("DomainId") REFERENCES "Domains" ("Id") ON DELETE CASCADE,
+                    CONSTRAINT "FK_DomainFeaturedEvents_Events_EventId" FOREIGN KEY ("EventId") REFERENCES "Events" ("Id") ON DELETE CASCADE
+                );
+                CREATE UNIQUE INDEX "IX_DomainFeaturedEvents_DomainId_EventId" ON "DomainFeaturedEvents" ("DomainId", "EventId");
+                CREATE INDEX "IX_DomainFeaturedEvents_DomainId_DisplayOrder" ON "DomainFeaturedEvents" ("DomainId", "DisplayOrder");
+                """,
+                cancellationToken);
+        }
+
         // ── DomainAdministrators join table ──────────────────────────────────
         if (!await TableExistsAsync("DomainAdministrators", cancellationToken))
         {

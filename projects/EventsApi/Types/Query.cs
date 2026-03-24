@@ -196,9 +196,32 @@ public sealed class Query
                 cancellationToken);
 
     /// <summary>
-    /// Returns the administrators assigned to a domain/tag.
-    /// Available to global admins and domain administrators.
+    /// Returns the curated featured events for a domain hub, ordered by DisplayOrder.
+    /// Only published events that belong to the domain are returned.
+    /// Events that have been unpublished or deleted after being featured are silently excluded.
+    /// Publicly accessible without authentication.
     /// </summary>
+    public async Task<IReadOnlyList<CatalogEvent>> GetFeaturedEventsForDomainAsync(
+        string domainSlug,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var normalizedSlug = domainSlug.Trim().ToLowerInvariant();
+
+        return await dbContext.DomainFeaturedEvents
+            .AsNoTracking()
+            .Where(fe => fe.Domain.Slug == normalizedSlug && fe.Domain.IsActive)
+            .Where(fe => fe.Event.Status == EventStatus.Published)
+            .OrderBy(fe => fe.DisplayOrder)
+            .Include(fe => fe.Event)
+                .ThenInclude(e => e.Domain)
+            .Include(fe => fe.Event)
+                .ThenInclude(e => e.SubmittedBy)
+            .Select(fe => fe.Event)
+            .ToListAsync(cancellationToken);
+    }
+
+
     [Authorize]
     public async Task<IReadOnlyList<DomainAdministrator>> GetDomainAdministratorsAsync(
         Guid domainId,

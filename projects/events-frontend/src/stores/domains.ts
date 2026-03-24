@@ -159,6 +159,15 @@ export const useDomainsStore = defineStore('domains', () => {
     return data.updateDomainOverview
   }
 
+  async function setDomainFeaturedEvents(domainId: string, eventIds: string[]) {
+    await gqlRequest<{ setDomainFeaturedEvents: { id: string }[] }>(
+      `mutation SetDomainFeaturedEvents($input: SetDomainFeaturedEventsInput!) {
+        setDomainFeaturedEvents(input: $input) { id }
+      }`,
+      { input: { domainId, eventIds } },
+    )
+  }
+
   return {
     domains,
     loading,
@@ -173,5 +182,6 @@ export const useDomainsStore = defineStore('domains', () => {
     removeDomainAdministrator,
     updateDomainStyle,
     updateDomainOverview,
+    setDomainFeaturedEvents,
   }
 })
