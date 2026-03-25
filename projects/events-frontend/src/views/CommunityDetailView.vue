@@ -135,6 +135,21 @@ async function handleRequest() {
   }
 }
 
+async function handleLeave() {
+  if (!detail.value) return
+  actionLoading.value = true
+  actionError.value = null
+  actionSuccess.value = null
+  try {
+    await communitiesStore.leaveGroup(detail.value.group.id)
+    detail.value = { ...detail.value, myMembership: null, memberCount: detail.value.memberCount - 1 }
+  } catch (err) {
+    actionError.value = err instanceof Error ? err.message : t('community.errorLeave')
+  } finally {
+    actionLoading.value = false
+  }
+}
+
 async function handleReviewRequest(membershipId: string, approve: boolean) {
   try {
     const updated = await communitiesStore.reviewMembership(membershipId, approve)
@@ -294,6 +309,14 @@ function memberCountText(count: number): string {
 
           <template v-else-if="isMember">
             <span class="membership-status active">{{ t('community.joined') }}</span>
+            <button
+              v-if="!isAdmin"
+              class="btn btn-ghost btn-leave"
+              :disabled="actionLoading"
+              @click="handleLeave"
+            >
+              {{ actionLoading ? t('common.loading') : t('community.leaveGroup') }}
+            </button>
           </template>
 
           <template v-else-if="isPending">

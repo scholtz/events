@@ -547,6 +547,7 @@ export default {
     requestSent: 'Vaša žiadosť o členstvo bola odoslaná. Správca ju čoskoro preskúma.',
     errorLoad: 'Nepodarilo sa načítať komunitu',
     errorJoin: 'Nepodarilo sa pripojiť ku komunite',
+    errorLeave: 'Nepodarilo sa opustiť komunitu',
     errorRequest: 'Nepodarilo sa odoslať žiadosť o členstvo',
     manageMembersHeading: 'Členovia',
     pendingRequestsHeading: 'Čakajúce žiadosti',

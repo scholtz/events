@@ -171,6 +171,16 @@ export const useCommunitiesStore = defineStore('communities', () => {
     return data.revokeMembership
   }
 
+  async function leaveGroup(groupId: string): Promise<boolean> {
+    const data = await gqlRequest<{ leaveCommunityGroup: boolean }>(
+      `mutation LeaveCommunityGroup($groupId: UUID!) {
+        leaveCommunityGroup(groupId: $groupId)
+      }`,
+      { groupId },
+    )
+    return data.leaveCommunityGroup
+  }
+
   async function associateEvent(groupId: string, eventId: string) {
     await gqlRequest(
       `mutation AssociateEventWithGroup($input: CommunityGroupEventInput!) {
@@ -270,6 +280,7 @@ export const useCommunitiesStore = defineStore('communities', () => {
     reviewMembership,
     assignRole,
     revokeMembership,
+    leaveGroup,
     associateEvent,
     disassociateEvent,
     fetchExternalSources,

@@ -560,6 +560,7 @@ export default {
     requestSent: 'Your membership request has been sent. An administrator will review it shortly.',
     errorLoad: 'Unable to load community',
     errorJoin: 'Unable to join community',
+    errorLeave: 'Unable to leave community',
     errorRequest: 'Unable to send membership request',
     manageMembersHeading: 'Members',
     pendingRequestsHeading: 'Pending Requests',
