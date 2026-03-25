@@ -463,7 +463,6 @@ test.describe('Category landing page', () => {
     // Slovak translation: "Odporúčané podujatia"
     await expect(page.getByRole('heading', { name: 'Odporúčané podujatia' })).toBeVisible()
   })
-})
 
   // ── Open Graph / Twitter Card meta tag tests ────────────────────────────
 
