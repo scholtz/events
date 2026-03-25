@@ -506,3 +506,30 @@ Every featured events mutation/query must have tests covering:
 - **`domain-admin.spec.ts`**: Featured Events section visible in domain detail panel; admin can add event from picker and save (sees ✓ Saved); admin can remove event and save
 - **`category.spec.ts`**: Featured section appears when events configured; section hidden when none configured; featured badge visible on featured event cards; featured event NOT duplicated in main events grid; mobile viewport shows both sections
 
+
+## Domain hub implementation completeness standard
+
+When delivering a domain hub feature, the PR must contain actual code changes — not just an "Initial plan" commit. Always verify `git diff HEAD~1 --stat` shows real file additions/modifications before calling `report_progress`. An empty commit that only describes the plan is not acceptable as the sole deliverable.
+
+### UpdateDomainStyle mutation test checklist
+Every `updateDomainStyle` mutation change must be covered by tests for:
+1. Domain admin can update all style fields (primaryColor, accentColor, logoUrl, bannerUrl)
+2. Regular (non-admin, non-domain-admin) user receives FORBIDDEN error
+3. Unauthenticated request returns AUTH_NOT_AUTHORIZED
+4. Invalid hex color in `primaryColor` returns INVALID_COLOR error code
+5. Invalid hex color in `accentColor` returns INVALID_COLOR error code
+6. Short 3-digit hex color (#fff, #f50) is accepted as valid
+7. Non-absolute URL in `logoUrl` returns INVALID_LOGO_URL error code
+8. Non-absolute URL in `bannerUrl` returns INVALID_BANNER_URL error code
+9. Empty string values normalize to null (clears previously-set fields)
+
+### CategoryLandingView event count badge behavior
+The `.category-event-count` badge in `CategoryLandingView.vue` has two display modes:
+- When the domain has `publishedEventCount` set (server-side total) → use `category.oneEvent` / `category.eventCount` keys ("N events")
+- When `publishedEventCount` is `undefined` (no server count) → fall back to client-computed `upcomingCount` and use `category.oneUpcomingEvent` / `category.upcomingEventCount` keys ("N upcoming events")
+
+In E2E tests:
+- `makeTechDomain()` does NOT include `publishedEventCount` by default (field is absent/undefined)
+- The `DomainBySlug` mock handler passes through `rawDomain` as-is — it does NOT auto-compute `publishedEventCount` from events
+- To test the server-count badge: spread `makeTechDomain()` and set `publishedEventCount: N` explicitly
+- To test the upcoming-count badge: use `makeTechDomain()` as-is and provide events to `setupMockApi`; the view falls back to client-side counting and shows "N upcoming events"

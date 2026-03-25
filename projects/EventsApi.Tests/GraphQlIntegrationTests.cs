@@ -3947,6 +3947,168 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task UpdateDomainStyle_InvalidLogoUrl_ReturnsError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid domainAdminId = Guid.Empty, domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domainAdmin = CreateUser("logourl@example.com", "Logo URL Tester");
+            var domain = CreateDomain("Crypto", "crypto-logo-url-test");
+
+            dbContext.Users.Add(domainAdmin);
+            dbContext.Domains.Add(domain);
+
+            domainAdminId = domainAdmin.Id;
+            domainId = domain.Id;
+
+            dbContext.Set<DomainAdministrator>().Add(new DomainAdministrator
+            {
+                DomainId = domain.Id,
+                UserId = domainAdmin.Id
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, domainAdminId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+            mutation UpdateStyle($input: UpdateDomainStyleInput!) {
+              updateDomainStyle(input: $input) { id }
+            }
+            """,
+            variables = new { input = new { domainId, logoUrl = "not-a-url" } }
+        });
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("INVALID_LOGO_URL", body);
+    }
+
+    [Fact]
+    public async Task UpdateDomainStyle_InvalidBannerUrl_ReturnsError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid domainAdminId = Guid.Empty, domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domainAdmin = CreateUser("bannerurl@example.com", "Banner URL Tester");
+            var domain = CreateDomain("Crypto", "crypto-banner-url-test");
+
+            dbContext.Users.Add(domainAdmin);
+            dbContext.Domains.Add(domain);
+
+            domainAdminId = domainAdmin.Id;
+            domainId = domain.Id;
+
+            dbContext.Set<DomainAdministrator>().Add(new DomainAdministrator
+            {
+                DomainId = domain.Id,
+                UserId = domainAdmin.Id
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, domainAdminId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+            mutation UpdateStyle($input: UpdateDomainStyleInput!) {
+              updateDomainStyle(input: $input) { id }
+            }
+            """,
+            variables = new { input = new { domainId, bannerUrl = "relative/path/not-absolute" } }
+        });
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("INVALID_BANNER_URL", body);
+    }
+
+    [Fact]
+    public async Task UpdateDomainStyle_Unauthenticated_ReturnsAuthError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var domainId = Guid.NewGuid();
+
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+            mutation UpdateStyle($input: UpdateDomainStyleInput!) {
+              updateDomainStyle(input: $input) { id }
+            }
+            """,
+            variables = new { input = new { domainId, primaryColor = "#ff0000" } }
+        });
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.True(
+            body.Contains("AUTH_NOT_AUTHORIZED", StringComparison.OrdinalIgnoreCase) ||
+            body.Contains("UNAUTHORIZED", StringComparison.OrdinalIgnoreCase) ||
+            body.Contains("not authorized", StringComparison.OrdinalIgnoreCase),
+            $"Expected auth error, got: {body}");
+    }
+
+    [Fact]
+    public async Task UpdateDomainStyle_NullClearsOptionalFields()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid domainAdminId = Guid.Empty, domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domainAdmin = CreateUser("nullclear@example.com", "Null Clear Tester");
+            var domain = CreateDomain("Crypto", "crypto-null-clear");
+            domain.PrimaryColor = "#ff0000";
+            domain.AccentColor = "#00ff00";
+            domain.LogoUrl = "https://example.com/logo.png";
+            domain.BannerUrl = "https://example.com/banner.jpg";
+
+            dbContext.Users.Add(domainAdmin);
+            dbContext.Domains.Add(domain);
+
+            domainAdminId = domainAdmin.Id;
+            domainId = domain.Id;
+
+            dbContext.Set<DomainAdministrator>().Add(new DomainAdministrator
+            {
+                DomainId = domain.Id,
+                UserId = domainAdmin.Id
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, domainAdminId));
+
+        // Passing empty strings normalizes to null (NormalizeOptionalValue behavior)
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation UpdateStyle($input: UpdateDomainStyleInput!) {
+              updateDomainStyle(input: $input) {
+                id primaryColor accentColor logoUrl bannerUrl
+              }
+            }
+            """,
+            new { input = new { domainId, primaryColor = "", accentColor = "", logoUrl = "", bannerUrl = "" } });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("updateDomainStyle");
+        Assert.True(
+            result.GetProperty("primaryColor").ValueKind == System.Text.Json.JsonValueKind.Null
+                || result.GetProperty("primaryColor").GetString() == "",
+            "primaryColor should be cleared");
+        Assert.True(
+            result.GetProperty("logoUrl").ValueKind == System.Text.Json.JsonValueKind.Null
+                || result.GetProperty("logoUrl").GetString() == "",
+            "logoUrl should be cleared");
+    }
+
+    [Fact]
     public async Task GetDomainAdministrators_ReturnsAdminsForDomain()
     {
         await using var factory = new EventsApiWebApplicationFactory();
@@ -4401,7 +4563,112 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal("Web3 Foundation", domain.GetProperty("curatorCredit").GetString());
     }
 
-    // ── Language filter tests ────────────────────────────────────────────────
+    [Fact]
+    public async Task DomainBySlug_ReturnsPublishedEventCount_WithNoEvents()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            dbContext.Domains.Add(CreateDomain("Empty Hub", "empty-hub-count"));
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query DomainBySlug($slug: String!) {
+              domainBySlug(slug: $slug) {
+                name publishedEventCount
+              }
+            }
+            """,
+            new { slug = "empty-hub-count" });
+
+        var domain = document.RootElement.GetProperty("data").GetProperty("domainBySlug");
+        Assert.Equal("Empty Hub", domain.GetProperty("name").GetString());
+        Assert.Equal(0, domain.GetProperty("publishedEventCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task DomainBySlug_ReturnsPublishedEventCount_CountsOnlyPublishedEvents()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("counter@example.com", "Counter");
+            dbContext.Users.Add(user);
+            var domain = CreateDomain("Count Hub", "count-hub-test");
+            dbContext.Domains.Add(domain);
+
+            var futureDate = DateTime.UtcNow.AddMonths(3);
+            // Two published events in this domain
+            dbContext.Events.Add(CreateEvent("Published A", "pub-a", "Desc", "Venue", "Prague", futureDate, domain, user, status: EventStatus.Published));
+            dbContext.Events.Add(CreateEvent("Published B", "pub-b", "Desc", "Venue", "Brno", futureDate.AddDays(1), domain, user, status: EventStatus.Published));
+            // One pending — must NOT be counted
+            dbContext.Events.Add(CreateEvent("Pending C", "pend-c", "Desc", "Venue", "Bratislava", futureDate.AddDays(2), domain, user, status: EventStatus.PendingApproval));
+            // One rejected — must NOT be counted
+            dbContext.Events.Add(CreateEvent("Rejected D", "rej-d", "Desc", "Venue", "Vienna", futureDate.AddDays(3), domain, user, status: EventStatus.Rejected));
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query DomainBySlug($slug: String!) {
+              domainBySlug(slug: $slug) {
+                publishedEventCount
+              }
+            }
+            """,
+            new { slug = "count-hub-test" });
+
+        var domain = document.RootElement.GetProperty("data").GetProperty("domainBySlug");
+        // Only the 2 PUBLISHED events must be counted
+        Assert.Equal(2, domain.GetProperty("publishedEventCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task DomainBySlug_PublishedEventCount_DoesNotIncludeOtherDomainEvents()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("isolation@example.com", "Isolation");
+            dbContext.Users.Add(user);
+            var domainA = CreateDomain("Domain A", "domain-a-isolation");
+            var domainB = CreateDomain("Domain B", "domain-b-isolation");
+            dbContext.Domains.AddRange(domainA, domainB);
+
+            var futureDate = DateTime.UtcNow.AddMonths(2);
+            // 3 events in domain A
+            for (var i = 0; i < 3; i++)
+                dbContext.Events.Add(CreateEvent($"A Event {i}", $"a-event-{i}", "Desc", "Venue", "Prague",
+                    futureDate.AddDays(i), domainA, user, status: EventStatus.Published));
+            // 5 events in domain B
+            for (var i = 0; i < 5; i++)
+                dbContext.Events.Add(CreateEvent($"B Event {i}", $"b-event-{i}", "Desc", "Venue", "Brno",
+                    futureDate.AddDays(i), domainB, user, status: EventStatus.Published));
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query DomainBySlug($slug: String!) {
+              domainBySlug(slug: $slug) {
+                publishedEventCount
+              }
+            }
+            """,
+            new { slug = "domain-a-isolation" });
+
+        var domain = document.RootElement.GetProperty("data").GetProperty("domainBySlug");
+        // Domain A has exactly 3; Domain B's 5 must not bleed in
+        Assert.Equal(3, domain.GetProperty("publishedEventCount").GetInt32());
+    }
 
     [Fact]
     public async Task LanguageFilter_ReturnsOnlyMatchingLanguage()

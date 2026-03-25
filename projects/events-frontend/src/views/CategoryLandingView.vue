@@ -2,14 +2,12 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
-import { useDomainsStore } from '@/stores/domains'
 import EventCard from '@/components/events/EventCard.vue'
 import type { CatalogEvent, EventDomain } from '@/types'
 import { gqlRequest } from '@/lib/graphql'
 
 const { t } = useI18n()
 const route = useRoute()
-const domainsStore = useDomainsStore()
 
 const slug = computed(() => route.params.slug as string)
 
@@ -38,27 +36,22 @@ const EVENT_FIELDS = `
 
 const DOMAIN_FIELDS = `id name slug subdomain description isActive createdAtUtc
   createdByUserId primaryColor accentColor logoUrl bannerUrl
-  overviewContent whatBelongsHere submitEventCta curatorCredit`
+  overviewContent whatBelongsHere submitEventCta curatorCredit
+  publishedEventCount`
 
 async function fetchCategoryData() {
   loading.value = true
   error.value = ''
 
   try {
-    // Try to find domain from store first (already loaded in App.vue)
-    let foundDomain: EventDomain | null = domainsStore.getDomainBySlug(slug.value) ?? null
-
-    if (!foundDomain) {
-      // Fallback: fetch from API if not already in store
-      const domainData = await gqlRequest<{ domainBySlug: EventDomain | null }>(
-        `query DomainBySlug($slug: String!) {
-          domainBySlug(slug: $slug) { ${DOMAIN_FIELDS} }
-        }`,
-        { slug: slug.value },
-      )
-      foundDomain = domainData.domainBySlug
-    }
-
+    // Always fetch from API to ensure publishedEventCount and all branding fields are present
+    const domainData = await gqlRequest<{ domainBySlug: EventDomain | null }>(
+      `query DomainBySlug($slug: String!) {
+        domainBySlug(slug: $slug) { ${DOMAIN_FIELDS} }
+      }`,
+      { slug: slug.value },
+    )
+    const foundDomain = domainData.domainBySlug
     domain.value = foundDomain
 
     if (!foundDomain) {
@@ -118,18 +111,51 @@ const metaDescription = computed(() => {
   return (domain.value.description || domain.value.overviewContent || '').slice(0, 160)
 })
 
+/** The social sharing image: prefer banner, fall back to logo, fall back to null. */
+const socialImage = computed(() => domain.value?.bannerUrl ?? domain.value?.logoUrl ?? null)
+
+/**
+ * Upsert a `<meta>` element in `<head>`.
+ * @param attr - the attribute key used to identify/select the element ('name' or 'property')
+ * @param attrValue - the value for the identifying attribute (e.g. 'description', 'og:title')
+ * @param content - the content to set; pass '' to clear
+ */
+function setMetaTag(attr: 'name' | 'property', attrValue: string, content: string): void {
+  if (typeof document === 'undefined') return
+  let el = document.querySelector<HTMLMetaElement>(`meta[${attr}="${attrValue}"]`)
+  if (!el) {
+    el = document.createElement('meta')
+    el.setAttribute(attr, attrValue)
+    document.head.appendChild(el)
+  }
+  el.content = content
+}
+
+/** Syncs all SEO + social meta tags whenever domain data changes. */
+function updateSeoTags(
+  title: string,
+  desc: string,
+  image: string | null,
+): void {
+  const url = typeof window !== 'undefined' ? window.location.href : ''
+  // Standard meta
+  setMetaTag('name', 'description', desc)
+  // Open Graph
+  setMetaTag('property', 'og:type', 'website')
+  setMetaTag('property', 'og:title', title)
+  setMetaTag('property', 'og:description', desc)
+  setMetaTag('property', 'og:url', url)
+  setMetaTag('property', 'og:image', image ?? '')
+  // Twitter / X Cards
+  setMetaTag('name', 'twitter:card', image ? 'summary_large_image' : 'summary')
+  setMetaTag('name', 'twitter:title', title)
+  setMetaTag('name', 'twitter:description', desc)
+  setMetaTag('name', 'twitter:image', image ?? '')
+}
+
 watch(
-  metaDescription,
-  (desc) => {
-    if (typeof document === 'undefined') return
-    let metaEl = document.querySelector<HTMLMetaElement>('meta[name="description"]')
-    if (!metaEl) {
-      metaEl = document.createElement('meta')
-      metaEl.name = 'description'
-      document.head.appendChild(metaEl)
-    }
-    metaEl.content = desc
-  },
+  [pageTitle, metaDescription, socialImage],
+  ([title, desc, image]) => updateSeoTags(title, desc, image),
   { immediate: true },
 )
 
@@ -178,9 +204,13 @@ const nonFeaturedEvents = computed(() =>
             <p v-if="domain.description" class="category-description">{{ domain.description }}</p>
             <p class="category-event-count">
               {{
-                upcomingCount === 1
-                  ? t('category.oneUpcomingEvent')
-                  : t('category.upcomingEventCount', { count: upcomingCount })
+                domain.publishedEventCount !== undefined
+                  ? (domain.publishedEventCount === 1
+                      ? t('category.oneEvent')
+                      : t('category.eventCount', { count: domain.publishedEventCount }))
+                  : (upcomingCount === 1
+                      ? t('category.oneUpcomingEvent')
+                      : t('category.upcomingEventCount', { count: upcomingCount }))
               }}
             </p>
             <!-- Curator credit trust cue -->

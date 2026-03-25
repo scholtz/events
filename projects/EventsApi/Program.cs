@@ -139,7 +139,8 @@ builder.Services
     .AddAuthorization()
     .AddQueryType<Query>()
     .AddMutationType<Mutation>()
-    .AddTypeExtension<CatalogEventExtension>();
+    .AddTypeExtension<CatalogEventExtension>()
+    .AddTypeExtension<EventDomainExtension>();
 
 var app = builder.Build();
 

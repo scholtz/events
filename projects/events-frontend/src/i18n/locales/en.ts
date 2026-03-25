@@ -477,6 +477,8 @@ export default {
     heading: '{name} Events',
     oneUpcomingEvent: '1 upcoming event',
     upcomingEventCount: '{count} upcoming events',
+    oneEvent: '1 event',
+    eventCount: '{count} events',
     oneEventFound: '1 event found',
     eventsFound: '{count} events found',
     filterAndExplore: 'Filter & Explore',
