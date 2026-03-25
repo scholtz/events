@@ -189,6 +189,7 @@ export default {
     shareEvent: 'Share event',
     addToCalendar: 'Add to calendar',
     calendarAdded: 'Added to calendar ✓',
+    calendarMenuLabel: 'Calendar options',
     downloadIcs: 'Download .ics file',
     googleCalendar: 'Google Calendar',
     outlookCalendar: 'Outlook',

@@ -182,6 +182,7 @@ export default {
     shareEvent: 'Zdieľať udalosť',
     addToCalendar: 'Pridať do kalendára',
     calendarAdded: 'Pridané do kalendára ✓',
+    calendarMenuLabel: 'Možnosti kalendára',
     downloadIcs: 'Stiahnuť .ics súbor',
     googleCalendar: 'Google Kalendár',
     outlookCalendar: 'Outlook',
