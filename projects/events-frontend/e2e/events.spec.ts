@@ -1387,7 +1387,7 @@ test.describe('Event detail page', () => {
     // Press Tab — the menu must close immediately (no cycling through items)
     await page.keyboard.press('Tab')
 
-    await expect(page.getByRole('menuitem', { name: /Google Calendar/i })).not.toBeVisible()
+    await expect(page.getByRole('menuitem', { name: /Google Calendar/i })).toBeHidden()
     // Focus must return to the toggle button (clean exit point, not a trap)
     await expect(page.getByRole('button', { name: /Add to calendar/i })).toBeFocused()
   })
