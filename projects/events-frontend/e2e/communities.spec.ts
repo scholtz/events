@@ -86,11 +86,13 @@ test.describe('Communities list page', () => {
 
     await page.getByRole('button', { name: 'Create Community' }).click()
     await page.getByLabel('Community name').fill('Another Group')
+    // clear() ensures autoSlug-generated value is removed before fill() sets the slug
+    await page.getByLabel('URL slug').clear()
     await page.getByLabel('URL slug').fill('taken-slug')
     // Scope to form-actions to avoid strict-mode conflict with the toggle button
     await page.locator('.form-actions').getByRole('button', { name: 'Create Community' }).click()
 
-    await expect(page.getByText(/already taken/i)).toBeVisible()
+    await expect(page.locator('.error-banner')).toContainText(/already taken/i)
   })
 })
 
@@ -197,8 +199,10 @@ test.describe('Community detail page - private group', () => {
     state.communityGroups.push(makePrivateGroup())
 
     await page.goto('/community/secret-builders-guild')
-    await expect(page.getByText('Private Community')).toBeVisible()
-    await expect(page.getByText(/request access/i)).toBeVisible()
+    // Use getByRole to avoid strict-mode: "Private Community" appears in summary and description too
+    await expect(page.getByRole('heading', { name: 'Private Community' })).toBeVisible()
+    // Use .private-notice to scope: description contains "request access" as a substring
+    await expect(page.locator('.private-notice')).toContainText(/request access/i)
   })
 
   test('shows Request Access button for authenticated non-member', async ({ page }) => {
@@ -310,9 +314,11 @@ test.describe('Community detail page - admin member management', () => {
 
     await loginAs(page, admin)
     await page.goto('/community/prague-crypto-circle')
-    await expect(page.getByText('Members')).toBeVisible()
+    // Use getByRole heading to avoid matching "members" in "2 members" count and in "membership requests"
+    await expect(page.getByRole('heading', { name: 'Members' })).toBeVisible()
     await expect(page.getByText('Contributor User')).toBeVisible()
-    await expect(page.getByText('Member')).toBeVisible()
+    // Use role badge locator to avoid matching "Member" in <option> elements
+    await expect(page.locator('.member-role-badge', { hasText: 'Member' })).toBeVisible()
   })
 
   test('admin can change member role to Event Manager', async ({ page }) => {
@@ -333,8 +339,8 @@ test.describe('Community detail page - admin member management', () => {
     const roleSelect = page.locator('.role-select').first()
     await roleSelect.selectOption('EVENT_MANAGER')
 
-    // The role badge updates
-    await expect(page.getByText('Event Manager')).toBeVisible()
+    // The role badge updates — scope to .member-role-badge to avoid matching <option> elements
+    await expect(page.locator('.member-role-badge', { hasText: 'Event Manager' })).toBeVisible()
   })
 
   test('admin can remove a member', async ({ page }) => {
