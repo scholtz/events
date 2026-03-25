@@ -11,6 +11,12 @@ namespace EventsApi.Tests.Infrastructure;
 public sealed class EventsApiWebApplicationFactory : WebApplicationFactory<Program>
 {
     private readonly string _databaseName = $"events-tests-{Guid.NewGuid()}";
+    private readonly Action<IServiceCollection>? _additionalServices;
+
+    public EventsApiWebApplicationFactory(Action<IServiceCollection>? additionalServices = null)
+    {
+        _additionalServices = additionalServices;
+    }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -33,6 +39,8 @@ public sealed class EventsApiWebApplicationFactory : WebApplicationFactory<Progr
             services.RemoveAll<AppDbContext>();
             services.AddDbContext<AppDbContext>(options =>
                 options.UseInMemoryDatabase(_databaseName));
+
+            _additionalServices?.Invoke(services);
         });
     }
 }
