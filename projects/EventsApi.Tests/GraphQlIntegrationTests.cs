@@ -7,6 +7,7 @@ using EventsApi.Security;
 using EventsApi.Tests.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace EventsApi.Tests;
 
@@ -7022,5 +7023,1160 @@ public sealed class GraphQlIntegrationTests
             || errorMessage.Contains("not authorized", StringComparison.OrdinalIgnoreCase)
             || errorMessage.Contains("unauthorized", StringComparison.OrdinalIgnoreCase),
             $"Expected auth error but got: {errorMessage}");
+    }
+
+    // ── External source claim tests ───────────────────────────────────────────
+
+    [Fact]
+    public async Task AddExternalSourceClaim_ByGroupAdmin_CreatesClaimInPendingReview()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid groupId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("esc-admin@example.com", "ESC Admin");
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "ESC Group",
+                Slug = "esc-group",
+                CreatedByUserId = admin.Id,
+            };
+            groupId = group.Id;
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = admin.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation AddClaim($groupId: UUID!, $input: AddExternalSourceClaimInput!) {
+              addExternalSourceClaim(groupId: $groupId, input: $input) {
+                id
+                groupId
+                sourceType
+                sourceUrl
+                sourceIdentifier
+                status
+              }
+            }
+            """,
+            new
+            {
+                groupId,
+                input = new
+                {
+                    sourceType = "MEETUP",
+                    sourceUrl = "https://www.meetup.com/my-test-group"
+                }
+            });
+
+        var claim = doc.RootElement.GetProperty("data").GetProperty("addExternalSourceClaim");
+        Assert.Equal(groupId.ToString(), claim.GetProperty("groupId").GetString());
+        Assert.Equal("MEETUP", claim.GetProperty("sourceType").GetString());
+        Assert.Equal("https://www.meetup.com/my-test-group", claim.GetProperty("sourceUrl").GetString());
+        Assert.Equal("my-test-group", claim.GetProperty("sourceIdentifier").GetString());
+        Assert.Equal("PENDING_REVIEW", claim.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task AddExternalSourceClaim_InvalidMeetupUrl_ReturnsValidationError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid groupId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("esc-invalid@example.com", "ESC Invalid");
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "ESC Invalid Group",
+                Slug = "esc-invalid-group",
+                CreatedByUserId = admin.Id,
+            };
+            groupId = group.Id;
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = admin.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation AddClaim($groupId: UUID!, $input: AddExternalSourceClaimInput!) {
+                  addExternalSourceClaim(groupId: $groupId, input: $input) {
+                    id
+                    status
+                  }
+                }
+                """,
+            variables = new
+            {
+                groupId,
+                input = new
+                {
+                    sourceType = "MEETUP",
+                    sourceUrl = "https://www.notsupportedsite.com/my-group"
+                }
+            }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(doc.RootElement.TryGetProperty("errors", out var errors),
+            $"Expected validation error but got no errors. Response: {doc.RootElement}");
+        Assert.Contains("INVALID_SOURCE_URL", errors.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task AddExternalSourceClaim_NonAdminMember_ReturnsForbidden()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid memberId = Guid.Empty;
+        Guid groupId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("esc-adm@example.com", "ESC Adm");
+            adminId = admin.Id;
+            var member = CreateUser("esc-member@example.com", "ESC Member");
+            memberId = member.Id;
+            dbContext.Users.AddRange(admin, member);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "ESC Auth Group",
+                Slug = "esc-auth-group",
+                CreatedByUserId = admin.Id,
+            };
+            groupId = group.Id;
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.AddRange(
+                new EventsApi.Data.Entities.CommunityMembership
+                {
+                    GroupId = group.Id, UserId = admin.Id,
+                    Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                    Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+                },
+                new EventsApi.Data.Entities.CommunityMembership
+                {
+                    GroupId = group.Id, UserId = member.Id,
+                    Role = EventsApi.Data.Entities.CommunityMemberRole.Member,
+                    Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+                }
+            );
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, memberId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation AddClaim($groupId: UUID!, $input: AddExternalSourceClaimInput!) {
+                  addExternalSourceClaim(groupId: $groupId, input: $input) { id }
+                }
+                """,
+            variables = new
+            {
+                groupId,
+                input = new
+                {
+                    sourceType = "LUMA",
+                    sourceUrl = "https://lu.ma/my-calendar"
+                }
+            }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(doc.RootElement.TryGetProperty("errors", out var errors),
+            $"Expected FORBIDDEN but no errors returned. Response: {doc.RootElement}");
+        Assert.Contains("FORBIDDEN", errors.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task AddExternalSourceClaim_Unauthenticated_ReturnsAuthError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var groupId = Guid.NewGuid();
+        await SeedAsync(factory, _ => { });
+
+        using var client = factory.CreateClient();
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation AddClaim($groupId: UUID!, $input: AddExternalSourceClaimInput!) {
+                  addExternalSourceClaim(groupId: $groupId, input: $input) { id }
+                }
+                """,
+            variables = new
+            {
+                groupId,
+                input = new { sourceType = "MEETUP", sourceUrl = "https://www.meetup.com/test" }
+            }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(doc.RootElement.TryGetProperty("errors", out var errors));
+        var errStr = errors.ToString();
+        Assert.True(
+            errStr.Contains("AUTH_NOT_AUTHORIZED", StringComparison.OrdinalIgnoreCase)
+            || errStr.Contains("not authorized", StringComparison.OrdinalIgnoreCase)
+            || errStr.Contains("unauthorized", StringComparison.OrdinalIgnoreCase),
+            $"Expected auth error but got: {errStr}");
+    }
+
+    [Fact]
+    public async Task AddExternalSourceClaim_DuplicateClaim_ReturnsDuplicateError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid groupId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("esc-dup@example.com", "ESC Dup");
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "ESC Dup Group",
+                Slug = "esc-dup-group",
+                CreatedByUserId = admin.Id,
+            };
+            groupId = group.Id;
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = admin.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+
+            // Pre-existing claim
+            dbContext.Set<EventsApi.Data.Entities.ExternalSourceClaim>().Add(new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/dup-group",
+                SourceIdentifier = "dup-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.PendingReview,
+                CreatedByUserId = admin.Id,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation AddClaim($groupId: UUID!, $input: AddExternalSourceClaimInput!) {
+                  addExternalSourceClaim(groupId: $groupId, input: $input) { id }
+                }
+                """,
+            variables = new
+            {
+                groupId,
+                input = new
+                {
+                    sourceType = "MEETUP",
+                    sourceUrl = "https://www.meetup.com/dup-group"
+                }
+            }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(doc.RootElement.TryGetProperty("errors", out var errors),
+            $"Expected DUPLICATE_CLAIM error but none returned. Response: {doc.RootElement}");
+        Assert.Contains("DUPLICATE_CLAIM", errors.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task RemoveExternalSourceClaim_ByGroupAdmin_RemovesClaim()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("esc-rm@example.com", "ESC Rm");
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "ESC Remove Group",
+                Slug = "esc-remove-group",
+                CreatedByUserId = admin.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = admin.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Luma,
+                SourceUrl = "https://lu.ma/remove-test",
+                SourceIdentifier = "remove-test",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.PendingReview,
+                CreatedByUserId = admin.Id,
+            };
+            claimId = claim.Id;
+            dbContext.Set<EventsApi.Data.Entities.ExternalSourceClaim>().Add(claim);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation RemoveClaim($claimId: UUID!) {
+              removeExternalSourceClaim(claimId: $claimId)
+            }
+            """,
+            new { claimId });
+
+        var result = doc.RootElement.GetProperty("data").GetProperty("removeExternalSourceClaim").GetBoolean();
+        Assert.True(result);
+    }
+
+    [Fact]
+    public async Task TriggerExternalSync_UnverifiedClaim_ReturnsError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("esc-sync@example.com", "ESC Sync");
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "ESC Sync Group",
+                Slug = "esc-sync-group",
+                CreatedByUserId = admin.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = admin.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/sync-group",
+                SourceIdentifier = "sync-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.PendingReview, // NOT verified
+                CreatedByUserId = admin.Id,
+            };
+            claimId = claim.Id;
+            dbContext.Set<EventsApi.Data.Entities.ExternalSourceClaim>().Add(claim);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation Sync($claimId: UUID!) {
+                  triggerExternalSync(claimId: $claimId) {
+                    importedCount
+                    skippedCount
+                    errorCount
+                    summary
+                  }
+                }
+                """,
+            variables = new { claimId }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(doc.RootElement.TryGetProperty("errors", out var errors),
+            $"Expected CLAIM_NOT_VERIFIED error but none returned. Response: {doc.RootElement}");
+        Assert.Contains("CLAIM_NOT_VERIFIED", errors.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task TriggerExternalSync_VerifiedClaim_ReturnsZeroCountsForStubAdapter()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("esc-vsync@example.com", "ESC VSync");
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var domain = CreateDomain("Tech", "tech-esc");
+            dbContext.Domains.Add(domain);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "ESC VSync Group",
+                Slug = "esc-vsync-group",
+                CreatedByUserId = admin.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = admin.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/vsync-group",
+                SourceIdentifier = "vsync-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.Verified, // verified
+                CreatedByUserId = admin.Id,
+            };
+            claimId = claim.Id;
+            dbContext.Set<EventsApi.Data.Entities.ExternalSourceClaim>().Add(claim);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation Sync($claimId: UUID!) {
+              triggerExternalSync(claimId: $claimId) {
+                importedCount
+                skippedCount
+                errorCount
+                summary
+              }
+            }
+            """,
+            new { claimId });
+
+        var result = doc.RootElement.GetProperty("data").GetProperty("triggerExternalSync");
+        Assert.Equal(0, result.GetProperty("importedCount").GetInt32());
+        Assert.Equal(0, result.GetProperty("skippedCount").GetInt32());
+        Assert.Equal(0, result.GetProperty("errorCount").GetInt32());
+        // Summary should mention "0 events" or "Imported 0 events"
+        var summary = result.GetProperty("summary").GetString();
+        Assert.NotEmpty(summary ?? "");
+    }
+
+    [Fact]
+    public async Task GroupExternalSources_ByGroupAdmin_ReturnsClaims()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid groupId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("esc-list@example.com", "ESC List");
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "ESC List Group",
+                Slug = "esc-list-group",
+                CreatedByUserId = admin.Id,
+            };
+            groupId = group.Id;
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = admin.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+
+            dbContext.Set<EventsApi.Data.Entities.ExternalSourceClaim>().Add(
+                new EventsApi.Data.Entities.ExternalSourceClaim
+                {
+                    GroupId = group.Id,
+                    SourceType = EventsApi.Data.Entities.ExternalSourceType.Luma,
+                    SourceUrl = "https://lu.ma/list-cal",
+                    SourceIdentifier = "list-cal",
+                    Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.Verified,
+                    CreatedByUserId = admin.Id,
+                });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            query GetSources($groupId: UUID!) {
+              groupExternalSources(groupId: $groupId) {
+                id
+                sourceType
+                sourceUrl
+                sourceIdentifier
+                status
+              }
+            }
+            """,
+            new { groupId });
+
+        var sources = doc.RootElement.GetProperty("data").GetProperty("groupExternalSources").EnumerateArray().ToArray();
+        Assert.Single(sources);
+        Assert.Equal("LUMA", sources[0].GetProperty("sourceType").GetString());
+        Assert.Equal("https://lu.ma/list-cal", sources[0].GetProperty("sourceUrl").GetString());
+        Assert.Equal("VERIFIED", sources[0].GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task GroupExternalSources_NonAdmin_ReturnsForbidden()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid memberId = Guid.Empty;
+        Guid groupId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("esc-ga-adm@example.com", "ESC GA Admin");
+            var member = CreateUser("esc-ga-member@example.com", "ESC GA Member");
+            memberId = member.Id;
+            dbContext.Users.AddRange(admin, member);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "ESC GA Group",
+                Slug = "esc-ga-group",
+                CreatedByUserId = admin.Id,
+            };
+            groupId = group.Id;
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.AddRange(
+                new EventsApi.Data.Entities.CommunityMembership
+                {
+                    GroupId = group.Id, UserId = admin.Id,
+                    Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                    Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+                },
+                new EventsApi.Data.Entities.CommunityMembership
+                {
+                    GroupId = group.Id, UserId = member.Id,
+                    Role = EventsApi.Data.Entities.CommunityMemberRole.Member,
+                    Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+                }
+            );
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, memberId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                query GetSources($groupId: UUID!) {
+                  groupExternalSources(groupId: $groupId) { id sourceUrl }
+                }
+                """,
+            variables = new { groupId }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(doc.RootElement.TryGetProperty("errors", out var errors),
+            $"Expected FORBIDDEN but none returned. Response: {doc.RootElement}");
+        Assert.Contains("FORBIDDEN", errors.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ── Import pipeline tests (seeded adapter) ────────────────────────────────
+
+    /// <summary>
+    /// Creates a fake in-process Meetup adapter that returns a pre-seeded list of
+    /// external events. This lets us exercise the full import pipeline without live
+    /// credentials or network access.
+    /// </summary>
+    private sealed class SeededMeetupAdapter(IReadOnlyList<EventsApi.Adapters.ExternalEventData> events)
+        : EventsApi.Adapters.IExternalSourceAdapter
+    {
+        public string? ExtractIdentifier(string sourceUrl) => "seeded-group";
+
+        public Task<IReadOnlyList<EventsApi.Adapters.ExternalEventData>> FetchEventsAsync(
+            string sourceIdentifier,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(events);
+    }
+
+    [Fact]
+    public async Task TriggerExternalSync_VerifiedClaim_ImportsEventsAsPendingApproval()
+    {
+        var externalEvents = new List<EventsApi.Adapters.ExternalEventData>
+        {
+            new(
+                ExternalId: "meetup-event-001",
+                Name: "Seeded Meetup Event Alpha",
+                Description: "A seeded test event from the Meetup adapter.",
+                EventUrl: "https://www.meetup.com/seeded-group/events/meetup-event-001",
+                StartsAtUtc: new DateTime(2030, 6, 1, 18, 0, 0, DateTimeKind.Utc),
+                EndsAtUtc: new DateTime(2030, 6, 1, 20, 0, 0, DateTimeKind.Utc),
+                VenueName: "Tech Hub Prague",
+                AddressLine1: "Wenceslas Square 1",
+                City: "Prague",
+                CountryCode: "CZ",
+                Latitude: 50.075m,
+                Longitude: 14.437m,
+                IsFree: true,
+                PriceAmount: null,
+                CurrencyCode: null,
+                Language: "en"
+            ),
+        };
+
+        await using var factory2 = new EventsApiWebApplicationFactory(services =>
+        {
+            var seededAdapter = new SeededMeetupAdapter(externalEvents);
+            services.RemoveAll<EventsApi.Adapters.ExternalSourceAdapterFactory>();
+            services.AddSingleton(new EventsApi.Adapters.ExternalSourceAdapterFactory(seededAdapter, seededAdapter));
+        });
+
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+        Guid groupId = Guid.Empty;
+
+        await SeedAsync(factory2, dbContext =>
+        {
+            var admin = CreateUser("import-test@example.com", "Import Tester");
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var domain = CreateDomain("Tech Import", "tech-import");
+            dbContext.Domains.Add(domain);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Import Test Group",
+                Slug = "import-test-group",
+                CreatedByUserId = admin.Id,
+            };
+            groupId = group.Id;
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = admin.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/seeded-group",
+                SourceIdentifier = "seeded-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.Verified,
+                CreatedByUserId = admin.Id,
+            };
+            claimId = claim.Id;
+            dbContext.Set<EventsApi.Data.Entities.ExternalSourceClaim>().Add(claim);
+        });
+
+        using var client = factory2.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory2, adminId));
+
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation Sync($claimId: UUID!) {
+              triggerExternalSync(claimId: $claimId) {
+                importedCount
+                skippedCount
+                errorCount
+                summary
+              }
+            }
+            """,
+            new { claimId });
+
+        var result = doc.RootElement.GetProperty("data").GetProperty("triggerExternalSync");
+        Assert.Equal(1, result.GetProperty("importedCount").GetInt32());
+        Assert.Equal(0, result.GetProperty("skippedCount").GetInt32());
+        Assert.Equal(0, result.GetProperty("errorCount").GetInt32());
+
+        // Verify the imported event was created in PendingApproval and linked to the group
+        await using var scope = factory2.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<EventsApi.Data.AppDbContext>();
+
+        var importedEvent = await db.Events
+            .FirstOrDefaultAsync(e => e.ExternalSourceEventId == "meetup-event-001");
+        Assert.NotNull(importedEvent);
+        Assert.Equal(EventsApi.Data.Entities.EventStatus.PendingApproval, importedEvent.Status);
+        Assert.Equal("Seeded Meetup Event Alpha", importedEvent.Name);
+        Assert.Equal(claimId, importedEvent.ExternalSourceClaimId);
+
+        // Verify the event is linked to the community group
+        var groupEvent = await db.CommunityGroupEvents
+            .FirstOrDefaultAsync(cge => cge.EventId == importedEvent.Id && cge.GroupId == groupId);
+        Assert.NotNull(groupEvent);
+    }
+
+    [Fact]
+    public async Task TriggerExternalSync_SecondSync_SkipsDuplicatesWithoutCreatingDuplicateRecords()
+    {
+        var externalEvents = new List<EventsApi.Adapters.ExternalEventData>
+        {
+            new(
+                ExternalId: "meetup-dup-001",
+                Name: "Duplicate Detection Event",
+                Description: "Event used to test duplicate-skip logic.",
+                EventUrl: "https://www.meetup.com/dup-group/events/meetup-dup-001",
+                StartsAtUtc: new DateTime(2030, 7, 1, 18, 0, 0, DateTimeKind.Utc),
+                EndsAtUtc: new DateTime(2030, 7, 1, 20, 0, 0, DateTimeKind.Utc),
+                VenueName: "Dup Venue",
+                AddressLine1: null, City: "Brno", CountryCode: "CZ",
+                Latitude: null, Longitude: null, IsFree: true,
+                PriceAmount: null, CurrencyCode: null, Language: null
+            ),
+        };
+
+        await using var factory = new EventsApiWebApplicationFactory(services =>
+        {
+            var seededAdapter = new SeededMeetupAdapter(externalEvents);
+            services.RemoveAll<EventsApi.Adapters.ExternalSourceAdapterFactory>();
+            services.AddSingleton(new EventsApi.Adapters.ExternalSourceAdapterFactory(seededAdapter, seededAdapter));
+        });
+
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("dup-test@example.com", "Dup Tester");
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var domain = CreateDomain("Dup Domain", "dup-domain");
+            dbContext.Domains.Add(domain);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Dup Test Group",
+                Slug = "dup-test-group",
+                CreatedByUserId = admin.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = admin.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/dup-group",
+                SourceIdentifier = "dup-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.Verified,
+                CreatedByUserId = admin.Id,
+            };
+            claimId = claim.Id;
+            dbContext.Set<EventsApi.Data.Entities.ExternalSourceClaim>().Add(claim);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        var syncMutation = """
+            mutation Sync($claimId: UUID!) {
+              triggerExternalSync(claimId: $claimId) {
+                importedCount skippedCount errorCount
+              }
+            }
+            """;
+
+        // First sync: should import 1
+        using var doc1 = await ExecuteGraphQlAsync(client, syncMutation, new { claimId });
+        var r1 = doc1.RootElement.GetProperty("data").GetProperty("triggerExternalSync");
+        Assert.Equal(1, r1.GetProperty("importedCount").GetInt32());
+
+        // Second sync with the same external events: should skip 1, import 0
+        using var doc2 = await ExecuteGraphQlAsync(client, syncMutation, new { claimId });
+        var r2 = doc2.RootElement.GetProperty("data").GetProperty("triggerExternalSync");
+        Assert.Equal(0, r2.GetProperty("importedCount").GetInt32());
+        Assert.Equal(1, r2.GetProperty("skippedCount").GetInt32());
+
+        // Verify only one record in DB for this external ID
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<EventsApi.Data.AppDbContext>();
+        var count = await db.Events.CountAsync(e => e.ExternalSourceEventId == "meetup-dup-001");
+        Assert.Equal(1, count);
+    }
+
+    [Fact]
+    public async Task TriggerExternalSync_ImportedEvents_AreInPendingApprovalNotPublished()
+    {
+        var externalEvents = new List<EventsApi.Adapters.ExternalEventData>
+        {
+            new(
+                ExternalId: "meetup-moderation-001",
+                Name: "Moderation Gate Event",
+                Description: "Should enter PendingApproval, not Published.",
+                EventUrl: "https://www.meetup.com/mod-group/events/meetup-moderation-001",
+                StartsAtUtc: new DateTime(2030, 8, 1, 18, 0, 0, DateTimeKind.Utc),
+                EndsAtUtc: null,
+                VenueName: null, AddressLine1: null, City: "Bratislava", CountryCode: "SK",
+                Latitude: null, Longitude: null, IsFree: true,
+                PriceAmount: null, CurrencyCode: null, Language: "sk"
+            ),
+        };
+
+        await using var factory = new EventsApiWebApplicationFactory(services =>
+        {
+            var seededAdapter = new SeededMeetupAdapter(externalEvents);
+            services.RemoveAll<EventsApi.Adapters.ExternalSourceAdapterFactory>();
+            services.AddSingleton(new EventsApi.Adapters.ExternalSourceAdapterFactory(seededAdapter, seededAdapter));
+        });
+
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("mod-test@example.com", "Mod Tester");
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var domain = CreateDomain("Mod Domain", "mod-domain");
+            dbContext.Domains.Add(domain);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Mod Test Group",
+                Slug = "mod-test-group",
+                CreatedByUserId = admin.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = admin.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/mod-group",
+                SourceIdentifier = "mod-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.Verified,
+                CreatedByUserId = admin.Id,
+            };
+            claimId = claim.Id;
+            dbContext.Set<EventsApi.Data.Entities.ExternalSourceClaim>().Add(claim);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation Sync($claimId: UUID!) {
+              triggerExternalSync(claimId: $claimId) { importedCount }
+            }
+            """,
+            new { claimId });
+
+        Assert.Equal(1, doc.RootElement.GetProperty("data")
+            .GetProperty("triggerExternalSync")
+            .GetProperty("importedCount").GetInt32());
+
+        // Ensure the imported event is NOT published — it must go through moderation
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<EventsApi.Data.AppDbContext>();
+        var ev = await db.Events.FirstOrDefaultAsync(e => e.ExternalSourceEventId == "meetup-moderation-001");
+        Assert.NotNull(ev);
+        Assert.Equal(EventsApi.Data.Entities.EventStatus.PendingApproval, ev.Status);
+        Assert.NotEqual(EventsApi.Data.Entities.EventStatus.Published, ev.Status);
+        // End time should be defaulted to start + 2h when not provided
+        Assert.Equal(ev.StartsAtUtc.AddHours(2), ev.EndsAtUtc);
+    }
+
+    // ── Authorization boundary tests ──────────────────────────────────────────
+
+    [Fact]
+    public async Task RemoveExternalSourceClaim_NonAdminMember_ReturnsForbidden()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid memberId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var owner = CreateUser("esc-rm-owner@example.com", "Owner");
+            dbContext.Users.Add(owner);
+
+            var member = CreateUser("esc-rm-member@example.com", "Member");
+            memberId = member.Id;
+            dbContext.Users.Add(member);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Rm Auth Group",
+                Slug = "rm-auth-group",
+                CreatedByUserId = owner.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = owner.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = member.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Member,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/rm-auth-group",
+                SourceIdentifier = "rm-auth-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.PendingReview,
+                CreatedByUserId = owner.Id,
+            };
+            claimId = claim.Id;
+            dbContext.Set<EventsApi.Data.Entities.ExternalSourceClaim>().Add(claim);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, memberId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation Remove($claimId: UUID!) {
+                  removeExternalSourceClaim(claimId: $claimId)
+                }
+                """,
+            variables = new { claimId }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(doc.RootElement.TryGetProperty("errors", out var errors),
+            $"Expected FORBIDDEN but none returned. Response: {doc.RootElement}");
+        Assert.Contains("FORBIDDEN", errors.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task RemoveExternalSourceClaim_Unauthenticated_ReturnsAuthError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var claimId = Guid.NewGuid();
+
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation Remove($claimId: UUID!) {
+                  removeExternalSourceClaim(claimId: $claimId)
+                }
+                """,
+            variables = new { claimId }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(doc.RootElement.TryGetProperty("errors", out var errors),
+            $"Expected auth error but none returned. Response: {doc.RootElement}");
+        var errText = errors.ToString();
+        Assert.True(
+            errText.Contains("AUTH_NOT_AUTHORIZED", StringComparison.OrdinalIgnoreCase) ||
+            errText.Contains("UNAUTHORIZED", StringComparison.OrdinalIgnoreCase) ||
+            errText.Contains("not authorized", StringComparison.OrdinalIgnoreCase),
+            $"Expected auth error, got: {errText}");
+    }
+
+    [Fact]
+    public async Task TriggerExternalSync_NonAdminMember_ReturnsForbidden()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid memberId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var owner = CreateUser("esc-trigger-owner@example.com", "Trigger Owner");
+            dbContext.Users.Add(owner);
+
+            var member = CreateUser("esc-trigger-member@example.com", "Trigger Member");
+            memberId = member.Id;
+            dbContext.Users.Add(member);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Trigger Auth Group",
+                Slug = "trigger-auth-group",
+                CreatedByUserId = owner.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = owner.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = member.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Member,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/trigger-auth-group",
+                SourceIdentifier = "trigger-auth-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.Verified,
+                CreatedByUserId = owner.Id,
+            };
+            claimId = claim.Id;
+            dbContext.Set<EventsApi.Data.Entities.ExternalSourceClaim>().Add(claim);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, memberId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation Sync($claimId: UUID!) {
+                  triggerExternalSync(claimId: $claimId) {
+                    importedCount skippedCount errorCount
+                  }
+                }
+                """,
+            variables = new { claimId }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(doc.RootElement.TryGetProperty("errors", out var errors),
+            $"Expected FORBIDDEN but none returned. Response: {doc.RootElement}");
+        Assert.Contains("FORBIDDEN", errors.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task TriggerExternalSync_Unauthenticated_ReturnsAuthError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var claimId = Guid.NewGuid();
+
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation Sync($claimId: UUID!) {
+                  triggerExternalSync(claimId: $claimId) {
+                    importedCount skippedCount errorCount
+                  }
+                }
+                """,
+            variables = new { claimId }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(doc.RootElement.TryGetProperty("errors", out var errors),
+            $"Expected auth error but none returned. Response: {doc.RootElement}");
+        var errText = errors.ToString();
+        Assert.True(
+            errText.Contains("AUTH_NOT_AUTHORIZED", StringComparison.OrdinalIgnoreCase) ||
+            errText.Contains("UNAUTHORIZED", StringComparison.OrdinalIgnoreCase) ||
+            errText.Contains("not authorized", StringComparison.OrdinalIgnoreCase),
+            $"Expected auth error, got: {errText}");
     }
 }

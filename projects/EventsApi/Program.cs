@@ -1,4 +1,5 @@
 using System.Text;
+using EventsApi.Adapters;
 using EventsApi.Configuration;
 using EventsApi.Data;
 using EventsApi.Data.Entities;
@@ -104,6 +105,11 @@ builder.Services.AddScoped<WebPush.IWebPushClient>(serviceProvider =>
         serviceProvider.GetRequiredService<IHttpClientFactory>().CreateClient("push")));
 builder.Services.AddScoped<IPushNotificationService, VapidPushNotificationService>();
 builder.Services.AddHostedService<ReminderDispatchService>();
+
+// External source adapters
+builder.Services.AddSingleton<MeetupAdapter>();
+builder.Services.AddSingleton<LumaAdapter>();
+builder.Services.AddSingleton<ExternalSourceAdapterFactory>();
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)

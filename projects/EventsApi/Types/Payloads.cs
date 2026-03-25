@@ -69,9 +69,21 @@ public sealed record EventReminderItem(
     DateTime CreatedAtUtc);
 
 /// <summary>
-/// Detail view for a single community group, including associated published events,
-/// member count, and the calling user's own membership record (if any).
+/// Outcome of a manual external-source sync triggered by a community admin.
+/// All counts are non-negative; a successful empty sync returns zeros.
 /// </summary>
+public sealed record SyncResult(
+    /// <summary>Number of events newly imported during this sync.</summary>
+    int ImportedCount,
+
+    /// <summary>Number of events skipped because they already exist in the catalog.</summary>
+    int SkippedCount,
+
+    /// <summary>Number of events skipped due to validation failures or missing required fields.</summary>
+    int ErrorCount,
+
+    /// <summary>Human-readable summary suitable for display in the admin UI.</summary>
+    string Summary);
 public sealed record CommunityGroupDetail(
     CommunityGroup Group,
     IReadOnlyList<CatalogEvent> Events,

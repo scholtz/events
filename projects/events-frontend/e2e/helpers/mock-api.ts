@@ -167,6 +167,21 @@ export type MockCommunityMembership = {
   reviewedByUserId: string | null
 }
 
+export type MockExternalSourceClaim = {
+  id: string
+  groupId: string
+  sourceType: 'MEETUP' | 'LUMA'
+  sourceUrl: string
+  sourceIdentifier: string
+  status: 'PENDING_REVIEW' | 'VERIFIED' | 'REJECTED'
+  createdByUserId: string
+  createdAtUtc: string
+  lastSyncAtUtc: string | null
+  lastSyncOutcome: string | null
+  lastSyncImportedCount: number | null
+  lastSyncSkippedCount: number | null
+}
+
 export type MockState = {
   users: MockUser[]
   domains: MockDomain[]
@@ -180,6 +195,7 @@ export type MockState = {
   eventReminders: MockEventReminder[]
   communityGroups: MockCommunityGroup[]
   communityMemberships: MockCommunityMembership[]
+  externalSourceClaims: MockExternalSourceClaim[]
   vapidPublicKey: string
   currentUserId: string | null
   currentToken: string | null
@@ -204,6 +220,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
     eventReminders: initial?.eventReminders ?? [],
     communityGroups: initial?.communityGroups ?? [],
     communityMemberships: initial?.communityMemberships ?? [],
+    externalSourceClaims: initial?.externalSourceClaims ?? [],
     vapidPublicKey: initial?.vapidPublicKey ?? 'SGVsbG9QbGF5d3JpZ2h0S2V5',
     currentUserId: initial?.currentUserId ?? null,
     currentToken: initial?.currentToken ?? null,
@@ -1165,6 +1182,17 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       return
     }
 
+    if (query.includes('query') && query.includes('GroupExternalSources')) {
+      const groupId = variables.groupId as string
+      const claims = state.externalSourceClaims.filter((c) => c.groupId === groupId)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { groupExternalSources: claims } }),
+      })
+      return
+    }
+
     if (query.includes('query') && query.includes('CommunityGroups')) {
       const userId = getActiveUserId()
       const activeMemberGroupIds = new Set(
@@ -1512,6 +1540,121 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       return
     }
 
+    // ── External source claim mutations ───────────────────────────────────────
+
+    if (query.includes('mutation') && query.includes('AddExternalSourceClaim')) {
+      const userId = getActiveUserId()
+      if (!userId) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Not authorized', extensions: { code: 'AUTH_NOT_AUTHORIZED' } }] }),
+        })
+        return
+      }
+      const groupId = variables.groupId as string
+      const input = variables.input as { sourceType: 'MEETUP' | 'LUMA'; sourceUrl: string }
+      // Simple identifier extraction for mock: take last path segment of URL
+      const urlPath = input.sourceUrl.replace(/\/$/, '')
+      const identifier = urlPath.split('/').pop() ?? urlPath
+      // Validate URL format (basic check)
+      const isMeetup = input.sourceType === 'MEETUP' && input.sourceUrl.includes('meetup.com/')
+      const isLuma = input.sourceType === 'LUMA' && input.sourceUrl.includes('lu.ma/')
+      if (!isMeetup && !isLuma) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: `The URL '${input.sourceUrl}' is not a recognised ${input.sourceType} URL.`, extensions: { code: 'INVALID_SOURCE_URL' } }] }),
+        })
+        return
+      }
+      // Duplicate check
+      if (state.externalSourceClaims.some(
+        (c) => c.groupId === groupId && c.sourceType === input.sourceType && c.sourceIdentifier === identifier
+      )) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'A claim for this source already exists.', extensions: { code: 'DUPLICATE_CLAIM' } }] }),
+        })
+        return
+      }
+      const claim: MockExternalSourceClaim = {
+        id: `claim-${Date.now()}`,
+        groupId,
+        sourceType: input.sourceType,
+        sourceUrl: input.sourceUrl,
+        sourceIdentifier: identifier,
+        status: 'PENDING_REVIEW',
+        createdByUserId: userId,
+        createdAtUtc: new Date().toISOString(),
+        lastSyncAtUtc: null,
+        lastSyncOutcome: null,
+        lastSyncImportedCount: null,
+        lastSyncSkippedCount: null,
+      }
+      state.externalSourceClaims.push(claim)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { addExternalSourceClaim: claim } }),
+      })
+      return
+    }
+
+    if (query.includes('mutation') && query.includes('RemoveExternalSourceClaim')) {
+      const claimId = variables.claimId as string
+      const idx = state.externalSourceClaims.findIndex((c) => c.id === claimId)
+      if (idx === -1) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Claim not found', extensions: { code: 'CLAIM_NOT_FOUND' } }] }),
+        })
+        return
+      }
+      state.externalSourceClaims.splice(idx, 1)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { removeExternalSourceClaim: true } }),
+      })
+      return
+    }
+
+    if (query.includes('mutation') && query.includes('TriggerExternalSync')) {
+      const claimId = variables.claimId as string
+      const claim = state.externalSourceClaims.find((c) => c.id === claimId)
+      if (!claim) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Claim not found', extensions: { code: 'CLAIM_NOT_FOUND' } }] }),
+        })
+        return
+      }
+      if (claim.status !== 'VERIFIED') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Only verified claims can be synced.', extensions: { code: 'CLAIM_NOT_VERIFIED' } }] }),
+        })
+        return
+      }
+      // Stub sync — no events from adapter
+      claim.lastSyncAtUtc = new Date().toISOString()
+      claim.lastSyncOutcome = 'Imported 0 events.'
+      claim.lastSyncImportedCount = 0
+      claim.lastSyncSkippedCount = 0
+      const result = { importedCount: 0, skippedCount: 0, errorCount: 0, summary: 'Imported 0 events.' }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { triggerExternalSync: result } }),
+      })
+      return
+    }
+
     // Fallback
     await route.fulfill({
       status: 200,
@@ -1804,5 +1947,49 @@ export function makePendingMembership(
     createdAtUtc: new Date().toISOString(),
     reviewedAtUtc: null,
     reviewedByUserId: null,
+  }
+}
+
+/** Convenience factory for a pending-review external source claim. */
+export function makePendingReviewClaim(
+  groupId: string,
+  overrides: Partial<MockExternalSourceClaim> = {},
+): MockExternalSourceClaim {
+  return {
+    id: 'claim-1',
+    groupId,
+    sourceType: 'MEETUP',
+    sourceUrl: 'https://www.meetup.com/prague-crypto-circle',
+    sourceIdentifier: 'prague-crypto-circle',
+    status: 'PENDING_REVIEW',
+    createdByUserId: 'admin-1',
+    createdAtUtc: new Date().toISOString(),
+    lastSyncAtUtc: null,
+    lastSyncOutcome: null,
+    lastSyncImportedCount: null,
+    lastSyncSkippedCount: null,
+    ...overrides,
+  }
+}
+
+/** Convenience factory for a verified (sync-ready) external source claim. */
+export function makeVerifiedClaim(
+  groupId: string,
+  overrides: Partial<MockExternalSourceClaim> = {},
+): MockExternalSourceClaim {
+  return {
+    id: 'claim-verified-1',
+    groupId,
+    sourceType: 'MEETUP',
+    sourceUrl: 'https://www.meetup.com/prague-crypto-circle',
+    sourceIdentifier: 'prague-crypto-circle',
+    status: 'VERIFIED',
+    createdByUserId: 'admin-1',
+    createdAtUtc: new Date().toISOString(),
+    lastSyncAtUtc: null,
+    lastSyncOutcome: null,
+    lastSyncImportedCount: null,
+    lastSyncSkippedCount: null,
+    ...overrides,
   }
 }

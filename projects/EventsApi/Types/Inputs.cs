@@ -223,7 +223,24 @@ public sealed class EnableEventReminderInput
     public int OffsetHours { get; init; } = 24;
 }
 
-// ── Community group inputs ────────────────────────────────────────────────────
+// ── External source claim inputs ──────────────────────────────────────────────
+
+/// <summary>
+/// Input for adding an external source ownership claim to a community group.
+/// Only group admins may call addExternalSourceClaim.
+/// </summary>
+public sealed class AddExternalSourceClaimInput
+{
+    /// <summary>The external platform type (MEETUP or LUMA).</summary>
+    public ExternalSourceType SourceType { get; init; }
+
+    /// <summary>
+    /// Canonical URL of the external profile or group.
+    /// For Meetup: https://www.meetup.com/{group-slug}
+    /// For Luma:   https://lu.ma/{calendar-slug}
+    /// </summary>
+    public required string SourceUrl { get; init; }
+}
 
 /// <summary>
 /// Input for creating a new community group. The creator automatically becomes the group admin.

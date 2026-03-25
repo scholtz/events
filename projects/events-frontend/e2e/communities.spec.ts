@@ -8,6 +8,8 @@ import {
   makeActiveMembership,
   makePendingMembership,
   makeApprovedEvent,
+  makePendingReviewClaim,
+  makeVerifiedClaim,
   loginAs,
 } from './helpers/mock-api'
 
@@ -391,5 +393,200 @@ test.describe('Communities nav link', () => {
     await page.goto('/')
     await page.getByRole('link', { name: 'Communities', exact: true }).click()
     await expect(page).toHaveURL('/communities')
+  })
+})
+
+// ── External source claims ────────────────────────────────────────────────────
+
+test.describe('External source claims (admin)', () => {
+  test('admin sees Connected External Sources section', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+    await expect(page.getByRole('heading', { name: 'Connected External Sources' })).toBeVisible()
+  })
+
+  test('shows empty state when no external sources connected', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+    await expect(page.locator('.empty-sources')).toBeVisible()
+    await expect(page.getByText('No external sources connected yet.')).toBeVisible()
+  })
+
+  test('shows existing external source claims with status badge', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makePendingReviewClaim(group.id)
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+    state.externalSourceClaims.push(claim)
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+    await expect(page.locator('.source-type-badge', { hasText: 'MEETUP' })).toBeVisible()
+    await expect(page.locator('.claim-status-badge', { hasText: 'Pending review' })).toBeVisible()
+  })
+
+  test('shows verified claim with Sync Now button enabled', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makeVerifiedClaim(group.id)
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+    state.externalSourceClaims.push(claim)
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+    await expect(page.locator('.claim-status-badge', { hasText: 'Verified' })).toBeVisible()
+    const syncBtn = page.getByRole('button', { name: 'Sync Now' }).first()
+    await expect(syncBtn).toBeEnabled()
+  })
+
+  test('shows Sync Now disabled for pending-review claim', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makePendingReviewClaim(group.id)
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+    state.externalSourceClaims.push(claim)
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+    const syncBtn = page.getByRole('button', { name: 'Sync Now' }).first()
+    await expect(syncBtn).toBeDisabled()
+  })
+
+  test('admin can add a valid Meetup source claim', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+
+    await page.locator('#new-source-type').selectOption('MEETUP')
+    await page.locator('#new-source-url').fill('https://www.meetup.com/my-test-group')
+    await page.getByRole('button', { name: 'Add Source' }).click()
+
+    await expect(page.locator('.source-type-badge', { hasText: 'MEETUP' })).toBeVisible()
+    await expect(page.locator('.claim-status-badge', { hasText: 'Pending review' })).toBeVisible()
+  })
+
+  test('shows error for invalid Meetup URL format', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+
+    await page.locator('#new-source-type').selectOption('MEETUP')
+    await page.locator('#new-source-url').fill('https://lu.ma/wrong-platform')
+    await page.getByRole('button', { name: 'Add Source' }).click()
+
+    await expect(page.locator('.error-banner')).toBeVisible()
+  })
+
+  test('admin can add a valid Luma source claim', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+
+    await page.locator('#new-source-type').selectOption('LUMA')
+    await page.locator('#new-source-url').fill('https://lu.ma/my-luma-community')
+    await page.getByRole('button', { name: 'Add Source' }).click()
+
+    await expect(page.locator('.source-type-badge', { hasText: 'LUMA' })).toBeVisible()
+  })
+
+  test('admin can remove an external source claim', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makePendingReviewClaim(group.id)
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+    state.externalSourceClaims.push(claim)
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+
+    await expect(page.locator('.source-row')).toHaveCount(1)
+    await page.locator('.source-row').getByRole('button', { name: 'Remove' }).click()
+    await expect(page.locator('.source-row')).toHaveCount(0)
+    await expect(page.locator('.empty-sources')).toBeVisible()
+  })
+
+  test('admin can trigger sync on a verified claim and sees result', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makeVerifiedClaim(group.id)
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+    state.externalSourceClaims.push(claim)
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+
+    await page.getByRole('button', { name: 'Sync Now' }).first().click()
+    // After sync, result summary is shown
+    await expect(page.locator('.sync-result-badge')).toBeVisible()
+  })
+
+  test('non-admin does not see external sources section', async ({ page }) => {
+    const admin = makeAdminUser()
+    const contributor = makeContributorUser()
+    const group = makePublicGroup()
+    const state = setupMockApi(page)
+    state.users.push(admin, contributor)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, contributor.id, 'MEMBER'))
+
+    await loginAs(page, contributor)
+    await page.goto('/community/prague-crypto-circle')
+    await expect(page.getByRole('heading', { name: 'Connected External Sources' })).toBeHidden()
+  })
+
+  test('unauthenticated user does not see external sources section', async ({ page }) => {
+    const group = makePublicGroup()
+    const state = setupMockApi(page)
+    state.communityGroups.push(group)
+
+    await page.goto('/community/prague-crypto-circle')
+    await expect(page.getByRole('heading', { name: 'Connected External Sources' })).toBeHidden()
   })
 })

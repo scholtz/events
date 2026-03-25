@@ -6,7 +6,14 @@ import { RouterLink } from 'vue-router'
 import { useCommunitiesStore } from '@/stores/communities'
 import { useAuthStore } from '@/stores/auth'
 import EventCard from '@/components/events/EventCard.vue'
-import type { CommunityGroupDetail, CommunityMembership, CommunityMemberRole } from '@/types'
+import type {
+  CommunityGroupDetail,
+  CommunityMembership,
+  CommunityMemberRole,
+  ExternalSourceClaim,
+  ExternalSourceType,
+  SyncResult,
+} from '@/types'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -25,6 +32,16 @@ const actionSuccess = ref<string | null>(null)
 const pendingMembers = ref<CommunityMembership[]>([])
 const activeMembers = ref<CommunityMembership[]>([])
 const membersLoading = ref(false)
+
+// External sources
+const externalSources = ref<ExternalSourceClaim[]>([])
+const sourcesLoading = ref(false)
+const sourceError = ref<string | null>(null)
+const newSourceType = ref<ExternalSourceType>('MEETUP')
+const newSourceUrl = ref('')
+const addingSource = ref(false)
+const syncResults = ref<Record<string, SyncResult>>({})
+const syncingId = ref<string | null>(null)
 
 const slug = computed(() => route.params.slug as string)
 
@@ -47,7 +64,7 @@ async function load() {
   try {
     detail.value = await communitiesStore.fetchGroupBySlug(slug.value)
     if (detail.value && isAdmin.value) {
-      await loadMembers()
+      await Promise.all([loadMembers(), loadExternalSources()])
     }
   } catch (err) {
     loadError.value = err instanceof Error ? err.message : t('community.errorLoad')
@@ -70,6 +87,18 @@ async function loadMembers() {
     actionError.value = err instanceof Error ? err.message : t('community.errorLoad')
   } finally {
     membersLoading.value = false
+  }
+}
+
+async function loadExternalSources() {
+  if (!detail.value) return
+  sourcesLoading.value = true
+  try {
+    externalSources.value = await communitiesStore.fetchExternalSources(detail.value.group.id)
+  } catch (err) {
+    sourceError.value = err instanceof Error ? err.message : t('community.errorLoad')
+  } finally {
+    sourcesLoading.value = false
   }
 }
 
@@ -140,6 +169,59 @@ async function handleRevoke(membershipId: string) {
   } catch (err) {
     actionError.value = err instanceof Error ? err.message : t('community.errorAdmin')
   }
+}
+
+async function handleAddSource() {
+  if (!detail.value || !newSourceUrl.value.trim()) return
+  addingSource.value = true
+  sourceError.value = null
+  try {
+    const claim = await communitiesStore.addExternalSource(detail.value.group.id, {
+      sourceType: newSourceType.value,
+      sourceUrl: newSourceUrl.value.trim(),
+    })
+    externalSources.value = [...externalSources.value, claim]
+    newSourceUrl.value = ''
+  } catch (err) {
+    sourceError.value = err instanceof Error ? err.message : t('community.errorAddSource')
+  } finally {
+    addingSource.value = false
+  }
+}
+
+async function handleRemoveSource(claimId: string) {
+  sourceError.value = null
+  try {
+    await communitiesStore.removeExternalSource(claimId)
+    externalSources.value = externalSources.value.filter((s) => s.id !== claimId)
+    delete syncResults.value[claimId]
+  } catch (err) {
+    sourceError.value = err instanceof Error ? err.message : t('community.errorRemoveSource')
+  }
+}
+
+async function handleSync(claimId: string) {
+  sourceError.value = null
+  syncingId.value = claimId
+  try {
+    const result = await communitiesStore.triggerSync(claimId)
+    syncResults.value = { ...syncResults.value, [claimId]: result }
+    // Refresh sources to update lastSyncAtUtc
+    await loadExternalSources()
+  } catch (err) {
+    sourceError.value = err instanceof Error ? err.message : t('community.errorSync')
+  } finally {
+    syncingId.value = null
+  }
+}
+
+function claimStatusLabel(status: ExternalSourceClaim['status']): string {
+  const map: Record<ExternalSourceClaim['status'], string> = {
+    PENDING_REVIEW: t('community.claimStatusPendingReview'),
+    VERIFIED: t('community.claimStatusVerified'),
+    REJECTED: t('community.claimStatusRejected'),
+  }
+  return map[status]
 }
 
 function roleLabel(role: CommunityMemberRole): string {
@@ -344,6 +426,108 @@ function memberCountText(count: number): string {
                       {{ t('community.removeMember') }}
                     </button>
                   </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- External sources section -->
+            <section class="admin-section external-sources-section">
+              <h2 class="section-heading">{{ t('community.externalSourcesHeading') }}</h2>
+              <p class="section-desc">{{ t('community.externalSourcesDescription') }}</p>
+
+              <div v-if="sourceError" class="error-banner source-error">{{ sourceError }}</div>
+
+              <!-- Existing claims list -->
+              <div v-if="sourcesLoading" class="sources-loading">{{ t('common.loading') }}</div>
+              <div v-else-if="externalSources.length === 0" class="empty-sources">
+                <p class="empty-title">{{ t('community.noExternalSources') }}</p>
+                <p class="empty-desc">{{ t('community.noExternalSourcesHint') }}</p>
+              </div>
+              <div v-else class="sources-list">
+                <div
+                  v-for="source in externalSources"
+                  :key="source.id"
+                  class="source-row"
+                >
+                  <div class="source-info">
+                    <span class="source-type-badge">{{ source.sourceType }}</span>
+                    <a
+                      :href="source.sourceUrl"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="source-url"
+                    >{{ source.sourceUrl }}</a>
+                    <span
+                      class="claim-status-badge"
+                      :class="source.status.toLowerCase().replace('_', '-')"
+                    >{{ claimStatusLabel(source.status) }}</span>
+                  </div>
+                  <div class="source-sync-info">
+                    <span class="last-sync-text">
+                      {{
+                        source.lastSyncAtUtc
+                          ? `${t('community.lastSynced')}: ${new Date(source.lastSyncAtUtc).toLocaleDateString()}`
+                          : t('community.neverSynced')
+                      }}
+                    </span>
+                    <span v-if="syncResults[source.id]" class="sync-result-badge">
+                      {{ syncResults[source.id]!.summary }}
+                    </span>
+                  </div>
+                  <div class="source-actions">
+                    <button
+                      class="btn btn-sm btn-primary"
+                      :disabled="syncingId === source.id || source.status !== 'VERIFIED'"
+                      :title="source.status !== 'VERIFIED' ? t('community.syncOnlyVerified') : undefined"
+                      @click="handleSync(source.id)"
+                    >
+                      {{ syncingId === source.id ? t('community.syncing') : t('community.syncButton') }}
+                    </button>
+                    <button
+                      class="btn btn-sm btn-danger"
+                      :disabled="syncingId === source.id"
+                      @click="handleRemoveSource(source.id)"
+                    >
+                      {{ t('community.removeSource') }}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Add new source form -->
+              <div class="add-source-form">
+                <h3 class="add-source-heading">{{ t('community.addSourceHeading') }}</h3>
+                <div class="add-source-fields">
+                  <label class="form-label" for="new-source-type">
+                    {{ t('community.sourceTypeLabel') }}
+                  </label>
+                  <select
+                    id="new-source-type"
+                    v-model="newSourceType"
+                    class="form-select"
+                  >
+                    <option value="MEETUP">Meetup</option>
+                    <option value="LUMA">Luma</option>
+                  </select>
+
+                  <label class="form-label" for="new-source-url">
+                    {{ t('community.sourceUrlLabel') }}
+                  </label>
+                  <input
+                    id="new-source-url"
+                    v-model="newSourceUrl"
+                    type="url"
+                    class="form-input"
+                    :placeholder="t('community.sourceUrlPlaceholder')"
+                  />
+
+                  <button
+                    class="btn btn-primary"
+                    :disabled="addingSource || !newSourceUrl.trim()"
+                    @click="handleAddSource"
+                  >
+                    {{ addingSource ? t('community.addingSource') : t('community.addSourceButton') }}
+                  </button>
                 </div>
               </div>
             </section>
@@ -648,6 +832,168 @@ function memberCountText(count: number): string {
   padding: 0.5rem 0;
 }
 
+/* ── External sources ────────────────────────────────────────────────── */
+
+.section-desc {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  margin-bottom: 1rem;
+}
+
+.sources-loading,
+.empty-sources {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  padding: 0.5rem 0;
+}
+
+.sources-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.source-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.source-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.source-type-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--color-primary, #137fec);
+  color: #fff;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.source-url {
+  font-size: 0.875rem;
+  color: var(--color-primary, #137fec);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 30ch;
+}
+
+.source-url:hover {
+  text-decoration: underline;
+}
+
+.claim-status-badge {
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  white-space: nowrap;
+}
+
+.claim-status-badge.pending-review {
+  background: #fff7e6;
+  color: #b45309;
+}
+
+.claim-status-badge.verified {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.claim-status-badge.rejected {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.source-sync-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.last-sync-text {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+}
+
+.sync-result-badge {
+  font-size: 0.8125rem;
+  color: #047857;
+  background: #ecfdf5;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+}
+
+.source-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.source-error {
+  margin-bottom: 0.75rem;
+}
+
+.add-source-form {
+  margin-top: 1.25rem;
+  padding: 1rem;
+  background: var(--color-surface);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.add-source-heading {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  color: var(--color-text);
+}
+
+.add-source-fields {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+}
+
+.add-source-fields .btn {
+  grid-column: 2;
+  justify-self: start;
+}
+
+.form-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.form-select,
+.form-input {
+  padding: 0.375rem 0.625rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.875rem;
+  width: 100%;
+}
+
 @media (max-width: 640px) {
   .events-grid {
     grid-template-columns: 1fr;
@@ -655,6 +1001,14 @@ function memberCountText(count: number): string {
 
   .member-row {
     flex-wrap: wrap;
+  }
+
+  .add-source-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .add-source-fields .btn {
+    grid-column: 1;
   }
 }
 </style>
