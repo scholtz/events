@@ -1303,6 +1303,94 @@ test.describe('Event detail page', () => {
     const decoded = decodeURIComponent(href ?? '')
     expect(decoded).toContain('hybrid.example.com')
   })
+
+  test('clicking outside calendar menu closes it', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-cal-outside',
+      name: 'Click Outside Event',
+      slug: 'click-outside-event',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await page.getByRole('button', { name: /Add to calendar/i }).click()
+    await expect(page.getByRole('menuitem', { name: /Google Calendar/i })).toBeVisible()
+
+    // Click outside the calendar action container (e.g. the event title heading)
+    await page.getByRole('heading', { level: 1, name: 'Click Outside Event' }).click()
+
+    await expect(page.getByRole('menuitem', { name: /Google Calendar/i })).toBeHidden()
+  })
+
+  test('Escape key closes calendar menu and returns focus to toggle button', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-cal-esc',
+      name: 'Escape Key Event',
+      slug: 'escape-key-event',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await page.getByRole('button', { name: /Add to calendar/i }).click()
+    await expect(page.getByRole('menuitem', { name: /Google Calendar/i })).toBeVisible()
+
+    await page.keyboard.press('Escape')
+
+    await expect(page.getByRole('menuitem', { name: /Google Calendar/i })).toBeHidden()
+    // Focus must return to the toggle button
+    await expect(page.getByRole('button', { name: /Add to calendar/i })).toBeFocused()
+  })
+
+  test('arrow keys navigate calendar menu items', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-cal-arrows',
+      name: 'Arrow Nav Event',
+      slug: 'arrow-nav-event',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await page.getByRole('button', { name: /Add to calendar/i }).click()
+    // Menu opens; focus should be on the first item
+    await expect(page.getByRole('menuitem', { name: /Download .ics/i })).toBeFocused()
+
+    // ArrowDown moves to next item
+    await page.keyboard.press('ArrowDown')
+    await expect(page.getByRole('menuitem', { name: /Google Calendar/i })).toBeFocused()
+
+    // ArrowDown again moves to last item
+    await page.keyboard.press('ArrowDown')
+    await expect(page.getByRole('menuitem', { name: /Outlook/i })).toBeFocused()
+
+    // ArrowDown wraps around to first item
+    await page.keyboard.press('ArrowDown')
+    await expect(page.getByRole('menuitem', { name: /Download .ics/i })).toBeFocused()
+
+    // ArrowUp wraps to last item from first
+    await page.keyboard.press('ArrowUp')
+    await expect(page.getByRole('menuitem', { name: /Outlook/i })).toBeFocused()
+  })
+
+  test('calendar menu aria-label is localized (Slovak locale)', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-cal-sk',
+      name: 'Slovak Calendar Event',
+      slug: 'slovak-calendar-event',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    // Switch to Slovak locale before navigation
+    await page.goto('/')
+    await page.evaluate(() => localStorage.setItem('app_locale', 'sk'))
+    await page.goto(`/event/${event.slug}`)
+
+    await page.getByRole('button', { name: /Pridať do kalendára/i }).click()
+
+    // The menu's aria-label should be localized
+    const menu = page.locator('[role="menu"]')
+    await expect(menu).toBeVisible()
+    const ariaLabel = menu
+    await expect(ariaLabel).toHaveAttribute('aria-label', 'Možnosti kalendára')
+  })
 })
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { formatEventPrice } from '@/stores/events'
@@ -143,19 +143,79 @@ function attendanceModeLabel(mode: string | undefined): string {
 // ── Add to calendar ──────────────────────────────────────────────────────────
 const calendarMenuOpen = ref(false)
 const calendarAdded = ref(false)
+const calendarBtnRef = ref<HTMLButtonElement | null>(null)
+const calendarMenuRef = ref<HTMLDivElement | null>(null)
 let calendarConfirmTimer: ReturnType<typeof setTimeout> | undefined
 const { trackCalendarAction } = useCalendarAnalytics()
 
+/** Close the menu when clicking outside the calendar-action container. */
+function handleCalendarClickOutside(e: MouseEvent) {
+  if (
+    calendarMenuOpen.value &&
+    calendarBtnRef.value &&
+    !calendarBtnRef.value.closest('.calendar-action')?.contains(e.target as Node)
+  ) {
+    calendarMenuOpen.value = false
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleCalendarClickOutside)
+})
+
 onUnmounted(() => {
+  document.removeEventListener('click', handleCalendarClickOutside)
   clearTimeout(calendarConfirmTimer)
 })
 
 function toggleCalendarMenu() {
   calendarMenuOpen.value = !calendarMenuOpen.value
+  if (calendarMenuOpen.value) {
+    // Move focus to the first menu item after the DOM update
+    nextTick(() => {
+      const firstItem = calendarMenuRef.value?.querySelector<HTMLElement>(
+        '[role="menuitem"]:not([disabled])',
+      )
+      firstItem?.focus()
+    })
+  }
 }
 
-function closeCalendarMenu() {
+function closeCalendarMenu(returnFocus = false) {
   calendarMenuOpen.value = false
+  if (returnFocus) {
+    calendarBtnRef.value?.focus()
+  }
+}
+
+/** Arrow-key navigation within the calendar menu (WAI-ARIA menu pattern). */
+function handleCalendarMenuKeydown(e: KeyboardEvent) {
+  if (!calendarMenuRef.value) return
+  const items = Array.from(
+    calendarMenuRef.value.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])'),
+  )
+  const idx = items.indexOf(document.activeElement as HTMLElement)
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    items[(idx + 1) % items.length]?.focus()
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    items[(idx - 1 + items.length) % items.length]?.focus()
+  } else if (e.key === 'Home') {
+    e.preventDefault()
+    items[0]?.focus()
+  } else if (e.key === 'End') {
+    e.preventDefault()
+    items[items.length - 1]?.focus()
+  } else if (e.key === 'Tab') {
+    // Trap Tab inside the menu: cycle forward / backward
+    e.preventDefault()
+    if (e.shiftKey) {
+      items[(idx - 1 + items.length) % items.length]?.focus()
+    } else {
+      items[(idx + 1) % items.length]?.focus()
+    }
+  }
 }
 
 function handleDownloadIcs() {
@@ -376,8 +436,9 @@ function domainHostDisplay(event: {
               </a>
 
               <!-- Add to calendar -->
-              <div class="calendar-action" @keydown.escape="closeCalendarMenu">
+              <div class="calendar-action" @keydown.escape="closeCalendarMenu(true)">
                 <button
+                  ref="calendarBtnRef"
                   class="btn btn-outline calendar-btn"
                   :aria-expanded="calendarMenuOpen"
                   aria-haspopup="menu"
@@ -391,10 +452,12 @@ function domainHostDisplay(event: {
 
                 <div
                   v-if="calendarMenuOpen"
+                  ref="calendarMenuRef"
                   class="calendar-menu"
                   role="menu"
-                  aria-label="Calendar options"
+                  :aria-label="t('eventDetail.calendarMenuLabel')"
                   @click.stop
+                  @keydown="handleCalendarMenuKeydown"
                 >
                   <button
                     class="calendar-menu-item"

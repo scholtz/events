@@ -182,6 +182,7 @@ export default {
     shareEvent: 'Veranstaltung teilen',
     addToCalendar: 'Zum Kalender hinzufügen',
     calendarAdded: 'Zum Kalender hinzugefügt ✓',
+    calendarMenuLabel: 'Kalenderoptionen',
     downloadIcs: '.ics-Datei herunterladen',
     googleCalendar: 'Google Kalender',
     outlookCalendar: 'Outlook',
