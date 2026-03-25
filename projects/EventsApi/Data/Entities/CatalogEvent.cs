@@ -45,6 +45,19 @@ public sealed class CatalogEvent
     public Guid? ReviewedByUserId { get; set; }
     public ApplicationUser? ReviewedBy { get; set; }
 
+    /// <summary>
+    /// ID of the ExternalSourceClaim that produced this event during a sync, or null for
+    /// manually submitted events. Enables duplicate detection on re-sync.
+    /// </summary>
+    public Guid? ExternalSourceClaimId { get; set; }
+
+    /// <summary>
+    /// The stable external URL/ID that uniquely identifies this event on the source platform
+    /// (e.g. https://www.meetup.com/my-group/events/12345678). Used together with
+    /// ExternalSourceClaimId for duplicate detection on repeated syncs.
+    /// </summary>
+    public string? ExternalSourceEventId { get; set; }
+
     public string MapUrl
     {
         get

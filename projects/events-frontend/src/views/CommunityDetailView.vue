@@ -6,7 +6,14 @@ import { RouterLink } from 'vue-router'
 import { useCommunitiesStore } from '@/stores/communities'
 import { useAuthStore } from '@/stores/auth'
 import EventCard from '@/components/events/EventCard.vue'
-import type { CommunityGroupDetail, CommunityMembership, CommunityMemberRole } from '@/types'
+import type {
+  CommunityGroupDetail,
+  CommunityMembership,
+  CommunityMemberRole,
+  ExternalSourceClaim,
+  ExternalSourceType,
+  SyncResult,
+} from '@/types'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -25,6 +32,16 @@ const actionSuccess = ref<string | null>(null)
 const pendingMembers = ref<CommunityMembership[]>([])
 const activeMembers = ref<CommunityMembership[]>([])
 const membersLoading = ref(false)
+
+// External sources
+const externalSources = ref<ExternalSourceClaim[]>([])
+const sourcesLoading = ref(false)
+const sourceError = ref<string | null>(null)
+const newSourceType = ref<ExternalSourceType>('MEETUP')
+const newSourceUrl = ref('')
+const addingSource = ref(false)
+const syncResults = ref<Record<string, SyncResult>>({})
+const syncingId = ref<string | null>(null)
 
 const slug = computed(() => route.params.slug as string)
 
@@ -47,7 +64,7 @@ async function load() {
   try {
     detail.value = await communitiesStore.fetchGroupBySlug(slug.value)
     if (detail.value && isAdmin.value) {
-      await loadMembers()
+      await Promise.all([loadMembers(), loadExternalSources()])
     }
   } catch (err) {
     loadError.value = err instanceof Error ? err.message : t('community.errorLoad')
@@ -70,6 +87,18 @@ async function loadMembers() {
     actionError.value = err instanceof Error ? err.message : t('community.errorLoad')
   } finally {
     membersLoading.value = false
+  }
+}
+
+async function loadExternalSources() {
+  if (!detail.value) return
+  sourcesLoading.value = true
+  try {
+    externalSources.value = await communitiesStore.fetchExternalSources(detail.value.group.id)
+  } catch (err) {
+    sourceError.value = err instanceof Error ? err.message : t('community.errorLoad')
+  } finally {
+    sourcesLoading.value = false
   }
 }
 
@@ -140,6 +169,59 @@ async function handleRevoke(membershipId: string) {
   } catch (err) {
     actionError.value = err instanceof Error ? err.message : t('community.errorAdmin')
   }
+}
+
+async function handleAddSource() {
+  if (!detail.value || !newSourceUrl.value.trim()) return
+  addingSource.value = true
+  sourceError.value = null
+  try {
+    const claim = await communitiesStore.addExternalSource(detail.value.group.id, {
+      sourceType: newSourceType.value,
+      sourceUrl: newSourceUrl.value.trim(),
+    })
+    externalSources.value = [...externalSources.value, claim]
+    newSourceUrl.value = ''
+  } catch (err) {
+    sourceError.value = err instanceof Error ? err.message : t('community.errorAddSource')
+  } finally {
+    addingSource.value = false
+  }
+}
+
+async function handleRemoveSource(claimId: string) {
+  sourceError.value = null
+  try {
+    await communitiesStore.removeExternalSource(claimId)
+    externalSources.value = externalSources.value.filter((s) => s.id !== claimId)
+    delete syncResults.value[claimId]
+  } catch (err) {
+    sourceError.value = err instanceof Error ? err.message : t('community.errorRemoveSource')
+  }
+}
+
+async function handleSync(claimId: string) {
+  sourceError.value = null
+  syncingId.value = claimId
+  try {
+    const result = await communitiesStore.triggerSync(claimId)
+    syncResults.value = { ...syncResults.value, [claimId]: result }
+    // Refresh sources to update lastSyncAtUtc
+    await loadExternalSources()
+  } catch (err) {
+    sourceError.value = err instanceof Error ? err.message : t('community.errorSync')
+  } finally {
+    syncingId.value = null
+  }
+}
+
+function claimStatusLabel(status: ExternalSourceClaim['status']): string {
+  const map: Record<ExternalSourceClaim['status'], string> = {
+    PENDING_REVIEW: t('community.claimStatusPendingReview'),
+    VERIFIED: t('community.claimStatusVerified'),
+    REJECTED: t('community.claimStatusRejected'),
+  }
+  return map[status]
 }
 
 function roleLabel(role: CommunityMemberRole): string {

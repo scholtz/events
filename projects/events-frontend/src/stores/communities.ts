@@ -7,6 +7,9 @@ import type {
   CommunityMembership,
   CommunityMemberRole,
   CommunityVisibility,
+  ExternalSourceClaim,
+  ExternalSourceType,
+  SyncResult,
 } from '@/types'
 
 const COMMUNITY_GROUP_FIELDS = `
@@ -19,7 +22,11 @@ const MEMBERSHIP_FIELDS = `
   group { ${COMMUNITY_GROUP_FIELDS} }
 `
 
-export const useCommunitiesStore = defineStore('communities', () => {
+const EXTERNAL_SOURCE_CLAIM_FIELDS = `
+  id groupId sourceType sourceUrl sourceIdentifier status
+  createdByUserId createdAtUtc
+  lastSyncAtUtc lastSyncOutcome lastSyncImportedCount lastSyncSkippedCount
+`
   const groups = ref<CommunityGroup[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
@@ -200,6 +207,51 @@ export const useCommunitiesStore = defineStore('communities', () => {
     return data.groupMembers
   }
 
+  async function fetchExternalSources(groupId: string): Promise<ExternalSourceClaim[]> {
+    const data = await gqlRequest<{ groupExternalSources: ExternalSourceClaim[] }>(
+      `query GroupExternalSources($groupId: UUID!) {
+        groupExternalSources(groupId: $groupId) { ${EXTERNAL_SOURCE_CLAIM_FIELDS} }
+      }`,
+      { groupId },
+    )
+    return data.groupExternalSources
+  }
+
+  async function addExternalSource(
+    groupId: string,
+    input: { sourceType: ExternalSourceType; sourceUrl: string },
+  ): Promise<ExternalSourceClaim> {
+    const data = await gqlRequest<{ addExternalSourceClaim: ExternalSourceClaim }>(
+      `mutation AddExternalSourceClaim($groupId: UUID!, $input: AddExternalSourceClaimInput!) {
+        addExternalSourceClaim(groupId: $groupId, input: $input) { ${EXTERNAL_SOURCE_CLAIM_FIELDS} }
+      }`,
+      { groupId, input },
+    )
+    return data.addExternalSourceClaim
+  }
+
+  async function removeExternalSource(claimId: string): Promise<boolean> {
+    const data = await gqlRequest<{ removeExternalSourceClaim: boolean }>(
+      `mutation RemoveExternalSourceClaim($claimId: UUID!) {
+        removeExternalSourceClaim(claimId: $claimId)
+      }`,
+      { claimId },
+    )
+    return data.removeExternalSourceClaim
+  }
+
+  async function triggerSync(claimId: string): Promise<SyncResult> {
+    const data = await gqlRequest<{ triggerExternalSync: SyncResult }>(
+      `mutation TriggerExternalSync($claimId: UUID!) {
+        triggerExternalSync(claimId: $claimId) {
+          importedCount skippedCount errorCount summary
+        }
+      }`,
+      { claimId },
+    )
+    return data.triggerExternalSync
+  }
+
   return {
     groups,
     loading,
@@ -218,5 +270,9 @@ export const useCommunitiesStore = defineStore('communities', () => {
     revokeMembership,
     associateEvent,
     disassociateEvent,
+    fetchExternalSources,
+    addExternalSource,
+    removeExternalSource,
+    triggerSync,
   }
 })

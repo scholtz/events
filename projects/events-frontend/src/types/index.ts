@@ -228,3 +228,33 @@ export interface CommunityGroupDetail {
   memberCount: number
   myMembership: CommunityMembership | null
 }
+
+// ── External source claims ────────────────────────────────────────────────────
+
+export type ExternalSourceType = 'MEETUP' | 'LUMA'
+
+export type ExternalSourceClaimStatus = 'PENDING_REVIEW' | 'VERIFIED' | 'REJECTED'
+
+/** Matches backend ExternalSourceClaim entity */
+export interface ExternalSourceClaim {
+  id: string
+  groupId: string
+  sourceType: ExternalSourceType
+  sourceUrl: string
+  sourceIdentifier: string
+  status: ExternalSourceClaimStatus
+  createdByUserId: string
+  createdAtUtc: string
+  lastSyncAtUtc: string | null
+  lastSyncOutcome: string | null
+  lastSyncImportedCount: number | null
+  lastSyncSkippedCount: number | null
+}
+
+/** Result of a manual sync operation */
+export interface SyncResult {
+  importedCount: number
+  skippedCount: number
+  errorCount: number
+  summary: string
+}

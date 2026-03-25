@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.RegularExpressions;
+using EventsApi.Adapters;
 using EventsApi.Data;
 using EventsApi.Data.Entities;
 using EventsApi.Security;
@@ -1409,4 +1410,244 @@ public sealed class Mutation
         await dbContext.SaveChangesAsync(cancellationToken);
         return true;
     }
+
+    // ── External source claim mutations ───────────────────────────────────────
+
+    /// <summary>
+    /// Adds an external-source ownership claim for a community group.
+    /// Only group admins (or global admins) may call this.
+    /// The claim enters PendingReview status until verified by a platform admin.
+    /// </summary>
+    [Authorize]
+    public async Task<ExternalSourceClaim> AddExternalSourceClaimAsync(
+        Guid groupId,
+        AddExternalSourceClaimInput input,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        [Service] ExternalSourceAdapterFactory adapterFactory,
+        CancellationToken cancellationToken)
+    {
+        var group = await dbContext.CommunityGroups.SingleOrDefaultAsync(
+            cg => cg.Id == groupId && cg.IsActive, cancellationToken)
+            ?? throw CreateError("Community group not found.", "GROUP_NOT_FOUND");
+
+        var userId = claimsPrincipal.GetRequiredUserId();
+        if (!claimsPrincipal.IsAdmin())
+        {
+            var isGroupAdmin = await dbContext.CommunityMemberships.AnyAsync(
+                cm => cm.GroupId == groupId && cm.UserId == userId &&
+                      cm.Role == CommunityMemberRole.Admin && cm.Status == CommunityMemberStatus.Active,
+                cancellationToken);
+            if (!isGroupAdmin)
+                throw CreateError("Only group administrators can add external source claims.", "FORBIDDEN");
+        }
+
+        var sourceUrl = input.SourceUrl.Trim();
+        var identifier = adapterFactory.ExtractIdentifier(input.SourceType, sourceUrl)
+            ?? throw CreateError(
+                $"The URL '{sourceUrl}' is not a recognised {input.SourceType} URL. " +
+                $"Expected format: {ExpectedUrlFormat(input.SourceType)}",
+                "INVALID_SOURCE_URL");
+
+        if (await dbContext.ExternalSourceClaims.AnyAsync(
+            esc => esc.GroupId == groupId &&
+                   esc.SourceType == input.SourceType &&
+                   esc.SourceIdentifier == identifier,
+            cancellationToken))
+        {
+            throw CreateError("A claim for this source already exists on this community group.", "DUPLICATE_CLAIM");
+        }
+
+        var claim = new ExternalSourceClaim
+        {
+            GroupId = groupId,
+            SourceType = input.SourceType,
+            SourceUrl = sourceUrl,
+            SourceIdentifier = identifier,
+            Status = ExternalSourceClaimStatus.PendingReview,
+            CreatedByUserId = userId,
+        };
+
+        dbContext.ExternalSourceClaims.Add(claim);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return claim;
+    }
+
+    /// <summary>
+    /// Removes an external-source claim. Only group admins (or global admins) may call this.
+    /// This does not delete any events that were previously imported via this claim.
+    /// </summary>
+    [Authorize]
+    public async Task<bool> RemoveExternalSourceClaimAsync(
+        Guid claimId,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var claim = await dbContext.ExternalSourceClaims.SingleOrDefaultAsync(
+            esc => esc.Id == claimId, cancellationToken)
+            ?? throw CreateError("External source claim not found.", "CLAIM_NOT_FOUND");
+
+        var userId = claimsPrincipal.GetRequiredUserId();
+        if (!claimsPrincipal.IsAdmin())
+        {
+            var isGroupAdmin = await dbContext.CommunityMemberships.AnyAsync(
+                cm => cm.GroupId == claim.GroupId && cm.UserId == userId &&
+                      cm.Role == CommunityMemberRole.Admin && cm.Status == CommunityMemberStatus.Active,
+                cancellationToken);
+            if (!isGroupAdmin)
+                throw CreateError("Only group administrators can remove external source claims.", "FORBIDDEN");
+        }
+
+        dbContext.ExternalSourceClaims.Remove(claim);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    /// <summary>
+    /// Triggers a manual sync from the linked external source.
+    /// The claim must be in Verified status to be synced.
+    /// Only group admins (or global admins) may call this.
+    /// Imported events enter PendingApproval status and must be reviewed before publication.
+    /// Duplicate events (same ExternalSourceEventId) are skipped without creating new records.
+    /// </summary>
+    [Authorize]
+    public async Task<SyncResult> TriggerExternalSyncAsync(
+        Guid claimId,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        [Service] ExternalSourceAdapterFactory adapterFactory,
+        CancellationToken cancellationToken)
+    {
+        var claim = await dbContext.ExternalSourceClaims
+            .Include(esc => esc.Group)
+            .SingleOrDefaultAsync(esc => esc.Id == claimId, cancellationToken)
+            ?? throw CreateError("External source claim not found.", "CLAIM_NOT_FOUND");
+
+        var userId = claimsPrincipal.GetRequiredUserId();
+        if (!claimsPrincipal.IsAdmin())
+        {
+            var isGroupAdmin = await dbContext.CommunityMemberships.AnyAsync(
+                cm => cm.GroupId == claim.GroupId && cm.UserId == userId &&
+                      cm.Role == CommunityMemberRole.Admin && cm.Status == CommunityMemberStatus.Active,
+                cancellationToken);
+            if (!isGroupAdmin)
+                throw CreateError("Only group administrators can trigger a sync.", "FORBIDDEN");
+        }
+
+        if (claim.Status != ExternalSourceClaimStatus.Verified)
+            throw CreateError(
+                "Only verified claims can be synced. Please wait for a platform admin to verify this claim.",
+                "CLAIM_NOT_VERIFIED");
+
+        var adapter = adapterFactory.GetAdapter(claim.SourceType);
+        var externalEvents = await adapter.FetchEventsAsync(claim.SourceIdentifier, cancellationToken);
+
+        // Use first available domain as the default for imported events.
+        var defaultDomain = await dbContext.Domains.FirstOrDefaultAsync(
+            d => d.IsActive, cancellationToken)
+            ?? throw CreateError("No active domain found to assign imported events.", "NO_DOMAIN");
+
+        var importedCount = 0;
+        var skippedCount = 0;
+        var errorCount = 0;
+
+        foreach (var ext in externalEvents)
+        {
+            // Duplicate check: if an event was already imported from this claim with the same external ID
+            var existingImport = await dbContext.Events.AnyAsync(
+                e => e.ExternalSourceClaimId == claimId && e.ExternalSourceEventId == ext.ExternalId,
+                cancellationToken);
+
+            if (existingImport)
+            {
+                skippedCount++;
+                continue;
+            }
+
+            // Validate required fields
+            if (ext.StartsAtUtc is null)
+            {
+                errorCount++;
+                continue;
+            }
+
+            var endsAt = ext.EndsAtUtc ?? ext.StartsAtUtc.Value.AddHours(2);
+
+            try
+            {
+                var catalogEvent = new CatalogEvent
+                {
+                    Name = (ext.Name ?? "Untitled Event").Trim(),
+                    Slug = await BuildUniqueEventSlugAsync(dbContext, ext.Name ?? "Untitled Event", cancellationToken),
+                    Description = (ext.Description ?? string.Empty).Trim(),
+                    EventUrl = ext.EventUrl.Trim(),
+                    VenueName = (ext.VenueName ?? string.Empty).Trim(),
+                    AddressLine1 = (ext.AddressLine1 ?? string.Empty).Trim(),
+                    City = (ext.City ?? string.Empty).Trim(),
+                    CountryCode = (ext.CountryCode ?? "XX").Trim().ToUpperInvariant(),
+                    Latitude = ext.Latitude ?? 0,
+                    Longitude = ext.Longitude ?? 0,
+                    StartsAtUtc = EnsureUtc(ext.StartsAtUtc.Value),
+                    EndsAtUtc = EnsureUtc(endsAt),
+                    IsFree = ext.IsFree ?? true,
+                    PriceAmount = ext.PriceAmount,
+                    CurrencyCode = NormalizeCurrencyCode(ext.CurrencyCode),
+                    Language = ext.Language,
+                    AttendanceMode = AttendanceMode.InPerson,
+                    Status = EventStatus.PendingApproval,
+                    DomainId = defaultDomain.Id,
+                    SubmittedByUserId = userId,
+                    ExternalSourceClaimId = claimId,
+                    ExternalSourceEventId = ext.ExternalId,
+                };
+
+                dbContext.Events.Add(catalogEvent);
+
+                // Link the event to the community group
+                dbContext.CommunityGroupEvents.Add(new CommunityGroupEvent
+                {
+                    GroupId = claim.GroupId,
+                    EventId = catalogEvent.Id,
+                    AddedByUserId = userId,
+                });
+
+                await dbContext.SaveChangesAsync(cancellationToken);
+                importedCount++;
+            }
+            catch
+            {
+                errorCount++;
+            }
+        }
+
+        var summary = BuildSyncSummary(importedCount, skippedCount, errorCount);
+
+        claim.LastSyncAtUtc = DateTime.UtcNow;
+        claim.LastSyncOutcome = summary;
+        claim.LastSyncImportedCount = importedCount;
+        claim.LastSyncSkippedCount = skippedCount;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return new SyncResult(importedCount, skippedCount, errorCount, summary);
+    }
+
+    private static string BuildSyncSummary(int imported, int skipped, int errors)
+    {
+        var parts = new List<string>();
+        parts.Add(imported == 1 ? "Imported 1 event." : $"Imported {imported} events.");
+        if (skipped > 0)
+            parts.Add(skipped == 1 ? "Skipped 1 (already imported)." : $"Skipped {skipped} (already imported).");
+        if (errors > 0)
+            parts.Add(errors == 1 ? "1 event failed validation." : $"{errors} events failed validation.");
+        return string.Join(" ", parts);
+    }
+
+    private static string ExpectedUrlFormat(ExternalSourceType sourceType) =>
+        sourceType switch
+        {
+            ExternalSourceType.Meetup => "https://www.meetup.com/{group-slug}",
+            ExternalSourceType.Luma => "https://lu.ma/{calendar-slug}",
+            _ => "an unsupported source type"
+        };
 }

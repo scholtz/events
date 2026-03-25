@@ -19,6 +19,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<CommunityGroup> CommunityGroups => Set<CommunityGroup>();
     public DbSet<CommunityMembership> CommunityMemberships => Set<CommunityMembership>();
     public DbSet<CommunityGroupEvent> CommunityGroupEvents => Set<CommunityGroupEvent>();
+    public DbSet<ExternalSourceClaim> ExternalSourceClaims => Set<ExternalSourceClaim>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -264,6 +265,33 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .WithMany()
                 .HasForeignKey(cge => cge.AddedByUserId)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<CatalogEvent>(entity =>
+        {
+            entity.Property(ce => ce.ExternalSourceEventId).HasMaxLength(1000);
+        });
+
+        modelBuilder.Entity<ExternalSourceClaim>(entity =>
+        {
+            // One claim per (group, source-type, identifier) triple prevents duplicate claims
+            entity.HasIndex(esc => new { esc.GroupId, esc.SourceType, esc.SourceIdentifier }).IsUnique();
+
+            entity.Property(esc => esc.SourceType).HasConversion<string>().HasMaxLength(32);
+            entity.Property(esc => esc.Status).HasConversion<string>().HasMaxLength(32);
+            entity.Property(esc => esc.SourceUrl).HasMaxLength(1000);
+            entity.Property(esc => esc.SourceIdentifier).HasMaxLength(500);
+            entity.Property(esc => esc.LastSyncOutcome).HasMaxLength(500);
+
+            entity.HasOne(esc => esc.Group)
+                .WithMany()
+                .HasForeignKey(esc => esc.GroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(esc => esc.CreatedBy)
+                .WithMany()
+                .HasForeignKey(esc => esc.CreatedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

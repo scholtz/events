@@ -754,4 +754,42 @@ public sealed class Query
                 .ThenBy(cm => cm.User.DisplayName)
             .ToListAsync(cancellationToken);
     }
+
+    // ── External source claim queries ─────────────────────────────────────────
+
+    /// <summary>
+    /// Returns all external-source claims for a community group.
+    /// Only group admins (or global admins) may call this.
+    /// </summary>
+    [Authorize]
+    public async Task<IReadOnlyList<ExternalSourceClaim>> GetGroupExternalSourcesAsync(
+        Guid groupId,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var userId = claimsPrincipal.GetRequiredUserId();
+        var isAdmin = claimsPrincipal.IsAdmin();
+
+        if (!isAdmin)
+        {
+            var isGroupAdmin = await dbContext.CommunityMemberships.AnyAsync(
+                cm => cm.GroupId == groupId && cm.UserId == userId &&
+                      cm.Role == CommunityMemberRole.Admin && cm.Status == CommunityMemberStatus.Active,
+                cancellationToken);
+            if (!isGroupAdmin)
+                throw new GraphQLException(
+                    ErrorBuilder.New()
+                        .SetMessage("Only group administrators can view external source claims.")
+                        .SetCode("FORBIDDEN")
+                        .Build());
+        }
+
+        return await dbContext.ExternalSourceClaims
+            .AsNoTracking()
+            .Where(esc => esc.GroupId == groupId)
+            .OrderBy(esc => esc.SourceType.ToString())
+                .ThenBy(esc => esc.SourceUrl)
+            .ToListAsync(cancellationToken);
+    }
 }

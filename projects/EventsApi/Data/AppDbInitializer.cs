@@ -176,6 +176,8 @@ public sealed class AppDbInitializer(
         await EnsureEventColumnAsync("AttendanceMode", cancellationToken);
         await EnsureEventColumnAsync("Timezone", cancellationToken);
         await EnsureEventColumnAsync("Language", cancellationToken);
+        await EnsureEventColumnAsync("ExternalSourceClaimId", cancellationToken);
+        await EnsureEventColumnAsync("ExternalSourceEventId", cancellationToken);
 
         if (!await TableExistsAsync("SavedSearches", cancellationToken))
         {
@@ -424,6 +426,33 @@ public sealed class AppDbInitializer(
                 """,
                 cancellationToken);
         }
+
+        // ── ExternalSourceClaims table ────────────────────────────────────────
+        if (!await TableExistsAsync("ExternalSourceClaims", cancellationToken))
+        {
+            await _dbContext.Database.ExecuteSqlRawAsync(
+                """
+                CREATE TABLE "ExternalSourceClaims" (
+                    "Id" TEXT NOT NULL CONSTRAINT "PK_ExternalSourceClaims" PRIMARY KEY,
+                    "GroupId" TEXT NOT NULL,
+                    "SourceType" TEXT NOT NULL,
+                    "SourceUrl" TEXT NOT NULL,
+                    "SourceIdentifier" TEXT NOT NULL,
+                    "Status" TEXT NOT NULL DEFAULT 'PendingReview',
+                    "CreatedByUserId" TEXT NOT NULL,
+                    "CreatedAtUtc" TEXT NOT NULL,
+                    "LastSyncAtUtc" TEXT NULL,
+                    "LastSyncOutcome" TEXT NULL,
+                    "LastSyncImportedCount" INTEGER NULL,
+                    "LastSyncSkippedCount" INTEGER NULL,
+                    CONSTRAINT "FK_ExternalSourceClaims_CommunityGroups_GroupId" FOREIGN KEY ("GroupId") REFERENCES "CommunityGroups" ("Id") ON DELETE CASCADE,
+                    CONSTRAINT "FK_ExternalSourceClaims_Users_CreatedByUserId" FOREIGN KEY ("CreatedByUserId") REFERENCES "Users" ("Id") ON DELETE RESTRICT
+                );
+                CREATE UNIQUE INDEX "IX_ExternalSourceClaims_GroupId_SourceType_SourceIdentifier"
+                    ON "ExternalSourceClaims" ("GroupId", "SourceType", "SourceIdentifier");
+                """,
+                cancellationToken);
+        }
     }
 
     private async Task EnsureSavedSearchColumnAsync(string columnName, CancellationToken cancellationToken)
@@ -483,6 +512,8 @@ public sealed class AppDbInitializer(
             "AttendanceMode" => """ALTER TABLE "Events" ADD COLUMN "AttendanceMode" TEXT NOT NULL DEFAULT 'InPerson';""",
             "Timezone" => """ALTER TABLE "Events" ADD COLUMN "Timezone" TEXT NULL;""",
             "Language" => """ALTER TABLE "Events" ADD COLUMN "Language" TEXT NULL;""",
+            "ExternalSourceClaimId" => """ALTER TABLE "Events" ADD COLUMN "ExternalSourceClaimId" TEXT NULL;""",
+            "ExternalSourceEventId" => """ALTER TABLE "Events" ADD COLUMN "ExternalSourceEventId" TEXT NULL;""",
             _ => throw new InvalidOperationException($"Unsupported event column '{columnName}'.")
         };
 
