@@ -1201,6 +1201,41 @@ public sealed class Mutation
     }
 
     /// <summary>
+    /// Allows an authenticated user to leave a community group they are a member of.
+    /// The last active administrator of a group cannot leave; they must promote another
+    /// member to admin first.
+    /// </summary>
+    [Authorize]
+    public async Task<bool> LeaveCommunityGroupAsync(
+        Guid groupId,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var userId = claimsPrincipal.GetRequiredUserId();
+
+        var membership = await dbContext.CommunityMemberships.SingleOrDefaultAsync(
+            cm => cm.GroupId == groupId && cm.UserId == userId, cancellationToken)
+            ?? throw CreateError("You are not a member of this group.", "NOT_MEMBER");
+
+        if (membership.Role == CommunityMemberRole.Admin && membership.Status == CommunityMemberStatus.Active)
+        {
+            var adminCount = await dbContext.CommunityMemberships.CountAsync(
+                cm => cm.GroupId == groupId && cm.Role == CommunityMemberRole.Admin &&
+                      cm.Status == CommunityMemberStatus.Active,
+                cancellationToken);
+            if (adminCount <= 1)
+                throw CreateError(
+                    "You are the last administrator. Promote another member to admin before leaving.",
+                    "LAST_ADMIN");
+        }
+
+        dbContext.CommunityMemberships.Remove(membership);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    /// <summary>
     /// Approves or rejects a pending membership request. Only group admins may call this.
     /// </summary>
     [Authorize]

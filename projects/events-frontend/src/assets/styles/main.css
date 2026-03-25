@@ -106,6 +106,18 @@ img {
   text-decoration: none;
 }
 
+.btn-ghost {
+  background: transparent;
+  color: var(--color-text-secondary);
+  border-color: var(--color-border);
+}
+
+.btn-ghost:hover {
+  background: var(--color-surface);
+  color: var(--color-text);
+  text-decoration: none;
+}
+
 .form-group {
   margin-bottom: 1rem;
 }

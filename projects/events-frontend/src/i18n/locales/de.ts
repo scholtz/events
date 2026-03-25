@@ -547,6 +547,7 @@ export default {
     requestSent: 'Ihre Mitgliedsanfrage wurde gesendet. Ein Administrator wird sie in K\u00fcrze pr\u00fcfen.',
     errorLoad: 'Community konnte nicht geladen werden',
     errorJoin: 'Community konnte nicht beigetreten werden',
+    errorLeave: 'Community konnte nicht verlassen werden',
     errorRequest: 'Mitgliedsanfrage konnte nicht gesendet werden',
     manageMembersHeading: 'Mitglieder',
     pendingRequestsHeading: 'Ausstehende Anfragen',
