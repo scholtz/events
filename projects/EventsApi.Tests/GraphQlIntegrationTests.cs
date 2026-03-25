@@ -4358,6 +4358,49 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal("Public Domain", domain.GetProperty("name").GetString());
     }
 
+    [Fact]
+    public async Task DomainBySlug_ReturnsAllHubBrandingAndOverviewFields()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var domain = CreateDomain("Web3 Hub", "web3-hub-fields");
+            domain.PrimaryColor = "#ff6b35";
+            domain.AccentColor = "#ffaa00";
+            domain.LogoUrl = "https://example.com/web3-logo.png";
+            domain.BannerUrl = "https://example.com/web3-banner.jpg";
+            domain.OverviewContent = "The premier hub for Web3 events.";
+            domain.WhatBelongsHere = "Blockchain, DeFi, and NFT events.";
+            domain.SubmitEventCta = "Submit your Web3 event here.";
+            domain.CuratorCredit = "Web3 Foundation";
+            dbContext.Domains.Add(domain);
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query DomainBySlug($slug: String!) {
+              domainBySlug(slug: $slug) {
+                primaryColor accentColor logoUrl bannerUrl
+                overviewContent whatBelongsHere submitEventCta curatorCredit
+              }
+            }
+            """,
+            new { slug = "web3-hub-fields" });
+
+        var domain = document.RootElement.GetProperty("data").GetProperty("domainBySlug");
+        Assert.Equal("#ff6b35", domain.GetProperty("primaryColor").GetString());
+        Assert.Equal("#ffaa00", domain.GetProperty("accentColor").GetString());
+        Assert.Equal("https://example.com/web3-logo.png", domain.GetProperty("logoUrl").GetString());
+        Assert.Equal("https://example.com/web3-banner.jpg", domain.GetProperty("bannerUrl").GetString());
+        Assert.Equal("The premier hub for Web3 events.", domain.GetProperty("overviewContent").GetString());
+        Assert.Equal("Blockchain, DeFi, and NFT events.", domain.GetProperty("whatBelongsHere").GetString());
+        Assert.Equal("Submit your Web3 event here.", domain.GetProperty("submitEventCta").GetString());
+        Assert.Equal("Web3 Foundation", domain.GetProperty("curatorCredit").GetString());
+    }
+
     // ── Language filter tests ────────────────────────────────────────────────
 
     [Fact]

@@ -112,6 +112,27 @@ watch(
   { immediate: true },
 )
 
+// Update meta description for SEO
+const metaDescription = computed(() => {
+  if (!domain.value) return ''
+  return (domain.value.description || domain.value.overviewContent || '').slice(0, 160)
+})
+
+watch(
+  metaDescription,
+  (desc) => {
+    if (typeof document === 'undefined') return
+    let metaEl = document.querySelector<HTMLMetaElement>('meta[name="description"]')
+    if (!metaEl) {
+      metaEl = document.createElement('meta')
+      metaEl.name = 'description'
+      document.head.appendChild(metaEl)
+    }
+    metaEl.content = desc
+  },
+  { immediate: true },
+)
+
 const upcomingCount = computed(() => {
   const now = new Date()
   return events.value.filter((e) => new Date(e.startsAtUtc) >= now).length

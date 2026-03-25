@@ -1387,7 +1387,7 @@ test.describe('Event detail page', () => {
     // Press Tab — the menu must close immediately (no cycling through items)
     await page.keyboard.press('Tab')
 
-    await expect(page.getByRole('menuitem', { name: /Google Calendar/i })).not.toBeVisible()
+    await expect(page.getByRole('menuitem', { name: /Google Calendar/i })).toBeHidden()
     // Focus must return to the toggle button (clean exit point, not a trap)
     await expect(page.getByRole('button', { name: /Add to calendar/i })).toBeFocused()
   })
@@ -1567,5 +1567,74 @@ test.describe('Event detail hub context card', () => {
     await expect(page.locator('.hub-context')).toBeVisible()
     await expect(page.locator('.hub-context-name')).toContainText('Crypto')
     await expect(page.locator('.hub-context-link')).toBeVisible()
+  })
+
+  test('hub context shows overviewContent excerpt when no description is set', async ({ page }) => {
+    const aiDomain = {
+      id: 'dom-ai-overview',
+      name: 'AI Hub',
+      slug: 'ai-hub',
+      subdomain: 'ai',
+      description: null,
+      isActive: true,
+      createdAtUtc: new Date().toISOString(),
+      overviewContent:
+        'The premier hub for artificial intelligence events, conferences, and workshops in the region.',
+    }
+    const event = makeApprovedEvent({
+      id: 'ev-overview',
+      name: 'AI Summit',
+      slug: 'ai-summit',
+      domainId: aiDomain.id,
+      domain: {
+        id: aiDomain.id,
+        name: aiDomain.name,
+        slug: aiDomain.slug,
+        subdomain: aiDomain.subdomain,
+        overviewContent: aiDomain.overviewContent,
+      },
+    })
+    setupMockApi(page, { domains: [aiDomain], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await expect(page.locator('.hub-context')).toBeVisible()
+    await expect(page.locator('.hub-context-description')).toContainText(
+      'The premier hub for artificial intelligence',
+    )
+  })
+
+  test('hub context card applies accentColor as theme variable when set', async ({ page }) => {
+    const defiDomain = {
+      id: 'dom-defi-accent',
+      name: 'DeFi Hub',
+      slug: 'defi-hub',
+      subdomain: 'defi',
+      description: 'DeFi events',
+      isActive: true,
+      createdAtUtc: new Date().toISOString(),
+      accentColor: '#ff6b35',
+    }
+    const event = makeApprovedEvent({
+      id: 'ev-defi-accent',
+      name: 'DeFi Conference',
+      slug: 'defi-conference',
+      domainId: defiDomain.id,
+      domain: {
+        id: defiDomain.id,
+        name: defiDomain.name,
+        slug: defiDomain.slug,
+        subdomain: defiDomain.subdomain,
+        accentColor: defiDomain.accentColor,
+      },
+    })
+    setupMockApi(page, { domains: [defiDomain], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await expect(page.locator('.hub-context')).toBeVisible()
+    // The accentColor is applied as --hub-accent CSS custom property on the card element
+    const hubStyle = await page
+      .locator('.hub-context')
+      .evaluate((el) => (el as HTMLElement).getAttribute('style') ?? '')
+    expect(hubStyle).toContain('#ff6b35')
   })
 })
