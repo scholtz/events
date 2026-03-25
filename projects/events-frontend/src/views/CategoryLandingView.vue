@@ -164,13 +164,6 @@ const upcomingCount = computed(() => {
   return events.value.filter((e) => new Date(e.startsAtUtc) >= now).length
 })
 
-/**
- * Preferred event count for the hub badge.
- * Uses the server-side `publishedEventCount` when available (accurate total across
- * all published events), falling back to the client-computed upcoming count.
- */
-const displayEventCount = computed(() => domain.value?.publishedEventCount ?? upcomingCount.value)
-
 /** Featured event IDs set for fast deduplication in the main list */
 const featuredEventIds = computed(() => new Set(featuredEvents.value.map((e) => e.id)))
 
@@ -211,9 +204,13 @@ const nonFeaturedEvents = computed(() =>
             <p v-if="domain.description" class="category-description">{{ domain.description }}</p>
             <p class="category-event-count">
               {{
-                displayEventCount === 1
-                  ? t('category.oneEvent')
-                  : t('category.eventCount', { count: displayEventCount })
+                domain.publishedEventCount !== undefined
+                  ? (domain.publishedEventCount === 1
+                      ? t('category.oneEvent')
+                      : t('category.eventCount', { count: domain.publishedEventCount }))
+                  : (upcomingCount === 1
+                      ? t('category.oneUpcomingEvent')
+                      : t('category.upcomingEventCount', { count: upcomingCount }))
               }}
             </p>
             <!-- Curator credit trust cue -->

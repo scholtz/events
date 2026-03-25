@@ -1369,20 +1369,10 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
     if (query.includes('query') && query.includes('DomainBySlug')) {
       const slug = variables.slug as string | undefined
       const rawDomain = slug ? state.domains.find((d) => d.slug === slug) ?? null : null
-      const domainWithCount = rawDomain
-        ? {
-            ...rawDomain,
-            publishedEventCount:
-              rawDomain.publishedEventCount ??
-              state.events.filter(
-                (e) => e.domainId === rawDomain.id && e.status === 'PUBLISHED',
-              ).length,
-          }
-        : null
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ data: { domainBySlug: domainWithCount } }),
+        body: JSON.stringify({ data: { domainBySlug: rawDomain } }),
       })
       return
     }
@@ -1714,7 +1704,6 @@ export function makeTechDomain(): MockDomain {
     description: 'Tech events',
     isActive: true,
     createdAtUtc: new Date().toISOString(),
-    publishedEventCount: 0,
   }
 }
 

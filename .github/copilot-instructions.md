@@ -522,3 +522,14 @@ Every `updateDomainStyle` mutation change must be covered by tests for:
 7. Non-absolute URL in `logoUrl` returns INVALID_LOGO_URL error code
 8. Non-absolute URL in `bannerUrl` returns INVALID_BANNER_URL error code
 9. Empty string values normalize to null (clears previously-set fields)
+
+### CategoryLandingView event count badge behavior
+The `.category-event-count` badge in `CategoryLandingView.vue` has two display modes:
+- When the domain has `publishedEventCount` set (server-side total) → use `category.oneEvent` / `category.eventCount` keys ("N events")
+- When `publishedEventCount` is `undefined` (no server count) → fall back to client-computed `upcomingCount` and use `category.oneUpcomingEvent` / `category.upcomingEventCount` keys ("N upcoming events")
+
+In E2E tests:
+- `makeTechDomain()` does NOT include `publishedEventCount` by default (field is absent/undefined)
+- The `DomainBySlug` mock handler passes through `rawDomain` as-is — it does NOT auto-compute `publishedEventCount` from events
+- To test the server-count badge: spread `makeTechDomain()` and set `publishedEventCount: N` explicitly
+- To test the upcoming-count badge: use `makeTechDomain()` as-is and provide events to `setupMockApi`; the view falls back to client-side counting and shows "N upcoming events"
