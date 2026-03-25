@@ -27,6 +27,8 @@ const EXTERNAL_SOURCE_CLAIM_FIELDS = `
   createdByUserId createdAtUtc
   lastSyncAtUtc lastSyncOutcome lastSyncImportedCount lastSyncSkippedCount
 `
+
+export const useCommunitiesStore = defineStore('communities', () => {
   const groups = ref<CommunityGroup[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
@@ -276,3 +278,5 @@ const EXTERNAL_SOURCE_CLAIM_FIELDS = `
     triggerSync,
   }
 })
+
+
