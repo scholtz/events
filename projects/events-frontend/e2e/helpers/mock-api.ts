@@ -144,6 +144,29 @@ export type MockFeaturedEvent = {
   displayOrder: number
 }
 
+export type MockCommunityGroup = {
+  id: string
+  name: string
+  slug: string
+  summary: string | null
+  description: string | null
+  visibility: 'PUBLIC' | 'PRIVATE'
+  isActive: boolean
+  createdAtUtc: string
+  createdByUserId: string | null
+}
+
+export type MockCommunityMembership = {
+  id: string
+  groupId: string
+  userId: string
+  role: 'ADMIN' | 'EVENT_MANAGER' | 'MEMBER'
+  status: 'ACTIVE' | 'PENDING' | 'REJECTED'
+  createdAtUtc: string
+  reviewedAtUtc: string | null
+  reviewedByUserId: string | null
+}
+
 export type MockState = {
   users: MockUser[]
   domains: MockDomain[]
@@ -155,6 +178,8 @@ export type MockState = {
   calendarActions: MockCalendarAction[]
   pushSubscriptions: MockPushSubscription[]
   eventReminders: MockEventReminder[]
+  communityGroups: MockCommunityGroup[]
+  communityMemberships: MockCommunityMembership[]
   vapidPublicKey: string
   currentUserId: string | null
   currentToken: string | null
@@ -177,6 +202,8 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
     calendarActions: initial?.calendarActions ?? [],
     pushSubscriptions: initial?.pushSubscriptions ?? [],
     eventReminders: initial?.eventReminders ?? [],
+    communityGroups: initial?.communityGroups ?? [],
+    communityMemberships: initial?.communityMemberships ?? [],
     vapidPublicKey: initial?.vapidPublicKey ?? 'SGVsbG9QbGF5d3JpZ2h0S2V5',
     currentUserId: initial?.currentUserId ?? null,
     currentToken: initial?.currentToken ?? null,
@@ -1065,6 +1092,97 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       return
     }
 
+    // ── Community group queries (must come before Me handler – community
+    //    query strings contain 'myMembership' which includes 'Me') ─────────────
+
+    if (query.includes('query') && query.includes('CommunityGroupBySlug')) {
+      const slug = variables.slug as string
+      const userId = getActiveUserId()
+      const group = state.communityGroups.find((g) => g.slug === slug && g.isActive) ?? null
+      if (!group) {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { communityGroupBySlug: null } }) })
+        return
+      }
+      const memberships = state.communityMemberships.filter((m) => m.groupId === group.id)
+      const myMembership = memberships.find((m) => m.userId === userId) ?? null
+      const memberCount = memberships.filter((m) => m.status === 'ACTIVE').length
+      const groupEvents = state.events.filter(
+        (e) => e.status === 'PUBLISHED',
+      )
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            communityGroupBySlug: {
+              group,
+              memberCount,
+              myMembership: myMembership ? membershipWithUser(myMembership, state) : null,
+              events: groupEvents,
+            },
+          },
+        }),
+      })
+      return
+    }
+
+    if (query.includes('query') && query.includes('MyCommunityMemberships')) {
+      const userId = getActiveUserId()
+      const memberships = state.communityMemberships
+        .filter((m) => m.userId === userId)
+        .map((m) => membershipWithUser(m, state))
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { myCommunityMemberships: memberships } }),
+      })
+      return
+    }
+
+    if (query.includes('query') && query.includes('PendingMembershipRequests')) {
+      const groupId = variables.groupId as string
+      const pending = state.communityMemberships
+        .filter((m) => m.groupId === groupId && m.status === 'PENDING')
+        .map((m) => membershipWithUser(m, state))
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { pendingMembershipRequests: pending } }),
+      })
+      return
+    }
+
+    if (query.includes('query') && query.includes('GroupMembers')) {
+      const groupId = variables.groupId as string
+      const members = state.communityMemberships
+        .filter((m) => m.groupId === groupId && m.status === 'ACTIVE')
+        .map((m) => membershipWithUser(m, state))
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { groupMembers: members } }),
+      })
+      return
+    }
+
+    if (query.includes('query') && query.includes('CommunityGroups')) {
+      const userId = getActiveUserId()
+      const activeMemberGroupIds = new Set(
+        state.communityMemberships
+          .filter((m) => m.userId === userId && m.status === 'ACTIVE')
+          .map((m) => m.groupId),
+      )
+      const visible = state.communityGroups.filter(
+        (g) => g.isActive && (g.visibility === 'PUBLIC' || activeMemberGroupIds.has(g.id)),
+      )
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { communityGroups: visible } }),
+      })
+      return
+    }
+
     if (query.includes('query') && query.includes('Me')) {
       const user = state.users.find((u) => u.id === state.currentUserId)
       if (!user) {
@@ -1229,6 +1347,171 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       return
     }
 
+    // ── Community group mutations ─────────────────────────────────────────────
+
+    if (query.includes('mutation') && query.includes('CreateCommunityGroup')) {
+      const userId = getActiveUserId()
+      if (!userId) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Not authorized', extensions: { code: 'AUTH_NOT_AUTHORIZED' } }] }),
+        })
+        return
+      }
+      const input = variables.input as Partial<MockCommunityGroup>
+      const slug = (input.slug as string ?? '').toLowerCase()
+      if (state.communityGroups.some((g) => g.slug === slug)) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: `Slug '${slug}' is already taken.`, extensions: { code: 'SLUG_TAKEN' } }] }),
+        })
+        return
+      }
+      const group: MockCommunityGroup = {
+        id: `group-${Date.now()}`,
+        name: input.name as string,
+        slug,
+        summary: (input.summary as string | undefined) ?? null,
+        description: (input.description as string | undefined) ?? null,
+        visibility: (input.visibility as 'PUBLIC' | 'PRIVATE') ?? 'PUBLIC',
+        isActive: true,
+        createdAtUtc: new Date().toISOString(),
+        createdByUserId: userId,
+      }
+      state.communityGroups.push(group)
+      state.communityMemberships.push({
+        id: `mem-${Date.now()}-admin`,
+        groupId: group.id,
+        userId,
+        role: 'ADMIN',
+        status: 'ACTIVE',
+        createdAtUtc: new Date().toISOString(),
+        reviewedAtUtc: null,
+        reviewedByUserId: null,
+      })
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { createCommunityGroup: group } }),
+      })
+      return
+    }
+
+    if (query.includes('mutation') && query.includes('JoinCommunityGroup')) {
+      const userId = getActiveUserId()
+      const groupId = variables.groupId as string
+      const group = state.communityGroups.find((g) => g.id === groupId)
+      if (!group || group.visibility !== 'PUBLIC') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Group not found or private', extensions: { code: 'GROUP_PRIVATE' } }] }),
+        })
+        return
+      }
+      const existing = state.communityMemberships.find((m) => m.groupId === groupId && m.userId === userId)
+      if (existing) {
+        existing.status = 'ACTIVE'
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { joinCommunityGroup: membershipWithUser(existing, state) } }) })
+        return
+      }
+      const membership: MockCommunityMembership = {
+        id: `mem-${Date.now()}`,
+        groupId,
+        userId,
+        role: 'MEMBER',
+        status: 'ACTIVE',
+        createdAtUtc: new Date().toISOString(),
+        reviewedAtUtc: null,
+        reviewedByUserId: null,
+      }
+      state.communityMemberships.push(membership)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { joinCommunityGroup: membershipWithUser(membership, state) } }),
+      })
+      return
+    }
+
+    if (query.includes('mutation') && query.includes('RequestCommunityMembership')) {
+      const userId = getActiveUserId()
+      const groupId = variables.groupId as string
+      const existing = state.communityMemberships.find((m) => m.groupId === groupId && m.userId === userId)
+      if (existing) {
+        existing.status = 'PENDING'
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { requestCommunityMembership: membershipWithUser(existing, state) } }) })
+        return
+      }
+      const membership: MockCommunityMembership = {
+        id: `mem-${Date.now()}`,
+        groupId,
+        userId,
+        role: 'MEMBER',
+        status: 'PENDING',
+        createdAtUtc: new Date().toISOString(),
+        reviewedAtUtc: null,
+        reviewedByUserId: null,
+      }
+      state.communityMemberships.push(membership)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { requestCommunityMembership: membershipWithUser(membership, state) } }),
+      })
+      return
+    }
+
+    if (query.includes('mutation') && query.includes('ReviewMembershipRequest')) {
+      const membershipId = variables.membershipId as string
+      const approve = variables.input?.approve as boolean
+      const membership = state.communityMemberships.find((m) => m.id === membershipId)
+      if (!membership) {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ errors: [{ message: 'Not found' }] }) })
+        return
+      }
+      membership.status = approve ? 'ACTIVE' : 'REJECTED'
+      membership.reviewedAtUtc = new Date().toISOString()
+      membership.reviewedByUserId = getActiveUserId()
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { reviewMembershipRequest: membershipWithUser(membership, state) } }),
+      })
+      return
+    }
+
+    if (query.includes('mutation') && query.includes('AssignMemberRole')) {
+      const membershipId = variables.membershipId as string
+      const role = variables.role as MockCommunityMembership['role']
+      const membership = state.communityMemberships.find((m) => m.id === membershipId)
+      if (!membership) {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ errors: [{ message: 'Not found' }] }) })
+        return
+      }
+      membership.role = role
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { assignMemberRole: membershipWithUser(membership, state) } }),
+      })
+      return
+    }
+
+    if (query.includes('mutation') && query.includes('RevokeMembership')) {
+      const membershipId = variables.membershipId as string
+      const idx = state.communityMemberships.findIndex((m) => m.id === membershipId)
+      if (idx !== -1) state.communityMemberships.splice(idx, 1)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { revokeMembership: true } }),
+      })
+      return
+    }
+
     // Fallback
     await route.fulfill({
       status: 200,
@@ -1238,6 +1521,20 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
   })
 
   return state
+}
+
+/** Enrich a MockCommunityMembership with user data for the mock GraphQL response. */
+function membershipWithUser(
+  membership: MockCommunityMembership,
+  state: MockState,
+) {
+  const user = state.users.find((u) => u.id === membership.userId)
+  const group = state.communityGroups.find((g) => g.id === membership.groupId)
+  return {
+    ...membership,
+    user: user ? { id: user.id, displayName: user.displayName, email: user.email } : null,
+    group: group ?? null,
+  }
 }
 
 /** Convenience factory for a pre-seeded admin user. */
@@ -1428,4 +1725,84 @@ function relevanceScore(event: MockEvent, normalizedSearch: string) {
   if (description.includes(normalizedSearch)) score += 1
 
   return score
+}
+
+/** Convenience factory for a contributor user. */
+export function makeContributorUser(overrides: Partial<MockUser> = {}): MockUser {
+  return {
+    id: 'contributor-1',
+    email: 'contributor@example.com',
+    password: 'ContribPass123!',
+    displayName: 'Contributor User',
+    role: 'CONTRIBUTOR',
+    createdAtUtc: new Date().toISOString(),
+    ...overrides,
+  }
+}
+
+/** Convenience factory for a public community group. */
+export function makePublicGroup(overrides: Partial<MockCommunityGroup> = {}): MockCommunityGroup {
+  return {
+    id: 'group-1',
+    name: 'Prague Crypto Circle',
+    slug: 'prague-crypto-circle',
+    summary: 'A community for crypto enthusiasts in Prague.',
+    description: null,
+    visibility: 'PUBLIC',
+    isActive: true,
+    createdAtUtc: new Date().toISOString(),
+    createdByUserId: 'admin-1',
+    ...overrides,
+  }
+}
+
+/** Convenience factory for a private community group. */
+export function makePrivateGroup(overrides: Partial<MockCommunityGroup> = {}): MockCommunityGroup {
+  return {
+    id: 'group-2',
+    name: 'Secret Builders Guild',
+    slug: 'secret-builders-guild',
+    summary: 'An exclusive private community.',
+    description: null,
+    visibility: 'PRIVATE',
+    isActive: true,
+    createdAtUtc: new Date().toISOString(),
+    createdByUserId: 'admin-1',
+    ...overrides,
+  }
+}
+
+/** Convenience factory for an active membership. */
+export function makeActiveMembership(
+  groupId: string,
+  userId: string,
+  role: MockCommunityMembership['role'] = 'MEMBER',
+): MockCommunityMembership {
+  return {
+    id: `mem-${groupId}-${userId}`,
+    groupId,
+    userId,
+    role,
+    status: 'ACTIVE',
+    createdAtUtc: new Date().toISOString(),
+    reviewedAtUtc: null,
+    reviewedByUserId: null,
+  }
+}
+
+/** Convenience factory for a pending membership request. */
+export function makePendingMembership(
+  groupId: string,
+  userId: string,
+): MockCommunityMembership {
+  return {
+    id: `mem-pending-${groupId}-${userId}`,
+    groupId,
+    userId,
+    role: 'MEMBER',
+    status: 'PENDING',
+    createdAtUtc: new Date().toISOString(),
+    reviewedAtUtc: null,
+    reviewedByUserId: null,
+  }
 }

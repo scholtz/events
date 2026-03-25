@@ -577,4 +577,181 @@ public sealed class Query
     /// </summary>
     public string GetVapidPublicKey([Service] Microsoft.Extensions.Options.IOptions<EventsApi.Configuration.VapidOptions> vapidOptions)
         => vapidOptions.Value.PublicKey;
+
+    // ── Community group queries ───────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns all active community groups visible to the current caller.
+    /// Public groups are visible to everyone.
+    /// Private groups are visible only to members and global admins.
+    /// </summary>
+    public async Task<IReadOnlyList<CommunityGroup>> GetCommunityGroupsAsync(
+        ClaimsPrincipal? claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var userId = claimsPrincipal?.Identity?.IsAuthenticated == true
+            ? claimsPrincipal.GetRequiredUserId()
+            : (Guid?)null;
+
+        var isAdmin = claimsPrincipal?.IsAdmin() ?? false;
+
+        return await dbContext.CommunityGroups
+            .AsNoTracking()
+            .Where(cg => cg.IsActive && (
+                cg.Visibility == CommunityVisibility.Public ||
+                isAdmin ||
+                (userId != null && dbContext.CommunityMemberships.Any(
+                    cm => cm.GroupId == cg.Id && cm.UserId == userId && cm.Status == CommunityMemberStatus.Active))))
+            .OrderBy(cg => cg.Name)
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Returns a single community group by its slug, including associated published events and member count.
+    /// Private groups are accessible only to active members and global admins.
+    /// Returns null when the group does not exist, is not active, or the caller lacks access.
+    /// </summary>
+    public async Task<CommunityGroupDetail?> GetCommunityGroupBySlugAsync(
+        string slug,
+        ClaimsPrincipal? claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var normalizedSlug = slug.Trim().ToLowerInvariant();
+        var group = await dbContext.CommunityGroups
+            .AsNoTracking()
+            .Include(cg => cg.CreatedBy)
+            .FirstOrDefaultAsync(cg => cg.Slug == normalizedSlug && cg.IsActive, cancellationToken);
+
+        if (group is null) return null;
+
+        var userId = claimsPrincipal?.Identity?.IsAuthenticated == true
+            ? claimsPrincipal.GetRequiredUserId()
+            : (Guid?)null;
+
+        var isAdmin = claimsPrincipal?.IsAdmin() ?? false;
+
+        if (group.Visibility == CommunityVisibility.Private && !isAdmin)
+        {
+            if (userId is null) return null;
+            var hasAccess = await dbContext.CommunityMemberships.AnyAsync(
+                cm => cm.GroupId == group.Id && cm.UserId == userId && cm.Status == CommunityMemberStatus.Active,
+                cancellationToken);
+            if (!hasAccess) return null;
+        }
+
+        var events = await dbContext.CommunityGroupEvents
+            .AsNoTracking()
+            .Include(cge => cge.Event)
+                .ThenInclude(e => e.Domain)
+            .Include(cge => cge.Event)
+                .ThenInclude(e => e.SubmittedBy)
+            .Where(cge => cge.GroupId == group.Id && cge.Event.Status == EventStatus.Published)
+            .Select(cge => cge.Event)
+            .OrderBy(e => e.StartsAtUtc)
+            .ToListAsync(cancellationToken);
+
+        var memberCount = await dbContext.CommunityMemberships
+            .CountAsync(cm => cm.GroupId == group.Id && cm.Status == CommunityMemberStatus.Active, cancellationToken);
+
+        CommunityMembership? myMembership = null;
+        if (userId is not null)
+        {
+            myMembership = await dbContext.CommunityMemberships
+                .AsNoTracking()
+                .FirstOrDefaultAsync(cm => cm.GroupId == group.Id && cm.UserId == userId, cancellationToken);
+        }
+
+        return new CommunityGroupDetail(group, events, memberCount, myMembership);
+    }
+
+    /// <summary>
+    /// Returns all community groups the authenticated user belongs to (any status/role).
+    /// </summary>
+    [Authorize]
+    public async Task<IReadOnlyList<CommunityMembership>> GetMyCommunityMembershipsAsync(
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var userId = claimsPrincipal.GetRequiredUserId();
+        return await dbContext.CommunityMemberships
+            .AsNoTracking()
+            .Include(cm => cm.Group)
+            .Where(cm => cm.UserId == userId)
+            .OrderBy(cm => cm.Group.Name)
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Returns pending membership requests for a group. Only group admins may call this.
+    /// </summary>
+    [Authorize]
+    public async Task<IReadOnlyList<CommunityMembership>> GetPendingMembershipRequestsAsync(
+        Guid groupId,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var userId = claimsPrincipal.GetRequiredUserId();
+        var isAdmin = claimsPrincipal.IsAdmin();
+
+        if (!isAdmin)
+        {
+            var isGroupAdmin = await dbContext.CommunityMemberships.AnyAsync(
+                cm => cm.GroupId == groupId && cm.UserId == userId &&
+                      cm.Role == CommunityMemberRole.Admin && cm.Status == CommunityMemberStatus.Active,
+                cancellationToken);
+            if (!isGroupAdmin)
+                throw new GraphQLException(
+                    ErrorBuilder.New()
+                        .SetMessage("Only group administrators can view membership requests.")
+                        .SetCode("FORBIDDEN")
+                        .Build());
+        }
+
+        return await dbContext.CommunityMemberships
+            .AsNoTracking()
+            .Include(cm => cm.User)
+            .Where(cm => cm.GroupId == groupId && cm.Status == CommunityMemberStatus.Pending)
+            .OrderBy(cm => cm.CreatedAtUtc)
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Returns all active members of a group. Only group admins (or global admins) may call this.
+    /// </summary>
+    [Authorize]
+    public async Task<IReadOnlyList<CommunityMembership>> GetGroupMembersAsync(
+        Guid groupId,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var userId = claimsPrincipal.GetRequiredUserId();
+        var isAdmin = claimsPrincipal.IsAdmin();
+
+        if (!isAdmin)
+        {
+            var isGroupAdmin = await dbContext.CommunityMemberships.AnyAsync(
+                cm => cm.GroupId == groupId && cm.UserId == userId &&
+                      cm.Role == CommunityMemberRole.Admin && cm.Status == CommunityMemberStatus.Active,
+                cancellationToken);
+            if (!isGroupAdmin)
+                throw new GraphQLException(
+                    ErrorBuilder.New()
+                        .SetMessage("Only group administrators can view member lists.")
+                        .SetCode("FORBIDDEN")
+                        .Build());
+        }
+
+        return await dbContext.CommunityMemberships
+            .AsNoTracking()
+            .Include(cm => cm.User)
+            .Where(cm => cm.GroupId == groupId && cm.Status == CommunityMemberStatus.Active)
+            .OrderBy(cm => cm.Role.ToString())
+                .ThenBy(cm => cm.User.DisplayName)
+            .ToListAsync(cancellationToken);
+    }
 }

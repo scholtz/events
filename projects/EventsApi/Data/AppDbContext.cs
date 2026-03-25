@@ -16,6 +16,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<DomainFeaturedEvent> DomainFeaturedEvents => Set<DomainFeaturedEvent>();
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
     public DbSet<EventReminder> EventReminders => Set<EventReminder>();
+    public DbSet<CommunityGroup> CommunityGroups => Set<CommunityGroup>();
+    public DbSet<CommunityMembership> CommunityMemberships => Set<CommunityMembership>();
+    public DbSet<CommunityGroupEvent> CommunityGroupEvents => Set<CommunityGroupEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -204,6 +207,63 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .WithMany()
                 .HasForeignKey(er => er.EventId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CommunityGroup>(entity =>
+        {
+            entity.HasIndex(cg => cg.Slug).IsUnique();
+            entity.Property(cg => cg.Name).HasMaxLength(200);
+            entity.Property(cg => cg.Slug).HasMaxLength(200);
+            entity.Property(cg => cg.Summary).HasMaxLength(500);
+            entity.Property(cg => cg.Description).HasMaxLength(4000);
+            entity.Property(cg => cg.Visibility).HasConversion<string>().HasMaxLength(16);
+
+            entity.HasOne(cg => cg.CreatedBy)
+                .WithMany()
+                .HasForeignKey(cg => cg.CreatedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<CommunityMembership>(entity =>
+        {
+            entity.HasIndex(cm => new { cm.GroupId, cm.UserId }).IsUnique();
+            entity.Property(cm => cm.Role).HasConversion<string>().HasMaxLength(32);
+            entity.Property(cm => cm.Status).HasConversion<string>().HasMaxLength(32);
+
+            entity.HasOne(cm => cm.Group)
+                .WithMany(cg => cg.Memberships)
+                .HasForeignKey(cm => cm.GroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(cm => cm.User)
+                .WithMany()
+                .HasForeignKey(cm => cm.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(cm => cm.ReviewedBy)
+                .WithMany()
+                .HasForeignKey(cm => cm.ReviewedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<CommunityGroupEvent>(entity =>
+        {
+            entity.HasIndex(cge => new { cge.GroupId, cge.EventId }).IsUnique();
+
+            entity.HasOne(cge => cge.Group)
+                .WithMany(cg => cg.GroupEvents)
+                .HasForeignKey(cge => cge.GroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(cge => cge.Event)
+                .WithMany()
+                .HasForeignKey(cge => cge.EventId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(cge => cge.AddedBy)
+                .WithMany()
+                .HasForeignKey(cge => cge.AddedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
     }
 }
