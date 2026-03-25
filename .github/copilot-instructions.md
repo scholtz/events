@@ -259,6 +259,8 @@ Use Playwright's accessible locators in this order of preference:
 
 **Strict mode and ambiguous locators**: Playwright runs in strict mode by default — if a locator matches more than one element, `toBeVisible()` and `.click()` throw. Always use `{ exact: true }` when the link/button text could be a substring of another element's text (e.g. `getByRole('link', { name: 'All Events', exact: true })` to avoid also matching "Browse All Events").
 
+**Inline forms with a toggle button**: When a page has a toggle button (e.g. "Create Community") that opens an inline form containing a submit button with the same label, there are TWO buttons with identical text while the form is open. Scope the submit button click to the form container: `page.locator('.form-actions').getByRole('button', { name: 'Create Community' })` instead of the global `page.getByRole('button', { name: 'Create Community' })`.
+
 **`nth()` index on `v-if` elements**: `v-if` removes the element from the DOM entirely. A `.nth(1)` locator will fail when the preceding sibling is hidden by `v-if` because there is only one matching element in the DOM. In tests that trigger only one of several possible success indicators (e.g. style vs. overview form), use `.first()` instead of a hard-coded index.
 
 ### Assertions
@@ -299,6 +301,8 @@ npm run test:e2e
 The `setupMockApi` handler chain uses `query.includes('OperationName')` to route GraphQL requests. **Handler order matters**: a shorter substring will match before a longer one that contains it. When adding a new handler, check whether the new operation name is a substring of any existing handler's check (or vice versa).
 
 Common pitfall: `"MyManagedDomains".includes("Domains")` is `true`, so a `Domains` handler placed before `MyManagedDomains` will intercept `MyManagedDomains` queries. **Always place more-specific (longer) operation names before their substrings.**
+
+**Critical pitfall – the generic `Me` handler**: The `Me` handler checks `query.includes('Me')`. Any GraphQL query whose *body* contains a field named `myMembership`, or whose *operation name* contains the substring `Me` (e.g. `PendingMembershipRequests`, `GroupMembers`, `MyCommunityMemberships`), will be intercepted by the `Me` handler unless the community handlers are placed **before** it. Always position handlers for community/membership operations before the `Me` handler.
 
 After adding a new handler, verify ordering by searching for all `query.includes(...)` calls and ensuring no earlier handler is a substring of your new operation name.
 

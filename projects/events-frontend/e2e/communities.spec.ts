@@ -68,7 +68,8 @@ test.describe('Communities list page', () => {
     await page.getByLabel('URL slug').fill('my-new-community')
     await page.getByLabel('Short summary').fill('A brand new community')
     await page.getByLabel('Visibility').selectOption('PUBLIC')
-    await page.getByRole('button', { name: 'Create Community' }).click()
+    // Scope to form-actions to avoid strict-mode conflict with the toggle button
+    await page.locator('.form-actions').getByRole('button', { name: 'Create Community' }).click()
 
     // The group appears in the list
     await expect(page.getByText('My New Community')).toBeVisible()
@@ -86,7 +87,8 @@ test.describe('Communities list page', () => {
     await page.getByRole('button', { name: 'Create Community' }).click()
     await page.getByLabel('Community name').fill('Another Group')
     await page.getByLabel('URL slug').fill('taken-slug')
-    await page.getByRole('button', { name: 'Create Community' }).click()
+    // Scope to form-actions to avoid strict-mode conflict with the toggle button
+    await page.locator('.form-actions').getByRole('button', { name: 'Create Community' }).click()
 
     await expect(page.getByText(/already taken/i)).toBeVisible()
   })

@@ -1092,6 +1092,97 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       return
     }
 
+    // ── Community group queries (must come before Me handler – community
+    //    query strings contain 'myMembership' which includes 'Me') ─────────────
+
+    if (query.includes('query') && query.includes('CommunityGroupBySlug')) {
+      const slug = variables.slug as string
+      const userId = getActiveUserId()
+      const group = state.communityGroups.find((g) => g.slug === slug && g.isActive) ?? null
+      if (!group) {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { communityGroupBySlug: null } }) })
+        return
+      }
+      const memberships = state.communityMemberships.filter((m) => m.groupId === group.id)
+      const myMembership = memberships.find((m) => m.userId === userId) ?? null
+      const memberCount = memberships.filter((m) => m.status === 'ACTIVE').length
+      const groupEvents = state.events.filter(
+        (e) => e.status === 'PUBLISHED',
+      )
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            communityGroupBySlug: {
+              group,
+              memberCount,
+              myMembership: myMembership ? membershipWithUser(myMembership, state) : null,
+              events: groupEvents,
+            },
+          },
+        }),
+      })
+      return
+    }
+
+    if (query.includes('query') && query.includes('MyCommunityMemberships')) {
+      const userId = getActiveUserId()
+      const memberships = state.communityMemberships
+        .filter((m) => m.userId === userId)
+        .map((m) => membershipWithUser(m, state))
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { myCommunityMemberships: memberships } }),
+      })
+      return
+    }
+
+    if (query.includes('query') && query.includes('PendingMembershipRequests')) {
+      const groupId = variables.groupId as string
+      const pending = state.communityMemberships
+        .filter((m) => m.groupId === groupId && m.status === 'PENDING')
+        .map((m) => membershipWithUser(m, state))
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { pendingMembershipRequests: pending } }),
+      })
+      return
+    }
+
+    if (query.includes('query') && query.includes('GroupMembers')) {
+      const groupId = variables.groupId as string
+      const members = state.communityMemberships
+        .filter((m) => m.groupId === groupId && m.status === 'ACTIVE')
+        .map((m) => membershipWithUser(m, state))
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { groupMembers: members } }),
+      })
+      return
+    }
+
+    if (query.includes('query') && query.includes('CommunityGroups')) {
+      const userId = getActiveUserId()
+      const activeMemberGroupIds = new Set(
+        state.communityMemberships
+          .filter((m) => m.userId === userId && m.status === 'ACTIVE')
+          .map((m) => m.groupId),
+      )
+      const visible = state.communityGroups.filter(
+        (g) => g.isActive && (g.visibility === 'PUBLIC' || activeMemberGroupIds.has(g.id)),
+      )
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { communityGroups: visible } }),
+      })
+      return
+    }
+
     if (query.includes('query') && query.includes('Me')) {
       const user = state.users.find((u) => u.id === state.currentUserId)
       if (!user) {
@@ -1417,96 +1508,6 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({ data: { revokeMembership: true } }),
-      })
-      return
-    }
-
-    // ── Community group queries ────────────────────────────────────────────────
-
-    if (query.includes('query') && query.includes('CommunityGroupBySlug')) {
-      const slug = variables.slug as string
-      const userId = getActiveUserId()
-      const group = state.communityGroups.find((g) => g.slug === slug && g.isActive) ?? null
-      if (!group) {
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { communityGroupBySlug: null } }) })
-        return
-      }
-      const memberships = state.communityMemberships.filter((m) => m.groupId === group.id)
-      const myMembership = memberships.find((m) => m.userId === userId) ?? null
-      const memberCount = memberships.filter((m) => m.status === 'ACTIVE').length
-      const groupEvents = state.events.filter(
-        (e) => e.status === 'PUBLISHED',
-      )
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          data: {
-            communityGroupBySlug: {
-              group,
-              memberCount,
-              myMembership: myMembership ? membershipWithUser(myMembership, state) : null,
-              events: groupEvents,
-            },
-          },
-        }),
-      })
-      return
-    }
-
-    if (query.includes('query') && query.includes('MyCommunityMemberships')) {
-      const userId = getActiveUserId()
-      const memberships = state.communityMemberships
-        .filter((m) => m.userId === userId)
-        .map((m) => membershipWithUser(m, state))
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ data: { myCommunityMemberships: memberships } }),
-      })
-      return
-    }
-
-    if (query.includes('query') && query.includes('PendingMembershipRequests')) {
-      const groupId = variables.groupId as string
-      const pending = state.communityMemberships
-        .filter((m) => m.groupId === groupId && m.status === 'PENDING')
-        .map((m) => membershipWithUser(m, state))
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ data: { pendingMembershipRequests: pending } }),
-      })
-      return
-    }
-
-    if (query.includes('query') && query.includes('GroupMembers')) {
-      const groupId = variables.groupId as string
-      const members = state.communityMemberships
-        .filter((m) => m.groupId === groupId && m.status === 'ACTIVE')
-        .map((m) => membershipWithUser(m, state))
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ data: { groupMembers: members } }),
-      })
-      return
-    }
-
-    if (query.includes('query') && query.includes('CommunityGroups')) {
-      const userId = getActiveUserId()
-      const activeMemberGroupIds = new Set(
-        state.communityMemberships
-          .filter((m) => m.userId === userId && m.status === 'ACTIVE')
-          .map((m) => m.groupId),
-      )
-      const visible = state.communityGroups.filter(
-        (g) => g.isActive && (g.visibility === 'PUBLIC' || activeMemberGroupIds.has(g.id)),
-      )
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ data: { communityGroups: visible } }),
       })
       return
     }
