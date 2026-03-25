@@ -1371,6 +1371,27 @@ test.describe('Event detail page', () => {
     await expect(page.getByRole('menuitem', { name: /Outlook/i })).toBeFocused()
   })
 
+  test('Tab key closes the calendar menu without trapping focus', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-cal-tab',
+      name: 'Tab Close Event',
+      slug: 'tab-close-event',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await page.getByRole('button', { name: /Add to calendar/i }).click()
+    // Focus lands on the first menu item after opening
+    await expect(page.getByRole('menuitem', { name: /Download .ics/i })).toBeFocused()
+
+    // Press Tab — the menu must close immediately (no cycling through items)
+    await page.keyboard.press('Tab')
+
+    await expect(page.getByRole('menuitem', { name: /Google Calendar/i })).not.toBeVisible()
+    // Focus must return to the toggle button (clean exit point, not a trap)
+    await expect(page.getByRole('button', { name: /Add to calendar/i })).toBeFocused()
+  })
+
   test('calendar menu aria-label is localized (Slovak locale)', async ({ page }) => {
     const event = makeApprovedEvent({
       id: 'ev-cal-sk',

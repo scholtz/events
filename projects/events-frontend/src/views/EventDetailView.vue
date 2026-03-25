@@ -208,13 +208,22 @@ function handleCalendarMenuKeydown(e: KeyboardEvent) {
     e.preventDefault()
     items[items.length - 1]?.focus()
   } else if (e.key === 'Tab') {
-    // Trap Tab inside the menu: cycle forward / backward
+    // Per WAI-ARIA menu-button pattern: Tab closes the menu immediately.
+    // Prevent default so focus does not cycle to another menu item.
+    // Return focus to the toggle button so the user can Tab forward from
+    // there — this avoids a focus trap while keeping a clean exit point.
     e.preventDefault()
-    if (e.shiftKey) {
-      items[(idx - 1 + items.length) % items.length]?.focus()
-    } else {
-      items[(idx + 1) % items.length]?.focus()
-    }
+    closeCalendarMenu(true)
+  }
+}
+
+/** Close the menu when focus leaves the calendar-action container via any means other than Tab. */
+function handleCalendarMenuFocusout(e: FocusEvent) {
+  // relatedTarget is the element receiving focus; if it's outside the
+  // .calendar-action container, close the menu without stealing focus.
+  const container = calendarBtnRef.value?.closest('.calendar-action')
+  if (container && !container.contains(e.relatedTarget as Node | null)) {
+    calendarMenuOpen.value = false
   }
 }
 
@@ -458,6 +467,7 @@ function domainHostDisplay(event: {
                   :aria-label="t('eventDetail.calendarMenuLabel')"
                   @click.stop
                   @keydown="handleCalendarMenuKeydown"
+                  @focusout="handleCalendarMenuFocusout"
                 >
                   <button
                     class="calendar-menu-item"
