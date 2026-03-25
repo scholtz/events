@@ -464,6 +464,8 @@ export default {
     heading: '{name} Veranstaltungen',
     oneUpcomingEvent: '1 bevorstehende Veranstaltung',
     upcomingEventCount: '{count} bevorstehende Veranstaltungen',
+    oneEvent: '1 Veranstaltung',
+    eventCount: '{count} Veranstaltungen',
     oneEventFound: '1 Veranstaltung gefunden',
     eventsFound: '{count} Veranstaltungen gefunden',
     filterAndExplore: 'Filtern & Erkunden',

@@ -464,6 +464,8 @@ export default {
     heading: 'Udalosti: {name}',
     oneUpcomingEvent: '1 nadchádzajúca udalosť',
     upcomingEventCount: '{count} nadchádzajúcich udalostí',
+    oneEvent: '1 udalosť',
+    eventCount: '{count} udalostí',
     oneEventFound: 'Nájdená 1 udalosť',
     eventsFound: 'Nájdených {count} udalostí',
     filterAndExplore: 'Filtrovať a prehľadávať',

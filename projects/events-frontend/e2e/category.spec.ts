@@ -464,3 +464,100 @@ test.describe('Category landing page', () => {
     await expect(page.getByRole('heading', { name: 'Odporúčané podujatia' })).toBeVisible()
   })
 })
+
+  // ── Open Graph / Twitter Card meta tag tests ────────────────────────────
+
+  test('sets og:title meta tag from domain name', async ({ page }) => {
+    setupMockApi(page, { domains: [makeTechDomain()], events: [] })
+    await page.goto('/category/technology')
+    await page.waitForFunction(() => document.title.includes('Technology'))
+    const ogTitle = await page.evaluate(
+      () => document.querySelector('meta[property="og:title"]')?.getAttribute('content') ?? '',
+    )
+    expect(ogTitle).toContain('Technology')
+  })
+
+  test('sets og:description meta tag from domain description', async ({ page }) => {
+    const domain: MockDomain = {
+      ...makeTechDomain(),
+      description: 'The best tech events in Central Europe.',
+    }
+    setupMockApi(page, { domains: [domain], events: [] })
+    await page.goto('/category/technology')
+    await page.waitForFunction(() => !!document.querySelector('meta[property="og:description"]'))
+    const ogDesc = await page.evaluate(
+      () => document.querySelector('meta[property="og:description"]')?.getAttribute('content') ?? '',
+    )
+    expect(ogDesc).toContain('The best tech events in Central Europe.')
+  })
+
+  test('sets og:image from bannerUrl when present', async ({ page }) => {
+    const domain: MockDomain = {
+      ...makeTechDomain(),
+      bannerUrl: 'https://cdn.example.com/tech-banner.jpg',
+    }
+    setupMockApi(page, { domains: [domain], events: [] })
+    await page.goto('/category/technology')
+    await page.waitForFunction(() => !!document.querySelector('meta[property="og:image"]'))
+    const ogImage = await page.evaluate(
+      () => document.querySelector('meta[property="og:image"]')?.getAttribute('content') ?? '',
+    )
+    expect(ogImage).toBe('https://cdn.example.com/tech-banner.jpg')
+  })
+
+  test('falls back og:image to logoUrl when no bannerUrl', async ({ page }) => {
+    const domain: MockDomain = {
+      ...makeTechDomain(),
+      bannerUrl: null,
+      logoUrl: 'https://cdn.example.com/tech-logo.png',
+    }
+    setupMockApi(page, { domains: [domain], events: [] })
+    await page.goto('/category/technology')
+    await page.waitForFunction(() => !!document.querySelector('meta[property="og:image"]'))
+    const ogImage = await page.evaluate(
+      () => document.querySelector('meta[property="og:image"]')?.getAttribute('content') ?? '',
+    )
+    expect(ogImage).toBe('https://cdn.example.com/tech-logo.png')
+  })
+
+  test('sets twitter:card to summary_large_image when image is available', async ({ page }) => {
+    const domain: MockDomain = {
+      ...makeTechDomain(),
+      bannerUrl: 'https://cdn.example.com/tech-banner.jpg',
+    }
+    setupMockApi(page, { domains: [domain], events: [] })
+    await page.goto('/category/technology')
+    await page.waitForFunction(() => !!document.querySelector('meta[name="twitter:card"]'))
+    const twitterCard = await page.evaluate(
+      () => document.querySelector('meta[name="twitter:card"]')?.getAttribute('content') ?? '',
+    )
+    expect(twitterCard).toBe('summary_large_image')
+  })
+
+  test('sets twitter:card to summary when no image is available', async ({ page }) => {
+    const domain: MockDomain = {
+      ...makeTechDomain(),
+      bannerUrl: null,
+      logoUrl: null,
+    }
+    setupMockApi(page, { domains: [domain], events: [] })
+    await page.goto('/category/technology')
+    await page.waitForFunction(() => !!document.querySelector('meta[name="twitter:card"]'))
+    const twitterCard = await page.evaluate(
+      () => document.querySelector('meta[name="twitter:card"]')?.getAttribute('content') ?? '',
+    )
+    expect(twitterCard).toBe('summary')
+  })
+
+  test('shows publishedEventCount from server in event count badge', async ({ page }) => {
+    const domain: MockDomain = {
+      ...makeTechDomain(),
+      publishedEventCount: 17,
+    }
+    // No events in the response (the count comes from the server field, not from the event list)
+    setupMockApi(page, { domains: [domain], events: [] })
+    await page.goto('/category/technology')
+    // The count badge reflects the server-side publishedEventCount
+    await expect(page.locator('.category-event-count')).toContainText('17')
+  })
+})

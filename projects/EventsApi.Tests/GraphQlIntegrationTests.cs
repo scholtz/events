@@ -4563,7 +4563,112 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal("Web3 Foundation", domain.GetProperty("curatorCredit").GetString());
     }
 
-    // ── Language filter tests ────────────────────────────────────────────────
+    [Fact]
+    public async Task DomainBySlug_ReturnsPublishedEventCount_WithNoEvents()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            dbContext.Domains.Add(CreateDomain("Empty Hub", "empty-hub-count"));
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query DomainBySlug($slug: String!) {
+              domainBySlug(slug: $slug) {
+                name publishedEventCount
+              }
+            }
+            """,
+            new { slug = "empty-hub-count" });
+
+        var domain = document.RootElement.GetProperty("data").GetProperty("domainBySlug");
+        Assert.Equal("Empty Hub", domain.GetProperty("name").GetString());
+        Assert.Equal(0, domain.GetProperty("publishedEventCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task DomainBySlug_ReturnsPublishedEventCount_CountsOnlyPublishedEvents()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("counter@example.com", "Counter");
+            dbContext.Users.Add(user);
+            var domain = CreateDomain("Count Hub", "count-hub-test");
+            dbContext.Domains.Add(domain);
+
+            var futureDate = DateTime.UtcNow.AddMonths(3);
+            // Two published events in this domain
+            dbContext.Events.Add(CreateEvent("Published A", "pub-a", "Desc", "Venue", "Prague", futureDate, domain, user, status: EventStatus.Published));
+            dbContext.Events.Add(CreateEvent("Published B", "pub-b", "Desc", "Venue", "Brno", futureDate.AddDays(1), domain, user, status: EventStatus.Published));
+            // One pending — must NOT be counted
+            dbContext.Events.Add(CreateEvent("Pending C", "pend-c", "Desc", "Venue", "Bratislava", futureDate.AddDays(2), domain, user, status: EventStatus.PendingApproval));
+            // One rejected — must NOT be counted
+            dbContext.Events.Add(CreateEvent("Rejected D", "rej-d", "Desc", "Venue", "Vienna", futureDate.AddDays(3), domain, user, status: EventStatus.Rejected));
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query DomainBySlug($slug: String!) {
+              domainBySlug(slug: $slug) {
+                publishedEventCount
+              }
+            }
+            """,
+            new { slug = "count-hub-test" });
+
+        var domain = document.RootElement.GetProperty("data").GetProperty("domainBySlug");
+        // Only the 2 PUBLISHED events must be counted
+        Assert.Equal(2, domain.GetProperty("publishedEventCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task DomainBySlug_PublishedEventCount_DoesNotIncludeOtherDomainEvents()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("isolation@example.com", "Isolation");
+            dbContext.Users.Add(user);
+            var domainA = CreateDomain("Domain A", "domain-a-isolation");
+            var domainB = CreateDomain("Domain B", "domain-b-isolation");
+            dbContext.Domains.AddRange(domainA, domainB);
+
+            var futureDate = DateTime.UtcNow.AddMonths(2);
+            // 3 events in domain A
+            for (var i = 0; i < 3; i++)
+                dbContext.Events.Add(CreateEvent($"A Event {i}", $"a-event-{i}", "Desc", "Venue", "Prague",
+                    futureDate.AddDays(i), domainA, user, status: EventStatus.Published));
+            // 5 events in domain B
+            for (var i = 0; i < 5; i++)
+                dbContext.Events.Add(CreateEvent($"B Event {i}", $"b-event-{i}", "Desc", "Venue", "Brno",
+                    futureDate.AddDays(i), domainB, user, status: EventStatus.Published));
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query DomainBySlug($slug: String!) {
+              domainBySlug(slug: $slug) {
+                publishedEventCount
+              }
+            }
+            """,
+            new { slug = "domain-a-isolation" });
+
+        var domain = document.RootElement.GetProperty("data").GetProperty("domainBySlug");
+        // Domain A has exactly 3; Domain B's 5 must not bleed in
+        Assert.Equal(3, domain.GetProperty("publishedEventCount").GetInt32());
+    }
 
     [Fact]
     public async Task LanguageFilter_ReturnsOnlyMatchingLanguage()

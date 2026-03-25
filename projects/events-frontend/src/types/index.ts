@@ -46,6 +46,8 @@ export interface EventDomain {
   whatBelongsHere: string | null
   submitEventCta: string | null
   curatorCredit: string | null
+  /** Number of published events in this domain hub. Only present when fetched via domainBySlug. */
+  publishedEventCount?: number
 }
 
 /** Matches backend DomainAdministrator entity */
