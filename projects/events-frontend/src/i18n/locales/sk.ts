@@ -52,6 +52,8 @@ export default {
     heroCta: 'Pridať udalosť',
     matchingEvents: 'Zodpovedajúce udalosti',
     allEventsOn: 'Všetky udalosti na {host}',
+    subdomainViewFullHub: 'Zobraziť celú stránku hubu',
+    subdomainCuratedBy: 'Spravuje: {credit}',
     updatingResults: 'Aktualizácia výsledkov…',
     updatingDescription: 'Aplikujú sa vaše filtre a načítavajú sa najlepšie výsledky.',
     errorOffline: 'Ste offline',
