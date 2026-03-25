@@ -37,6 +37,19 @@ const syncingFromRoute = ref(false)
 // updated by the store watcher.  Avoids double-fetch and double-analytics.
 const skipNextRouteSync = ref(false)
 
+/** Guard against CSS injection: only allow valid 3- or 6-digit hex colors. */
+function safeHexColor(value: string | null | undefined): string | null {
+  if (!value) return null
+  return /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(value.trim()) ? value.trim() : null
+}
+
+/** Truncated overview snippet for the subdomain hub header (max 200 chars). */
+const overviewSnippet = computed(() => {
+  const text = activeDomain.value?.overviewContent
+  if (!text) return null
+  return text.length > 200 ? text.slice(0, 200).trimEnd() + '…' : text
+})
+
 const mapCenter = computed(() => {
   const firstEvent = eventsStore.discoveryEvents[0]
   if (!firstEvent) return null
@@ -226,15 +239,52 @@ const emptyStateMessage = computed(() => {
 
 <template>
   <div class="home-view">
-    <section v-if="isSubdomainView && activeDomain" class="subdomain-header">
+    <section
+      v-if="isSubdomainView && activeDomain"
+      class="subdomain-header"
+      :style="[
+        safeHexColor(activeDomain.primaryColor) ? `--subdomain-color: ${safeHexColor(activeDomain.primaryColor)}` : '',
+        safeHexColor(activeDomain.accentColor) ? `--subdomain-accent: ${safeHexColor(activeDomain.accentColor)}` : '',
+      ]"
+    >
       <div class="container subdomain-header-content">
-        <div>
-          <h1>{{ activeDomain.name }} Events</h1>
-          <p v-if="activeDomain.description">{{ activeDomain.description }}</p>
+        <div class="subdomain-hero-main">
+          <!-- Domain logo -->
+          <div v-if="activeDomain.logoUrl" class="subdomain-logo-wrap">
+            <img :src="activeDomain.logoUrl" :alt="activeDomain.name" class="subdomain-logo" />
+          </div>
+          <div class="subdomain-hero-text">
+            <h1>{{ activeDomain.name }} Events</h1>
+            <p v-if="activeDomain.description" class="subdomain-description">
+              {{ activeDomain.description }}
+            </p>
+            <!-- Curator credit trust cue -->
+            <p v-if="activeDomain.curatorCredit" class="subdomain-curator-credit">
+              <span class="subdomain-curator-icon" aria-hidden="true">✓</span>
+              {{ t('home.subdomainCuratedBy', { credit: activeDomain.curatorCredit }) }}
+            </p>
+            <!-- Hub overview snippet -->
+            <p v-if="overviewSnippet" class="subdomain-overview-snippet">
+              {{ overviewSnippet }}
+            </p>
+            <!-- Action links -->
+            <div class="subdomain-links">
+              <RouterLink
+                :to="`/category/${activeDomain.slug}`"
+                class="btn btn-outline btn-sm subdomain-hub-link"
+              >
+                {{ t('home.subdomainViewFullHub') }}
+              </RouterLink>
+              <a :href="mainSiteUrl" class="main-site-link">
+                {{ t('home.allEventsOn', { host: mainSiteHost }) }}
+              </a>
+            </div>
+          </div>
         </div>
-        <a :href="mainSiteUrl" class="main-site-link">
-          {{ t('home.allEventsOn', { host: mainSiteHost }) }}
-        </a>
+        <!-- Banner image -->
+        <div v-if="activeDomain.bannerUrl" class="subdomain-banner-wrap">
+          <img :src="activeDomain.bannerUrl" :alt="activeDomain.name" class="subdomain-banner" />
+        </div>
       </div>
     </section>
     <section v-else class="hero">
@@ -390,10 +440,42 @@ const emptyStateMessage = computed(() => {
 }
 
 .subdomain-header {
+  --subdomain-color: var(--color-primary);
+  --subdomain-accent: var(--color-primary);
   background: linear-gradient(160deg, #0d0f14 0%, rgba(19, 127, 236, 0.08) 100%);
-  border-bottom: 1px solid var(--color-border);
-  padding: 2rem 0 1.5rem;
+  border-bottom: 3px solid var(--subdomain-color);
+  padding: 2rem 0 1.75rem;
   margin-bottom: 0;
+}
+
+.subdomain-header-content {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 2rem;
+}
+
+.subdomain-hero-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.subdomain-logo-wrap {
+  flex-shrink: 0;
+}
+
+.subdomain-logo {
+  height: 48px;
+  width: auto;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+}
+
+.subdomain-hero-text {
+  min-width: 0;
 }
 
 .subdomain-header h1 {
@@ -404,16 +486,58 @@ const emptyStateMessage = computed(() => {
   color: var(--color-text);
 }
 
-.subdomain-header p {
+.subdomain-description {
   color: var(--color-text-secondary);
+  font-size: 0.9375rem;
+  margin-bottom: 0.5rem;
+  max-width: 560px;
+  line-height: 1.6;
+}
+
+.subdomain-curator-credit {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.subdomain-curator-icon {
+  color: var(--subdomain-color);
   font-size: 0.9375rem;
 }
 
-.subdomain-header-content {
+.subdomain-overview-snippet {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  line-height: 1.65;
+  max-width: 540px;
+  margin-bottom: 0.75rem;
+}
+
+.subdomain-links {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  align-items: center;
   gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.subdomain-hub-link {
+  font-size: 0.875rem;
+}
+
+.subdomain-banner-wrap {
+  flex-shrink: 0;
+}
+
+.subdomain-banner {
+  width: 220px;
+  height: 130px;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
 }
 
 .main-site-link {
@@ -647,6 +771,19 @@ const emptyStateMessage = computed(() => {
 
 @media (max-width: 640px) {
   .subdomain-header-content {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .subdomain-banner-wrap {
+    display: none;
+  }
+
+  .subdomain-hero-main {
+    flex-direction: column;
+  }
+
+  .subdomain-links {
     flex-direction: column;
     align-items: flex-start;
   }

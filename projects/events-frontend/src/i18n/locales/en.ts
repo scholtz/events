@@ -56,6 +56,8 @@ export default {
     heroCta: 'Submit an Event',
     matchingEvents: 'Matching Events',
     allEventsOn: 'All events on {host}',
+    subdomainViewFullHub: 'View full hub page',
+    subdomainCuratedBy: 'Curated by {credit}',
     updatingResults: 'Updating results…',
     updatingDescription: 'Applying your filters and loading the best matching events.',
     errorOffline: "You're offline",

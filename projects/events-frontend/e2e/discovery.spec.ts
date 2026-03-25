@@ -597,6 +597,123 @@ test.describe('Domain filter', () => {
     await expect(page).toHaveURL(/\/$/)
     await expect(page.getByRole('heading', { level: 1 })).toContainText('Discover Events')
   })
+
+  test('subdomain hub shows "View full hub page" link to /category/:slug', async ({ page }) => {
+    const domain = { ...makeCryptoDomain(), primaryColor: '#e44d26' }
+    setupMockApi(page, { domains: [domain], events: [] })
+
+    await page.goto('/?subdomain=crypto&domain=crypto')
+
+    await expect(page.getByRole('heading', { name: 'Crypto Events' })).toBeVisible()
+    const hubLink = page.getByRole('link', { name: 'View full hub page' })
+    await expect(hubLink).toBeVisible()
+    await expect(hubLink).toHaveAttribute('href', '/category/crypto')
+  })
+
+  test('subdomain hub shows logo when configured', async ({ page }) => {
+    const domain = {
+      ...makeCryptoDomain(),
+      logoUrl: 'https://example.com/crypto-logo.png',
+    }
+    setupMockApi(page, { domains: [domain], events: [] })
+
+    await page.goto('/?subdomain=crypto&domain=crypto')
+
+    const logo = page.locator('.subdomain-logo')
+    await expect(logo).toBeVisible()
+    await expect(logo).toHaveAttribute('src', 'https://example.com/crypto-logo.png')
+    await expect(logo).toHaveAttribute('alt', 'Crypto')
+  })
+
+  test('subdomain hub shows banner when configured', async ({ page }) => {
+    const domain = {
+      ...makeCryptoDomain(),
+      bannerUrl: 'https://example.com/crypto-banner.jpg',
+    }
+    setupMockApi(page, { domains: [domain], events: [] })
+
+    await page.goto('/?subdomain=crypto&domain=crypto')
+
+    const banner = page.locator('.subdomain-banner')
+    await expect(banner).toBeVisible()
+    await expect(banner).toHaveAttribute('src', 'https://example.com/crypto-banner.jpg')
+  })
+
+  test('subdomain hub shows curator credit when configured', async ({ page }) => {
+    const domain = {
+      ...makeCryptoDomain(),
+      curatorCredit: 'Prague Blockchain Community',
+    }
+    setupMockApi(page, { domains: [domain], events: [] })
+
+    await page.goto('/?subdomain=crypto&domain=crypto')
+
+    await expect(page.locator('.subdomain-curator-credit')).toContainText(
+      'Prague Blockchain Community',
+    )
+  })
+
+  test('subdomain hub shows overview snippet when configured', async ({ page }) => {
+    const domain = {
+      ...makeCryptoDomain(),
+      overviewContent: 'The premier destination for crypto and blockchain events in Central Europe.',
+    }
+    setupMockApi(page, { domains: [domain], events: [] })
+
+    await page.goto('/?subdomain=crypto&domain=crypto')
+
+    await expect(page.locator('.subdomain-overview-snippet')).toContainText(
+      'The premier destination for crypto',
+    )
+  })
+
+  test('subdomain hub applies primary color as CSS custom property', async ({ page }) => {
+    const domain = { ...makeCryptoDomain(), primaryColor: '#e44d26' }
+    setupMockApi(page, { domains: [domain], events: [] })
+
+    await page.goto('/?subdomain=crypto&domain=crypto')
+
+    await expect(page.locator('.subdomain-header')).toHaveAttribute(
+      'style',
+      /--subdomain-color:\s*#e44d26/,
+    )
+  })
+
+  test('subdomain hub: mobile viewport shows heading and CTA link', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    const domain = {
+      ...makeCryptoDomain(),
+      logoUrl: 'https://example.com/crypto-logo.png',
+      curatorCredit: 'Crypto Curators',
+    }
+    setupMockApi(page, {
+      domains: [domain],
+      events: [
+        makeApprovedEvent({
+          name: 'Mobile Crypto Event',
+          domainId: 'dom-crypto',
+          domain: { id: 'dom-crypto', name: 'Crypto', slug: 'crypto', subdomain: 'crypto' },
+        }),
+      ],
+    })
+
+    await page.goto('/?subdomain=crypto&domain=crypto')
+
+    await expect(page.getByRole('heading', { name: 'Crypto Events' })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'View full hub page' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Mobile Crypto Event' })).toBeVisible()
+  })
+
+  test('i18n: subdomain hub shows localized "View full hub page" in Slovak', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'sk')
+    })
+    setupMockApi(page, { domains: [makeCryptoDomain()], events: [] })
+
+    await page.goto('/?subdomain=crypto&domain=crypto')
+
+    await expect(page.getByRole('link', { name: 'Zobraziť celú stránku hubu' })).toBeVisible()
+  })
 })
 
 // ---------------------------------------------------------------------------

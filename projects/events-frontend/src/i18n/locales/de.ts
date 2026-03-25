@@ -52,6 +52,8 @@ export default {
     heroCta: 'Veranstaltung einreichen',
     matchingEvents: 'Passende Veranstaltungen',
     allEventsOn: 'Alle Veranstaltungen auf {host}',
+    subdomainViewFullHub: 'Zur Hub-Seite',
+    subdomainCuratedBy: 'Kuratiert von {credit}',
     updatingResults: 'Ergebnisse werden aktualisiert…',
     updatingDescription: 'Ihre Filter werden angewendet und die besten Ergebnisse werden geladen.',
     errorOffline: 'Sie sind offline',
