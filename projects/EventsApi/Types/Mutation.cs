@@ -9,6 +9,7 @@ using HotChocolate;
 using HotChocolate.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace EventsApi.Types;
 
@@ -1517,6 +1518,7 @@ public sealed class Mutation
         ClaimsPrincipal claimsPrincipal,
         [Service] AppDbContext dbContext,
         [Service] ExternalSourceAdapterFactory adapterFactory,
+        [Service] ILogger<Mutation> logger,
         CancellationToken cancellationToken)
     {
         var claim = await dbContext.ExternalSourceClaims
@@ -1568,6 +1570,9 @@ public sealed class Mutation
             // Validate required fields
             if (ext.StartsAtUtc is null)
             {
+                logger.LogWarning(
+                    "Sync for claim {ClaimId}: skipping external event '{ExternalId}' — missing StartsAtUtc.",
+                    claimId, ext.ExternalId);
                 errorCount++;
                 continue;
             }
@@ -1581,7 +1586,7 @@ public sealed class Mutation
                     Name = (ext.Name ?? "Untitled Event").Trim(),
                     Slug = await BuildUniqueEventSlugAsync(dbContext, ext.Name ?? "Untitled Event", cancellationToken),
                     Description = (ext.Description ?? string.Empty).Trim(),
-                    EventUrl = ext.EventUrl.Trim(),
+                    EventUrl = (ext.EventUrl ?? string.Empty).Trim(),
                     VenueName = (ext.VenueName ?? string.Empty).Trim(),
                     AddressLine1 = (ext.AddressLine1 ?? string.Empty).Trim(),
                     City = (ext.City ?? string.Empty).Trim(),
@@ -1615,8 +1620,21 @@ public sealed class Mutation
                 await dbContext.SaveChangesAsync(cancellationToken);
                 importedCount++;
             }
-            catch
+            catch (Exception ex)
             {
+                logger.LogError(ex,
+                    "Sync for claim {ClaimId}: failed to import external event '{ExternalId}'. Rolling back pending changes.",
+                    claimId, ext.ExternalId);
+
+                // Detach all pending entries added in this iteration to prevent them from
+                // being accidentally committed in the final SaveChangesAsync below.
+                foreach (var entry in dbContext.ChangeTracker.Entries()
+                             .Where(e => e.State == EntityState.Added)
+                             .ToList())
+                {
+                    entry.State = EntityState.Detached;
+                }
+
                 errorCount++;
             }
         }

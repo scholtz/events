@@ -13,7 +13,7 @@ public sealed record ExternalEventData(
 
     string Name,
     string Description,
-    string EventUrl,
+    string? EventUrl,
 
     /// <summary>UTC start time. Null if the source did not provide one (event will be skipped).</summary>
     DateTime? StartsAtUtc,
