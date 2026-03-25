@@ -29,6 +29,29 @@ const event = computed(() => eventsStore.detailEvent ?? cachedEvent.value ?? nul
 const loading = computed(() => eventsStore.detailLoading && !cachedEvent.value)
 const detailError = computed(() => eventsStore.detailError)
 
+/** Guard against CSS injection in domain color values. Only allows valid 3- or 6-digit hex. */
+function safeHexColor(value: string | null | undefined): string | null {
+  if (!value) return null
+  return /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(value.trim()) ? value.trim() : null
+}
+
+/**
+ * Show overviewContent excerpt in the hub context card when the domain has no short description.
+ * Truncated to 120 characters with an ellipsis so the sidebar card stays compact.
+ */
+const hubContextOverviewExcerpt = computed(() => {
+  const domain = event.value?.domain
+  if (!domain || domain.description) return null
+  const overview = domain.overviewContent
+  if (!overview) return null
+  return overview.length > 120 ? `${overview.slice(0, 120)}…` : overview
+})
+
+/** Validated hub accent color: prefers accentColor, falls back to primaryColor. */
+const hubContextAccentColor = computed(() =>
+  safeHexColor((event.value?.domain?.accentColor ?? event.value?.domain?.primaryColor) ?? null),
+)
+
 async function loadDetail() {
   await eventsStore.fetchEventBySlug(slug.value)
 }
@@ -597,7 +620,7 @@ function domainHostDisplay(event: {
             <div
               v-if="event.domain?.slug"
               class="hub-context"
-              :style="event.domain.primaryColor ? `--hub-accent: ${event.domain.primaryColor}` : ''"
+              :style="hubContextAccentColor ? `--hub-accent: ${hubContextAccentColor}` : ''"
               aria-label="Community hub"
             >
               <h3 class="map-heading">{{ t('eventDetail.hubContextHeading') }}</h3>
@@ -612,6 +635,9 @@ function domainHostDisplay(event: {
                   <p class="hub-context-name">{{ event.domain.name }}</p>
                   <p v-if="event.domain.description" class="hub-context-description">
                     {{ event.domain.description }}
+                  </p>
+                  <p v-else-if="hubContextOverviewExcerpt" class="hub-context-description">
+                    {{ hubContextOverviewExcerpt }}
                   </p>
                 </div>
               </div>

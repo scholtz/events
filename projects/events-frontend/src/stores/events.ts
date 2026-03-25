@@ -29,7 +29,7 @@ const DETAIL_EVENT_FIELDS = `
   submittedAtUtc updatedAtUtc publishedAtUtc
   adminNotes status isFree priceAmount currencyCode domainId mapUrl
   attendanceMode timezone language
-  domain { id name slug subdomain description logoUrl primaryColor }
+  domain { id name slug subdomain description logoUrl primaryColor accentColor overviewContent }
   submittedBy { displayName }
   interestedCount
 `
