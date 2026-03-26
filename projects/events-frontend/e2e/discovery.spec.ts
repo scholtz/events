@@ -333,7 +333,7 @@ test.describe('Keyword search — tag name and organizer matching', () => {
     await page.goto('/?domain=crypto')
 
     // The chip should show the human-readable domain name, not the raw slug
-    await expect(page.locator('.filter-chip', { hasText: 'Domain: Crypto' })).toBeVisible()
+    await expect(page.locator('.filter-chip', { hasText: 'Tag: Crypto' })).toBeVisible()
   })
 })
 

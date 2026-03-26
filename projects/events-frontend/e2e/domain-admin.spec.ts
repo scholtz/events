@@ -15,7 +15,7 @@ test.describe('Domain admin management', () => {
     await loginAs(page, admin)
     await page.goto('/admin')
 
-    await page.getByRole('button', { name: /Domains/ }).click()
+    await page.getByRole('button', { name: /Tags/ }).click()
     await expect(page.getByRole('button', { name: 'Manage' })).toBeVisible()
   })
 
@@ -39,7 +39,7 @@ test.describe('Domain admin management', () => {
     await loginAs(page, admin)
     await page.goto('/admin')
 
-    await page.getByRole('button', { name: /Domains/ }).click()
+    await page.getByRole('button', { name: /Tags/ }).click()
     await page.getByRole('button', { name: 'Manage' }).click()
 
     // Style form is visible
@@ -72,8 +72,8 @@ test.describe('Domain admin management', () => {
     await page.goto('/admin')
 
     // Wait for admin overview to finish loading
-    await expect(page.getByRole('button', { name: /Domains/ })).toBeVisible()
-    await page.getByRole('button', { name: /Domains/ }).click()
+    await expect(page.getByRole('button', { name: /Tags/ })).toBeVisible()
+    await page.getByRole('button', { name: /Tags/ }).click()
     await page.getByRole('button', { name: 'Manage' }).click()
 
     // Wait for the admin form to be visible
@@ -119,7 +119,7 @@ test.describe('Domain admin management', () => {
     await loginAs(page, admin)
     await page.goto('/admin')
 
-    await page.getByRole('button', { name: /Domains/ }).click()
+    await page.getByRole('button', { name: /Tags/ }).click()
     await page.getByRole('button', { name: 'Manage' }).click()
 
     // Should see the contributor as admin
@@ -142,7 +142,7 @@ test.describe('Domain admin management', () => {
     await loginAs(page, admin)
     await page.goto('/admin')
 
-    await page.getByRole('button', { name: /Domains/ }).click()
+    await page.getByRole('button', { name: /Tags/ }).click()
     await page.getByRole('button', { name: 'Manage' }).click()
 
     // Fill style form
@@ -205,7 +205,7 @@ test.describe('Domain admin management', () => {
     await page.goto('/admin')
 
     // Navigate to domains tab and open manage panel
-    await page.getByRole('button', { name: /Domains/ }).click()
+    await page.getByRole('button', { name: /Tags/ }).click()
     await page.getByRole('button', { name: 'Manage' }).click()
     await expect(page.getByRole('heading', { name: 'Hub Branding' })).toBeVisible()
 
@@ -231,7 +231,7 @@ test.describe('Domain admin management', () => {
     await loginAs(page, admin)
     await page.goto('/admin')
 
-    await page.getByRole('button', { name: /Domains/ }).click()
+    await page.getByRole('button', { name: /Tags/ }).click()
     await page.getByRole('button', { name: 'Manage' }).click()
     await expect(page.getByRole('heading', { name: 'Hub Branding' })).toBeVisible()
 
@@ -251,7 +251,7 @@ test.describe('Domain admin management', () => {
     await loginAs(page, admin)
     await page.goto('/admin')
 
-    await page.getByRole('button', { name: /Domains/ }).click()
+    await page.getByRole('button', { name: /Tags/ }).click()
     await page.getByRole('button', { name: 'Manage' }).click()
     await expect(page.getByRole('heading', { name: 'Hub Overview Content' })).toBeVisible()
 
@@ -326,7 +326,7 @@ test.describe('Domain admin management', () => {
     await loginAs(page, admin)
     await page.goto('/admin')
 
-    await page.getByRole('button', { name: /Domains/ }).click()
+    await page.getByRole('button', { name: /Tags/ }).click()
     await page.getByRole('button', { name: 'Manage' }).click()
 
     // Branding form is visible and inputs are accessible on mobile
@@ -349,7 +349,7 @@ test.describe('Domain admin management', () => {
     await loginAs(page, admin)
     await page.goto('/admin')
 
-    await page.getByRole('button', { name: /Domains/ }).click()
+    await page.getByRole('button', { name: /Tags/ }).click()
     await page.getByRole('button', { name: 'Manage' }).click()
 
     await expect(page.getByRole('heading', { name: 'Featured Events' })).toBeVisible()
@@ -375,7 +375,7 @@ test.describe('Domain admin management', () => {
     await loginAs(page, admin)
     await page.goto('/admin')
 
-    await page.getByRole('button', { name: /Domains/ }).click()
+    await page.getByRole('button', { name: /Tags/ }).click()
     await page.getByRole('button', { name: 'Manage' }).click()
 
     await expect(page.getByRole('heading', { name: 'Featured Events' })).toBeVisible()
@@ -412,7 +412,7 @@ test.describe('Domain admin management', () => {
     await loginAs(page, admin)
     await page.goto('/admin')
 
-    await page.getByRole('button', { name: /Domains/ }).click()
+    await page.getByRole('button', { name: /Tags/ }).click()
     await page.getByRole('button', { name: 'Manage' }).click()
 
     // After loading, the featured event should be listed (loaded via FeaturedEventsForDomain query)
@@ -459,7 +459,7 @@ test.describe('Domain admin management', () => {
     await loginAs(page, admin)
     await page.goto('/admin')
 
-    await page.getByRole('button', { name: /Domains/ }).click()
+    await page.getByRole('button', { name: /Tags/ }).click()
     await page.getByRole('button', { name: 'Manage' }).click()
 
     // All 5 are featured — add picker should be hidden

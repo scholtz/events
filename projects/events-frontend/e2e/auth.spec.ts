@@ -110,6 +110,6 @@ test.describe('Admin panel', () => {
     await page.goto('/admin')
 
     await expect(page.getByRole('button', { name: /Events/ })).toBeVisible()
-    await expect(page.getByRole('button', { name: /Domains/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Tags/ })).toBeVisible()
   })
 })
