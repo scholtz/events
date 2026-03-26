@@ -8604,4 +8604,256 @@ public sealed class GraphQlIntegrationTests
             errText.Contains("not authorized", StringComparison.OrdinalIgnoreCase),
             $"Expected auth error, got: {errText}");
     }
+
+    // ── Organizer Portfolio Dashboard ──────────────────────────────────────────
+
+    [Fact]
+    public async Task Portfolio_ReturnsRejectedAndDraftCounts()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var organizerUserId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer = CreateUser("portfolio-counts@example.com", "Portfolio Organizer");
+            organizerUserId = organizer.Id;
+            var domain = CreateDomain("Tech", "tech-portfolio-counts");
+            dbContext.Users.Add(organizer);
+            dbContext.Domains.Add(domain);
+
+            dbContext.Events.AddRange(
+                CreateEvent("Published Event", "port-pub", "Desc", "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, organizer, status: EventStatus.Published),
+                CreateEvent("Pending Event", "port-pend", "Desc", "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, organizer, status: EventStatus.PendingApproval),
+                CreateEvent("Rejected Event", "port-rej", "Desc", "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, organizer, status: EventStatus.Rejected),
+                CreateEvent("Draft Event", "port-draft", "Desc", "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, organizer, status: EventStatus.Draft));
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, organizerUserId));
+
+        using var document = await ExecuteGraphQlAsync(client, """
+            query Portfolio {
+              myDashboard {
+                totalSubmittedEvents
+                publishedEvents
+                pendingApprovalEvents
+                rejectedEvents
+                draftEvents
+              }
+            }
+            """);
+
+        var dash = document.RootElement.GetProperty("data").GetProperty("myDashboard");
+        Assert.Equal(4, dash.GetProperty("totalSubmittedEvents").GetInt32());
+        Assert.Equal(1, dash.GetProperty("publishedEvents").GetInt32());
+        Assert.Equal(1, dash.GetProperty("pendingApprovalEvents").GetInt32());
+        Assert.Equal(1, dash.GetProperty("rejectedEvents").GetInt32());
+        Assert.Equal(1, dash.GetProperty("draftEvents").GetInt32());
+    }
+
+    [Fact]
+    public async Task Portfolio_EventAnalytics_IncludesAdminNotesForRejectedEvent()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var organizerUserId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer = CreateUser("portfolio-notes@example.com", "Notes Organizer");
+            organizerUserId = organizer.Id;
+            var domain = CreateDomain("Tech", "tech-portfolio-notes");
+            dbContext.Users.Add(organizer);
+            dbContext.Domains.Add(domain);
+
+            var rejected = CreateEvent("Rejected With Notes", "rej-with-notes", "Desc", "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, organizer, status: EventStatus.Rejected);
+            rejected.AdminNotes = "Please add more details about the agenda.";
+            dbContext.Events.Add(rejected);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, organizerUserId));
+
+        using var document = await ExecuteGraphQlAsync(client, """
+            query Portfolio {
+              myDashboard {
+                eventAnalytics {
+                  eventSlug
+                  status
+                  adminNotes
+                }
+              }
+            }
+            """);
+
+        var analytics = document.RootElement
+            .GetProperty("data").GetProperty("myDashboard")
+            .GetProperty("eventAnalytics").EnumerateArray().ToArray();
+
+        var item = Assert.Single(analytics);
+        Assert.Equal("REJECTED", item.GetProperty("status").GetString());
+        Assert.Equal("Please add more details about the agenda.", item.GetProperty("adminNotes").GetString());
+    }
+
+    [Fact]
+    public async Task Portfolio_EventAnalytics_IncludesDomainSlugLanguageTimezone()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var organizerUserId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer = CreateUser("portfolio-fields@example.com", "Fields Organizer");
+            organizerUserId = organizer.Id;
+            var domain = CreateDomain("Tech", "tech-portfolio-fields");
+            dbContext.Users.Add(organizer);
+            dbContext.Domains.Add(domain);
+
+            dbContext.Events.Add(CreateEvent(
+                "Localised Event", "localised-event", "Desc", "Venue", "Prague",
+                FirstDayOfNextMonthUtc(), domain, organizer,
+                language: "cs", timezone: "Europe/Prague"));
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, organizerUserId));
+
+        using var document = await ExecuteGraphQlAsync(client, """
+            query Portfolio {
+              myDashboard {
+                eventAnalytics {
+                  domainSlug
+                  language
+                  timezone
+                }
+              }
+            }
+            """);
+
+        var item = document.RootElement
+            .GetProperty("data").GetProperty("myDashboard")
+            .GetProperty("eventAnalytics").EnumerateArray().Single();
+
+        Assert.Equal("tech-portfolio-fields", item.GetProperty("domainSlug").GetString());
+        Assert.Equal("cs", item.GetProperty("language").GetString());
+        Assert.Equal("Europe/Prague", item.GetProperty("timezone").GetString());
+    }
+
+    [Fact]
+    public async Task Portfolio_OrganizerIsolation_CannotSeeOtherOrganizersEvents()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var organizer1Id = Guid.Empty;
+        var organizer2Id = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer1 = CreateUser("portfolio-org1@example.com", "Organizer One");
+            var organizer2 = CreateUser("portfolio-org2@example.com", "Organizer Two");
+            organizer1Id = organizer1.Id;
+            organizer2Id = organizer2.Id;
+
+            var domain = CreateDomain("Tech", "tech-portfolio-isolation");
+            dbContext.Users.AddRange(organizer1, organizer2);
+            dbContext.Domains.Add(domain);
+
+            dbContext.Events.AddRange(
+                CreateEvent("Org1 Event A", "org1-event-a", "Desc", "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, organizer1),
+                CreateEvent("Org1 Event B", "org1-event-b", "Desc", "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, organizer1),
+                CreateEvent("Org2 Event", "org2-event", "Desc", "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, organizer2));
+        });
+
+        using var client1 = factory.CreateClient();
+        client1.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, organizer1Id));
+
+        using var doc1 = await ExecuteGraphQlAsync(client1, """
+            query Portfolio { myDashboard { totalSubmittedEvents eventAnalytics { eventSlug } } }
+            """);
+
+        var dash1 = doc1.RootElement.GetProperty("data").GetProperty("myDashboard");
+        Assert.Equal(2, dash1.GetProperty("totalSubmittedEvents").GetInt32());
+        var slugs1 = dash1.GetProperty("eventAnalytics").EnumerateArray()
+            .Select(a => a.GetProperty("eventSlug").GetString()).ToArray();
+        Assert.DoesNotContain("org2-event", slugs1);
+
+        using var client2 = factory.CreateClient();
+        client2.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, organizer2Id));
+
+        using var doc2 = await ExecuteGraphQlAsync(client2, """
+            query Portfolio { myDashboard { totalSubmittedEvents eventAnalytics { eventSlug } } }
+            """);
+
+        var dash2 = doc2.RootElement.GetProperty("data").GetProperty("myDashboard");
+        Assert.Equal(1, dash2.GetProperty("totalSubmittedEvents").GetInt32());
+        var slugs2 = dash2.GetProperty("eventAnalytics").EnumerateArray()
+            .Select(a => a.GetProperty("eventSlug").GetString()).ToArray();
+        Assert.DoesNotContain("org1-event-a", slugs2);
+        Assert.DoesNotContain("org1-event-b", slugs2);
+    }
+
+    [Fact]
+    public async Task Portfolio_UnauthenticatedAccess_ReturnsAuthError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = "query Portfolio { myDashboard { totalSubmittedEvents } }"
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(doc.RootElement.TryGetProperty("errors", out var errors),
+            $"Expected auth error but none returned.");
+        var errText = errors.ToString();
+        Assert.True(
+            errText.Contains("AUTH_NOT_AUTHORIZED", StringComparison.OrdinalIgnoreCase) ||
+            errText.Contains("UNAUTHORIZED", StringComparison.OrdinalIgnoreCase) ||
+            errText.Contains("not authorized", StringComparison.OrdinalIgnoreCase),
+            $"Expected auth error, got: {errText}");
+    }
+
+    [Fact]
+    public async Task Portfolio_EmptyState_ReturnsZeroCounts()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var organizerUserId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer = CreateUser("portfolio-empty@example.com", "Empty Organizer");
+            organizerUserId = organizer.Id;
+            dbContext.Users.Add(organizer);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, organizerUserId));
+
+        using var document = await ExecuteGraphQlAsync(client, """
+            query Portfolio {
+              myDashboard {
+                totalSubmittedEvents publishedEvents pendingApprovalEvents
+                rejectedEvents draftEvents totalInterestedCount totalCalendarActions
+                eventAnalytics { eventId }
+              }
+            }
+            """);
+
+        var dash = document.RootElement.GetProperty("data").GetProperty("myDashboard");
+        Assert.Equal(0, dash.GetProperty("totalSubmittedEvents").GetInt32());
+        Assert.Equal(0, dash.GetProperty("publishedEvents").GetInt32());
+        Assert.Equal(0, dash.GetProperty("pendingApprovalEvents").GetInt32());
+        Assert.Equal(0, dash.GetProperty("rejectedEvents").GetInt32());
+        Assert.Equal(0, dash.GetProperty("draftEvents").GetInt32());
+        Assert.Equal(0, dash.GetProperty("totalInterestedCount").GetInt32());
+        Assert.Equal(0, dash.GetProperty("totalCalendarActions").GetInt32());
+        Assert.Empty(dash.GetProperty("eventAnalytics").EnumerateArray());
+    }
 }

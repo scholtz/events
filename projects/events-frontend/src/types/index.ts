@@ -102,6 +102,10 @@ export interface DashboardOverview {
   totalSubmittedEvents: number
   publishedEvents: number
   pendingApprovalEvents: number
+  /** Count of events currently in REJECTED status. */
+  rejectedEvents: number
+  /** Count of events currently in DRAFT status. */
+  draftEvents: number
   totalInterestedCount: number
   totalCalendarActions: number
   managedEvents: CatalogEvent[]
@@ -129,6 +133,14 @@ export interface EventAnalyticsItem {
   calendarActionsLast7Days: number
   calendarActionsLast30Days: number
   calendarActionsByProvider: CalendarProviderCount[]
+  /** Moderator notes visible to the organizer when the event is rejected. */
+  adminNotes: string | null
+  /** Slug of the domain/category this event belongs to. */
+  domainSlug: string | null
+  /** BCP 47 language tag for the primary language of the event. */
+  language: string | null
+  /** IANA timezone identifier for the event. */
+  timezone: string | null
 }
 
 /** Matches backend AdminOverview response */

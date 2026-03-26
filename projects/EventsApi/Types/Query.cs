@@ -373,7 +373,11 @@ public sealed class Query
                     TotalCalendarActions: calActions.Count,
                     CalendarActionsLast7Days: calActions.Count(a => a.TriggeredAtUtc >= cutoff7Days),
                     CalendarActionsLast30Days: calActions.Count(a => a.TriggeredAtUtc >= cutoff30Days),
-                    CalendarActionsByProvider: providerBreakdown);
+                    CalendarActionsByProvider: providerBreakdown,
+                    AdminNotes: e.AdminNotes,
+                    DomainSlug: e.Domain?.Slug,
+                    Language: e.Language,
+                    Timezone: e.Timezone);
             })
             .ToList();
 
@@ -395,6 +399,8 @@ public sealed class Query
             TotalSubmittedEvents: managedEvents.Count,
             PublishedEvents: managedEvents.Count(catalogEvent => catalogEvent.Status == EventStatus.Published),
             PendingApprovalEvents: managedEvents.Count(catalogEvent => catalogEvent.Status == EventStatus.PendingApproval),
+            RejectedEvents: managedEvents.Count(catalogEvent => catalogEvent.Status == EventStatus.Rejected),
+            DraftEvents: managedEvents.Count(catalogEvent => catalogEvent.Status == EventStatus.Draft),
             TotalInterestedCount: totalInterestedCount,
             TotalCalendarActions: totalCalendarActions,
             ManagedEvents: managedEvents,

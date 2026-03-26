@@ -25,12 +25,24 @@ public sealed record EventAnalyticsItem(
     int TotalCalendarActions,
     int CalendarActionsLast7Days,
     int CalendarActionsLast30Days,
-    IReadOnlyList<CalendarProviderCount> CalendarActionsByProvider);
+    IReadOnlyList<CalendarProviderCount> CalendarActionsByProvider,
+    /// <summary>Moderator notes shown to the organizer when an event is rejected.</summary>
+    string? AdminNotes,
+    /// <summary>Slug of the domain/category this event belongs to.</summary>
+    string? DomainSlug,
+    /// <summary>BCP 47 language tag for the primary language of the event.</summary>
+    string? Language,
+    /// <summary>IANA timezone identifier for the event.</summary>
+    string? Timezone);
 
 public sealed record DashboardOverview(
     int TotalSubmittedEvents,
     int PublishedEvents,
     int PendingApprovalEvents,
+    /// <summary>Count of events currently in REJECTED status.</summary>
+    int RejectedEvents,
+    /// <summary>Count of events currently in DRAFT status.</summary>
+    int DraftEvents,
     int TotalInterestedCount,
     int TotalCalendarActions,
     IReadOnlyList<CatalogEvent> ManagedEvents,

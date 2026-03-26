@@ -9,6 +9,8 @@ const DASHBOARD_QUERY = `
       totalSubmittedEvents
       publishedEvents
       pendingApprovalEvents
+      rejectedEvents
+      draftEvents
       totalInterestedCount
       totalCalendarActions
       managedEvents {
@@ -19,7 +21,7 @@ const DASHBOARD_QUERY = `
         totalInterestedCount interestedLast7Days interestedLast30Days
         totalCalendarActions calendarActionsLast7Days calendarActionsLast30Days
         calendarActionsByProvider { provider count }
-        startsAtUtc
+        startsAtUtc adminNotes domainSlug language timezone
       }
       availableDomains { id name slug subdomain description isActive createdAtUtc }
     }
