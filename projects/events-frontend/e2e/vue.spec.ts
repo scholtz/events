@@ -39,7 +39,7 @@ test('full flow: signup, submit event, approve, list and filter', async ({ page 
 
   await page.getByLabel('Event Title *').fill(title)
   await page.getByLabel('Description *').fill('End-to-end submitted event for UI coverage.')
-  await page.getByLabel('Domain *').selectOption('technology')
+  await page.getByLabel('Tag *').selectOption('technology')
   await page.getByRole('button', { name: 'Next' }).click()
 
   // Step 2: Date & Time

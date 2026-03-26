@@ -407,7 +407,7 @@ async function handleReviewEvent(eventId: string, status: string) {
             <thead>
               <tr>
                 <th>Event / Submitter</th>
-                <th>Domain</th>
+                <th>Tag</th>
                 <th>Date</th>
                 <th>Status</th>
                 <th>Actions</th>
@@ -433,6 +433,12 @@ async function handleReviewEvent(eventId: string, status: string) {
                   </span>
                 </td>
                 <td class="actions-cell">
+                  <RouterLink
+                    :to="`/edit/${event.id}`"
+                    class="btn btn-primary btn-sm"
+                  >
+                    {{ t('admin.edit') }}
+                  </RouterLink>
                   <button
                     v-if="event.status !== 'PUBLISHED'"
                     class="btn btn-success btn-sm"
@@ -458,10 +464,10 @@ async function handleReviewEvent(eventId: string, status: string) {
         </div>
       </div>
 
-      <!-- Domains management -->
+      <!-- Tags management -->
       <div v-if="activeTab === 'domains'" class="admin-section">
         <div class="add-category card">
-          <h3>Add Domain</h3>
+          <h3>{{ t('admin.addDomain') }}</h3>
           <form class="category-form" @submit.prevent="addDomain">
             <input
               v-model="newDomain.name"

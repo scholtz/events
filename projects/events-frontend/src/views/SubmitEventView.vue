@@ -21,6 +21,7 @@ const form = reactive({
   name: '',
   description: '',
   domainSlug: '',
+  additionalTagSlugs: [] as string[],
   countryCode: 'CZ',
   attendanceMode: 'IN_PERSON',
   startsAtUtc: '',
@@ -210,6 +211,7 @@ async function handleSubmit() {
   try {
     await eventsStore.submitEvent({
       domainSlug: form.domainSlug,
+      additionalTagSlugs: form.additionalTagSlugs.length > 0 ? form.additionalTagSlugs : undefined,
       name: form.name,
       description: form.description,
       eventUrl: form.eventUrl,
@@ -354,6 +356,25 @@ loadDraft()
                 </option>
               </select>
               <p v-if="errors.domainSlug" class="field-error" role="alert">{{ errors.domainSlug }}</p>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="event-additional-tags">{{ t('submitEvent.additionalTags') }}</label>
+              <select
+                id="event-additional-tags"
+                v-model="form.additionalTagSlugs"
+                class="form-select"
+                multiple
+              >
+                <option
+                  v-for="d in domainsStore.domains.filter(d => d.slug !== form.domainSlug)"
+                  :key="d.id"
+                  :value="d.slug"
+                >
+                  {{ d.name }}
+                </option>
+              </select>
+              <p class="field-hint">{{ t('submitEvent.additionalTagsHint') }}</p>
             </div>
 
             <div class="form-group">

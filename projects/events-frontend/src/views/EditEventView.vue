@@ -29,6 +29,7 @@ const form = reactive({
   name: '',
   description: '',
   domainSlug: '',
+  additionalTagSlugs: [] as string[],
   countryCode: 'CZ',
   attendanceMode: 'IN_PERSON',
   startsAtUtc: '',
@@ -187,6 +188,7 @@ async function loadEvent() {
     form.name = event.name
     form.description = event.description
     form.domainSlug = event.domain?.slug ?? ''
+    form.additionalTagSlugs = (event.eventTags ?? []).map((t) => t.domain.slug)
     form.countryCode = event.countryCode ?? 'CZ'
     form.attendanceMode = event.attendanceMode ?? 'IN_PERSON'
     // Convert ISO date to date input format (YYYY-MM-DD)
@@ -225,6 +227,7 @@ async function handleSave() {
   try {
     await eventsStore.updateMyEvent(eventId, {
       domainSlug: form.domainSlug,
+      additionalTagSlugs: form.additionalTagSlugs.length > 0 ? form.additionalTagSlugs : undefined,
       name: form.name,
       description: form.description,
       eventUrl: form.eventUrl,
@@ -369,6 +372,25 @@ onMounted(loadEvent)
                 </option>
               </select>
               <p v-if="errors.domainSlug" class="field-error" role="alert">{{ errors.domainSlug }}</p>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="event-additional-tags">{{ t('submitEvent.additionalTags') }}</label>
+              <select
+                id="event-additional-tags"
+                v-model="form.additionalTagSlugs"
+                class="form-select"
+                multiple
+              >
+                <option
+                  v-for="d in domainsStore.domains.filter(d => d.slug !== form.domainSlug)"
+                  :key="d.id"
+                  :value="d.slug"
+                >
+                  {{ d.name }}
+                </option>
+              </select>
+              <p class="field-hint">{{ t('submitEvent.additionalTagsHint') }}</p>
             </div>
 
             <div class="form-group">

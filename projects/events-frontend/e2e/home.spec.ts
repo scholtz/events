@@ -107,11 +107,11 @@ test.describe('Header navigation', () => {
 })
 
 test.describe('Event filters', () => {
-  test('domain filter is populated from API', async ({ page }) => {
+  test('tag filter is populated from API', async ({ page }) => {
     setupMockApi(page, { domains: [makeTechDomain()] })
     await page.goto('/')
 
-    const select = page.getByLabel('Domain')
+    const select = page.getByLabel('Tag')
     await expect(select).toBeVisible()
     await expect(select.getByRole('option', { name: 'Technology' })).toBeAttached()
   })

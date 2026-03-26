@@ -385,6 +385,7 @@ const emptyStateMessage = computed(() => {
                 v-for="event in eventsStore.discoveryEvents"
                 :key="event.id"
                 :event="event"
+                :hide-domain-badge="isSubdomainView"
               />
             </div>
           </template>

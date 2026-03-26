@@ -23,6 +23,8 @@ public sealed class Query
             .AsNoTracking()
             .Include(catalogEvent => catalogEvent.Domain)
             .Include(catalogEvent => catalogEvent.SubmittedBy)
+            .Include(catalogEvent => catalogEvent.EventTags)
+                .ThenInclude(et => et.Domain)
             .AsQueryable();
 
         var isAdmin = claimsPrincipal.Identity?.IsAuthenticated == true && claimsPrincipal.IsAdmin();
@@ -50,13 +52,17 @@ public sealed class Query
         if (!string.IsNullOrWhiteSpace(filter?.DomainSlug))
         {
             var domainSlug = filter.DomainSlug.Trim().ToLowerInvariant();
-            query = query.Where(catalogEvent => catalogEvent.Domain.Slug == domainSlug);
+            query = query.Where(catalogEvent =>
+                catalogEvent.Domain.Slug == domainSlug
+                || catalogEvent.EventTags.Any(et => et.Domain.Slug == domainSlug));
         }
 
         if (!string.IsNullOrWhiteSpace(filter?.DomainSubdomain))
         {
             var domainSubdomain = filter.DomainSubdomain.Trim().ToLowerInvariant();
-            query = query.Where(catalogEvent => catalogEvent.Domain.Subdomain == domainSubdomain);
+            query = query.Where(catalogEvent =>
+                catalogEvent.Domain.Subdomain == domainSubdomain
+                || catalogEvent.EventTags.Any(et => et.Domain.Subdomain == domainSubdomain));
         }
 
         if (!string.IsNullOrWhiteSpace(filter?.City))
@@ -128,6 +134,8 @@ public sealed class Query
             .AsNoTracking()
             .Include(catalogEvent => catalogEvent.Domain)
             .Include(catalogEvent => catalogEvent.SubmittedBy)
+            .Include(catalogEvent => catalogEvent.EventTags)
+                .ThenInclude(et => et.Domain)
             .SingleOrDefaultAsync(
                 catalogEvent => catalogEvent.Slug == slug && catalogEvent.Status == EventStatus.Published,
                 cancellationToken);
@@ -150,6 +158,8 @@ public sealed class Query
             .AsNoTracking()
             .Include(e => e.Domain)
             .Include(e => e.SubmittedBy)
+            .Include(e => e.EventTags)
+                .ThenInclude(et => et.Domain)
             .SingleOrDefaultAsync(
                 e => e.Id == id && (isAdmin || e.SubmittedByUserId == currentUserId),
                 cancellationToken);
@@ -671,6 +681,7 @@ public sealed class Query
         {
             myMembership = await dbContext.CommunityMemberships
                 .AsNoTracking()
+                .Include(cm => cm.Group)
                 .FirstOrDefaultAsync(cm => cm.GroupId == group.Id && cm.UserId == userId, cancellationToken);
         }
 

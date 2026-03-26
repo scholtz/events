@@ -20,6 +20,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<CommunityMembership> CommunityMemberships => Set<CommunityMembership>();
     public DbSet<CommunityGroupEvent> CommunityGroupEvents => Set<CommunityGroupEvent>();
     public DbSet<ExternalSourceClaim> ExternalSourceClaims => Set<ExternalSourceClaim>();
+    public DbSet<EventTag> EventTags => Set<EventTag>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -270,6 +271,21 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         modelBuilder.Entity<CatalogEvent>(entity =>
         {
             entity.Property(ce => ce.ExternalSourceEventId).HasMaxLength(1000);
+        });
+
+        modelBuilder.Entity<EventTag>(entity =>
+        {
+            entity.HasIndex(et => new { et.EventId, et.DomainId }).IsUnique();
+
+            entity.HasOne(et => et.Event)
+                .WithMany(e => e.EventTags)
+                .HasForeignKey(et => et.EventId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(et => et.Domain)
+                .WithMany()
+                .HasForeignKey(et => et.DomainId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<ExternalSourceClaim>(entity =>

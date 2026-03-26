@@ -84,6 +84,7 @@ export type MockEvent = {
   attendanceMode: 'IN_PERSON' | 'ONLINE' | 'HYBRID'
   timezone: string | null
   language: string | null
+  eventTags: { id: string; domain: { id: string; name: string; slug: string; subdomain: string } }[]
 }
 
 export type MockSavedSearch = {
@@ -427,6 +428,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         attendanceMode: (input.attendanceMode as MockEvent['attendanceMode']) || 'IN_PERSON',
         timezone: input.timezone ?? null,
         language: (input.language as string | null) ?? null,
+        eventTags: [],
       }
       state.events.unshift(newEvent)
       await route.fulfill({
@@ -1748,6 +1750,7 @@ export function makeApprovedEvent(overrides: Partial<MockEvent> = {}): MockEvent
     attendanceMode: 'IN_PERSON',
     timezone: null,
     language: null,
+    eventTags: [],
     ...overrides,
   }
 }
@@ -1796,7 +1799,7 @@ function filterEventsForDiscovery(events: MockEvent[], filter?: Record<string, u
         return false
       }
 
-      if (domainSlug && event.domain.slug !== domainSlug) {
+      if (domainSlug && event.domain.slug !== domainSlug && !(event.eventTags ?? []).some(t => t.domain.slug === domainSlug)) {
         return false
       }
 

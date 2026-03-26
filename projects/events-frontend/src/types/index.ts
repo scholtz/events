@@ -84,6 +84,8 @@ export interface CatalogEvent {
   currencyCode: string
   domainId: string
   domain: EventDomain
+  /** Additional tags (domains) beyond the primary domain */
+  eventTags: { id: string; domain: EventDomain }[]
   submittedByUserId: string
   submittedBy: { displayName: string }
   reviewedByUserId: string | null

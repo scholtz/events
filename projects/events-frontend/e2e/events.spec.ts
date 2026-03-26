@@ -92,7 +92,7 @@ test.describe('Submit event form', () => {
     await expect(page.locator('#event-title')).toBeVisible()
     await expect(page.getByLabel('Event Title *')).toBeVisible()
     await expect(page.getByLabel('Description *')).toBeVisible()
-    await expect(page.getByLabel('Domain *')).toBeVisible()
+    await expect(page.getByLabel('Tag *')).toBeVisible()
     // Step indicator
     await expect(page.locator('.step-label')).toContainText('Step 1 of 5')
   })
@@ -176,11 +176,11 @@ test.describe('Submit event form', () => {
     await expect(page.getByRole('heading', { name: 'Event Submitted!' })).toBeVisible()
   })
 
-  test('shows domain options from API', async ({ page }) => {
+  test('shows tag options from API', async ({ page }) => {
     setupMockApi(page, { domains: [makeTechDomain()] })
     await page.goto('/submit')
 
-    const select = page.getByLabel('Domain *')
+    const select = page.getByLabel('Tag *')
     await expect(select.getByRole('option', { name: 'Technology' })).toBeAttached()
   })
 

@@ -10,6 +10,7 @@ import type { CatalogEvent } from '@/types'
 
 const props = defineProps<{
   event: CatalogEvent
+  hideDomainBadge?: boolean
 }>()
 
 const { t, locale } = useI18n()
@@ -73,9 +74,19 @@ async function handleFavoriteToggle() {
   <article class="event-card card">
     <div class="event-card-body">
       <div class="event-meta">
-        <RouterLink :to="domainUrl(event)" class="badge badge-primary domain-link">
-          {{ event.domain?.name ?? 'Event' }}
-        </RouterLink>
+        <div v-if="!hideDomainBadge" class="event-tags">
+          <RouterLink :to="domainUrl(event)" class="badge badge-primary domain-link">
+            {{ event.domain?.name ?? 'Event' }}
+          </RouterLink>
+          <RouterLink
+            v-for="tag in event.eventTags ?? []"
+            :key="tag.id"
+            :to="`/category/${tag.domain.slug}`"
+            class="badge badge-primary domain-link"
+          >
+            {{ tag.domain.name }}
+          </RouterLink>
+        </div>
         <div class="event-meta-right">
           <span class="badge badge-mode">{{ attendanceModeLabel }}</span>
           <span class="event-date">{{ formatDate(event.startsAtUtc) }}</span>
@@ -168,6 +179,12 @@ async function handleFavoriteToggle() {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
+}
+
+.event-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
 }
 
 .event-meta-right {
