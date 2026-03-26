@@ -171,6 +171,16 @@ const featuredEventIds = computed(() => new Set(featuredEvents.value.map((e) => 
 const nonFeaturedEvents = computed(() =>
   events.value.filter((e) => !featuredEventIds.value.has(e.id)),
 )
+
+const LOW_SIGNAL_THRESHOLD = 3
+
+const lowSignalMessage = computed(() => {
+  const count = events.value.length
+  if (count === 0 || count > LOW_SIGNAL_THRESHOLD) return null
+  return count === 1
+    ? t('home.fewResultsOne')
+    : t('home.fewResultsMany', { count })
+})
 </script>
 
 <template>
@@ -308,6 +318,11 @@ const nonFeaturedEvents = computed(() =>
           <RouterLink :to="`/?domain=${slug}`" class="btn btn-outline btn-sm">
             {{ t('category.filterAndExplore') }}
           </RouterLink>
+        </div>
+
+        <div v-if="lowSignalMessage" class="low-signal-notice" role="status" aria-live="polite">
+          <span class="low-signal-icon" aria-hidden="true">🌱</span>
+          {{ lowSignalMessage }}
         </div>
 
         <div v-if="events.length" class="events-grid">
@@ -462,6 +477,25 @@ const nonFeaturedEvents = computed(() =>
   font-size: 0.875rem;
   color: var(--color-text-secondary);
   margin: 0;
+}
+
+/* Low-signal notice: only a handful of events in this hub */
+.low-signal-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.625rem 0.875rem;
+  margin-bottom: 0.75rem;
+  background: var(--color-surface-raised);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.low-signal-icon {
+  flex-shrink: 0;
+  line-height: 1.4;
 }
 
 .events-grid {

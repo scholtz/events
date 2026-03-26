@@ -92,6 +92,10 @@ export default {
     resultsFoundMany: '{count} Veranstaltungen gefunden',
     resultsMatchingOne: '1 Veranstaltung passend zu {filters}',
     resultsMatchingMany: '{count} Veranstaltungen passend zu {filters}',
+    fewResultsOne:
+      'Bisher nur 1 Veranstaltung — das ist ein Nischen- oder Wachstumsbereich. Filter erweitern oder später wiederkommen.',
+    fewResultsMany:
+      'Bisher nur {count} Veranstaltungen — das ist ein Nischen- oder Wachstumsbereich. Filter erweitern oder später wiederkommen.',
   },
 
   filters: {
