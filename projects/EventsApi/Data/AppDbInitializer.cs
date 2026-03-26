@@ -302,6 +302,25 @@ public sealed class AppDbInitializer(
                 cancellationToken);
         }
 
+        // ── DomainLinks table ─────────────────────────────────────────────────
+        if (!await TableExistsAsync("DomainLinks", cancellationToken))
+        {
+            await _dbContext.Database.ExecuteSqlRawAsync(
+                """
+                CREATE TABLE "DomainLinks" (
+                    "Id" TEXT NOT NULL CONSTRAINT "PK_DomainLinks" PRIMARY KEY,
+                    "DomainId" TEXT NOT NULL,
+                    "Title" TEXT NOT NULL,
+                    "Url" TEXT NOT NULL,
+                    "DisplayOrder" INTEGER NOT NULL DEFAULT 0,
+                    "CreatedAtUtc" TEXT NOT NULL,
+                    CONSTRAINT "FK_DomainLinks_Domains_DomainId" FOREIGN KEY ("DomainId") REFERENCES "Domains" ("Id") ON DELETE CASCADE
+                );
+                CREATE INDEX "IX_DomainLinks_DomainId_DisplayOrder" ON "DomainLinks" ("DomainId", "DisplayOrder");
+                """,
+                cancellationToken);
+        }
+
         // ── DomainAdministrators join table ──────────────────────────────────
         if (!await TableExistsAsync("DomainAdministrators", cancellationToken))
         {

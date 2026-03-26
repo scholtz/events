@@ -532,6 +532,63 @@ public sealed class Mutation
             .ToList();
     }
 
+    /// <summary>
+    /// Replaces the curated community/external links for a domain hub atomically.
+    /// Pass an empty list to remove all links.
+    /// Maximum 10 links per hub.
+    /// Restricted to domain administrators and global administrators.
+    /// </summary>
+    [Authorize]
+    public async Task<IReadOnlyList<DomainLink>> SetDomainLinksAsync(
+        SetDomainLinksInput input,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        await EnsureDomainAdminOrGlobalAdminAsync(input.DomainId, claimsPrincipal, dbContext, cancellationToken);
+
+        if (input.Links.Count > 10)
+        {
+            throw CreateError("A domain hub can have at most 10 community links.", "TOO_MANY_LINKS");
+        }
+
+        foreach (var link in input.Links)
+        {
+            if (string.IsNullOrWhiteSpace(link.Title))
+                throw CreateError("Each link must have a non-empty title.", "INVALID_LINK_TITLE");
+
+            if (!Uri.TryCreate(link.Url, UriKind.Absolute, out var parsed)
+                || (parsed.Scheme != Uri.UriSchemeHttp && parsed.Scheme != Uri.UriSchemeHttps))
+            {
+                throw CreateError(
+                    $"Link URL '{link.Url}' is not a valid absolute http/https URL.",
+                    "INVALID_LINK_URL");
+            }
+        }
+
+        // Replace existing links for this domain
+        var existing = await dbContext.DomainLinks
+            .Where(dl => dl.DomainId == input.DomainId)
+            .ToListAsync(cancellationToken);
+
+        dbContext.DomainLinks.RemoveRange(existing);
+
+        var newLinks = input.Links
+            .Select((item, i) => new DomainLink
+            {
+                DomainId = input.DomainId,
+                Title = item.Title.Trim(),
+                Url = item.Url.Trim(),
+                DisplayOrder = i,
+            })
+            .ToList();
+
+        dbContext.DomainLinks.AddRange(newLinks);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return newLinks;
+    }
+
     [Authorize]
     public async Task<SavedSearch> SaveSearchAsync(
         SavedSearchInput input,

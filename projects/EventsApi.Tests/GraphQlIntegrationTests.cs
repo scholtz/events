@@ -4785,6 +4785,355 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal(3, domain.GetProperty("publishedEventCount").GetInt32());
     }
 
+    // ── SetDomainLinks / community links tests ──────────────────────────────
+
+    [Fact]
+    public async Task SetDomainLinks_GlobalAdmin_PersistsLinksInOrder()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var adminId = Guid.Empty;
+        var domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("links-admin@example.com", "Links Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var domain = CreateDomain("Links Hub", "links-hub-test");
+            domainId = domain.Id;
+            dbContext.Users.Add(admin);
+            dbContext.Domains.Add(domain);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation SetDomainLinks($input: SetDomainLinksInput!) {
+              setDomainLinks(input: $input) {
+                title
+                url
+                displayOrder
+              }
+            }
+            """,
+            new
+            {
+                input = new
+                {
+                    domainId,
+                    links = new[]
+                    {
+                        new { title = "Community Website", url = "https://example.com" },
+                        new { title = "Join our Discord", url = "https://discord.gg/example" },
+                    }
+                }
+            });
+
+        var links = document.RootElement.GetProperty("data").GetProperty("setDomainLinks");
+        Assert.Equal(2, links.GetArrayLength());
+        Assert.Equal("Community Website", links[0].GetProperty("title").GetString());
+        Assert.Equal("https://example.com", links[0].GetProperty("url").GetString());
+        Assert.Equal(0, links[0].GetProperty("displayOrder").GetInt32());
+        Assert.Equal("Join our Discord", links[1].GetProperty("title").GetString());
+        Assert.Equal(1, links[1].GetProperty("displayOrder").GetInt32());
+    }
+
+    [Fact]
+    public async Task SetDomainLinks_DomainAdmin_Allowed()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var domainAdminId = Guid.Empty;
+        var domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("global-admin-links@example.com", "Global Admin", ApplicationUserRole.Admin);
+            var domainAdmin = CreateUser("domain-admin-links@example.com", "Domain Admin");
+            domainAdminId = domainAdmin.Id;
+            var domain = CreateDomain("DA Links Hub", "da-links-hub");
+            domainId = domain.Id;
+            dbContext.Users.AddRange(admin, domainAdmin);
+            dbContext.Domains.Add(domain);
+            dbContext.DomainAdministrators.Add(new DomainAdministrator { DomainId = domain.Id, UserId = domainAdmin.Id });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, domainAdminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation SetDomainLinks($input: SetDomainLinksInput!) {
+              setDomainLinks(input: $input) {
+                title url
+              }
+            }
+            """,
+            new
+            {
+                input = new
+                {
+                    domainId,
+                    links = new[] { new { title = "Hub Site", url = "https://hub.example.com" } }
+                }
+            });
+
+        var links = document.RootElement.GetProperty("data").GetProperty("setDomainLinks");
+        Assert.Equal(1, links.GetArrayLength());
+        Assert.Equal("Hub Site", links[0].GetProperty("title").GetString());
+    }
+
+    [Fact]
+    public async Task SetDomainLinks_RegularUser_Forbidden()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("regular-links@example.com", "Regular User");
+            userId = user.Id;
+            var domain = CreateDomain("Restricted Hub", "restricted-links-hub");
+            domainId = domain.Id;
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation SetDomainLinks($input: SetDomainLinksInput!) {
+                  setDomainLinks(input: $input) { title }
+                }
+                """,
+            variables = new { input = new { domainId, links = Array.Empty<object>() } }
+        });
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("FORBIDDEN", body);
+    }
+
+    [Fact]
+    public async Task SetDomainLinks_Unauthenticated_ReturnsAuthError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domain = CreateDomain("Public Hub", "public-links-hub");
+            domainId = domain.Id;
+            dbContext.Domains.Add(domain);
+        });
+
+        using var client = factory.CreateClient(); // no auth header
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation SetDomainLinks($input: SetDomainLinksInput!) {
+                  setDomainLinks(input: $input) { title }
+                }
+                """,
+            variables = new { input = new { domainId, links = Array.Empty<object>() } }
+        });
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.True(
+            body.Contains("AUTH_NOT_AUTHORIZED", StringComparison.OrdinalIgnoreCase)
+            || body.Contains("The current user is not authorized", StringComparison.OrdinalIgnoreCase),
+            $"Expected auth error but got: {body}");
+    }
+
+    [Fact]
+    public async Task SetDomainLinks_EmptyList_RemovesAllLinks()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var adminId = Guid.Empty;
+        var domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("clear-links-admin@example.com", "Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var domain = CreateDomain("Clear Links Hub", "clear-links-hub");
+            domainId = domain.Id;
+            dbContext.Users.Add(admin);
+            dbContext.Domains.Add(domain);
+            dbContext.DomainLinks.Add(new DomainLink { DomainId = domain.Id, Title = "Old Link", Url = "https://old.example.com", DisplayOrder = 0 });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation SetDomainLinks($input: SetDomainLinksInput!) {
+              setDomainLinks(input: $input) { title }
+            }
+            """,
+            new { input = new { domainId, links = Array.Empty<object>() } });
+
+        var links = document.RootElement.GetProperty("data").GetProperty("setDomainLinks");
+        Assert.Equal(0, links.GetArrayLength());
+
+        // Verify persistence
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal(0, await db.DomainLinks.CountAsync(dl => dl.DomainId == domainId));
+    }
+
+    [Fact]
+    public async Task SetDomainLinks_TooManyLinks_ReturnsError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var adminId = Guid.Empty;
+        var domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("too-many-links-admin@example.com", "Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var domain = CreateDomain("Busy Hub", "busy-links-hub");
+            domainId = domain.Id;
+            dbContext.Users.Add(admin);
+            dbContext.Domains.Add(domain);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        var tooMany = Enumerable.Range(1, 11)
+            .Select(i => new { title = $"Link {i}", url = $"https://example.com/{i}" })
+            .ToArray();
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation SetDomainLinks($input: SetDomainLinksInput!) {
+                  setDomainLinks(input: $input) { title }
+                }
+                """,
+            variables = new { input = new { domainId, links = tooMany } }
+        });
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("TOO_MANY_LINKS", body);
+    }
+
+    [Fact]
+    public async Task SetDomainLinks_InvalidUrl_ReturnsError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var adminId = Guid.Empty;
+        var domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("bad-url-admin@example.com", "Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var domain = CreateDomain("Bad URL Hub", "bad-url-hub");
+            domainId = domain.Id;
+            dbContext.Users.Add(admin);
+            dbContext.Domains.Add(domain);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation SetDomainLinks($input: SetDomainLinksInput!) {
+                  setDomainLinks(input: $input) { title }
+                }
+                """,
+            variables = new
+            {
+                input = new
+                {
+                    domainId,
+                    links = new[] { new { title = "Bad", url = "not-a-url" } }
+                }
+            }
+        });
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("INVALID_LINK_URL", body);
+    }
+
+    [Fact]
+    public async Task DomainBySlug_ReturnsLinksInDisplayOrder()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domain = CreateDomain("Linked Hub", "linked-hub-slug");
+            domainId = domain.Id;
+            dbContext.Domains.Add(domain);
+            dbContext.DomainLinks.AddRange(
+                new DomainLink { DomainId = domain.Id, Title = "Second", Url = "https://second.example.com", DisplayOrder = 1 },
+                new DomainLink { DomainId = domain.Id, Title = "First", Url = "https://first.example.com", DisplayOrder = 0 }
+            );
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query DomainBySlug($slug: String!) {
+              domainBySlug(slug: $slug) {
+                name
+                links { title url displayOrder }
+              }
+            }
+            """,
+            new { slug = "linked-hub-slug" });
+
+        var links = document.RootElement.GetProperty("data").GetProperty("domainBySlug").GetProperty("links");
+        Assert.Equal(2, links.GetArrayLength());
+        // Must be returned in DisplayOrder (0 first, 1 second)
+        Assert.Equal("First", links[0].GetProperty("title").GetString());
+        Assert.Equal("Second", links[1].GetProperty("title").GetString());
+    }
+
+    [Fact]
+    public async Task DomainBySlug_ReturnsEmptyLinksWhenNoneConfigured()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            dbContext.Domains.Add(CreateDomain("No Links Hub", "no-links-hub"));
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query DomainBySlug($slug: String!) {
+              domainBySlug(slug: $slug) {
+                name links { title url }
+              }
+            }
+            """,
+            new { slug = "no-links-hub" });
+
+        var links = document.RootElement.GetProperty("data").GetProperty("domainBySlug").GetProperty("links");
+        Assert.Equal(0, links.GetArrayLength());
+    }
+
     [Fact]
     public async Task LanguageFilter_ReturnsOnlyMatchingLanguage()
     {

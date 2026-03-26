@@ -36,6 +36,13 @@ public sealed class EventDomain
     /// <summary>Optional curator/admin attribution shown as a trust cue on the public hub page.</summary>
     public string? CuratorCredit { get; set; }
 
+    // ── Curated community/external links ─────────────────────────────────────
+    /// <summary>
+    /// Administrator-managed list of curated community links shown on the
+    /// public category landing page. Ordered by <see cref="DomainLink.DisplayOrder"/>.
+    /// </summary>
+    public List<DomainLink> Links { get; set; } = [];
+
     [GraphQLIgnore]
     public List<CatalogEvent> Events { get; set; } = [];
 
