@@ -1075,6 +1075,10 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
           calendarActionsLast7Days: calLast7,
           calendarActionsLast30Days: calLast30,
           calendarActionsByProvider,
+          adminNotes: e.adminNotes,
+          domainSlug: e.domain?.slug ?? null,
+          language: e.language,
+          timezone: e.timezone,
         }
       })
 
@@ -1090,6 +1094,8 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         totalSubmittedEvents: managedEvents.length,
         publishedEvents: managedEvents.filter((e) => e.status === 'PUBLISHED').length,
         pendingApprovalEvents: managedEvents.filter((e) => e.status === 'PENDING_APPROVAL').length,
+        rejectedEvents: managedEvents.filter((e) => e.status === 'REJECTED').length,
+        draftEvents: managedEvents.filter((e) => e.status === 'DRAFT').length,
         totalInterestedCount,
         totalCalendarActions,
         managedEvents: managedEvents.map((e) => ({
@@ -2002,4 +2008,42 @@ export function makeVerifiedClaim(
     lastSyncSkippedCount: null,
     ...overrides,
   }
+}
+
+/** Factory for a PENDING_APPROVAL event, defaulting to `submittedByUserId: 'admin-1'`. */
+export function makePendingEvent(overrides: Partial<MockEvent> = {}): MockEvent {
+  return makeApprovedEvent({
+    id: 'event-pending-1',
+    slug: 'pending-event',
+    name: 'Pending Event',
+    status: 'PENDING_APPROVAL',
+    publishedAtUtc: null,
+    ...overrides,
+  })
+}
+
+/** Factory for a REJECTED event with optional admin notes. */
+export function makeRejectedEvent(overrides: Partial<MockEvent> = {}): MockEvent {
+  return makeApprovedEvent({
+    id: 'event-rejected-1',
+    slug: 'rejected-event',
+    name: 'Rejected Event',
+    status: 'REJECTED',
+    publishedAtUtc: null,
+    adminNotes: 'Please add more details about the agenda.',
+    ...overrides,
+  })
+}
+
+/** Factory for a DRAFT event (created but not yet submitted for review). */
+export function makeDraftEvent(overrides: Partial<MockEvent> = {}): MockEvent {
+  return makeApprovedEvent({
+    id: 'event-draft-1',
+    slug: 'draft-event',
+    name: 'Draft Event',
+    status: 'DRAFT',
+    publishedAtUtc: null,
+    adminNotes: null,
+    ...overrides,
+  })
 }

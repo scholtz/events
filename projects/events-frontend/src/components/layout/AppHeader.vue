@@ -19,6 +19,7 @@ const auth = useAuthStore()
         <RouterLink to="/communities">{{ t('community.nav') }}</RouterLink>
         <RouterLink to="/submit">{{ t('nav.submitEvent') }}</RouterLink>
         <RouterLink v-if="auth.isAuthenticated" to="/favorites">{{ t('nav.saved') }}</RouterLink>
+        <RouterLink v-if="auth.isAuthenticated" to="/portfolio">{{ t('nav.portfolio') }}</RouterLink>
         <RouterLink v-if="auth.isAuthenticated" to="/dashboard">{{ t('nav.dashboard') }}</RouterLink>
         <RouterLink v-if="auth.isAdmin" to="/admin">{{ t('nav.admin') }}</RouterLink>
       </nav>
