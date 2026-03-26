@@ -580,7 +580,7 @@ test.describe('External source claims (admin)', () => {
     state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
     state.externalSourceClaims.push(claim)
     state.externalEventPreviews[claim.id] = [
-      makeExternalEventPreview({ externalId: 'evt-001', name: 'Importable Event' }),
+      makeExternalEventPreview({ externalId: 'evt-001', name: 'Eligible Event Alpha' }),
       makeExternalEventPreview({
         externalId: 'evt-002',
         name: 'Already Imported Event',
@@ -608,7 +608,7 @@ test.describe('External source claims (admin)', () => {
     await expect(rows).toHaveCount(3)
 
     // Importable event has enabled checkbox
-    const importableRow = rows.filter({ hasText: 'Importable Event' })
+    const importableRow = rows.filter({ hasText: 'Eligible Event Alpha' })
     await expect(importableRow.locator('input[type="checkbox"]')).toBeEnabled()
 
     // Already-imported event shows badge and disabled checkbox

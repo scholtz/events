@@ -42,7 +42,6 @@ const newSourceType = ref<ExternalSourceType>('MEETUP')
 const newSourceUrl = ref('')
 const addingSource = ref(false)
 const syncResults = ref<Record<string, SyncResult>>({})
-const syncingId = ref<string | null>(null)
 
 // Preview-and-select state
 const previewClaimId = ref<string | null>(null)

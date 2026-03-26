@@ -1341,7 +1341,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       return
     }
 
-    if (query.includes('query') && query.includes('Events')) {
+    if (query.includes('query') && query.includes('Events') && !query.includes('ExternalEvents')) {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
