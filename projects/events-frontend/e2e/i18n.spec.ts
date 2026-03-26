@@ -91,7 +91,7 @@ test.describe('Slovak translations', () => {
     await page.locator('#language-select').selectOption('sk')
 
     await expect(page.getByLabel('Kľúčové slovo')).toBeVisible()
-    await expect(page.getByLabel('Doména')).toBeVisible()
+    await expect(page.getByLabel('Tag')).toBeVisible()
   })
 
   test('active filter chips and results summary are localized in Slovak', async ({ page }) => {

@@ -269,6 +269,8 @@ export default {
     description: 'Description',
     descriptionPlaceholder: 'Tell people what this event is about...',
     selectDomain: 'Select a tag',
+    additionalTags: 'Additional Tags',
+    additionalTagsHint: 'Hold Ctrl/Cmd to select multiple tags',
     countryCode: 'Country Code',
     attendanceMode: 'Attendance Mode',
     dateTime: 'Date & Time',

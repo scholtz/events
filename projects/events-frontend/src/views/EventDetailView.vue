@@ -379,6 +379,11 @@ function domainHostDisplay(event: {
             <span v-else class="badge badge-primary">
               {{ event.domain?.name ?? 'Event' }}
             </span>
+            <template v-for="tag in event.eventTags ?? []" :key="tag.id">
+              <RouterLink :to="`/category/${tag.domain.slug}`" class="badge badge-primary domain-link">
+                {{ tag.domain.name }}
+              </RouterLink>
+            </template>
             <span class="badge badge-mode">{{ attendanceModeLabel(event.attendanceMode) }}</span>
             <span class="event-status badge" :class="statusBadgeClass(event.status)">
               {{ statusLabel(event.status) }}

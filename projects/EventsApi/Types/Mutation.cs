@@ -114,9 +114,14 @@ public sealed class Mutation
         dbContext.Events.Add(catalogEvent);
         await dbContext.SaveChangesAsync(cancellationToken);
 
+        // Add additional tags (beyond the primary domain)
+        await SyncEventTagsAsync(dbContext, catalogEvent.Id, domain.Id, input.AdditionalTagSlugs, cancellationToken);
+
         return await dbContext.Events
             .Include(candidate => candidate.Domain)
             .Include(candidate => candidate.SubmittedBy)
+            .Include(candidate => candidate.EventTags)
+                .ThenInclude(et => et.Domain)
             .SingleAsync(candidate => candidate.Id == catalogEvent.Id, cancellationToken);
     }
 
@@ -176,7 +181,16 @@ public sealed class Mutation
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
-        return catalogEvent;
+
+        // Sync additional tags
+        await SyncEventTagsAsync(dbContext, catalogEvent.Id, domain.Id, input.AdditionalTagSlugs, cancellationToken);
+
+        return await dbContext.Events
+            .Include(candidate => candidate.Domain)
+            .Include(candidate => candidate.SubmittedBy)
+            .Include(candidate => candidate.EventTags)
+                .ThenInclude(et => et.Domain)
+            .SingleAsync(candidate => candidate.Id == catalogEvent.Id, cancellationToken);
     }
 
     [Authorize(Policy = Policies.Admin)]
@@ -796,6 +810,53 @@ public sealed class Mutation
 
     private static GraphQLException CreateError(string message, string code)
         => new(ErrorBuilder.New().SetMessage(message).SetCode(code).Build());
+
+    /// <summary>
+    /// Synchronises the EventTag join rows for a given event. The primary domain
+    /// is excluded (it lives on CatalogEvent.DomainId). Only additional tag slugs
+    /// that resolve to active domains are persisted. Existing rows that are no longer
+    /// in the desired set are removed.
+    /// </summary>
+    private static async Task SyncEventTagsAsync(
+        AppDbContext dbContext,
+        Guid eventId,
+        Guid primaryDomainId,
+        List<string>? additionalTagSlugs,
+        CancellationToken cancellationToken)
+    {
+        var existingTags = await dbContext.EventTags
+            .Where(et => et.EventId == eventId)
+            .ToListAsync(cancellationToken);
+
+        // Resolve desired additional domains (excluding the primary one)
+        var desiredDomainIds = new HashSet<Guid>();
+        if (additionalTagSlugs is { Count: > 0 })
+        {
+            foreach (var slug in additionalTagSlugs.Select(s => s.Trim().ToLowerInvariant()).Distinct())
+            {
+                var dom = await dbContext.Domains
+                    .AsNoTracking()
+                    .SingleOrDefaultAsync(d => d.Slug == slug && d.IsActive, cancellationToken);
+                if (dom is not null && dom.Id != primaryDomainId)
+                {
+                    desiredDomainIds.Add(dom.Id);
+                }
+            }
+        }
+
+        // Remove tags that are no longer desired
+        var toRemove = existingTags.Where(et => !desiredDomainIds.Contains(et.DomainId)).ToList();
+        dbContext.EventTags.RemoveRange(toRemove);
+
+        // Add new tags
+        var existingDomainIds = existingTags.Select(et => et.DomainId).ToHashSet();
+        foreach (var domainId in desiredDomainIds.Where(id => !existingDomainIds.Contains(id)))
+        {
+            dbContext.EventTags.Add(new EventTag { EventId = eventId, DomainId = domainId });
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
 
     /// <summary>
     /// Verifies the calling user is either a global admin or a domain administrator

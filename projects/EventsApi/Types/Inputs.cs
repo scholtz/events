@@ -47,6 +47,12 @@ public sealed class LoginInput
 public sealed class EventSubmissionInput
 {
     public required string DomainSlug { get; init; }
+    /// <summary>
+    /// Optional additional tag slugs for the event. The primary DomainSlug is always
+    /// included automatically. Pass extra domain slugs to associate the event with
+    /// multiple categories/tags.
+    /// </summary>
+    public List<string>? AdditionalTagSlugs { get; init; }
     public required string Name { get; init; }
     public required string Description { get; init; }
     public required string EventUrl { get; init; }

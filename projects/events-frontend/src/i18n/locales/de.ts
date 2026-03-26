@@ -260,6 +260,8 @@ export default {
     description: 'Beschreibung',
     descriptionPlaceholder: 'Erzählen Sie den Leuten, worum es bei dieser Veranstaltung geht...',
     selectDomain: 'Tag auswählen',
+    additionalTags: 'Weitere Tags',
+    additionalTagsHint: 'Ctrl/Cmd gedrückt halten für Mehrfachauswahl',
     countryCode: 'Ländercode',
     attendanceMode: 'Teilnahmemodus',
     dateTime: 'Datum & Uhrzeit',

@@ -58,6 +58,12 @@ public sealed class CatalogEvent
     /// </summary>
     public string? ExternalSourceEventId { get; set; }
 
+    /// <summary>
+    /// Additional tags (domains) associated with this event beyond the primary Domain.
+    /// Enables many-to-many tagging so an event can belong to multiple categories.
+    /// </summary>
+    public List<EventTag> EventTags { get; set; } = [];
+
     public string MapUrl
     {
         get

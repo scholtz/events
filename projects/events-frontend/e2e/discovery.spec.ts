@@ -219,7 +219,7 @@ test.describe('Multi-filter combination', () => {
     // Three filter chips visible
     await expect(page.locator('.filter-chip', { hasText: /keyword/i })).toBeVisible()
     await expect(page.locator('.filter-chip', { hasText: /location/i })).toBeVisible()
-    await expect(page.locator('.filter-chip', { hasText: /domain/i })).toBeVisible()
+    await expect(page.locator('.filter-chip', { hasText: /tag/i })).toBeVisible()
   })
 
   test('clearing all filters with active keyword + location restores full list', async ({

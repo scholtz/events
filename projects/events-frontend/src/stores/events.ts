@@ -19,6 +19,7 @@ const EVENT_FIELDS = `
   adminNotes status isFree priceAmount currencyCode domainId mapUrl
   attendanceMode timezone language
   domain { id name slug subdomain }
+  eventTags { id domain { id name slug subdomain } }
   submittedBy { displayName }
 `
 
@@ -30,6 +31,7 @@ const DETAIL_EVENT_FIELDS = `
   adminNotes status isFree priceAmount currencyCode domainId mapUrl
   attendanceMode timezone language
   domain { id name slug subdomain description logoUrl primaryColor accentColor overviewContent }
+  eventTags { id domain { id name slug subdomain } }
   submittedBy { displayName }
   submittedByUserId
   interestedCount
@@ -282,6 +284,7 @@ export const useEventsStore = defineStore('events', () => {
 
   async function submitEvent(input: {
     domainSlug: string
+    additionalTagSlugs?: string[]
     name: string
     description: string
     eventUrl: string
@@ -313,6 +316,7 @@ export const useEventsStore = defineStore('events', () => {
     eventId: string,
     input: {
       domainSlug: string
+      additionalTagSlugs?: string[]
       name: string
       description: string
       eventUrl: string

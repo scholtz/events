@@ -260,6 +260,8 @@ export default {
     description: 'Popis',
     descriptionPlaceholder: 'Povedzte ľuďom, o čom je táto udalosť...',
     selectDomain: 'Vyberte tag',
+    additionalTags: 'Ďalšie tagy',
+    additionalTagsHint: 'Podržte Ctrl/Cmd pre výber viacerých tagov',
     countryCode: 'Kód krajiny',
     attendanceMode: 'Režim účasti',
     dateTime: 'Dátum a čas',
