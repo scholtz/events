@@ -400,7 +400,7 @@ async function handleReviewEvent(eventId: string, status: string) {
       <!-- Events management -->
       <div v-if="activeTab === 'events'" class="admin-section">
         <div v-if="adminLoading" class="loading-state card">
-          <p>Loading events…</p>
+          <p>{{ t('common.loading') }}</p>
         </div>
         <div v-else class="events-table card">
           <table>
@@ -530,7 +530,7 @@ async function handleReviewEvent(eventId: string, status: string) {
                     class="btn btn-outline btn-sm"
                     @click="selectDomain(d.id)"
                   >
-                    {{ selectedDomainId === d.id ? 'Close' : 'Manage' }}
+                  {{ selectedDomainId === d.id ? t('common.close') : t('admin.manage') }}
                   </button>
                 </td>
               </tr>
@@ -665,7 +665,7 @@ async function handleReviewEvent(eventId: string, status: string) {
             <h3>{{ t('admin.featuredEvents') }}</h3>
             <p class="featured-hint text-secondary">{{ t('admin.featuredEventsHint') }}</p>
             <div v-if="featuredEventsLoading" class="loading-state">
-              <p>Loading featured events…</p>
+              <p>{{ t('common.loading') }}</p>
             </div>
             <template v-else>
               <p v-if="featuredEventsError" class="role-error" role="alert">{{ featuredEventsError }}</p>
@@ -731,9 +731,9 @@ async function handleReviewEvent(eventId: string, status: string) {
 
           <!-- Domain administrators -->
           <div class="domain-admins-section">
-            <h3>Tag Administrators</h3>
+            <h3>{{ t('admin.tagAdministrators') }}</h3>
             <div v-if="domainAdminsLoading" class="loading-state">
-              <p>Loading administrators…</p>
+              <p>{{ t('common.loading') }}</p>
             </div>
             <template v-else>
               <div class="admin-list">
@@ -750,11 +750,11 @@ async function handleReviewEvent(eventId: string, status: string) {
                     class="btn btn-outline btn-sm"
                     @click="handleRemoveDomainAdmin(da.userId)"
                   >
-                    Remove
+                    {{ t('admin.removeDomainAdmin') }}
                   </button>
                 </div>
                 <p v-if="!domainAdmins.length" class="text-secondary">
-                  No administrators assigned to this domain.
+                  {{ t('admin.noAdministratorsAssigned') }}
                 </p>
               </div>
               <form class="add-admin-form" @submit.prevent="handleAddDomainAdmin">
@@ -775,7 +775,7 @@ async function handleReviewEvent(eventId: string, status: string) {
                   </option>
                 </select>
                 <button type="submit" class="btn btn-primary btn-sm" :disabled="!addAdminUserId">
-                  Add Admin
+                  {{ t('admin.addDomainAdmin') }}
                 </button>
               </form>
             </template>
@@ -822,14 +822,14 @@ async function handleReviewEvent(eventId: string, status: string) {
                     :disabled="updatingRole === user.id"
                     @click="updateUserRole(user.id, 'CONTRIBUTOR')"
                   >
-                    Remove Admin
+                    {{ t('admin.makeContributor') }}
                   </button>
                 </td>
               </tr>
             </tbody>
           </table>
           <div v-if="adminLoading" class="empty-table">
-            <p>Loading users…</p>
+            <p>{{ t('common.loading') }}</p>
           </div>
           <div v-else-if="!adminOverview?.users.length" class="empty-table">
             <div class="empty-icon">👤</div>
