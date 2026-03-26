@@ -446,6 +446,11 @@ export default {
     actions: 'Akcie',
     makeAdmin: 'Nastaviť ako správcu',
     makeContributor: 'Nastaviť ako prispievateľa',
+    manage: 'Spravovať',
+    tagAdministrators: 'Správcovia tagu',
+    noAdministratorsAssigned: 'Tejto doméne nie sú priradení žiadni správcovia.',
+    addDomainAdmin: 'Pridať správcu',
+    removeDomainAdmin: 'Odstrániť',
   },
 
   attendanceMode: {

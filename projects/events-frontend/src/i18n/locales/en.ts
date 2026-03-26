@@ -457,6 +457,11 @@ export default {
     actions: 'Actions',
     makeAdmin: 'Make Admin',
     makeContributor: 'Make Contributor',
+    manage: 'Manage',
+    tagAdministrators: 'Tag Administrators',
+    noAdministratorsAssigned: 'No administrators assigned to this domain.',
+    addDomainAdmin: 'Add Admin',
+    removeDomainAdmin: 'Remove',
   },
 
   // ── Attendance mode labels ─────────────────────────────────────────────────

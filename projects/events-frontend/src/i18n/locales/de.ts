@@ -446,6 +446,11 @@ export default {
     actions: 'Aktionen',
     makeAdmin: 'Zum Administrator machen',
     makeContributor: 'Zum Mitwirkenden machen',
+    manage: 'Verwalten',
+    tagAdministrators: 'Tag-Administratoren',
+    noAdministratorsAssigned: 'Dieser Domäne sind keine Administratoren zugewiesen.',
+    addDomainAdmin: 'Administrator hinzufügen',
+    removeDomainAdmin: 'Entfernen',
   },
 
   attendanceMode: {
