@@ -828,18 +828,26 @@ public sealed class Mutation
             .Where(et => et.EventId == eventId)
             .ToListAsync(cancellationToken);
 
-        // Resolve desired additional domains (excluding the primary one)
+        // Resolve desired additional domains in a single query (excluding the primary one)
         var desiredDomainIds = new HashSet<Guid>();
         if (additionalTagSlugs is { Count: > 0 })
         {
-            foreach (var slug in additionalTagSlugs.Select(s => s.Trim().ToLowerInvariant()).Distinct())
+            var normalizedSlugs = additionalTagSlugs
+                .Select(s => s.Trim().ToLowerInvariant())
+                .Distinct()
+                .ToList();
+
+            var matchingDomains = await dbContext.Domains
+                .AsNoTracking()
+                .Where(d => normalizedSlugs.Contains(d.Slug) && d.IsActive)
+                .Select(d => d.Id)
+                .ToListAsync(cancellationToken);
+
+            foreach (var domainId in matchingDomains)
             {
-                var dom = await dbContext.Domains
-                    .AsNoTracking()
-                    .SingleOrDefaultAsync(d => d.Slug == slug && d.IsActive, cancellationToken);
-                if (dom is not null && dom.Id != primaryDomainId)
+                if (domainId != primaryDomainId)
                 {
-                    desiredDomainIds.Add(dom.Id);
+                    desiredDomainIds.Add(domainId);
                 }
             }
         }
