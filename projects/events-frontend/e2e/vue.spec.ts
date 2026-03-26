@@ -8,7 +8,6 @@ import {
   makeApprovedEvent,
   makeTechDomain,
   setupMockApi,
-  type MockCalendarAction,
 } from './helpers/mock-api'
 
 test('full flow: signup, submit event, approve, list and filter', async ({ page }) => {
