@@ -92,6 +92,8 @@ export interface CatalogEvent {
   reviewedBy: { displayName: string } | null
   mapUrl: string
   interestedCount: number
+  /** Community groups that have associated this event (populated on detail view only). */
+  communityGroups?: Pick<CommunityGroup, 'id' | 'name' | 'slug' | 'summary'>[]
   attendanceMode: AttendanceMode
   /** IANA timezone identifier (e.g. "Europe/Prague"). Null for legacy events; fall back to UTC. */
   timezone: string | null

@@ -6,6 +6,7 @@ import {
   loginAs,
   makeAdminUser,
   makeApprovedEvent,
+  makePublicGroup,
   makeTechDomain,
   setupMockApi,
 } from './helpers/mock-api'
@@ -1636,5 +1637,87 @@ test.describe('Event detail hub context card', () => {
       .locator('.hub-context')
       .evaluate((el) => (el as HTMLElement).getAttribute('style') ?? '')
     expect(hubStyle).toContain('#ff6b35')
+  })
+})
+
+test.describe('Event detail — community groups section', () => {
+  test('shows "Organized by" heading and community link when event has associated groups', async ({
+    page,
+  }) => {
+    const group = makePublicGroup({ id: 'cg-1', name: 'Prague Tech Circle', slug: 'prague-tech-circle', summary: 'Tech events in Prague.' })
+    const event = makeApprovedEvent({
+      id: 'ev-cg-1',
+      name: 'Community Event',
+      slug: 'community-event',
+      communityGroups: [{ id: group.id, name: group.name, slug: group.slug, summary: group.summary }],
+    })
+    setupMockApi(page, { communityGroups: [group], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await expect(page.locator('.community-groups-section')).toBeVisible()
+    await expect(page.locator('.community-groups-section').getByRole('heading')).toBeVisible()
+    await expect(page.locator('.community-group-name', { hasText: 'Prague Tech Circle' })).toBeVisible()
+    await expect(page.locator('.community-group-summary', { hasText: 'Tech events in Prague.' })).toBeVisible()
+  })
+
+  test('community group link navigates to /community/:slug', async ({ page }) => {
+    const group = makePublicGroup({ id: 'cg-nav', name: 'Nav Circle', slug: 'nav-circle', summary: null })
+    const event = makeApprovedEvent({
+      id: 'ev-cg-nav',
+      name: 'Nav Community Event',
+      slug: 'nav-community-event',
+      communityGroups: [{ id: group.id, name: group.name, slug: group.slug, summary: null }],
+    })
+    setupMockApi(page, { communityGroups: [group], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    const link = page.locator('.community-group-link', { hasText: 'Nav Circle' })
+    await expect(link).toBeVisible()
+    await expect(link).toHaveAttribute('href', '/community/nav-circle')
+  })
+
+  test('does not show community groups section when event has no associated groups', async ({
+    page,
+  }) => {
+    const event = makeApprovedEvent({ id: 'ev-cg-none', name: 'Solo Event', slug: 'solo-event' })
+    setupMockApi(page, { events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await expect(page.locator('.community-groups-section')).not.toBeVisible()
+  })
+
+  test('shows multiple community groups when event belongs to several groups', async ({ page }) => {
+    const group1 = makePublicGroup({ id: 'cg-m1', name: 'Alpha Community', slug: 'alpha-community', summary: null })
+    const group2 = makePublicGroup({ id: 'cg-m2', name: 'Beta Community', slug: 'beta-community', summary: null })
+    const event = makeApprovedEvent({
+      id: 'ev-cg-multi',
+      name: 'Multi-Group Event',
+      slug: 'multi-group-event',
+      communityGroups: [
+        { id: group1.id, name: group1.name, slug: group1.slug, summary: null },
+        { id: group2.id, name: group2.name, slug: group2.slug, summary: null },
+      ],
+    })
+    setupMockApi(page, { communityGroups: [group1, group2], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await expect(page.locator('.community-group-link', { hasText: 'Alpha Community' })).toBeVisible()
+    await expect(page.locator('.community-group-link', { hasText: 'Beta Community' })).toBeVisible()
+  })
+
+  test('community groups section is visible on mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    const group = makePublicGroup({ id: 'cg-mob', name: 'Mobile Community', slug: 'mobile-community', summary: 'For mobile users.' })
+    const event = makeApprovedEvent({
+      id: 'ev-cg-mob',
+      name: 'Mobile Community Event',
+      slug: 'mobile-community-event',
+      communityGroups: [{ id: group.id, name: group.name, slug: group.slug, summary: group.summary }],
+    })
+    setupMockApi(page, { communityGroups: [group], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await expect(page.locator('.community-groups-section')).toBeVisible()
+    await expect(page.locator('.community-group-name', { hasText: 'Mobile Community' })).toBeVisible()
   })
 })

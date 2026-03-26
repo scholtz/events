@@ -85,6 +85,7 @@ export type MockEvent = {
   timezone: string | null
   language: string | null
   eventTags: { id: string; domain: { id: string; name: string; slug: string; subdomain: string } }[]
+  communityGroups?: { id: string; name: string; slug: string; summary: string | null }[]
 }
 
 export type MockSavedSearch = {
@@ -1271,10 +1272,13 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       const found = state.events.find((e) => e.slug === slug && e.status === 'PUBLISHED') ?? null
       if (found) {
         const interestedCount = state.favoriteEvents.filter((f) => f.eventId === found.id).length
+        const communityGroups = (found.communityGroups ?? []).filter(
+          (g) => state.communityGroups.some((sg) => sg.id === g.id && sg.isActive),
+        )
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({ data: { eventBySlug: { ...found, interestedCount } } }),
+          body: JSON.stringify({ data: { eventBySlug: { ...found, interestedCount, communityGroups } } }),
         })
       } else {
         await route.fulfill({

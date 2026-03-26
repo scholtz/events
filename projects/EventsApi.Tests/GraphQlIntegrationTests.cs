@@ -9431,4 +9431,166 @@ public sealed class GraphQlIntegrationTests
         Assert.Single(tags);
         Assert.Equal("crypto-slug-tag", tags[0].GetProperty("domain").GetProperty("slug").GetString());
     }
+
+    // ── communityGroups on eventBySlug ────────────────────────────────────────
+
+    [Fact]
+    public async Task EventBySlug_CommunityGroups_ReturnsCommunityGroupsAssociatedWithEvent()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid ownerId = Guid.Empty;
+        Guid groupId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var owner = CreateUser("cgev-owner@example.com", "CGEvOwner");
+            ownerId = owner.Id;
+            dbContext.Users.Add(owner);
+
+            var domain = CreateDomain("Tech", "tech-cg-ev");
+            dbContext.Domains.Add(domain);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Event Community",
+                Slug = "event-community",
+                Summary = "A community that organizes tech events.",
+                IsActive = true,
+                CreatedByUserId = owner.Id,
+            };
+            groupId = group.Id;
+            dbContext.CommunityGroups.Add(group);
+
+            var catalogEvent = CreateEvent("Community-Owned Talk", "community-owned-talk",
+                "A talk organized by the community.", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(10), domain, owner);
+            dbContext.Events.Add(catalogEvent);
+
+            dbContext.CommunityGroupEvents.Add(new EventsApi.Data.Entities.CommunityGroupEvent
+            {
+                GroupId = group.Id,
+                EventId = catalogEvent.Id,
+                AddedByUserId = owner.Id,
+            });
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query EventBySlug($slug: String!) {
+              eventBySlug(slug: $slug) {
+                name
+                communityGroups { id name slug summary }
+              }
+            }
+            """,
+            new { slug = "community-owned-talk" });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("eventBySlug");
+        Assert.Equal("Community-Owned Talk", result.GetProperty("name").GetString());
+        var groups = result.GetProperty("communityGroups").EnumerateArray().ToList();
+        Assert.Single(groups);
+        Assert.Equal("Event Community", groups[0].GetProperty("name").GetString());
+        Assert.Equal("event-community", groups[0].GetProperty("slug").GetString());
+        Assert.Equal("A community that organizes tech events.", groups[0].GetProperty("summary").GetString());
+    }
+
+    [Fact]
+    public async Task EventBySlug_CommunityGroups_ReturnsEmptyListWhenNoGroupsAssociated()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid ownerId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var owner = CreateUser("cgev-none@example.com", "CGEvNone");
+            ownerId = owner.Id;
+            dbContext.Users.Add(owner);
+
+            var domain = CreateDomain("Tech", "tech-cg-none");
+            dbContext.Domains.Add(domain);
+
+            var catalogEvent = CreateEvent("Standalone Talk", "standalone-talk",
+                "A talk with no community.", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(10), domain, owner);
+            dbContext.Events.Add(catalogEvent);
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query EventBySlug($slug: String!) {
+              eventBySlug(slug: $slug) {
+                name
+                communityGroups { id name slug }
+              }
+            }
+            """,
+            new { slug = "standalone-talk" });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("eventBySlug");
+        Assert.Equal("Standalone Talk", result.GetProperty("name").GetString());
+        var groups = result.GetProperty("communityGroups").EnumerateArray().ToList();
+        Assert.Empty(groups);
+    }
+
+    [Fact]
+    public async Task EventBySlug_CommunityGroups_ExcludesInactiveGroups()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid ownerId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var owner = CreateUser("cgev-inactive@example.com", "CGEvInactive");
+            ownerId = owner.Id;
+            dbContext.Users.Add(owner);
+
+            var domain = CreateDomain("Tech", "tech-cg-inactive");
+            dbContext.Domains.Add(domain);
+
+            var inactiveGroup = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Inactive Community",
+                Slug = "inactive-community",
+                IsActive = false,
+                CreatedByUserId = owner.Id,
+            };
+            dbContext.CommunityGroups.Add(inactiveGroup);
+
+            var catalogEvent = CreateEvent("Inactive Group Event", "inactive-group-event",
+                "An event whose group is inactive.", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(10), domain, owner);
+            dbContext.Events.Add(catalogEvent);
+
+            dbContext.CommunityGroupEvents.Add(new EventsApi.Data.Entities.CommunityGroupEvent
+            {
+                GroupId = inactiveGroup.Id,
+                EventId = catalogEvent.Id,
+                AddedByUserId = owner.Id,
+            });
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query EventBySlug($slug: String!) {
+              eventBySlug(slug: $slug) {
+                name
+                communityGroups { id name slug }
+              }
+            }
+            """,
+            new { slug = "inactive-group-event" });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("eventBySlug");
+        var groups = result.GetProperty("communityGroups").EnumerateArray().ToList();
+        Assert.Empty(groups);
+    }
 }

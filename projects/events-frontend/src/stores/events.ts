@@ -35,6 +35,7 @@ const DETAIL_EVENT_FIELDS = `
   submittedBy { displayName }
   submittedByUserId
   interestedCount
+  communityGroups { id name slug summary }
 `
 
 const DEFAULT_SORT: EventSortOption = 'UPCOMING'

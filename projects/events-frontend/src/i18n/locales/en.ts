@@ -235,6 +235,7 @@ export default {
     virtualEventDescription: 'This event takes place online. No physical venue.',
     hubContextHeading: 'About this Hub',
     hubContextExplore: 'Explore {name} Events →',
+    communityGroupsHeading: 'Organized by',
     editEvent: 'Edit Event',
   },
 
