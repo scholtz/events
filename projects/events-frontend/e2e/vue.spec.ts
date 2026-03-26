@@ -3,7 +3,12 @@
  * registration → event submission → admin approval → listing + filter
  */
 import { expect, test } from '@playwright/test'
-import { makeAdminUser, makeTechDomain, setupMockApi } from './helpers/mock-api'
+import {
+  makeAdminUser,
+  makeApprovedEvent,
+  makeTechDomain,
+  setupMockApi,
+} from './helpers/mock-api'
 
 test('full flow: signup, submit event, approve, list and filter', async ({ page }) => {
   const state = setupMockApi(page, {
@@ -86,4 +91,109 @@ test('full flow: signup, submit event, approve, list and filter', async ({ page 
   // ── Search filter: match ──────────────────────────────────────────────────
   await page.getByLabel('Keyword').fill(title)
   await expect(page.locator('.event-card', { hasText: title })).toBeVisible()
+})
+
+// ── Attendee calendar export journey ─────────────────────────────────────────
+test('attendee calendar journey: discover event, open detail, add to calendar', async ({
+  page,
+}) => {
+  const domain = makeTechDomain()
+  const event = makeApprovedEvent({
+    id: 'ev-cal-journey',
+    name: 'Blockchain Prague 2026',
+    slug: 'blockchain-prague-2026',
+    startsAtUtc: '2026-09-10T09:00:00Z',
+    endsAtUtc: '2026-09-10T18:00:00Z',
+    timezone: 'Europe/Prague',
+    attendanceMode: 'IN_PERSON',
+    venueName: 'Forum Karlin',
+    addressLine1: 'Pernerova 51',
+    city: 'Prague',
+    countryCode: 'CZ',
+  })
+  const state = setupMockApi(page, { domains: [domain], events: [event] })
+
+  // ── Home page: discover event ─────────────────────────────────────────────
+  await page.goto('/')
+  await expect(page.locator('.event-card', { hasText: 'Blockchain Prague 2026' })).toBeVisible()
+
+  // ── Navigate to event detail ──────────────────────────────────────────────
+  await page.goto(`/event/${event.slug}`)
+  await expect(page.getByRole('heading', { name: 'Blockchain Prague 2026' })).toBeVisible()
+
+  // ── "Add to calendar" button is visible ──────────────────────────────────
+  const calBtn = page.getByRole('button', { name: /Add to calendar/i })
+  await expect(calBtn).toBeVisible()
+
+  // ── Open calendar menu ────────────────────────────────────────────────────
+  await calBtn.click()
+  await expect(page.locator('.calendar-menu')).toBeVisible()
+
+  // ── All three provider options are present ────────────────────────────────
+  await expect(page.getByRole('menuitem', { name: /Download .ics/i })).toBeVisible()
+  const googleLink = page.getByRole('menuitem', { name: /Google Calendar/i })
+  await expect(googleLink).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: /Outlook/i })).toBeVisible()
+
+  // ── Google Calendar link has correct domain ───────────────────────────────
+  const href = (await googleLink.getAttribute('href')) ?? ''
+  expect(href).toContain('calendar.google.com')
+  expect(href).toContain('Blockchain+Prague+2026')
+
+  // ── ICS download shows confirmation state ────────────────────────────────
+  // Intercept the anchor-click download (Blob URL) by overriding document.createElement
+  await page.evaluate(() => {
+    const orig = document.createElement.bind(document)
+    ;(document as unknown as Record<string, unknown>).__calendarDownloadTriggered = false
+    document.createElement = function (tag: string) {
+      const el = orig(tag)
+      if (tag === 'a') {
+        const origClick = el.click.bind(el)
+        el.click = function () {
+          ;(document as unknown as Record<string, unknown>).__calendarDownloadTriggered = true
+          origClick()
+        }
+      }
+      return el
+    }
+  })
+
+  await page.getByRole('menuitem', { name: /Download .ics/i }).click()
+
+  // Confirmation button should appear ("Added to calendar ✓")
+  await expect(page.getByRole('button', { name: /Added to calendar/i })).toBeVisible()
+
+  // Analytics action should have been recorded
+  const calendarActionsRecorded = state.calendarActions.length
+  expect(calendarActionsRecorded).toBeGreaterThanOrEqual(1)
+  expect(state.calendarActions[state.calendarActions.length - 1].provider).toBe('ICS')
+})
+
+// ── Attendee calendar journey: online event uses event URL as location ────────
+test('attendee calendar journey: online event shows join link in Google Calendar URL', async ({
+  page,
+}) => {
+  const domain = makeTechDomain()
+  const event = makeApprovedEvent({
+    id: 'ev-online-cal',
+    name: 'Remote AI Workshop',
+    slug: 'remote-ai-workshop',
+    startsAtUtc: '2026-10-20T14:00:00Z',
+    endsAtUtc: '2026-10-20T17:00:00Z',
+    attendanceMode: 'ONLINE',
+    eventUrl: 'https://zoom.example.com/join/ai-workshop',
+  })
+  setupMockApi(page, { domains: [domain], events: [event] })
+
+  await page.goto(`/event/${event.slug}`)
+  await expect(page.getByRole('heading', { name: 'Remote AI Workshop' })).toBeVisible()
+
+  await page.getByRole('button', { name: /Add to calendar/i }).click()
+  await expect(page.locator('.calendar-menu')).toBeVisible()
+
+  const googleLink = page.getByRole('menuitem', { name: /Google Calendar/i })
+  const href = (await googleLink.getAttribute('href')) ?? ''
+
+  // For online events the location should be the join URL, not venue details
+  expect(decodeURIComponent(href)).toContain('zoom.example.com/join/ai-workshop')
 })
