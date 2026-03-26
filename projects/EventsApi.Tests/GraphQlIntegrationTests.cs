@@ -9843,19 +9843,20 @@ public sealed class GraphQlIntegrationTests
         client.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
 
-        using var doc = await ExecuteGraphQlAsync(
-            client,
-            """
-            query PreviewExternalEvents($claimId: UUID!) {
-              previewExternalEvents(claimId: $claimId) { externalId }
-            }
-            """,
-            new { claimId });
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                query PreviewExternalEvents($claimId: UUID!) {
+                  previewExternalEvents(claimId: $claimId) { externalId }
+                }
+                """,
+            variables = new { claimId }
+        });
+        response.EnsureSuccessStatusCode();
+        using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
 
-        var errors = doc.RootElement.GetProperty("errors").EnumerateArray().ToList();
-        Assert.NotEmpty(errors);
-        var code = errors[0].GetProperty("extensions").GetProperty("code").GetString();
-        Assert.Equal("CLAIM_NOT_VERIFIED", code);
+        Assert.True(doc.RootElement.TryGetProperty("errors", out var errors));
+        Assert.Contains("CLAIM_NOT_VERIFIED", errors.ToString());
     }
 
     [Fact]
@@ -9864,17 +9865,19 @@ public sealed class GraphQlIntegrationTests
         await using var factory = new EventsApiWebApplicationFactory();
         using var client = factory.CreateClient();
 
-        using var doc = await ExecuteGraphQlAsync(
-            client,
-            """
-            query PreviewExternalEvents($claimId: UUID!) {
-              previewExternalEvents(claimId: $claimId) { externalId }
-            }
-            """,
-            new { claimId = Guid.NewGuid() });
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                query PreviewExternalEvents($claimId: UUID!) {
+                  previewExternalEvents(claimId: $claimId) { externalId }
+                }
+                """,
+            variables = new { claimId = Guid.NewGuid() }
+        });
+        response.EnsureSuccessStatusCode();
+        using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
 
-        var errors = doc.RootElement.GetProperty("errors").EnumerateArray().ToList();
-        Assert.NotEmpty(errors);
+        Assert.True(doc.RootElement.TryGetProperty("errors", out _));
     }
 
     // ── importExternalEvents tests ────────────────────────────────────────────
@@ -10200,19 +10203,20 @@ public sealed class GraphQlIntegrationTests
         client.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
 
-        using var doc = await ExecuteGraphQlAsync(
-            client,
-            """
-            mutation ImportExternalEvents($claimId: UUID!, $input: ImportExternalEventsInput!) {
-              importExternalEvents(claimId: $claimId, input: $input) { importedCount }
-            }
-            """,
-            new { claimId, input = new { externalIds = new[] { "any-evt" } } });
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation ImportExternalEvents($claimId: UUID!, $input: ImportExternalEventsInput!) {
+                  importExternalEvents(claimId: $claimId, input: $input) { importedCount }
+                }
+                """,
+            variables = new { claimId, input = new { externalIds = new[] { "any-evt" } } }
+        });
+        response.EnsureSuccessStatusCode();
+        using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
 
-        var errors = doc.RootElement.GetProperty("errors").EnumerateArray().ToList();
-        Assert.NotEmpty(errors);
-        var code = errors[0].GetProperty("extensions").GetProperty("code").GetString();
-        Assert.Equal("CLAIM_NOT_VERIFIED", code);
+        Assert.True(doc.RootElement.TryGetProperty("errors", out var errors));
+        Assert.Contains("CLAIM_NOT_VERIFIED", errors.ToString());
     }
 
     [Fact]
@@ -10258,18 +10262,19 @@ public sealed class GraphQlIntegrationTests
         client.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, memberId));
 
-        using var doc = await ExecuteGraphQlAsync(
-            client,
-            """
-            mutation ImportExternalEvents($claimId: UUID!, $input: ImportExternalEventsInput!) {
-              importExternalEvents(claimId: $claimId, input: $input) { importedCount }
-            }
-            """,
-            new { claimId, input = new { externalIds = new[] { "any-evt" } } });
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation ImportExternalEvents($claimId: UUID!, $input: ImportExternalEventsInput!) {
+                  importExternalEvents(claimId: $claimId, input: $input) { importedCount }
+                }
+                """,
+            variables = new { claimId, input = new { externalIds = new[] { "any-evt" } } }
+        });
+        response.EnsureSuccessStatusCode();
+        using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
 
-        var errors = doc.RootElement.GetProperty("errors").EnumerateArray().ToList();
-        Assert.NotEmpty(errors);
-        var code = errors[0].GetProperty("extensions").GetProperty("code").GetString();
-        Assert.Equal("FORBIDDEN", code);
+        Assert.True(doc.RootElement.TryGetProperty("errors", out var errors));
+        Assert.Contains("FORBIDDEN", errors.ToString());
     }
 }

@@ -12,6 +12,7 @@ import type {
   CommunityMemberRole,
   ExternalSourceClaim,
   ExternalSourceType,
+  ExternalEventPreview,
   SyncResult,
 } from '@/types'
 
@@ -42,6 +43,14 @@ const newSourceUrl = ref('')
 const addingSource = ref(false)
 const syncResults = ref<Record<string, SyncResult>>({})
 const syncingId = ref<string | null>(null)
+
+// Preview-and-select state
+const previewClaimId = ref<string | null>(null)
+const previewCandidates = ref<ExternalEventPreview[]>([])
+const previewLoading = ref(false)
+const previewError = ref<string | null>(null)
+const selectedExternalIds = ref<Set<string>>(new Set())
+const importLoading = ref(false)
 
 const slug = computed(() => route.params.slug as string)
 
@@ -210,23 +219,68 @@ async function handleRemoveSource(claimId: string) {
     await communitiesStore.removeExternalSource(claimId)
     externalSources.value = externalSources.value.filter((s) => s.id !== claimId)
     delete syncResults.value[claimId]
+    if (previewClaimId.value === claimId) {
+      previewClaimId.value = null
+      previewCandidates.value = []
+    }
   } catch (err) {
     sourceError.value = err instanceof Error ? err.message : t('community.errorRemoveSource')
   }
 }
 
-async function handleSync(claimId: string) {
-  sourceError.value = null
-  syncingId.value = claimId
+async function handlePreview(claimId: string) {
+  previewError.value = null
+  previewClaimId.value = claimId
+  previewLoading.value = true
+  previewCandidates.value = []
+  selectedExternalIds.value = new Set()
   try {
-    const result = await communitiesStore.triggerSync(claimId)
-    syncResults.value = { ...syncResults.value, [claimId]: result }
-    // Refresh sources to update lastSyncAtUtc
+    previewCandidates.value = await communitiesStore.previewExternalEvents(claimId)
+  } catch (err) {
+    previewError.value = err instanceof Error ? err.message : t('community.errorPreview')
+  } finally {
+    previewLoading.value = false
+  }
+}
+
+function togglePreviewSelection(externalId: string, checked: boolean) {
+  const next = new Set(selectedExternalIds.value)
+  if (checked) next.add(externalId)
+  else next.delete(externalId)
+  selectedExternalIds.value = next
+}
+
+function selectAllImportable() {
+  selectedExternalIds.value = new Set(
+    previewCandidates.value.filter((c) => c.isImportable).map((c) => c.externalId),
+  )
+}
+
+function clearPreview() {
+  previewClaimId.value = null
+  previewCandidates.value = []
+  previewError.value = null
+  selectedExternalIds.value = new Set()
+}
+
+async function handleImport() {
+  if (!previewClaimId.value || selectedExternalIds.value.size === 0) return
+  importLoading.value = true
+  previewError.value = null
+  try {
+    const result = await communitiesStore.importExternalEvents(
+      previewClaimId.value,
+      Array.from(selectedExternalIds.value),
+    )
+    syncResults.value = { ...syncResults.value, [previewClaimId.value]: result }
+    // Refresh the candidates to show newly imported events as alreadyImported
+    await handlePreview(previewClaimId.value)
+    // Refresh source cards to show updated lastSyncAtUtc
     await loadExternalSources()
   } catch (err) {
-    sourceError.value = err instanceof Error ? err.message : t('community.errorSync')
+    previewError.value = err instanceof Error ? err.message : t('community.errorSync')
   } finally {
-    syncingId.value = null
+    importLoading.value = false
   }
 }
 
@@ -500,20 +554,123 @@ function memberCountText(count: number): string {
                   <div class="source-actions">
                     <button
                       class="btn btn-sm btn-primary"
-                      :disabled="syncingId === source.id || source.status !== 'VERIFIED'"
+                      :disabled="previewClaimId === source.id || source.status !== 'VERIFIED'"
                       :title="source.status !== 'VERIFIED' ? t('community.syncOnlyVerified') : undefined"
-                      @click="handleSync(source.id)"
+                      @click="handlePreview(source.id)"
                     >
-                      {{ syncingId === source.id ? t('community.syncing') : t('community.syncButton') }}
+                      {{ previewClaimId === source.id && previewLoading ? t('community.loadingPreview') : t('community.previewImportButton') }}
                     </button>
                     <button
                       class="btn btn-sm btn-danger"
-                      :disabled="syncingId === source.id"
                       @click="handleRemoveSource(source.id)"
                     >
                       {{ t('community.removeSource') }}
                     </button>
                   </div>
+                </div>
+              </div>
+
+              <!-- Preview panel -->
+              <div
+                v-if="previewClaimId !== null"
+                class="preview-panel"
+                role="region"
+                :aria-label="t('community.previewPanelAriaLabel')"
+              >
+                <div class="preview-header">
+                  <h3 class="preview-heading">{{ t('community.previewHeading') }}</h3>
+                  <button class="btn btn-ghost btn-sm preview-close" @click="clearPreview">
+                    {{ t('community.previewClose') }}
+                  </button>
+                </div>
+
+                <div v-if="previewError" class="error-banner preview-error">
+                  {{ previewError }}
+                </div>
+
+                <div v-if="previewLoading" class="preview-loading">{{ t('common.loading') }}</div>
+
+                <template v-else-if="previewCandidates.length > 0">
+                  <p class="preview-moderation-notice">
+                    {{ t('community.previewModerationNotice') }}
+                  </p>
+
+                  <div class="preview-toolbar">
+                    <button class="btn btn-ghost btn-sm" @click="selectAllImportable">
+                      {{ t('community.previewSelectAll') }}
+                    </button>
+                    <span class="preview-selected-count">
+                      {{
+                        t('community.previewSelectedCount', { count: selectedExternalIds.size })
+                      }}
+                    </span>
+                  </div>
+
+                  <div class="preview-candidates">
+                    <div
+                      v-for="candidate in previewCandidates"
+                      :key="candidate.externalId"
+                      class="preview-candidate-row"
+                      :class="{
+                        'already-imported': candidate.alreadyImported,
+                        'not-importable': !candidate.isImportable,
+                      }"
+                    >
+                      <label class="candidate-checkbox-label">
+                        <input
+                          type="checkbox"
+                          :checked="selectedExternalIds.has(candidate.externalId)"
+                          :disabled="!candidate.isImportable"
+                          @change="
+                            togglePreviewSelection(
+                              candidate.externalId,
+                              ($event.target as HTMLInputElement).checked,
+                            )
+                          "
+                        />
+                        <div class="candidate-info">
+                          <span class="candidate-name">{{ candidate.name }}</span>
+                          <span v-if="candidate.startsAtUtc" class="candidate-date">
+                            {{ new Date(candidate.startsAtUtc).toLocaleDateString() }}
+                            <template v-if="candidate.city"> · {{ candidate.city }}</template>
+                          </span>
+                          <span
+                            v-if="candidate.alreadyImported"
+                            class="import-badge already-imported-badge"
+                          >
+                            {{ t('community.alreadyImported') }}
+                          </span>
+                          <span
+                            v-else-if="candidate.importBlockReason"
+                            class="import-badge not-importable-badge"
+                          >
+                            {{ candidate.importBlockReason }}
+                          </span>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="preview-footer">
+                    <button
+                      class="btn btn-primary"
+                      :disabled="importLoading || selectedExternalIds.size === 0"
+                      @click="handleImport"
+                    >
+                      {{
+                        importLoading
+                          ? t('community.importing')
+                          : t('community.importButton', { count: selectedExternalIds.size })
+                      }}
+                    </button>
+                    <p class="import-footer-note">
+                      {{ t('community.importFooterNote') }}
+                    </p>
+                  </div>
+                </template>
+
+                <div v-else-if="!previewLoading" class="preview-empty">
+                  {{ t('community.previewEmpty') }}
                 </div>
               </div>
 
@@ -1033,5 +1190,144 @@ function memberCountText(count: number): string {
   .add-source-fields .btn {
     grid-column: 1;
   }
+}
+
+/* ── Preview panel ─────────────────────────────────────────────────────────── */
+
+.preview-panel {
+  margin: 1.5rem 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 0.5rem);
+  background: var(--color-surface);
+  padding: 1.25rem;
+}
+
+.preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.preview-heading {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.preview-moderation-notice {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  background: var(--color-surface-alt, rgba(0, 0, 0, 0.04));
+  border-left: 3px solid var(--color-warning, #f59e0b);
+  padding: 0.5rem 0.75rem;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  margin-bottom: 1rem;
+}
+
+.preview-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.preview-selected-count {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.preview-candidates {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 28rem;
+  overflow-y: auto;
+  margin-bottom: 1rem;
+}
+
+.preview-candidate-row {
+  display: flex;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0.625rem 0.75rem;
+  background: var(--color-surface);
+}
+
+.preview-candidate-row.already-imported {
+  opacity: 0.6;
+}
+
+.preview-candidate-row.not-importable {
+  opacity: 0.6;
+}
+
+.candidate-checkbox-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  width: 100%;
+  cursor: pointer;
+}
+
+.candidate-checkbox-label input[type='checkbox']:disabled {
+  cursor: not-allowed;
+}
+
+.candidate-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  flex: 1;
+}
+
+.candidate-name {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.candidate-date {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
+.import-badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 9999px;
+  font-weight: 500;
+  align-self: flex-start;
+}
+
+.already-imported-badge {
+  background: var(--color-success-muted, rgba(16, 185, 129, 0.12));
+  color: var(--color-success, #059669);
+}
+
+.not-importable-badge {
+  background: var(--color-error-muted, rgba(239, 68, 68, 0.1));
+  color: var(--color-error, #dc2626);
+}
+
+.preview-footer {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.import-footer-note {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.preview-empty,
+.preview-loading {
+  text-align: center;
+  padding: 2rem;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
 }
 </style>

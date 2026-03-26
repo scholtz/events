@@ -9,6 +9,7 @@ import type {
   CommunityVisibility,
   ExternalSourceClaim,
   ExternalSourceType,
+  ExternalEventPreview,
   SyncResult,
 } from '@/types'
 
@@ -264,6 +265,38 @@ export const useCommunitiesStore = defineStore('communities', () => {
     return data.triggerExternalSync
   }
 
+  const EXTERNAL_EVENT_PREVIEW_FIELDS = `
+    externalId name description eventUrl
+    startsAtUtc endsAtUtc city venueName
+    isFree priceAmount currencyCode
+    alreadyImported isImportable importBlockReason
+  `
+
+  async function previewExternalEvents(claimId: string): Promise<ExternalEventPreview[]> {
+    const data = await gqlRequest<{ previewExternalEvents: ExternalEventPreview[] }>(
+      `query PreviewExternalEvents($claimId: UUID!) {
+        previewExternalEvents(claimId: $claimId) { ${EXTERNAL_EVENT_PREVIEW_FIELDS} }
+      }`,
+      { claimId },
+    )
+    return data.previewExternalEvents
+  }
+
+  async function importExternalEvents(
+    claimId: string,
+    externalIds: string[],
+  ): Promise<SyncResult> {
+    const data = await gqlRequest<{ importExternalEvents: SyncResult }>(
+      `mutation ImportExternalEvents($claimId: UUID!, $input: ImportExternalEventsInput!) {
+        importExternalEvents(claimId: $claimId, input: $input) {
+          importedCount skippedCount errorCount summary
+        }
+      }`,
+      { claimId, input: { externalIds } },
+    )
+    return data.importExternalEvents
+  }
+
   return {
     groups,
     loading,
@@ -287,6 +320,8 @@ export const useCommunitiesStore = defineStore('communities', () => {
     addExternalSource,
     removeExternalSource,
     triggerSync,
+    previewExternalEvents,
+    importExternalEvents,
   }
 })
 
