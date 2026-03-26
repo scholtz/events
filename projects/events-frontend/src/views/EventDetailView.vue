@@ -29,6 +29,13 @@ const event = computed(() => eventsStore.detailEvent ?? cachedEvent.value ?? nul
 const loading = computed(() => eventsStore.detailLoading && !cachedEvent.value)
 const detailError = computed(() => eventsStore.detailError)
 
+/** Whether the current user is allowed to edit this event (admin or event owner). */
+const canEdit = computed(() => {
+  if (!authStore.isAuthenticated || !event.value) return false
+  if (authStore.isAdmin) return true
+  return event.value.submittedByUserId === authStore.currentUser?.id
+})
+
 /** Guard against CSS injection in domain color values. Only allows valid 3- or 6-digit hex. */
 function safeHexColor(value: string | null | undefined): string | null {
   if (!value) return null
@@ -393,6 +400,9 @@ function domainHostDisplay(event: {
           <p v-if="event.submittedBy" class="organizer">
             {{ t('eventDetail.submittedBy', { name: event.submittedBy.displayName }) }}
           </p>
+          <RouterLink v-if="canEdit" :to="`/edit/${event.id}`" class="btn btn-outline btn-sm edit-event-btn">
+            {{ t('eventDetail.editEvent') }}
+          </RouterLink>
         </div>
         <div class="event-detail-body">
           <div class="event-info">
@@ -749,6 +759,11 @@ function domainHostDisplay(event: {
 .organizer {
   color: var(--color-text-secondary);
   font-size: 0.9375rem;
+}
+
+.edit-event-btn {
+  margin-top: 0.5rem;
+  align-self: flex-start;
 }
 
 .event-detail-body {

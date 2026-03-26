@@ -10,6 +10,7 @@ import type { CatalogEvent } from '@/types'
 
 const props = defineProps<{
   event: CatalogEvent
+  hideDomainBadge?: boolean
 }>()
 
 const { t, locale } = useI18n()
@@ -73,7 +74,7 @@ async function handleFavoriteToggle() {
   <article class="event-card card">
     <div class="event-card-body">
       <div class="event-meta">
-        <RouterLink :to="domainUrl(event)" class="badge badge-primary domain-link">
+        <RouterLink v-if="!hideDomainBadge" :to="domainUrl(event)" class="badge badge-primary domain-link">
           {{ event.domain?.name ?? 'Event' }}
         </RouterLink>
         <div class="event-meta-right">

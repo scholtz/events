@@ -31,6 +31,7 @@ const DETAIL_EVENT_FIELDS = `
   attendanceMode timezone language
   domain { id name slug subdomain description logoUrl primaryColor accentColor overviewContent }
   submittedBy { displayName }
+  submittedByUserId
   interestedCount
 `
 

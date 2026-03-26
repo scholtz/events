@@ -671,6 +671,7 @@ public sealed class Query
         {
             myMembership = await dbContext.CommunityMemberships
                 .AsNoTracking()
+                .Include(cm => cm.Group)
                 .FirstOrDefaultAsync(cm => cm.GroupId == group.Id && cm.UserId == userId, cancellationToken);
         }
 
