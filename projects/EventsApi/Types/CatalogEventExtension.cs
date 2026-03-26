@@ -24,4 +24,18 @@ public sealed class CatalogEventExtension
         CancellationToken cancellationToken)
         => await dbContext.FavoriteEvents
             .CountAsync(f => f.EventId == catalogEvent.Id, cancellationToken);
+
+    /// <summary>
+    /// Returns the active community groups that have associated this event.
+    /// Allows event detail pages to surface community context without requiring
+    /// a separate round-trip query.
+    /// </summary>
+    public async Task<IReadOnlyList<CommunityGroup>> GetCommunityGroupsAsync(
+        [Parent] CatalogEvent catalogEvent,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+        => await dbContext.CommunityGroupEvents
+            .Where(cge => cge.EventId == catalogEvent.Id && cge.Group.IsActive)
+            .Select(cge => cge.Group)
+            .ToListAsync(cancellationToken);
 }

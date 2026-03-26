@@ -227,6 +227,7 @@ export default {
     virtualEventDescription: 'Táto udalosť prebieha online. Žiadne fyzické miesto.',
     hubContextHeading: 'O tomto centre',
     hubContextExplore: 'Preskúmať udalosti {name} →',
+    communityGroupsHeading: 'Organizuje',
     editEvent: 'Upraviť udalosť',
   },
 

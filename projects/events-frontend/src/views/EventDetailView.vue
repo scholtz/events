@@ -665,6 +665,26 @@ function domainHostDisplay(event: {
             </div>
           </div>
         </div>
+
+        <!-- Community groups section: links event back to organizing communities -->
+        <div
+          v-if="event.communityGroups && event.communityGroups.length > 0"
+          class="community-groups-section card"
+        >
+          <h3 class="map-heading">{{ t('eventDetail.communityGroupsHeading') }}</h3>
+          <ul class="community-groups-list">
+            <li
+              v-for="group in event.communityGroups"
+              :key="group.id"
+              class="community-group-item"
+            >
+              <RouterLink :to="`/community/${group.slug}`" class="community-group-link">
+                <span class="community-group-name">{{ group.name }}</span>
+                <span v-if="group.summary" class="community-group-summary">{{ group.summary }}</span>
+              </RouterLink>
+            </li>
+          </ul>
+        </div>
       </div>
     </template>
 
