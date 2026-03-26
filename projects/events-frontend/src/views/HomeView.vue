@@ -190,6 +190,16 @@ const resultsSummary = computed(() => {
     : t('home.resultsMatchingMany', { count, filters: filterLabels.join(', ') })
 })
 
+const LOW_SIGNAL_THRESHOLD = 3
+
+const lowSignalMessage = computed(() => {
+  const count = eventsStore.discoveryEvents.length
+  if (count === 0 || count > LOW_SIGNAL_THRESHOLD) return null
+  return count === 1
+    ? t('home.fewResultsOne')
+    : t('home.fewResultsMany', { count })
+})
+
 const emptyStateMessage = computed(() => {
   if (!eventsStore.hasActiveFilters) {
     return t('home.emptyNoEvents')
@@ -366,6 +376,10 @@ const emptyStateMessage = computed(() => {
             <p class="results-summary" role="status" aria-live="polite">
               {{ resultsSummary }}
             </p>
+            <div v-if="lowSignalMessage" class="low-signal-notice" role="status" aria-live="polite">
+              <span class="low-signal-icon" aria-hidden="true">🌱</span>
+              {{ lowSignalMessage }}
+            </div>
             <div class="events-grid">
               <EventCard
                 v-for="event in eventsStore.discoveryEvents"
@@ -629,6 +643,25 @@ const emptyStateMessage = computed(() => {
   font-size: 0.875rem;
   color: var(--color-text-secondary);
   margin-bottom: 0.75rem;
+}
+
+/* Low-signal notice shown when only a few results are present */
+.low-signal-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.625rem 0.875rem;
+  margin-bottom: 0.75rem;
+  background: var(--color-surface-raised);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.low-signal-icon {
+  flex-shrink: 0;
+  line-height: 1.4;
 }
 
 .events-grid {

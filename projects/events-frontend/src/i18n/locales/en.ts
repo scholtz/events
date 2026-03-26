@@ -96,6 +96,11 @@ export default {
     resultsFoundMany: '{count} events found',
     resultsMatchingOne: '1 event matching {filters}',
     resultsMatchingMany: '{count} events matching {filters}',
+    // Low-signal state: only a handful of results
+    fewResultsOne:
+      'Only 1 event here so far — this is a niche or emerging area. Broaden your filters or check back soon for more.',
+    fewResultsMany:
+      'Only {count} events here so far — this is a niche or emerging area. Broaden your filters or check back soon for more.',
   },
 
   // ── Event Filters ──────────────────────────────────────────────────────────

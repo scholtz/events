@@ -2332,3 +2332,121 @@ test.describe('Timezone filter', () => {
     await expect(page).toHaveURL(/tz=Europe\/Prague/)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Low-signal state
+// ---------------------------------------------------------------------------
+
+test.describe('Low-signal state', () => {
+  test('shows low-signal notice when exactly one event matches', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-1', name: 'Solo Event', slug: 'solo-event' })],
+    })
+    await page.goto('/')
+
+    await expect(page.locator('.low-signal-notice')).toBeVisible()
+    await expect(page.locator('.low-signal-notice')).toContainText('1')
+    await expect(page.locator('.low-signal-notice')).toContainText('niche')
+  })
+
+  test('shows low-signal notice when two events match', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-1', name: 'Event Alpha', slug: 'event-alpha' }),
+        makeApprovedEvent({ id: 'e-2', name: 'Event Beta', slug: 'event-beta' }),
+      ],
+    })
+    await page.goto('/')
+
+    await expect(page.locator('.low-signal-notice')).toBeVisible()
+    await expect(page.locator('.low-signal-notice')).toContainText('2')
+    await expect(page.locator('.low-signal-notice')).toContainText('niche')
+  })
+
+  test('does not show low-signal notice when four or more events match', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-1', name: 'Event A', slug: 'event-a' }),
+        makeApprovedEvent({ id: 'e-2', name: 'Event B', slug: 'event-b' }),
+        makeApprovedEvent({ id: 'e-3', name: 'Event C', slug: 'event-c' }),
+        makeApprovedEvent({ id: 'e-4', name: 'Event D', slug: 'event-d' }),
+      ],
+    })
+    await page.goto('/')
+
+    await expect(page.locator('.low-signal-notice')).toBeHidden()
+  })
+
+  test('low-signal notice is visible at mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-1', name: 'Mobile Solo', slug: 'mobile-solo' })],
+    })
+    await page.goto('/')
+
+    await expect(page.locator('.low-signal-notice')).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Mobile Solo' })).toBeVisible()
+  })
+
+  test('low-signal notice is accessible: has role status', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-1', name: 'Accessible Event', slug: 'accessible-event' })],
+    })
+    await page.goto('/')
+
+    // The notice has role="status" for screen reader accessibility
+    const notice = page.locator('[role="status"]', { hasText: 'niche' })
+    await expect(notice).toBeVisible()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Default sort: upcoming events appear before past events
+// ---------------------------------------------------------------------------
+
+test.describe('Default sort — upcoming before past', () => {
+  test('future events appear before past events in default UPCOMING sort', async ({ page }) => {
+    const now = new Date()
+    const future = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString() // +7 days
+    const past = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString() // -7 days
+
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-past', name: 'Past Event', slug: 'past-event', startsAtUtc: past, endsAtUtc: past }),
+        makeApprovedEvent({ id: 'e-future', name: 'Future Event', slug: 'future-event', startsAtUtc: future, endsAtUtc: future }),
+      ],
+    })
+    await page.goto('/')
+
+    const cards = page.locator('.event-card')
+    await expect(cards).toHaveCount(2)
+
+    // Future event should appear first
+    await expect(cards.first()).toContainText('Future Event')
+    await expect(cards.last()).toContainText('Past Event')
+  })
+
+  test('category page: future event appears before past event in hub', async ({ page }) => {
+    const now = new Date()
+    const future = new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000).toISOString()
+    const past = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString()
+
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-past', name: 'Old Workshop', slug: 'old-workshop', startsAtUtc: past, endsAtUtc: past }),
+        makeApprovedEvent({ id: 'e-future', name: 'Upcoming Conf', slug: 'upcoming-conf', startsAtUtc: future, endsAtUtc: future }),
+      ],
+    })
+    await page.goto('/category/technology')
+
+    const cards = page.locator('.event-card')
+    await expect(cards.first()).toContainText('Upcoming Conf')
+  })
+})

@@ -92,6 +92,10 @@ export default {
     resultsFoundMany: 'Našlo sa {count} udalostí',
     resultsMatchingOne: 'Našla sa 1 udalosť pre {filters}',
     resultsMatchingMany: 'Našlo sa {count} udalostí pre {filters}',
+    fewResultsOne:
+      'Zatiaľ len 1 udalosť — táto oblasť je úzka alebo vznikajúca. Rozšírte filtre alebo sa vráťte neskôr.',
+    fewResultsMany:
+      'Zatiaľ len {count} udalosti — táto oblasť je úzka alebo vznikajúca. Rozšírte filtre alebo sa vráťte neskôr.',
   },
 
   filters: {

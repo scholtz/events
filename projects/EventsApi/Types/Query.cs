@@ -442,8 +442,10 @@ public sealed class Query
     private static IOrderedQueryable<CatalogEvent> ApplySorting(
         IQueryable<CatalogEvent> query,
         EventSortOption? sortBy,
-        string? normalizedSearchText)
+        string? normalizedSearchText,
+        DateTime? utcNow = null)
     {
+        var now = utcNow ?? DateTime.UtcNow;
         return sortBy switch
         {
             EventSortOption.Newest => query
@@ -455,7 +457,10 @@ public sealed class Query
                 .ThenByDescending(catalogEvent => catalogEvent.Description.ToLower().Contains(normalizedSearchText))
                 .ThenBy(catalogEvent => catalogEvent.StartsAtUtc),
             _ => query
-                .OrderBy(catalogEvent => catalogEvent.StartsAtUtc)
+                // Upcoming events (starts today or later) before past events
+                .OrderBy(catalogEvent => catalogEvent.StartsAtUtc < now ? 1 : 0)
+                // Within each group: ascending by start date (nearest upcoming first; oldest past first)
+                .ThenBy(catalogEvent => catalogEvent.StartsAtUtc)
                 .ThenBy(catalogEvent => catalogEvent.Name)
         };
     }

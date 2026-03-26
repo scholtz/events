@@ -1857,6 +1857,14 @@ function sortDiscoveryEvents(
     if (leftScore !== rightScore) return rightScore - leftScore
   }
 
+  // Default UPCOMING sort: upcoming events (>= now) before past events
+  const now = new Date().toISOString()
+  const leftIsPast = left.startsAtUtc < now
+  const rightIsPast = right.startsAtUtc < now
+  if (leftIsPast !== rightIsPast) {
+    return leftIsPast ? 1 : -1
+  }
+
   return left.startsAtUtc.localeCompare(right.startsAtUtc)
 }
 

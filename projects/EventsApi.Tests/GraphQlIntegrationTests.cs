@@ -343,6 +343,121 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task EventsQuery_UpcomingSort_PrioritizesFutureEventsOverPastEvents()
+    {
+        // Verifies that the default UPCOMING sort places future events before past events,
+        // with future events ordered by nearest start date first and past events afterwards.
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("ranking@example.com", "Ranking Tester");
+            var tech = CreateDomain("Tech", "tech");
+            var now = DateTime.UtcNow;
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(tech);
+            dbContext.Events.AddRange(
+                // Past events
+                CreateEvent(
+                    "Old Summit",
+                    "old-summit",
+                    "A past event.",
+                    "Venue A",
+                    "Prague",
+                    now.AddDays(-20),
+                    tech,
+                    user),
+                CreateEvent(
+                    "Recent Meetup",
+                    "recent-meetup",
+                    "A more recent past event.",
+                    "Venue B",
+                    "Prague",
+                    now.AddDays(-3),
+                    tech,
+                    user),
+                // Upcoming events
+                CreateEvent(
+                    "Next Week Conference",
+                    "next-week-conference",
+                    "An upcoming event next week.",
+                    "Venue C",
+                    "Prague",
+                    now.AddDays(7),
+                    tech,
+                    user),
+                CreateEvent(
+                    "Tomorrow Workshop",
+                    "tomorrow-workshop",
+                    "An event happening tomorrow.",
+                    "Venue D",
+                    "Prague",
+                    now.AddDays(1),
+                    tech,
+                    user));
+        });
+
+        using var client = factory.CreateClient();
+
+        using var result = await ExecuteGraphQlAsync(
+            client,
+            """
+            query Events($filter: EventFilterInput) {
+              events(filter: $filter) { name }
+            }
+            """,
+            new { filter = new { sortBy = "UPCOMING" } });
+
+        var names = GetEventNames(result);
+
+        // Upcoming events must appear before past events
+        Assert.Equal(["Tomorrow Workshop", "Next Week Conference", "Old Summit", "Recent Meetup"],
+            names);
+    }
+
+    [Fact]
+    public async Task EventsQuery_UpcomingSort_SparseCategoryShowsAllEventsUpcomingFirst()
+    {
+        // Verifies deterministic ordering for a sparse category with one upcoming and one past event.
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("sparse@example.com", "Sparse User");
+            var ai = CreateDomain("AI", "ai");
+            var now = DateTime.UtcNow;
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(ai);
+            dbContext.Events.AddRange(
+                CreateEvent(
+                    "Future AI Talk",
+                    "future-ai-talk",
+                    "Upcoming AI presentation.",
+                    "Lab X",
+                    "Bratislava",
+                    now.AddDays(5),
+                    ai,
+                    user),
+                CreateEvent(
+                    "Past AI Hack",
+                    "past-ai-hack",
+                    "Concluded hackathon.",
+                    "Lab Y",
+                    "Bratislava",
+                    now.AddDays(-5),
+                    ai,
+                    user));
+        });
+
+        using var client = factory.CreateClient();
+
+        var names = await QueryEventNamesAsync(client, new { domainSlug = "ai", sortBy = "UPCOMING" });
+
+        // Upcoming event must appear first, even in a sparse result set
+        Assert.Equal(["Future AI Talk", "Past AI Hack"], names);
+    }
+
+    [Fact]
     public async Task EventsQuery_TreatsBlankFiltersAsUnsetAndKeepsPendingEventsPrivate()
     {
         await using var factory = new EventsApiWebApplicationFactory();
