@@ -297,3 +297,27 @@ public sealed class CommunityGroupEventInput
     public Guid GroupId { get; init; }
     public Guid EventId { get; init; }
 }
+
+/// <summary>
+/// A single community/external link entry for a domain hub.
+/// </summary>
+public sealed class DomainLinkItem
+{
+    /// <summary>Short human-readable label, e.g. "Community website" or "Join our Discord".</summary>
+    public required string Title { get; init; }
+    /// <summary>Absolute URL the link points to. Must start with https:// or http://.</summary>
+    public required string Url { get; init; }
+}
+
+/// <summary>
+/// Input for replacing the curated community/external links for a domain hub.
+/// The full list is replaced atomically — pass an empty list to remove all links.
+/// Restricted to domain administrators and global administrators.
+/// Maximum 10 links per hub.
+/// </summary>
+public sealed class SetDomainLinksInput
+{
+    public Guid DomainId { get; init; }
+    /// <summary>Ordered list of links to set. DisplayOrder is assigned from the list position (0-based).</summary>
+    public required List<DomainLinkItem> Links { get; init; }
+}
