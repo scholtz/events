@@ -8856,4 +8856,230 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal(0, dash.GetProperty("totalCalendarActions").GetInt32());
         Assert.Empty(dash.GetProperty("eventAnalytics").EnumerateArray());
     }
+
+    // ── Multi-tag (EventTag) tests ────────────────────────────────────────────
+
+    [Fact]
+    public async Task SubmitEvent_WithAdditionalTags_CreatesEventTags()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("tags-submit@example.com", "Tags User");
+            userId = user.Id;
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(CreateDomain("Tech", "tech-tags"));
+            dbContext.Domains.Add(CreateDomain("Crypto", "crypto-tags"));
+            dbContext.Domains.Add(CreateDomain("AI", "ai-tags"));
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        var nextMonth = FirstDayOfNextMonthUtc();
+
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation SubmitEvent($input: EventSubmissionInput!) {
+              submitEvent(input: $input) {
+                id name
+                domain { slug }
+                eventTags { id domain { slug name } }
+              }
+            }
+            """,
+            new
+            {
+                input = new
+                {
+                    domainSlug = "tech-tags",
+                    additionalTagSlugs = new[] { "crypto-tags", "ai-tags" },
+                    name = "Multi-Tag Event",
+                    description = "An event with multiple tags.",
+                    eventUrl = "https://events.example.com/multi-tag",
+                    venueName = "Hub",
+                    addressLine1 = "Somewhere 1",
+                    city = "Prague",
+                    countryCode = "CZ",
+                    isFree = true,
+                    currencyCode = "EUR",
+                    latitude = 50.075m,
+                    longitude = 14.437m,
+                    startsAtUtc = nextMonth,
+                    endsAtUtc = nextMonth.AddHours(6),
+                    attendanceMode = "IN_PERSON"
+                }
+            });
+
+        var ev = doc.RootElement.GetProperty("data").GetProperty("submitEvent");
+        Assert.Equal("tech-tags", ev.GetProperty("domain").GetProperty("slug").GetString());
+
+        var tags = ev.GetProperty("eventTags").EnumerateArray().ToList();
+        Assert.Equal(2, tags.Count);
+        var tagSlugs = tags.Select(t => t.GetProperty("domain").GetProperty("slug").GetString()).OrderBy(s => s).ToList();
+        Assert.Contains("ai-tags", tagSlugs);
+        Assert.Contains("crypto-tags", tagSlugs);
+    }
+
+    [Fact]
+    public async Task Events_FilterByDomainSlug_AlsoMatchesEventTags()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("tag-filter@example.com", "Tag Filter User", ApplicationUserRole.Admin);
+            userId = user.Id;
+            var techDomain = CreateDomain("Tech", "tech-filter");
+            var cryptoDomain = CreateDomain("Crypto", "crypto-filter");
+            dbContext.Users.Add(user);
+            dbContext.Domains.AddRange(techDomain, cryptoDomain);
+
+            // Event with primary domain=tech, additional tag=crypto
+            var ev = CreateEvent("Cross-Tag Event", "cross-tag-evt", "Tagged event", "Hall", "Prague",
+                FirstDayOfNextMonthUtc(), techDomain, user);
+            dbContext.Events.Add(ev);
+            dbContext.EventTags.Add(new EventTag { EventId = ev.Id, DomainId = cryptoDomain.Id });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        // Filter by crypto (the additional tag) — should match
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            query Events($filter: EventFilterInput) {
+              events(filter: $filter) {
+                name
+                domain { slug }
+                eventTags { domain { slug } }
+              }
+            }
+            """,
+            new { filter = new { domainSlug = "crypto-filter" } });
+
+        var events = doc.RootElement.GetProperty("data").GetProperty("events").EnumerateArray().ToList();
+        Assert.Single(events);
+        Assert.Equal("Cross-Tag Event", events[0].GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateMyEvent_SyncsAdditionalTags()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("tag-update@example.com", "Tag Updater", ApplicationUserRole.Admin);
+            userId = user.Id;
+            var techDomain = CreateDomain("Tech", "tech-update");
+            var cryptoDomain = CreateDomain("Crypto", "crypto-update");
+            var aiDomain = CreateDomain("AI", "ai-update");
+            dbContext.Users.Add(user);
+            dbContext.Domains.AddRange(techDomain, cryptoDomain, aiDomain);
+
+            var ev = CreateEvent("Updatable Event", "updatable-evt", "Event to update tags", "Hall", "Prague",
+                FirstDayOfNextMonthUtc(), techDomain, user);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+            // Start with crypto tag
+            dbContext.EventTags.Add(new EventTag { EventId = ev.Id, DomainId = cryptoDomain.Id });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        var nextMonth = FirstDayOfNextMonthUtc();
+
+        // Update: remove crypto tag, add AI tag
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation UpdateMyEvent($eventId: UUID!, $input: EventSubmissionInput!) {
+              updateMyEvent(eventId: $eventId, input: $input) {
+                id
+                eventTags { domain { slug } }
+              }
+            }
+            """,
+            new
+            {
+                eventId,
+                input = new
+                {
+                    domainSlug = "tech-update",
+                    additionalTagSlugs = new[] { "ai-update" },
+                    name = "Updatable Event",
+                    description = "Event to update tags",
+                    eventUrl = "https://events.example.com/updatable-evt",
+                    venueName = "Hall",
+                    addressLine1 = "Address 1",
+                    city = "Prague",
+                    countryCode = "CZ",
+                    isFree = true,
+                    currencyCode = "EUR",
+                    latitude = 50.075m,
+                    longitude = 14.437m,
+                    startsAtUtc = nextMonth,
+                    endsAtUtc = nextMonth.AddHours(4),
+                    attendanceMode = "IN_PERSON"
+                }
+            });
+
+        var ev = doc.RootElement.GetProperty("data").GetProperty("updateMyEvent");
+        var tags = ev.GetProperty("eventTags").EnumerateArray().ToList();
+        Assert.Single(tags);
+        Assert.Equal("ai-update", tags[0].GetProperty("domain").GetProperty("slug").GetString());
+    }
+
+    [Fact]
+    public async Task EventBySlug_ReturnsEventTags()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("tag-slug@example.com", "Tag Slug User");
+            var techDomain = CreateDomain("Tech", "tech-slug-tag");
+            var cryptoDomain = CreateDomain("Crypto", "crypto-slug-tag");
+            dbContext.Users.Add(user);
+            dbContext.Domains.AddRange(techDomain, cryptoDomain);
+
+            var ev = CreateEvent("Tagged Event", "tagged-event-slug", "Event with tags", "Hall", "Prague",
+                FirstDayOfNextMonthUtc(), techDomain, user);
+            dbContext.Events.Add(ev);
+            dbContext.EventTags.Add(new EventTag { EventId = ev.Id, DomainId = cryptoDomain.Id });
+        });
+
+        using var client = factory.CreateClient();
+
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            query EventBySlug($slug: String!) {
+              eventBySlug(slug: $slug) {
+                name
+                domain { slug }
+                eventTags { domain { slug name } }
+              }
+            }
+            """,
+            new { slug = "tagged-event-slug" });
+
+        var ev = doc.RootElement.GetProperty("data").GetProperty("eventBySlug");
+        Assert.Equal("Tagged Event", ev.GetProperty("name").GetString());
+        var tags = ev.GetProperty("eventTags").EnumerateArray().ToList();
+        Assert.Single(tags);
+        Assert.Equal("crypto-slug-tag", tags[0].GetProperty("domain").GetProperty("slug").GetString());
+    }
 }

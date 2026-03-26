@@ -533,3 +533,38 @@ In E2E tests:
 - The `DomainBySlug` mock handler passes through `rawDomain` as-is — it does NOT auto-compute `publishedEventCount` from events
 - To test the server-count badge: spread `makeTechDomain()` and set `publishedEventCount: N` explicitly
 - To test the upcoming-count badge: use `makeTechDomain()` as-is and provide events to `setupMockApi`; the view falls back to client-side counting and shows "N upcoming events"
+
+## Domain-to-Tag UI rename
+
+User-facing text uses **"Tag"** (not "Domain") throughout the UI. The i18n keys still use the `domain` prefix internally (e.g., `filters.domain`, `admin.tabDomains`, `filters.chipDomain`) but their displayed values say "Tag" / "Tags".
+
+When renaming user-facing text, you **must** update ALL of the following:
+1. All three locale files: `en.ts`, `sk.ts`, `de.ts`
+2. All E2E tests that reference the old text via `getByLabel()`, `getByRole()`, `getByText()`, `locator(hasText)`, or regex patterns like `/domain/i`
+3. Specifically check: `i18n.spec.ts` (localized labels), `discovery.spec.ts` (filter chips), `events.spec.ts` (form labels), `vue.spec.ts` (full flow), `auth.spec.ts` (admin tabs), `domain-admin.spec.ts` (tab buttons)
+
+### Quality check for i18n renames
+After any label rename, always run the full Playwright E2E suite locally or verify all spec files for stale selectors. A partial rename (locale files updated but E2E selectors not) causes CI failures that are easily avoidable.
+
+## Multi-tag support (EventTag)
+
+Events support multiple tags via the `EventTag` junction entity (many-to-many relationship between `CatalogEvent` and `EventDomain`).
+
+### Backend
+- `CatalogEvent.DomainId` remains the **primary** tag; `CatalogEvent.EventTags` contains **additional** tags.
+- `EventSubmissionInput.AdditionalTagSlugs` (optional `List<string>`) specifies additional tags on submit/update.
+- `SyncEventTagsAsync` in `Mutation.cs` manages the junction rows — it removes stale tags and adds new ones.
+- All queries that return events must include `.Include(e => e.EventTags).ThenInclude(et => et.Domain)`.
+- Domain slug/subdomain filters in `Query.GetEventsAsync` match both the primary domain AND additional tags.
+
+### Frontend
+- `CatalogEvent.eventTags` is `{ id: string; domain: EventDomain }[]` in the TypeScript type.
+- `EVENT_FIELDS` and `DETAIL_EVENT_FIELDS` in `events.ts` include `eventTags { id domain { id name slug subdomain } }`.
+- `EventCard.vue` and `EventDetailView.vue` render all tags (primary + additional) as badges.
+- `SubmitEventView.vue` and `EditEventView.vue` include an `additionalTagSlugs` multi-select field.
+- `MockEvent` in `mock-api.ts` includes `eventTags: []` by default.
+- `filterEventsForDiscovery` in `mock-api.ts` checks both `event.domain.slug` and `event.eventTags` when filtering by domain.
+
+## Admin event editing
+
+Global admins can edit any event. The `canEdit` computed property in `EventDetailView.vue` checks `authStore.isAdmin || event.submittedByUserId === authStore.currentUser?.id`. The `AdminView.vue` events table includes an Edit button (RouterLink to `/edit/:id`) for each event.
