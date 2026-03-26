@@ -9593,4 +9593,683 @@ public sealed class GraphQlIntegrationTests
         var groups = result.GetProperty("communityGroups").EnumerateArray().ToList();
         Assert.Empty(groups);
     }
+
+    // ── previewExternalEvents tests ───────────────────────────────────────────
+
+    [Fact]
+    public async Task PreviewExternalEvents_VerifiedClaim_ReturnsCandidatesWithDuplicateFlags()
+    {
+        var externalEvents = new List<EventsApi.Adapters.ExternalEventData>
+        {
+            new(
+                ExternalId: "preview-evt-001",
+                Name: "Preview Event One",
+                Description: "First preview event.",
+                EventUrl: "https://www.meetup.com/preview-group/events/001",
+                StartsAtUtc: new DateTime(2030, 8, 1, 18, 0, 0, DateTimeKind.Utc),
+                EndsAtUtc: new DateTime(2030, 8, 1, 20, 0, 0, DateTimeKind.Utc),
+                VenueName: "Hub A", AddressLine1: "Addr 1", City: "Brno",
+                CountryCode: "CZ", Latitude: 49.19m, Longitude: 16.60m,
+                IsFree: true, PriceAmount: null, CurrencyCode: null, Language: "en"),
+            new(
+                ExternalId: "preview-evt-002",
+                Name: "Preview Event Two",
+                Description: "Second preview event — missing start time, should be non-importable.",
+                EventUrl: null,
+                StartsAtUtc: null, // missing — non-importable
+                EndsAtUtc: null,
+                VenueName: null, AddressLine1: null, City: null,
+                CountryCode: null, Latitude: null, Longitude: null,
+                IsFree: null, PriceAmount: null, CurrencyCode: null, Language: null),
+        };
+
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await using var factory = new EventsApiWebApplicationFactory(services =>
+        {
+            services.RemoveAll<EventsApi.Adapters.MeetupAdapter>();
+            services.RemoveAll<EventsApi.Adapters.LumaAdapter>();
+            services.RemoveAll<EventsApi.Adapters.ExternalSourceAdapterFactory>();
+            var seeded = new SeededMeetupAdapter(externalEvents);
+            services.AddSingleton<EventsApi.Adapters.ExternalSourceAdapterFactory>(
+                _ => new EventsApi.Adapters.ExternalSourceAdapterFactory(seeded, seeded));
+        });
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("preview-admin@example.com", "Preview Admin", ApplicationUserRole.Contributor);
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Preview Group", Slug = "preview-group",
+                IsActive = true, CreatedByUserId = admin.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id, UserId = admin.Id,
+                Role = CommunityMemberRole.Admin,
+                Status = CommunityMemberStatus.Active,
+            });
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/preview-group",
+                SourceIdentifier = "preview-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.Verified,
+                CreatedByUserId = admin.Id,
+            };
+            claimId = claim.Id;
+            dbContext.ExternalSourceClaims.Add(claim);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            query PreviewExternalEvents($claimId: UUID!) {
+              previewExternalEvents(claimId: $claimId) {
+                externalId name startsAtUtc
+                alreadyImported isImportable importBlockReason
+              }
+            }
+            """,
+            new { claimId });
+
+        var previews = doc.RootElement.GetProperty("data").GetProperty("previewExternalEvents")
+            .EnumerateArray().ToList();
+
+        Assert.Equal(2, previews.Count);
+
+        var p1 = previews.First(p => p.GetProperty("externalId").GetString() == "preview-evt-001");
+        Assert.Equal("Preview Event One", p1.GetProperty("name").GetString());
+        Assert.False(p1.GetProperty("alreadyImported").GetBoolean());
+        Assert.True(p1.GetProperty("isImportable").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, p1.GetProperty("importBlockReason").ValueKind);
+
+        var p2 = previews.First(p => p.GetProperty("externalId").GetString() == "preview-evt-002");
+        Assert.False(p2.GetProperty("alreadyImported").GetBoolean());
+        Assert.False(p2.GetProperty("isImportable").GetBoolean());
+        Assert.NotNull(p2.GetProperty("importBlockReason").GetString());
+    }
+
+    [Fact]
+    public async Task PreviewExternalEvents_AlreadyImportedEvent_ShowsAlreadyImportedFlag()
+    {
+        var externalEvents = new List<EventsApi.Adapters.ExternalEventData>
+        {
+            new(
+                ExternalId: "already-imported-evt",
+                Name: "Already Imported Event",
+                Description: "This event was already imported.",
+                EventUrl: "https://www.meetup.com/dup-group/events/already",
+                StartsAtUtc: new DateTime(2030, 9, 1, 18, 0, 0, DateTimeKind.Utc),
+                EndsAtUtc: new DateTime(2030, 9, 1, 20, 0, 0, DateTimeKind.Utc),
+                VenueName: "Venue", AddressLine1: "Addr", City: "Prague",
+                CountryCode: "CZ", Latitude: 50.075m, Longitude: 14.437m,
+                IsFree: true, PriceAmount: null, CurrencyCode: null, Language: "en"),
+        };
+
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await using var factory = new EventsApiWebApplicationFactory(services =>
+        {
+            services.RemoveAll<EventsApi.Adapters.MeetupAdapter>();
+            services.RemoveAll<EventsApi.Adapters.LumaAdapter>();
+            services.RemoveAll<EventsApi.Adapters.ExternalSourceAdapterFactory>();
+            var seeded = new SeededMeetupAdapter(externalEvents);
+            services.AddSingleton<EventsApi.Adapters.ExternalSourceAdapterFactory>(
+                _ => new EventsApi.Adapters.ExternalSourceAdapterFactory(seeded, seeded));
+        });
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("duppreview-admin@example.com", "DupPreview Admin", ApplicationUserRole.Contributor);
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var domain = CreateDomain("Tech", "tech-dup-preview");
+            dbContext.Domains.Add(domain);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Dup Preview Group", Slug = "dup-preview-group",
+                IsActive = true, CreatedByUserId = admin.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id, UserId = admin.Id,
+                Role = CommunityMemberRole.Admin,
+                Status = CommunityMemberStatus.Active,
+            });
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/dup-preview-group",
+                SourceIdentifier = "dup-preview-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.Verified,
+                CreatedByUserId = admin.Id,
+            };
+            claimId = claim.Id;
+            dbContext.ExternalSourceClaims.Add(claim);
+
+            // Pre-seed the already-imported event
+            var alreadyImported = CreateEvent("Already Imported Event", "already-imported-evt-slug",
+                "Already imported.", "Venue", "Prague",
+                new DateTime(2030, 9, 1, 18, 0, 0, DateTimeKind.Utc), domain, admin);
+            alreadyImported.ExternalSourceClaimId = claimId;
+            alreadyImported.ExternalSourceEventId = "already-imported-evt";
+            dbContext.Events.Add(alreadyImported);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            query PreviewExternalEvents($claimId: UUID!) {
+              previewExternalEvents(claimId: $claimId) {
+                externalId alreadyImported isImportable importBlockReason
+              }
+            }
+            """,
+            new { claimId });
+
+        var previews = doc.RootElement.GetProperty("data").GetProperty("previewExternalEvents")
+            .EnumerateArray().ToList();
+
+        Assert.Single(previews);
+        var p = previews[0];
+        Assert.Equal("already-imported-evt", p.GetProperty("externalId").GetString());
+        Assert.True(p.GetProperty("alreadyImported").GetBoolean());
+        Assert.False(p.GetProperty("isImportable").GetBoolean());
+        Assert.Equal("Already imported.", p.GetProperty("importBlockReason").GetString());
+    }
+
+    [Fact]
+    public async Task PreviewExternalEvents_UnverifiedClaim_ReturnsForbiddenError()
+    {
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("preview-unverified@example.com", "PreviewUnverified", ApplicationUserRole.Contributor);
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Unverified Group", Slug = "unverified-group",
+                IsActive = true, CreatedByUserId = admin.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id, UserId = admin.Id,
+                Role = CommunityMemberRole.Admin,
+                Status = CommunityMemberStatus.Active,
+            });
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/unverified-group",
+                SourceIdentifier = "unverified-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.PendingReview,
+                CreatedByUserId = admin.Id,
+            };
+            claimId = claim.Id;
+            dbContext.ExternalSourceClaims.Add(claim);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            query PreviewExternalEvents($claimId: UUID!) {
+              previewExternalEvents(claimId: $claimId) { externalId }
+            }
+            """,
+            new { claimId });
+
+        var errors = doc.RootElement.GetProperty("errors").EnumerateArray().ToList();
+        Assert.NotEmpty(errors);
+        var code = errors[0].GetProperty("extensions").GetProperty("code").GetString();
+        Assert.Equal("CLAIM_NOT_VERIFIED", code);
+    }
+
+    [Fact]
+    public async Task PreviewExternalEvents_Unauthenticated_ReturnsAuthError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        using var client = factory.CreateClient();
+
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            query PreviewExternalEvents($claimId: UUID!) {
+              previewExternalEvents(claimId: $claimId) { externalId }
+            }
+            """,
+            new { claimId = Guid.NewGuid() });
+
+        var errors = doc.RootElement.GetProperty("errors").EnumerateArray().ToList();
+        Assert.NotEmpty(errors);
+    }
+
+    // ── importExternalEvents tests ────────────────────────────────────────────
+
+    [Fact]
+    public async Task ImportExternalEvents_SelectiveImport_OnlyImportsChosenEvents()
+    {
+        var externalEvents = new List<EventsApi.Adapters.ExternalEventData>
+        {
+            new(ExternalId: "sel-evt-001", Name: "Selected Event",
+                Description: "To import.", EventUrl: "https://www.meetup.com/sel/events/001",
+                StartsAtUtc: new DateTime(2030, 10, 1, 18, 0, 0, DateTimeKind.Utc),
+                EndsAtUtc: new DateTime(2030, 10, 1, 20, 0, 0, DateTimeKind.Utc),
+                VenueName: "Venue", AddressLine1: "Addr", City: "Brno",
+                CountryCode: "CZ", Latitude: 49.19m, Longitude: 16.60m,
+                IsFree: true, PriceAmount: null, CurrencyCode: null, Language: "en"),
+            new(ExternalId: "sel-evt-002", Name: "Not Selected Event",
+                Description: "Not imported.", EventUrl: "https://www.meetup.com/sel/events/002",
+                StartsAtUtc: new DateTime(2030, 10, 2, 18, 0, 0, DateTimeKind.Utc),
+                EndsAtUtc: new DateTime(2030, 10, 2, 20, 0, 0, DateTimeKind.Utc),
+                VenueName: "Venue2", AddressLine1: "Addr2", City: "Brno",
+                CountryCode: "CZ", Latitude: 49.19m, Longitude: 16.60m,
+                IsFree: true, PriceAmount: null, CurrencyCode: null, Language: "en"),
+        };
+
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await using var factory = new EventsApiWebApplicationFactory(services =>
+        {
+            services.RemoveAll<EventsApi.Adapters.MeetupAdapter>();
+            services.RemoveAll<EventsApi.Adapters.LumaAdapter>();
+            services.RemoveAll<EventsApi.Adapters.ExternalSourceAdapterFactory>();
+            var seeded = new SeededMeetupAdapter(externalEvents);
+            services.AddSingleton<EventsApi.Adapters.ExternalSourceAdapterFactory>(
+                _ => new EventsApi.Adapters.ExternalSourceAdapterFactory(seeded, seeded));
+        });
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("sel-admin@example.com", "Sel Admin", ApplicationUserRole.Contributor);
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var domain = CreateDomain("Tech", "tech-sel");
+            dbContext.Domains.Add(domain);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Sel Group", Slug = "sel-group",
+                IsActive = true, CreatedByUserId = admin.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id, UserId = admin.Id,
+                Role = CommunityMemberRole.Admin, Status = CommunityMemberStatus.Active,
+            });
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/sel-group",
+                SourceIdentifier = "sel-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.Verified,
+                CreatedByUserId = admin.Id,
+            };
+            claimId = claim.Id;
+            dbContext.ExternalSourceClaims.Add(claim);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        // Import only sel-evt-001
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation ImportExternalEvents($claimId: UUID!, $input: ImportExternalEventsInput!) {
+              importExternalEvents(claimId: $claimId, input: $input) {
+                importedCount skippedCount errorCount summary
+              }
+            }
+            """,
+            new { claimId, input = new { externalIds = new[] { "sel-evt-001" } } });
+
+        var result = doc.RootElement.GetProperty("data").GetProperty("importExternalEvents");
+        Assert.Equal(1, result.GetProperty("importedCount").GetInt32());
+        Assert.Equal(0, result.GetProperty("skippedCount").GetInt32());
+        Assert.Equal(0, result.GetProperty("errorCount").GetInt32());
+        Assert.Contains("1 event", result.GetProperty("summary").GetString());
+
+        // Verify only 1 event was created and it's PendingApproval
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<EventsApi.Data.AppDbContext>();
+        var importedEvents = await db.Events
+            .Where(e => e.ExternalSourceClaimId == claimId)
+            .ToListAsync();
+        Assert.Single(importedEvents);
+        Assert.Equal("Selected Event", importedEvents[0].Name);
+        Assert.Equal(EventStatus.PendingApproval, importedEvents[0].Status);
+        Assert.Equal("sel-evt-001", importedEvents[0].ExternalSourceEventId);
+    }
+
+    [Fact]
+    public async Task ImportExternalEvents_DuplicatePrevention_SkipsAlreadyImportedEvents()
+    {
+        var externalEvents = new List<EventsApi.Adapters.ExternalEventData>
+        {
+            new(ExternalId: "dup-sel-evt-001", Name: "Duplicate Selected Event",
+                Description: "Already imported.", EventUrl: null,
+                StartsAtUtc: new DateTime(2030, 11, 1, 18, 0, 0, DateTimeKind.Utc),
+                EndsAtUtc: null, VenueName: null, AddressLine1: null, City: "Prague",
+                CountryCode: "CZ", Latitude: 50.075m, Longitude: 14.437m,
+                IsFree: true, PriceAmount: null, CurrencyCode: null, Language: null),
+        };
+
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await using var factory = new EventsApiWebApplicationFactory(services =>
+        {
+            services.RemoveAll<EventsApi.Adapters.MeetupAdapter>();
+            services.RemoveAll<EventsApi.Adapters.LumaAdapter>();
+            services.RemoveAll<EventsApi.Adapters.ExternalSourceAdapterFactory>();
+            var seeded = new SeededMeetupAdapter(externalEvents);
+            services.AddSingleton<EventsApi.Adapters.ExternalSourceAdapterFactory>(
+                _ => new EventsApi.Adapters.ExternalSourceAdapterFactory(seeded, seeded));
+        });
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("dupsel-admin@example.com", "DupSel Admin", ApplicationUserRole.Contributor);
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var domain = CreateDomain("Tech", "tech-dupsel");
+            dbContext.Domains.Add(domain);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "DupSel Group", Slug = "dupsel-group",
+                IsActive = true, CreatedByUserId = admin.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id, UserId = admin.Id,
+                Role = CommunityMemberRole.Admin, Status = CommunityMemberStatus.Active,
+            });
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/dupsel-group",
+                SourceIdentifier = "dupsel-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.Verified,
+                CreatedByUserId = admin.Id,
+            };
+            claimId = claim.Id;
+            dbContext.ExternalSourceClaims.Add(claim);
+
+            // Pre-seed the already-imported event
+            var existing = CreateEvent("Duplicate Selected Event", "dup-sel-evt-001-slug",
+                "Already imported.", "Venue", "Prague",
+                new DateTime(2030, 11, 1, 18, 0, 0, DateTimeKind.Utc), domain, admin);
+            existing.ExternalSourceClaimId = claimId;
+            existing.ExternalSourceEventId = "dup-sel-evt-001";
+            existing.Status = EventStatus.PendingApproval;
+            dbContext.Events.Add(existing);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        // Try to import again — should skip
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation ImportExternalEvents($claimId: UUID!, $input: ImportExternalEventsInput!) {
+              importExternalEvents(claimId: $claimId, input: $input) {
+                importedCount skippedCount errorCount summary
+              }
+            }
+            """,
+            new { claimId, input = new { externalIds = new[] { "dup-sel-evt-001" } } });
+
+        var result = doc.RootElement.GetProperty("data").GetProperty("importExternalEvents");
+        Assert.Equal(0, result.GetProperty("importedCount").GetInt32());
+        Assert.Equal(1, result.GetProperty("skippedCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task ImportExternalEvents_ImportedEvents_AreInPendingApproval_NotPublished()
+    {
+        var externalEvents = new List<EventsApi.Adapters.ExternalEventData>
+        {
+            new(ExternalId: "moderation-evt-001", Name: "Moderation Test Event",
+                Description: "Must land in PendingApproval.", EventUrl: null,
+                StartsAtUtc: new DateTime(2030, 12, 1, 18, 0, 0, DateTimeKind.Utc),
+                EndsAtUtc: null, VenueName: null, AddressLine1: null, City: "Bratislava",
+                CountryCode: "SK", Latitude: 48.14m, Longitude: 17.10m,
+                IsFree: true, PriceAmount: null, CurrencyCode: null, Language: null),
+        };
+
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await using var factory = new EventsApiWebApplicationFactory(services =>
+        {
+            services.RemoveAll<EventsApi.Adapters.MeetupAdapter>();
+            services.RemoveAll<EventsApi.Adapters.LumaAdapter>();
+            services.RemoveAll<EventsApi.Adapters.ExternalSourceAdapterFactory>();
+            var seeded = new SeededMeetupAdapter(externalEvents);
+            services.AddSingleton<EventsApi.Adapters.ExternalSourceAdapterFactory>(
+                _ => new EventsApi.Adapters.ExternalSourceAdapterFactory(seeded, seeded));
+        });
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("mod-import@example.com", "ModImport Admin", ApplicationUserRole.Contributor);
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var domain = CreateDomain("Tech", "tech-mod-import");
+            dbContext.Domains.Add(domain);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Mod Group", Slug = "mod-group",
+                IsActive = true, CreatedByUserId = admin.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id, UserId = admin.Id,
+                Role = CommunityMemberRole.Admin, Status = CommunityMemberStatus.Active,
+            });
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/mod-group",
+                SourceIdentifier = "mod-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.Verified,
+                CreatedByUserId = admin.Id,
+            };
+            claimId = claim.Id;
+            dbContext.ExternalSourceClaims.Add(claim);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation ImportExternalEvents($claimId: UUID!, $input: ImportExternalEventsInput!) {
+              importExternalEvents(claimId: $claimId, input: $input) {
+                importedCount summary
+              }
+            }
+            """,
+            new { claimId, input = new { externalIds = new[] { "moderation-evt-001" } } });
+
+        var result = doc.RootElement.GetProperty("data").GetProperty("importExternalEvents");
+        Assert.Equal(1, result.GetProperty("importedCount").GetInt32());
+
+        // Verify the imported event is NOT published — it must be in PendingApproval
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<EventsApi.Data.AppDbContext>();
+        var imported = await db.Events
+            .SingleAsync(e => e.ExternalSourceClaimId == claimId);
+        Assert.Equal(EventStatus.PendingApproval, imported.Status);
+        Assert.Null(imported.PublishedAtUtc);
+    }
+
+    [Fact]
+    public async Task ImportExternalEvents_UnverifiedClaim_ReturnsError()
+    {
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("import-unverified@example.com", "ImportUnverified", ApplicationUserRole.Contributor);
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Unverified Import Group", Slug = "unverified-import-group",
+                IsActive = true, CreatedByUserId = admin.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id, UserId = admin.Id,
+                Role = CommunityMemberRole.Admin, Status = CommunityMemberStatus.Active,
+            });
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/unverified-import-group",
+                SourceIdentifier = "unverified-import-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.PendingReview,
+                CreatedByUserId = admin.Id,
+            };
+            claimId = claim.Id;
+            dbContext.ExternalSourceClaims.Add(claim);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation ImportExternalEvents($claimId: UUID!, $input: ImportExternalEventsInput!) {
+              importExternalEvents(claimId: $claimId, input: $input) { importedCount }
+            }
+            """,
+            new { claimId, input = new { externalIds = new[] { "any-evt" } } });
+
+        var errors = doc.RootElement.GetProperty("errors").EnumerateArray().ToList();
+        Assert.NotEmpty(errors);
+        var code = errors[0].GetProperty("extensions").GetProperty("code").GetString();
+        Assert.Equal("CLAIM_NOT_VERIFIED", code);
+    }
+
+    [Fact]
+    public async Task ImportExternalEvents_NonAdmin_ReturnsForbidden()
+    {
+        Guid memberId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var owner = CreateUser("import-owner@example.com", "Owner", ApplicationUserRole.Contributor);
+            var member = CreateUser("import-member@example.com", "Member", ApplicationUserRole.Contributor);
+            memberId = member.Id;
+            dbContext.Users.AddRange(owner, member);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Non Admin Import Group", Slug = "non-admin-import-group",
+                IsActive = true, CreatedByUserId = owner.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id, UserId = member.Id,
+                Role = CommunityMemberRole.Member, Status = CommunityMemberStatus.Active,
+            });
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/non-admin-import-group",
+                SourceIdentifier = "non-admin-import-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.Verified,
+                CreatedByUserId = owner.Id,
+            };
+            claimId = claim.Id;
+            dbContext.ExternalSourceClaims.Add(claim);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, memberId));
+
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation ImportExternalEvents($claimId: UUID!, $input: ImportExternalEventsInput!) {
+              importExternalEvents(claimId: $claimId, input: $input) { importedCount }
+            }
+            """,
+            new { claimId, input = new { externalIds = new[] { "any-evt" } } });
+
+        var errors = doc.RootElement.GetProperty("errors").EnumerateArray().ToList();
+        Assert.NotEmpty(errors);
+        var code = errors[0].GetProperty("extensions").GetProperty("code").GetString();
+        Assert.Equal("FORBIDDEN", code);
+    }
 }

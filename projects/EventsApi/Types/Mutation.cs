@@ -1667,6 +1667,168 @@ public sealed class Mutation
     }
 
     /// <summary>
+    /// <summary>
+    /// Selectively imports specific events from a linked external source.
+    /// Use previewExternalEvents first to fetch candidate events with duplicate-detection
+    /// and importability metadata, then pass the chosen ExternalId values here.
+    ///
+    /// Only events in <paramref name="input"/>.ExternalIds that are both importable and not
+    /// already imported are created. Duplicates (same ExternalSourceEventId for this claim)
+    /// are silently skipped and counted in SkippedCount so the result is always accurate.
+    ///
+    /// Imported events enter PendingApproval status; they will not be visible in public
+    /// discovery until a moderator approves them.
+    ///
+    /// Only group admins (or global admins) may call this.
+    /// The claim must be in Verified status.
+    /// </summary>
+    [Authorize]
+    public async Task<SyncResult> ImportExternalEventsAsync(
+        Guid claimId,
+        ImportExternalEventsInput input,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        [Service] ExternalSourceAdapterFactory adapterFactory,
+        [Service] ILogger<Mutation> logger,
+        CancellationToken cancellationToken)
+    {
+        var claim = await dbContext.ExternalSourceClaims
+            .Include(esc => esc.Group)
+            .SingleOrDefaultAsync(esc => esc.Id == claimId, cancellationToken)
+            ?? throw CreateError("External source claim not found.", "CLAIM_NOT_FOUND");
+
+        var userId = claimsPrincipal.GetRequiredUserId();
+        if (!claimsPrincipal.IsAdmin())
+        {
+            var isGroupAdmin = await dbContext.CommunityMemberships.AnyAsync(
+                cm => cm.GroupId == claim.GroupId && cm.UserId == userId &&
+                      cm.Role == CommunityMemberRole.Admin && cm.Status == CommunityMemberStatus.Active,
+                cancellationToken);
+            if (!isGroupAdmin)
+                throw CreateError("Only group administrators can import external events.", "FORBIDDEN");
+        }
+
+        if (claim.Status != ExternalSourceClaimStatus.Verified)
+            throw CreateError(
+                "Only verified claims can be used to import events. Please wait for a platform admin to verify this claim.",
+                "CLAIM_NOT_VERIFIED");
+
+        if (input.ExternalIds is null || input.ExternalIds.Count == 0)
+            return new SyncResult(0, 0, 0, "No events selected for import.");
+
+        var selectedIds = input.ExternalIds.ToHashSet();
+
+        var adapter = adapterFactory.GetAdapter(claim.SourceType);
+        var externalEvents = await adapter.FetchEventsAsync(claim.SourceIdentifier, cancellationToken);
+
+        // Only process events the admin explicitly selected
+        var selectedEvents = externalEvents.Where(e => selectedIds.Contains(e.ExternalId)).ToList();
+
+        // Use first available domain as the default for imported events.
+        var defaultDomain = await dbContext.Domains.FirstOrDefaultAsync(
+            d => d.IsActive, cancellationToken)
+            ?? throw CreateError("No active domain found to assign imported events.", "NO_DOMAIN");
+
+        var importedCount = 0;
+        var skippedCount = 0;
+        var errorCount = 0;
+
+        foreach (var ext in selectedEvents)
+        {
+            // Duplicate check: skip if already imported from this claim
+            var existingImport = await dbContext.Events.AnyAsync(
+                e => e.ExternalSourceClaimId == claimId && e.ExternalSourceEventId == ext.ExternalId,
+                cancellationToken);
+
+            if (existingImport)
+            {
+                skippedCount++;
+                continue;
+            }
+
+            // Validate required fields
+            if (ext.StartsAtUtc is null)
+            {
+                logger.LogWarning(
+                    "ImportExternalEvents for claim {ClaimId}: skipping event '{ExternalId}' — missing StartsAtUtc.",
+                    claimId, ext.ExternalId);
+                errorCount++;
+                continue;
+            }
+
+            var endsAt = ext.EndsAtUtc ?? ext.StartsAtUtc.Value.AddHours(2);
+
+            try
+            {
+                var catalogEvent = new CatalogEvent
+                {
+                    Name = (ext.Name ?? "Untitled Event").Trim(),
+                    Slug = await BuildUniqueEventSlugAsync(dbContext, ext.Name ?? "Untitled Event", cancellationToken),
+                    Description = (ext.Description ?? string.Empty).Trim(),
+                    EventUrl = (ext.EventUrl ?? string.Empty).Trim(),
+                    VenueName = (ext.VenueName ?? string.Empty).Trim(),
+                    AddressLine1 = (ext.AddressLine1 ?? string.Empty).Trim(),
+                    City = (ext.City ?? string.Empty).Trim(),
+                    CountryCode = (ext.CountryCode ?? "XX").Trim().ToUpperInvariant(),
+                    Latitude = ext.Latitude ?? 0,
+                    Longitude = ext.Longitude ?? 0,
+                    StartsAtUtc = EnsureUtc(ext.StartsAtUtc.Value),
+                    EndsAtUtc = EnsureUtc(endsAt),
+                    IsFree = ext.IsFree ?? true,
+                    PriceAmount = ext.PriceAmount,
+                    CurrencyCode = NormalizeCurrencyCode(ext.CurrencyCode),
+                    Language = ext.Language,
+                    AttendanceMode = AttendanceMode.InPerson,
+                    // Imported events always enter PendingApproval — they are not published
+                    // until a moderator explicitly reviews and approves them.
+                    Status = EventStatus.PendingApproval,
+                    DomainId = defaultDomain.Id,
+                    SubmittedByUserId = userId,
+                    ExternalSourceClaimId = claimId,
+                    ExternalSourceEventId = ext.ExternalId,
+                };
+
+                dbContext.Events.Add(catalogEvent);
+
+                // Link the event to the community group so it appears on the community page
+                dbContext.CommunityGroupEvents.Add(new CommunityGroupEvent
+                {
+                    GroupId = claim.GroupId,
+                    EventId = catalogEvent.Id,
+                    AddedByUserId = userId,
+                });
+
+                await dbContext.SaveChangesAsync(cancellationToken);
+                importedCount++;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex,
+                    "ImportExternalEvents for claim {ClaimId}: failed to import event '{ExternalId}'.",
+                    claimId, ext.ExternalId);
+
+                foreach (var entry in dbContext.ChangeTracker.Entries()
+                             .Where(e => e.State == EntityState.Added)
+                             .ToList())
+                {
+                    entry.State = EntityState.Detached;
+                }
+
+                errorCount++;
+            }
+        }
+
+        var summary = BuildSyncSummary(importedCount, skippedCount, errorCount);
+
+        claim.LastSyncAtUtc = DateTime.UtcNow;
+        claim.LastSyncOutcome = summary;
+        claim.LastSyncImportedCount = importedCount;
+        claim.LastSyncSkippedCount = skippedCount;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return new SyncResult(importedCount, skippedCount, errorCount, summary);
+    }
+
     /// Triggers a manual sync from the linked external source.
     /// The claim must be in Verified status to be synced.
     /// Only group admins (or global admins) may call this.
