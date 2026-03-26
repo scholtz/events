@@ -71,12 +71,15 @@ test.describe('Portfolio view — My Events', () => {
     await loginAs(page, user)
     await page.goto('/portfolio')
 
-    // Total Events card
-    await expect(page.locator('.stat-card').nth(0)).toContainText('4')
-    // Published card
-    await expect(page.locator('.stat-card').nth(1)).toContainText('1')
-    // Needs Attention card: 1 rejected + 1 draft = 2
-    await expect(page.locator('.stat-card').nth(2)).toContainText('2')
+    // Wait for KPI cards to load
+    await expect(page.locator('.stats-grid')).toBeVisible()
+
+    // Total Events card (stat-icon--total)
+    await expect(page.locator('.stat-card').filter({ has: page.locator('.stat-icon--total') })).toContainText('4')
+    // Published card (stat-icon--approved)
+    await expect(page.locator('.stat-card').filter({ has: page.locator('.stat-icon--approved') })).toContainText('1')
+    // Needs Attention card (stat-icon--attention): 1 rejected + 1 draft = 2
+    await expect(page.locator('.stat-card').filter({ has: page.locator('.stat-icon--attention') })).toContainText('2')
   })
 
   test('needs attention card highlights when there are rejected/draft events', async ({ page }) => {
@@ -103,9 +106,11 @@ test.describe('Portfolio view — My Events', () => {
     await loginAs(page, user)
     await page.goto('/portfolio')
 
+    // Wait for table to be visible before querying rows
+    await expect(page.locator('.portfolio-table')).toBeVisible()
     const row = page.locator('tr', { hasText: 'Published Event' }).first()
-    await expect(row.getByRole('link', { name: 'View' })).toBeVisible()
-    await expect(row.getByRole('link', { name: 'Edit' })).toBeVisible()
+    await expect(row.getByRole('link', { name: 'View', exact: true })).toBeVisible()
+    await expect(row.getByRole('link', { name: 'Edit', exact: true })).toBeVisible()
   })
 
   test('shows status badges for each status', async ({ page }) => {
@@ -208,6 +213,7 @@ test.describe('Portfolio view — My Events', () => {
     setupMockApi(page, { users: [user], domains: [domain], events })
     await loginAs(page, user)
     await page.goto('/portfolio')
+    await expect(page.locator('.portfolio-table')).toBeVisible()
 
     await page.getByLabel('Filter by status').selectOption('PUBLISHED')
 
@@ -227,6 +233,7 @@ test.describe('Portfolio view — My Events', () => {
     setupMockApi(page, { users: [user], domains: [domain], events })
     await loginAs(page, user)
     await page.goto('/portfolio')
+    await expect(page.locator('.portfolio-table')).toBeVisible()
 
     await page.getByLabel('Filter by status').selectOption('REJECTED')
 
@@ -268,6 +275,8 @@ test.describe('Portfolio view — My Events', () => {
     })
     await loginAs(page, user)
     await page.goto('/portfolio')
+    // Wait for the event table to fully load before interacting with filters
+    await expect(page.locator('.portfolio-table')).toBeVisible()
 
     await page.getByLabel('Filter by category').selectOption('technology')
 
@@ -296,6 +305,7 @@ test.describe('Portfolio view — My Events', () => {
     setupMockApi(page, { users: [user], domains: [domain], events: [englishEvent, czechEvent] })
     await loginAs(page, user)
     await page.goto('/portfolio')
+    await expect(page.locator('.portfolio-table')).toBeVisible()
 
     await page.getByLabel('Filter by language').fill('cs')
     // Wait for the reactive filter to apply by checking the expected result
@@ -314,6 +324,7 @@ test.describe('Portfolio view — My Events', () => {
     setupMockApi(page, { users: [user], domains: [domain], events })
     await loginAs(page, user)
     await page.goto('/portfolio')
+    await expect(page.locator('.portfolio-table')).toBeVisible()
 
     await page.getByLabel('Filter by status').selectOption('PUBLISHED')
     await expect(page.locator('tr', { hasText: 'Rejected Event' })).toBeHidden()
@@ -333,6 +344,7 @@ test.describe('Portfolio view — My Events', () => {
     setupMockApi(page, { users: [user], domains: [domain], events: [event] })
     await loginAs(page, user)
     await page.goto('/portfolio')
+    await expect(page.locator('.portfolio-table')).toBeVisible()
 
     await page.getByLabel('Filter by status').selectOption('REJECTED')
 
@@ -363,19 +375,22 @@ test.describe('Portfolio view — My Events', () => {
       interestedCount: 50,
     })
 
-    // Add favorites to match the mock analytics calculation
+    // Add favorites to match the mock analytics calculation:
+    // 3 favorites for highSaves (e2), 1 for lowSaves (e1)
     setupMockApi(page, {
       users: [user],
       domains: [domain],
       events: [lowSaves, highSaves],
       favoriteEvents: [
-        // 50 for highSaves, 2 for lowSaves (approximated with distinct IDs)
-        { id: 'f1', userId: 'other-user', eventId: 'e2', createdAtUtc: new Date().toISOString() },
-        { id: 'f2', userId: 'other-user-2', eventId: 'e1', createdAtUtc: new Date().toISOString() },
+        { id: 'f1', userId: 'user-a', eventId: 'e2', createdAtUtc: new Date().toISOString() },
+        { id: 'f2', userId: 'user-b', eventId: 'e2', createdAtUtc: new Date().toISOString() },
+        { id: 'f3', userId: 'user-c', eventId: 'e2', createdAtUtc: new Date().toISOString() },
+        { id: 'f4', userId: 'user-d', eventId: 'e1', createdAtUtc: new Date().toISOString() },
       ],
     })
     await loginAs(page, user)
     await page.goto('/portfolio')
+    await expect(page.locator('.portfolio-table')).toBeVisible()
 
     await page.getByLabel('Sort events').selectOption('MOST_SAVES')
 
@@ -390,27 +405,30 @@ test.describe('Portfolio view — My Events', () => {
   test('shows error state with retry button when API fails', async ({ page }) => {
     const user = makeAdminUser()
 
-    // Set up mock with no users so login API works but dashboard errors
+    // Set up mock API first
     setupMockApi(page, { users: [user] })
-    await loginAs(page, user)
 
-    // Intercept the GraphQL call to force an error
+    // Register error route AFTER setupMockApi — Playwright processes routes LIFO,
+    // so this handler runs first and uses route.fallback() to pass other operations
+    // (login mutation, Me query) through to the mock API handler.
     await page.route('**/graphql', async (route) => {
       const body = await route.request().postDataJSON()
-      if (
-        body?.query?.includes('MyDashboard') ||
-        body?.operationName === 'MyDashboard'
-      ) {
+      if (body?.query?.includes('MyDashboard')) {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify({ errors: [{ message: 'Server error' }] }),
         })
       } else {
-        await route.continue()
+        await route.fallback()
       }
     })
 
+    // loginAs redirects to /dashboard — MyDashboard will error there too,
+    // leaving dashboardStore.overview null and dashboardStore.error set.
+    await loginAs(page, user)
+    // Portfolio's onMounted sees overview=null, calls fetchDashboard() again
+    // which also errors, showing the error state.
     await page.goto('/portfolio')
     await expect(page.locator('.error-state')).toBeVisible()
     await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible()
@@ -488,7 +506,7 @@ test.describe('Portfolio view — My Events', () => {
     await loginAs(page, user)
     await page.goto('/portfolio')
 
-    await page.locator('tr', { hasText: 'My Editable Event' }).getByRole('link', { name: 'Edit' }).click()
+    await page.locator('tr', { hasText: 'My Editable Event' }).getByRole('link', { name: 'Edit', exact: true }).click()
     await expect(page).toHaveURL(/\/edit\/event-abc-123/)
   })
 
@@ -513,7 +531,7 @@ test.describe('Portfolio view — My Events', () => {
     await loginAs(page, user)
     await page.goto('/portfolio?lang=sk')
     // The URL param triggers i18n if the app respects it; fall back to checking
-    // the page renders without JS errors when Slovak is active
-    await expect(page.getByRole('heading', { name: /events|udalosti/i })).toBeVisible()
+    // that the page-level h1 renders without JS errors (strict: scope to h1 only)
+    await expect(page.locator('.portfolio-view h1')).toBeVisible()
   })
 })
