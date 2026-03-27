@@ -230,6 +230,12 @@ describe('eventToCalendarInput', () => {
       })
       expect(input.url).toBe('https://events.example.com/event/missing-link')
     })
+
+    it('falls back to a relative canonical URL when no browser origin or override is available', () => {
+      const input = eventToCalendarInput(makeEvent({ slug: 'relative-only', eventUrl: '' }))
+      expect(input.url).toBe('/event/relative-only')
+      expect(input.description).toContain('Event page: /event/relative-only')
+    })
   })
 })
 

@@ -178,6 +178,23 @@ Every frontend change to the event detail page must have E2E tests covering:
 - When coordinates are zero or missing, the frontend must fall back to a textual location presentation with a Google Maps search link — not a broken or empty map section.
 - When `interestedCount` is null or undefined (e.g., from a cached event that didn't fetch the detail fields), the UI must default to 0.
 
+## Calendar export quality standards
+
+When implementing or modifying add-to-calendar behavior (`useCalendar.ts`, `EventDetailView.vue`, calendar analytics, and related tests), always follow these rules:
+
+- Calendar exports MUST include the platform's canonical event-detail URL (`/event/:slug`) as the event page URL. Do **not** reuse the external `eventUrl` for the exported event page field.
+- The external `eventUrl` remains attendee-facing join/registration context:
+  - `ONLINE`: use `eventUrl` as the calendar location when available
+  - `HYBRID`: keep the join URL in the description while the canonical detail URL remains the exported event page URL
+- Before pushing any calendar-export change, run and pass all of:
+  - `npm run lint`
+  - `npm run test:unit -- --run src/composables/__tests__/useCalendar.test.ts src/composables/__tests__/useCalendarAnalytics.test.ts`
+  - `npm run type-check`
+  - the relevant Playwright event-detail calendar tests in `e2e/events.spec.ts`
+- Add or update automated coverage that asserts both:
+  - the canonical platform URL is present in exported calendar payloads/deep-links
+  - join/location behavior still uses attendee-relevant venue or online URL context where appropriate
+
 
 ## HotChocolate v15 input type requirements
 

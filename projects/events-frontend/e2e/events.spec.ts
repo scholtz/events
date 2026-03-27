@@ -17,6 +17,14 @@ async function clearDraft(page: Page) {
   await page.evaluate(() => localStorage.removeItem('event_draft'))
 }
 
+function requireDownloadPath(downloadPath: string | null): string {
+  if (!downloadPath) {
+    throw new Error('Expected Playwright to provide a download path for the ICS file')
+  }
+
+  return downloadPath
+}
+
 /**
  * Navigates through all 5 steps of the event submission wizard, filling in
  * the required fields, and clicks Submit Event on step 5.
@@ -958,7 +966,6 @@ test.describe('Event detail page', () => {
     })
     setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
     await page.goto(`/event/${event.slug}`)
-    const origin = new URL(page.url()).origin
 
     await page.getByRole('button', { name: /Add to calendar/i }).click()
 
@@ -976,6 +983,7 @@ test.describe('Event detail page', () => {
     })
     setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
     await page.goto(`/event/${event.slug}`)
+    const origin = new URL(page.url()).origin
 
     const [download] = await Promise.all([
       page.waitForEvent('download'),
@@ -985,12 +993,7 @@ test.describe('Event detail page', () => {
     ])
 
     expect(download.suggestedFilename()).toBe('ics-download-event.ics')
-    const downloadPath = await download.path()
-    expect(downloadPath).toBeTruthy()
-    if (!downloadPath) {
-      throw new Error('Expected Playwright to provide a download path for the ICS file')
-    }
-    const icsContent = await readFile(downloadPath, 'utf8')
+    const icsContent = await readFile(requireDownloadPath(await download.path()), 'utf8')
     expect(icsContent).toContain(`URL:${origin}/event/${event.slug}`)
   })
 
