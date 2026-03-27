@@ -35,6 +35,10 @@ export interface CalendarEventInput {
   timezone: string | null
 }
 
+interface CalendarEventOptions {
+  canonicalBaseUrl?: string
+}
+
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
@@ -115,6 +119,18 @@ function escapeIcsText(text: string): string {
     .replace(/\r/g, '')
 }
 
+function buildCanonicalEventUrl(slug: string, options: CalendarEventOptions = {}): string {
+  const baseUrl =
+    options.canonicalBaseUrl?.trim() ||
+    (typeof window !== 'undefined' && window.location.origin ? window.location.origin : '')
+
+  if (!baseUrl) {
+    return `/event/${slug}`
+  }
+
+  return new URL(`/event/${slug}`, baseUrl).toString()
+}
+
 // ---------------------------------------------------------------------------
 // Event normalization
 // ---------------------------------------------------------------------------
@@ -123,9 +139,13 @@ function escapeIcsText(text: string): string {
  * Build a CalendarEventInput from a CatalogEvent, normalising location for
  * online events and populating sensible fallbacks for optional fields.
  */
-export function eventToCalendarInput(event: CatalogEvent): CalendarEventInput {
+export function eventToCalendarInput(
+  event: CatalogEvent,
+  options: CalendarEventOptions = {},
+): CalendarEventInput {
   const isOnline = event.attendanceMode === 'ONLINE'
   const isHybrid = event.attendanceMode === 'HYBRID'
+  const canonicalUrl = buildCanonicalEventUrl(event.slug, options)
 
   // Build location string: online events use the event URL so attendees have
   // the join link directly in their calendar.
@@ -141,14 +161,10 @@ export function eventToCalendarInput(event: CatalogEvent): CalendarEventInput {
 
   // Build description: append join link for hybrid events so it's visible.
   let description = event.description || ''
-  if (isOnline) {
-    // For online events, the URL is already the location — no need to repeat in description
-  } else if (isHybrid && event.eventUrl) {
+  if (isHybrid && event.eventUrl) {
     description += `\n\nJoin online: ${event.eventUrl}`
-    description += `\n\nEvent page: ${event.eventUrl}`
-  } else if (event.eventUrl) {
-    description += `\n\nEvent page: ${event.eventUrl}`
   }
+  description += `\n\nEvent page: ${canonicalUrl}`
   description = description.trim()
 
   return {
@@ -157,7 +173,7 @@ export function eventToCalendarInput(event: CatalogEvent): CalendarEventInput {
     startUtc: event.startsAtUtc,
     endUtc: event.endsAtUtc || null,
     location,
-    url: event.eventUrl || '',
+    url: canonicalUrl,
     organizerName: event.submittedBy?.displayName ?? null,
     uid: `${event.slug}@events-platform`,
     timezone: event.timezone ?? null,
@@ -236,8 +252,8 @@ export function buildIcsContent(input: CalendarEventInput): string {
  * Triggers a browser download of the ICS file for the given event.
  * Returns the generated ICS content string (useful for testing).
  */
-export function downloadIcs(event: CatalogEvent): string {
-  const input = eventToCalendarInput(event)
+export function downloadIcs(event: CatalogEvent, options: CalendarEventOptions = {}): string {
+  const input = eventToCalendarInput(event, options)
   const ics = buildIcsContent(input)
   const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' })
   const url = URL.createObjectURL(blob)
