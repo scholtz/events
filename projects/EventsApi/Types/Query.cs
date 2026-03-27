@@ -173,7 +173,9 @@ public sealed class Query
         [Service] AppDbContext dbContext,
         CancellationToken cancellationToken)
     {
-        var query = dbContext.Domains.AsNoTracking().AsQueryable();
+        var query = dbContext.Domains.AsNoTracking()
+            .Include(d => d.Links.OrderBy(l => l.DisplayOrder))
+            .AsQueryable();
         if (!(claimsPrincipal.Identity?.IsAuthenticated == true && claimsPrincipal.IsAdmin()))
         {
             query = query.Where(domain => domain.IsActive);

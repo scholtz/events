@@ -10277,4 +10277,105 @@ public sealed class GraphQlIntegrationTests
         Assert.True(doc.RootElement.TryGetProperty("errors", out var errors));
         Assert.Contains("FORBIDDEN", errors.ToString());
     }
+
+    // ── Domains query includes community links ──────────────────────────────
+
+    [Fact]
+    public async Task DomainsQuery_IncludesDomainLinks_InOrder()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domain = CreateDomain("Links Hub", "links-hub");
+            domainId = domain.Id;
+            dbContext.Domains.Add(domain);
+            dbContext.DomainLinks.AddRange(
+                new DomainLink { DomainId = domain.Id, Title = "Second", Url = "https://second.example.com", DisplayOrder = 1 },
+                new DomainLink { DomainId = domain.Id, Title = "First", Url = "https://first.example.com", DisplayOrder = 0 });
+        });
+
+        using var client = factory.CreateClient();
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query {
+              domains {
+                slug
+                links { title url displayOrder }
+              }
+            }
+            """);
+
+        var domains = document.RootElement.GetProperty("data").GetProperty("domains");
+        var domain = domains.EnumerateArray().First(d => d.GetProperty("slug").GetString() == "links-hub");
+        var links = domain.GetProperty("links").EnumerateArray().ToList();
+        Assert.Equal(2, links.Count);
+        // Links should be returned in displayOrder order
+        Assert.Equal("First", links[0].GetProperty("title").GetString());
+        Assert.Equal("https://first.example.com", links[0].GetProperty("url").GetString());
+        Assert.Equal("Second", links[1].GetProperty("title").GetString());
+    }
+
+    [Fact]
+    public async Task DomainsQuery_EmptyLinksArray_WhenNoLinksConfigured()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            dbContext.Domains.Add(CreateDomain("No Links Hub", "no-links-hub"));
+        });
+
+        using var client = factory.CreateClient();
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query {
+              domains {
+                slug
+                links { title url }
+              }
+            }
+            """);
+
+        var domains = document.RootElement.GetProperty("data").GetProperty("domains");
+        var domain = domains.EnumerateArray().First(d => d.GetProperty("slug").GetString() == "no-links-hub");
+        var links = domain.GetProperty("links").EnumerateArray().ToList();
+        Assert.Empty(links);
+    }
+
+    [Fact]
+    public async Task DomainBySlugQuery_IncludesDomainLinks()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domain = CreateDomain("Slug Links Hub", "slug-links-hub");
+            dbContext.Domains.Add(domain);
+            dbContext.DomainLinks.Add(
+                new DomainLink { DomainId = domain.Id, Title = "Community", Url = "https://community.example.com", DisplayOrder = 0 });
+        });
+
+        using var client = factory.CreateClient();
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query {
+              domainBySlug(slug: "slug-links-hub") {
+                slug
+                links { title url displayOrder }
+              }
+            }
+            """);
+
+        var domain = document.RootElement.GetProperty("data").GetProperty("domainBySlug");
+        var links = domain.GetProperty("links").EnumerateArray().ToList();
+        Assert.Single(links);
+        Assert.Equal("Community", links[0].GetProperty("title").GetString());
+        Assert.Equal("https://community.example.com", links[0].GetProperty("url").GetString());
+        Assert.Equal(0, links[0].GetProperty("displayOrder").GetInt32());
+    }
 }

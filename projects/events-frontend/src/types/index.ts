@@ -48,6 +48,18 @@ export interface EventDomain {
   curatorCredit: string | null
   /** Number of published events in this domain hub. Only present when fetched via domainBySlug. */
   publishedEventCount?: number
+  /** Curator-managed community/external links shown on the public hub page. */
+  links?: DomainLink[]
+}
+
+/** Matches backend DomainLink entity */
+export interface DomainLink {
+  id: string
+  domainId: string
+  title: string
+  url: string
+  displayOrder: number
+  createdAtUtc: string
 }
 
 /** Matches backend DomainAdministrator entity */

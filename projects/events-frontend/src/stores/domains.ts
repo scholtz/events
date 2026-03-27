@@ -1,11 +1,12 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { gqlRequest } from '@/lib/graphql'
-import type { DomainAdministrator, EventDomain } from '@/types'
+import type { DomainAdministrator, DomainLink, EventDomain } from '@/types'
 
 const DOMAIN_FIELDS = `id name slug subdomain description isActive createdAtUtc
   createdByUserId primaryColor accentColor logoUrl bannerUrl
-  overviewContent whatBelongsHere submitEventCta curatorCredit`
+  overviewContent whatBelongsHere submitEventCta curatorCredit
+  links { id domainId title url displayOrder createdAtUtc }`
 
 export const useDomainsStore = defineStore('domains', () => {
   const domains = ref<EventDomain[]>([])
@@ -168,6 +169,21 @@ export const useDomainsStore = defineStore('domains', () => {
     )
   }
 
+  async function setDomainLinks(
+    domainId: string,
+    links: { title: string; url: string }[],
+  ): Promise<DomainLink[]> {
+    const data = await gqlRequest<{ setDomainLinks: DomainLink[] }>(
+      `mutation SetDomainLinks($input: SetDomainLinksInput!) {
+        setDomainLinks(input: $input) {
+          id domainId title url displayOrder createdAtUtc
+        }
+      }`,
+      { input: { domainId, links } },
+    )
+    return data.setDomainLinks
+  }
+
   return {
     domains,
     loading,
@@ -183,5 +199,6 @@ export const useDomainsStore = defineStore('domains', () => {
     updateDomainStyle,
     updateDomainOverview,
     setDomainFeaturedEvents,
+    setDomainLinks,
   }
 })
