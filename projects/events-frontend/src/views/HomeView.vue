@@ -289,6 +289,25 @@ const emptyStateMessage = computed(() => {
                 {{ t('home.allEventsOn', { host: mainSiteHost }) }}
               </a>
             </div>
+            <div v-if="activeDomain.links?.length" class="subdomain-community-links">
+              <span class="subdomain-community-links-label">{{ t('category.communityLinks') }}</span>
+              <ul class="subdomain-community-links-list" :aria-label="t('category.communityLinks')">
+                <li
+                  v-for="link in activeDomain.links"
+                  :key="link.id"
+                  class="subdomain-community-link-item"
+                >
+                  <a
+                    :href="link.url"
+                    class="subdomain-community-link"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {{ link.title }}
+                  </a>
+                </li>
+              </ul>
+            </div>
           </div>
         </div>
         <!-- Banner image -->
@@ -537,6 +556,49 @@ const emptyStateMessage = computed(() => {
   gap: 1rem;
   flex-wrap: wrap;
   margin-top: 0.5rem;
+}
+
+.subdomain-community-links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.subdomain-community-links-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.subdomain-community-links-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.subdomain-community-link-item {
+  display: inline-flex;
+}
+
+.subdomain-community-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(19, 127, 236, 0.25);
+  background: rgba(19, 127, 236, 0.08);
+  color: var(--color-text);
+  font-size: 0.8125rem;
+  text-decoration: none;
+}
+
+.subdomain-community-link:hover {
+  text-decoration: underline;
+  background: rgba(19, 127, 236, 0.12);
 }
 
 .subdomain-hub-link {

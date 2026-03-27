@@ -667,6 +667,44 @@ test.describe('Domain filter', () => {
     )
   })
 
+  test('subdomain hub shows curated community links when configured', async ({ page }) => {
+    const domain = makeCryptoDomain()
+    setupMockApi(page, {
+      domains: [domain],
+      domainLinks: [
+        {
+          id: 'link-community-site',
+          domainId: domain.id,
+          title: 'Community Site',
+          url: 'https://crypto.example.com',
+          displayOrder: 0,
+          createdAtUtc: new Date().toISOString(),
+        },
+        {
+          id: 'link-discord',
+          domainId: domain.id,
+          title: 'Discord',
+          url: 'https://discord.gg/crypto',
+          displayOrder: 1,
+          createdAtUtc: new Date().toISOString(),
+        },
+      ],
+      events: [],
+    })
+
+    await page.goto('/?subdomain=crypto&domain=crypto')
+
+    await expect(page.getByText('Community Links')).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Community Site' })).toHaveAttribute(
+      'href',
+      'https://crypto.example.com',
+    )
+    await expect(page.getByRole('link', { name: 'Discord' })).toHaveAttribute(
+      'href',
+      'https://discord.gg/crypto',
+    )
+  })
+
   test('subdomain hub applies primary color as CSS custom property', async ({ page }) => {
     const domain = { ...makeCryptoDomain(), primaryColor: '#e44d26' }
     setupMockApi(page, { domains: [domain], events: [] })

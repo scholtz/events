@@ -8,6 +8,7 @@ import {
   loginAs,
   type MockFavoriteEvent,
   type MockCalendarAction,
+  type MockDomainLink,
 } from './helpers/mock-api'
 
 test.describe('Organizer analytics dashboard', () => {
@@ -881,5 +882,61 @@ test.describe('Hub Management section in dashboard', () => {
     const viewHubLink = page.locator('.hub-card').getByRole('link', { name: 'View hub' })
     await expect(viewHubLink).toBeVisible()
     await expect(viewHubLink).toHaveAttribute('href', /\/category\/technology/)
+  })
+
+  test('domain admin can manage curated links via dashboard and see them on the public hub', async ({
+    page,
+  }) => {
+    const user = makeContributorUser()
+    const domain = makeTechDomain()
+    const existingLink: MockDomainLink = {
+      id: 'link-tech-site',
+      domainId: domain.id,
+      title: 'Community Site',
+      url: 'https://tech.example.com',
+      displayOrder: 0,
+      createdAtUtc: new Date().toISOString(),
+    }
+
+    setupMockApi(page, {
+      users: [user],
+      domains: [domain],
+      domainAdministrators: [
+        {
+          id: 'da-1',
+          domainId: domain.id,
+          userId: user.id,
+          user: { displayName: user.displayName, email: user.email },
+          createdAtUtc: new Date().toISOString(),
+        },
+      ],
+      domainLinks: [existingLink],
+      events: [],
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    await expect(page.locator('.hub-management-section')).toBeVisible()
+    await expect(page.getByText('Community Site')).toBeVisible()
+
+    await page.getByRole('textbox', { name: 'Label', exact: true }).fill('Discord')
+    await page.getByRole('textbox', { name: 'URL', exact: true }).fill('https://discord.gg/tech')
+    await page.getByRole('button', { name: 'Add Link' }).click()
+    await page.getByRole('button', { name: 'Save Links' }).click()
+
+    await expect(page.getByText('✓ Saved')).toBeVisible()
+
+    await page.goto('/category/technology')
+
+    await expect(page.getByRole('heading', { name: 'Community Links' })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Community Site' })).toHaveAttribute(
+      'href',
+      'https://tech.example.com',
+    )
+    await expect(page.getByRole('link', { name: 'Discord' })).toHaveAttribute(
+      'href',
+      'https://discord.gg/tech',
+    )
   })
 })
