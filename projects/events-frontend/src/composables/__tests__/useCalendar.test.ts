@@ -570,6 +570,7 @@ describe('ICS generation end-to-end', () => {
     // Location must be the join URL
     expect(ics).toContain('LOCATION:https://zoom.example.com/j/123456')
     // Description should keep the canonical event page without duplicating the join link
+    expect(ics).toContain('DESCRIPTION:A test event.\\n\\nEvent page: https://events.example.com/event/')
     expect(ics).toContain('URL:https://events.example.com/event/test-summit')
     expect(ics).not.toContain('Join online:')
   })

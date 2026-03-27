@@ -987,7 +987,10 @@ test.describe('Event detail page', () => {
     expect(download.suggestedFilename()).toBe('ics-download-event.ics')
     const downloadPath = await download.path()
     expect(downloadPath).toBeTruthy()
-    const icsContent = await readFile(downloadPath!, 'utf8')
+    if (!downloadPath) {
+      throw new Error('Expected Playwright to provide a download path for the ICS file')
+    }
+    const icsContent = await readFile(downloadPath, 'utf8')
     expect(icsContent).toContain(`URL:${origin}/event/${event.slug}`)
   })
 

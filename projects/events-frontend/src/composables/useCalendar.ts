@@ -161,8 +161,7 @@ export function eventToCalendarInput(
 
   // Build description: append join link for hybrid events so it's visible.
   let description = event.description || ''
-  if (isOnline) {
-  } else if (isHybrid && event.eventUrl) {
+  if (isHybrid && event.eventUrl) {
     description += `\n\nJoin online: ${event.eventUrl}`
   }
   description += `\n\nEvent page: ${canonicalUrl}`
