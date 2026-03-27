@@ -20,6 +20,8 @@ import {
 import type { CalendarEventInput } from '@/composables/useCalendar'
 import type { CatalogEvent } from '@/types'
 
+const testBaseUrl = 'https://events.example.com'
+
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
@@ -104,8 +106,10 @@ describe('eventToCalendarInput', () => {
     })
 
     it('appends event URL to description as "Event page:" link', () => {
-      const input = eventToCalendarInput(makeEvent({ attendanceMode: 'IN_PERSON' }))
-      expect(input.description).toContain('Event page: https://example.com/event')
+      const input = eventToCalendarInput(makeEvent({ attendanceMode: 'IN_PERSON' }), {
+        canonicalBaseUrl: testBaseUrl,
+      })
+      expect(input.description).toContain('Event page: https://events.example.com/event/test-summit')
     })
 
     it('does not repeat join link in description for in-person events', () => {
@@ -127,12 +131,12 @@ describe('eventToCalendarInput', () => {
       expect(input.location).toBe('Online event')
     })
 
-    it('does not include "Event page:" line in description for online events', () => {
-      // For online events the URL is already the location, no need to repeat in description
+    it('includes canonical event page line in description for online events', () => {
       const input = eventToCalendarInput(
         makeEvent({ attendanceMode: 'ONLINE', eventUrl: 'https://zoom.example.com/join' }),
+        { canonicalBaseUrl: testBaseUrl },
       )
-      expect(input.description).not.toContain('Event page:')
+      expect(input.description).toContain('Event page: https://events.example.com/event/test-summit')
     })
 
     it('does not include "Join online:" in description for online events', () => {
@@ -173,8 +177,9 @@ describe('eventToCalendarInput', () => {
     it('also appends "Event page:" link to description', () => {
       const input = eventToCalendarInput(
         makeEvent({ attendanceMode: 'HYBRID', eventUrl: 'https://stream.example.com' }),
+        { canonicalBaseUrl: testBaseUrl },
       )
-      expect(input.description).toContain('Event page: https://stream.example.com')
+      expect(input.description).toContain('Event page: https://events.example.com/event/test-summit')
     })
   })
 
@@ -211,14 +216,19 @@ describe('eventToCalendarInput', () => {
       expect(input.endUtc).toBeNull()
     })
 
-    it('maps event URL to url field', () => {
-      const input = eventToCalendarInput(makeEvent({ eventUrl: 'https://myevent.com' }))
-      expect(input.url).toBe('https://myevent.com')
+    it('maps canonical event detail URL to url field', () => {
+      const input = eventToCalendarInput(
+        makeEvent({ slug: 'my-event', eventUrl: 'https://myevent.com' }),
+        { canonicalBaseUrl: testBaseUrl },
+      )
+      expect(input.url).toBe('https://events.example.com/event/my-event')
     })
 
-    it('sets url to empty string when eventUrl is empty', () => {
-      const input = eventToCalendarInput(makeEvent({ eventUrl: '' }))
-      expect(input.url).toBe('')
+    it('still builds canonical URL when external eventUrl is empty', () => {
+      const input = eventToCalendarInput(makeEvent({ slug: 'missing-link', eventUrl: '' }), {
+        canonicalBaseUrl: testBaseUrl,
+      })
+      expect(input.url).toBe('https://events.example.com/event/missing-link')
     })
   })
 })
@@ -468,6 +478,14 @@ describe('buildGoogleCalendarUrl', () => {
     const url = buildGoogleCalendarUrl(input)
     expect(decodeURIComponent(url)).toContain('location=https://zoom.example.com/join/123')
   })
+
+  it('includes canonical event detail URL in sprop param', () => {
+    const input = eventToCalendarInput(makeEvent({ slug: 'google-sprop-event' }), {
+      canonicalBaseUrl: testBaseUrl,
+    })
+    const url = buildGoogleCalendarUrl(input)
+    expect(decodeURIComponent(url)).toContain('website:https://events.example.com/event/google-sprop-event')
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -530,14 +548,14 @@ describe('buildOutlookCalendarUrl', () => {
 describe('ICS generation end-to-end', () => {
   it('generates valid ICS for a typical in-person event', () => {
     const event = makeEvent()
-    const input = eventToCalendarInput(event)
+    const input = eventToCalendarInput(event, { canonicalBaseUrl: testBaseUrl })
     const ics = buildIcsContent(input)
 
     expect(ics).toContain('SUMMARY:Test Summit')
     expect(ics).toContain('LOCATION:Grand Hall\\, 123 Main Street\\, Prague\\, CZ')
     expect(ics).toContain('DTSTART:20260615T100000Z')
     expect(ics).toContain('DTEND:20260615T180000Z')
-    expect(ics).toContain('URL:https://example.com/event')
+    expect(ics).toContain('URL:https://events.example.com/event/test-summit')
     expect(ics).toContain('ORGANIZER;CN=Alice Organizer:mailto:')
   })
 
@@ -546,13 +564,13 @@ describe('ICS generation end-to-end', () => {
       attendanceMode: 'ONLINE',
       eventUrl: 'https://zoom.example.com/j/123456',
     })
-    const input = eventToCalendarInput(event)
+    const input = eventToCalendarInput(event, { canonicalBaseUrl: testBaseUrl })
     const ics = buildIcsContent(input)
 
     // Location must be the join URL
     expect(ics).toContain('LOCATION:https://zoom.example.com/j/123456')
-    // Description should not contain "Event page:" or "Join online:" for ONLINE events
-    expect(ics).not.toContain('Event page:')
+    // Description should keep the canonical event page without duplicating the join link
+    expect(ics).toContain('URL:https://events.example.com/event/test-summit')
     expect(ics).not.toContain('Join online:')
   })
 
@@ -561,14 +579,14 @@ describe('ICS generation end-to-end', () => {
       attendanceMode: 'HYBRID',
       eventUrl: 'https://stream.example.com/live',
     })
-    const input = eventToCalendarInput(event)
+    const input = eventToCalendarInput(event, { canonicalBaseUrl: testBaseUrl })
     const ics = buildIcsContent(input)
 
     // Location uses physical address for hybrid
     expect(ics).toContain('LOCATION:Grand Hall\\, 123 Main Street\\, Prague\\, CZ')
     // Description includes both join link and event page
     expect(ics).toContain('Join online: https://stream.example.com/live')
-    expect(ics).toContain('Event page: https://stream.example.com/live')
+    expect(ics).toContain('Event page: https://events.example.com/event/test-summit')
   })
 
   it('applies fallback DTEND when event has no end time', () => {

@@ -1,6 +1,7 @@
 /**
  * Event submission and event detail page tests.
  */
+import { readFile } from 'node:fs/promises'
 import { expect, test, type Page } from '@playwright/test'
 import {
   loginAs,
@@ -938,6 +939,7 @@ test.describe('Event detail page', () => {
     })
     setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
     await page.goto(`/event/${event.slug}`)
+    const origin = new URL(page.url()).origin
 
     await page.getByRole('button', { name: /Add to calendar/i }).click()
 
@@ -945,6 +947,7 @@ test.describe('Event detail page', () => {
     const href = await googleLink.getAttribute('href')
     expect(href).toContain('calendar.google.com')
     expect(href).toContain('Google+Cal+Event')
+    expect(decodeURIComponent(href ?? '')).toContain(`website:${origin}/event/${event.slug}`)
   })
 
   test('Outlook link points to outlook.live.com', async ({ page }) => {
@@ -955,6 +958,7 @@ test.describe('Event detail page', () => {
     })
     setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
     await page.goto(`/event/${event.slug}`)
+    const origin = new URL(page.url()).origin
 
     await page.getByRole('button', { name: /Add to calendar/i }).click()
 
@@ -981,6 +985,10 @@ test.describe('Event detail page', () => {
     ])
 
     expect(download.suggestedFilename()).toBe('ics-download-event.ics')
+    const downloadPath = await download.path()
+    expect(downloadPath).toBeTruthy()
+    const icsContent = await readFile(downloadPath!, 'utf8')
+    expect(icsContent).toContain(`URL:${origin}/event/${event.slug}`)
   })
 
   test('calendar button shows confirmation after ICS download', async ({ page }) => {
