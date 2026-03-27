@@ -187,6 +187,7 @@ export default {
     shareEvent: 'Veranstaltung teilen',
     addToCalendar: 'Zum Kalender hinzufügen',
     calendarAdded: 'Zum Kalender hinzugefügt ✓',
+    calendarDownloadFailed: 'Download fehlgeschlagen — bitte erneut versuchen',
     calendarMenuLabel: 'Kalenderoptionen',
     downloadIcs: '.ics-Datei herunterladen',
     googleCalendar: 'Google Kalender',

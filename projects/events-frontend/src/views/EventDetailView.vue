@@ -173,6 +173,7 @@ function attendanceModeLabel(mode: string | undefined): string {
 // ── Add to calendar ──────────────────────────────────────────────────────────
 const calendarMenuOpen = ref(false)
 const calendarAdded = ref(false)
+const calendarError = ref(false)
 const calendarBtnRef = ref<HTMLButtonElement | null>(null)
 const calendarMenuRef = ref<HTMLDivElement | null>(null)
 let calendarConfirmTimer: ReturnType<typeof setTimeout> | undefined
@@ -259,14 +260,24 @@ function handleCalendarMenuFocusout(e: FocusEvent) {
 
 function handleDownloadIcs() {
   if (!event.value) return
-  downloadIcs(event.value)
-  trackCalendarAction('ics', event.value.id, event.value.slug)
-  calendarAdded.value = true
-  closeCalendarMenu()
-  clearTimeout(calendarConfirmTimer)
-  calendarConfirmTimer = setTimeout(() => {
-    calendarAdded.value = false
-  }, 3000)
+  try {
+    downloadIcs(event.value)
+    trackCalendarAction('ics', event.value.id, event.value.slug)
+    calendarAdded.value = true
+    calendarError.value = false
+    closeCalendarMenu()
+    clearTimeout(calendarConfirmTimer)
+    calendarConfirmTimer = setTimeout(() => {
+      calendarAdded.value = false
+    }, 3000)
+  } catch {
+    calendarError.value = true
+    closeCalendarMenu()
+    clearTimeout(calendarConfirmTimer)
+    calendarConfirmTimer = setTimeout(() => {
+      calendarError.value = false
+    }, 5000)
+  }
 }
 
 const googleCalendarUrl = computed(() =>
@@ -482,18 +493,18 @@ function domainHostDisplay(event: {
                 {{ t('eventDetail.eventLink') }}
               </a>
 
-              <!-- Add to calendar -->
-              <div class="calendar-action" @keydown.escape="closeCalendarMenu(true)">
+              <!-- Add to calendar (only for published events) -->
+              <div v-if="event.status === 'PUBLISHED'" class="calendar-action" @keydown.escape="closeCalendarMenu(true)">
                 <button
                   ref="calendarBtnRef"
                   class="btn btn-outline calendar-btn"
                   :aria-expanded="calendarMenuOpen"
                   aria-haspopup="menu"
-                  :aria-label="calendarAdded ? t('eventDetail.calendarAdded') : t('eventDetail.addToCalendar')"
+                  :aria-label="calendarError ? t('eventDetail.calendarDownloadFailed') : calendarAdded ? t('eventDetail.calendarAdded') : t('eventDetail.addToCalendar')"
                   @click="toggleCalendarMenu"
                 >
                   <span aria-hidden="true">📅</span>
-                  {{ calendarAdded ? t('eventDetail.calendarAdded') : t('eventDetail.addToCalendar') }}
+                  {{ calendarError ? t('eventDetail.calendarDownloadFailed') : calendarAdded ? t('eventDetail.calendarAdded') : t('eventDetail.addToCalendar') }}
                   <span aria-hidden="true" class="chevron">▾</span>
                 </button>
 

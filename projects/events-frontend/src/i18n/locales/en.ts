@@ -195,6 +195,7 @@ export default {
     shareEvent: 'Share event',
     addToCalendar: 'Add to calendar',
     calendarAdded: 'Added to calendar ✓',
+    calendarDownloadFailed: 'Download failed — please try again',
     calendarMenuLabel: 'Calendar options',
     downloadIcs: 'Download .ics file',
     googleCalendar: 'Google Calendar',
