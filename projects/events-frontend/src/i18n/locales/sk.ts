@@ -187,6 +187,7 @@ export default {
     shareEvent: 'Zdieľať udalosť',
     addToCalendar: 'Pridať do kalendára',
     calendarAdded: 'Pridané do kalendára ✓',
+    calendarDownloadFailed: 'Stiahnutie zlyhalo — skúste to znova',
     calendarMenuLabel: 'Možnosti kalendára',
     downloadIcs: 'Stiahnuť .ics súbor',
     googleCalendar: 'Google Kalendár',

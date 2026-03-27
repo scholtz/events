@@ -1427,6 +1427,86 @@ test.describe('Event detail page', () => {
     const ariaLabel = menu
     await expect(ariaLabel).toHaveAttribute('aria-label', 'Možnosti kalendára')
   })
+
+  test('calendar button is hidden when event is not published (non-published events via mock)', async ({
+    page,
+  }) => {
+    // Even though eventBySlug only returns published events, verify defense-in-depth:
+    // If a non-published event somehow appears, the calendar button should be absent.
+    const pendingEvent = makeApprovedEvent({
+      id: 'ev-pending-cal',
+      name: 'Pending Calendar Event',
+      slug: 'pending-calendar-event',
+      status: 'PENDING_APPROVAL',
+    })
+    // Bypass mock's published filter by overriding the EventBySlug response directly
+    setupMockApi(page, { domains: [makeTechDomain()], events: [] })
+    await page.route('**/graphql', async (route) => {
+      const body = route.request().postData() ?? ''
+      if (body.includes('EventBySlug')) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: { eventBySlug: { ...pendingEvent, interestedCount: 0, communityGroups: [] } },
+          }),
+        })
+        return
+      }
+      await route.fallback()
+    })
+    await page.goto(`/event/${pendingEvent.slug}`)
+    await expect(page.getByText(pendingEvent.name)).toBeVisible()
+    await expect(page.locator('.calendar-action')).toBeHidden()
+  })
+
+  test('event with missing end time still shows valid Google Calendar link', async ({ page }) => {
+    const noEndEvent = makeApprovedEvent({
+      id: 'ev-no-end',
+      name: 'Open Ended Event',
+      slug: 'open-ended-event',
+      endsAtUtc: '',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [noEndEvent] })
+    await page.goto(`/event/${noEndEvent.slug}`)
+
+    await page.getByRole('button', { name: /Add to calendar/i }).click()
+    const googleLink = page.getByRole('menuitem', { name: /Google Calendar/i })
+    await expect(googleLink).toBeVisible()
+    // Link points to Google Calendar and includes date params (fallback end = start + 1h)
+    await expect(googleLink).toHaveAttribute('href', /calendar\.google\.com/)
+    await expect(googleLink).toHaveAttribute('href', /dates=/)
+  })
+
+  test('event with missing venue shows Google Calendar link without venue in location', async ({
+    page,
+  }) => {
+    const noVenueEvent = makeApprovedEvent({
+      id: 'ev-no-venue',
+      name: 'Virtual Only Event',
+      slug: 'virtual-only-event',
+      venueName: '',
+      addressLine1: '',
+      city: '',
+      countryCode: '',
+      latitude: 0,
+      longitude: 0,
+      attendanceMode: 'ONLINE',
+      eventUrl: 'https://meet.example.com/event',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [noVenueEvent] })
+    await page.goto(`/event/${noVenueEvent.slug}`)
+
+    await page.getByRole('button', { name: /Add to calendar/i }).click()
+    const googleLink = page.getByRole('menuitem', { name: /Google Calendar/i })
+    await expect(googleLink).toBeVisible()
+    // Link points to Google Calendar and includes the online event URL as location
+    await expect(googleLink).toHaveAttribute('href', /calendar\.google\.com/)
+    await expect(googleLink).toHaveAttribute(
+      'href',
+      /https%3A%2F%2Fmeet\.example\.com%2Fevent/,
+    )
+  })
 })
 
 // ---------------------------------------------------------------------------

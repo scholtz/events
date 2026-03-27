@@ -251,19 +251,24 @@ export function buildIcsContent(input: CalendarEventInput): string {
 /**
  * Triggers a browser download of the ICS file for the given event.
  * Returns the generated ICS content string (useful for testing).
+ * Throws an error if the download cannot be initiated (e.g. Blob or DOM unavailable).
  */
 export function downloadIcs(event: CatalogEvent, options: CalendarEventOptions = {}): string {
   const input = eventToCalendarInput(event, options)
   const ics = buildIcsContent(input)
-  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${event.slug}.ics`
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
+  let url: string | undefined
+  try {
+    const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' })
+    url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${event.slug}.ics`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  } finally {
+    if (url) URL.revokeObjectURL(url)
+  }
   return ics
 }
 
