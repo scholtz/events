@@ -761,7 +761,13 @@ test.describe('Hub Management section in dashboard', () => {
     page,
   }) => {
     const user = makeContributorUser()
-    const domain = makeTechDomain()
+    const domain = {
+      ...makeTechDomain(),
+      logoUrl: null,
+      bannerUrl: null,
+      overviewContent: null,
+      curatorCredit: null,
+    }
     setupMockApi(page, {
       users: [user],
       domains: [domain],
