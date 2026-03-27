@@ -4785,6 +4785,168 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal(3, domain.GetProperty("publishedEventCount").GetInt32());
     }
 
+    // ── domainBySubdomain query ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task DomainBySubdomain_ReturnsBrandingFieldsAndOrderedLinks()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domain = CreateDomain("Crypto Hub", "crypto-subdomain-hub");
+            domain.PrimaryColor = "#7c3aed";
+            domain.AccentColor = "#22c55e";
+            domain.LogoUrl = "https://example.com/crypto-logo.png";
+            domain.BannerUrl = "https://example.com/crypto-banner.jpg";
+            domain.OverviewContent = "Curated events for the crypto ecosystem.";
+            domain.WhatBelongsHere = "Meetups, hackathons, and conferences about crypto.";
+            domain.SubmitEventCta = "List your crypto event";
+            domain.CuratorCredit = "Crypto Builders";
+
+            dbContext.Domains.Add(domain);
+            dbContext.DomainLinks.AddRange(
+                new DomainLink
+                {
+                    DomainId = domain.Id,
+                    Title = "Discord",
+                    Url = "https://discord.gg/crypto",
+                    DisplayOrder = 1
+                },
+                new DomainLink
+                {
+                    DomainId = domain.Id,
+                    Title = "Community Site",
+                    Url = "https://crypto.example.com",
+                    DisplayOrder = 0
+                });
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query DomainBySubdomain($subdomain: String!) {
+              domainBySubdomain(subdomain: $subdomain) {
+                name
+                slug
+                subdomain
+                primaryColor
+                accentColor
+                logoUrl
+                bannerUrl
+                overviewContent
+                whatBelongsHere
+                submitEventCta
+                curatorCredit
+                links { title url displayOrder }
+              }
+            }
+            """,
+            new { subdomain = "crypto-subdomain-hub" });
+
+        var domain = document.RootElement.GetProperty("data").GetProperty("domainBySubdomain");
+        Assert.Equal("Crypto Hub", domain.GetProperty("name").GetString());
+        Assert.Equal("crypto-subdomain-hub", domain.GetProperty("slug").GetString());
+        Assert.Equal("crypto-subdomain-hub", domain.GetProperty("subdomain").GetString());
+        Assert.Equal("#7c3aed", domain.GetProperty("primaryColor").GetString());
+        Assert.Equal("#22c55e", domain.GetProperty("accentColor").GetString());
+        Assert.Equal("https://example.com/crypto-logo.png", domain.GetProperty("logoUrl").GetString());
+        Assert.Equal("https://example.com/crypto-banner.jpg", domain.GetProperty("bannerUrl").GetString());
+        Assert.Equal("Curated events for the crypto ecosystem.", domain.GetProperty("overviewContent").GetString());
+        Assert.Equal("Meetups, hackathons, and conferences about crypto.", domain.GetProperty("whatBelongsHere").GetString());
+        Assert.Equal("List your crypto event", domain.GetProperty("submitEventCta").GetString());
+        Assert.Equal("Crypto Builders", domain.GetProperty("curatorCredit").GetString());
+
+        var links = domain.GetProperty("links");
+        Assert.Equal(2, links.GetArrayLength());
+        Assert.Equal("Community Site", links[0].GetProperty("title").GetString());
+        Assert.Equal("Discord", links[1].GetProperty("title").GetString());
+    }
+
+    [Fact]
+    public async Task DomainBySubdomain_ReturnsNullForInactiveDomain()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var inactive = CreateDomain("Inactive Subdomain", "inactive-subdomain");
+            inactive.IsActive = false;
+            dbContext.Domains.Add(inactive);
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query DomainBySubdomain($subdomain: String!) {
+              domainBySubdomain(subdomain: $subdomain) {
+                id
+              }
+            }
+            """,
+            new { subdomain = "inactive-subdomain" });
+
+        var domain = document.RootElement.GetProperty("data").GetProperty("domainBySubdomain");
+        Assert.Equal(JsonValueKind.Null, domain.ValueKind);
+    }
+
+    [Fact]
+    public async Task DomainBySubdomain_IsCaseInsensitiveAndTrimsWhitespace()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            dbContext.Domains.Add(CreateDomain("AI Europe", "ai-europe"));
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query DomainBySubdomain($subdomain: String!) {
+              domainBySubdomain(subdomain: $subdomain) {
+                name
+                subdomain
+              }
+            }
+            """,
+            new { subdomain = "  AI-EUROPE  " });
+
+        var domain = document.RootElement.GetProperty("data").GetProperty("domainBySubdomain");
+        Assert.Equal("AI Europe", domain.GetProperty("name").GetString());
+        Assert.Equal("ai-europe", domain.GetProperty("subdomain").GetString());
+    }
+
+    [Fact]
+    public async Task DomainBySubdomain_IsAccessibleWithoutAuthentication()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            dbContext.Domains.Add(CreateDomain("Public Hub", "public-subdomain-hub"));
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query DomainBySubdomain($subdomain: String!) {
+              domainBySubdomain(subdomain: $subdomain) {
+                name
+              }
+            }
+            """,
+            new { subdomain = "public-subdomain-hub" });
+
+        var domain = document.RootElement.GetProperty("data").GetProperty("domainBySubdomain");
+        Assert.Equal("Public Hub", domain.GetProperty("name").GetString());
+    }
+
     // ── SetDomainLinks / community links tests ──────────────────────────────
 
     [Fact]
