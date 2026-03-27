@@ -1427,8 +1427,17 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       const managed = userId
         ? state.domainAdministrators
             .filter((da) => da.userId === userId)
-            .map((da) => state.domains.find((d) => d.id === da.domainId))
-            .filter((d): d is MockDomain => d !== undefined)
+            .map((da) => {
+              const domain = state.domains.find((d) => d.id === da.domainId)
+              if (!domain) return undefined
+              return {
+                ...domain,
+                links: state.domainLinks
+                  .filter((l) => l.domainId === domain.id)
+                  .sort((a, b) => a.displayOrder - b.displayOrder),
+              }
+            })
+            .filter((d): d is MockDomain & { links: MockDomainLink[] } => d !== undefined)
         : []
       await route.fulfill({
         status: 200,

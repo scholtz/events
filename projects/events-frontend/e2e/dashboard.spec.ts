@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test'
 import {
   setupMockApi,
   makeAdminUser,
+  makeContributorUser,
   makeTechDomain,
   makeApprovedEvent,
   loginAs,
@@ -729,7 +730,7 @@ test.describe('Hub Management section in dashboard', () => {
   })
 
   test('hub management section appears when user is a domain administrator', async ({ page }) => {
-    const user = makeAdminUser()
+    const user = makeContributorUser()
     const domain = makeTechDomain()
     setupMockApi(page, {
       users: [user],
@@ -756,9 +757,17 @@ test.describe('Hub Management section in dashboard', () => {
     await expect(page.locator('.hub-card-name')).toContainText('Technology')
   })
 
-  test('domain admin can update hub style via dashboard', async ({ page }) => {
-    const user = makeAdminUser()
-    const domain = makeTechDomain()
+  test('contributor domain admin can update hub branding via dashboard and see it on the public hub', async ({
+    page,
+  }) => {
+    const user = makeContributorUser()
+    const domain = {
+      ...makeTechDomain(),
+      logoUrl: null,
+      bannerUrl: null,
+      overviewContent: null,
+      curatorCredit: null,
+    }
     setupMockApi(page, {
       users: [user],
       domains: [domain],
@@ -778,16 +787,36 @@ test.describe('Hub Management section in dashboard', () => {
 
     await expect(page.locator('.hub-management-section')).toBeVisible()
 
-    // Fill in primary color and save
+    // Fill in style and overview content from the contributor-owned hub panel
     const primaryColorInput = page.locator('.hub-style-form input[placeholder="#137fec"]')
     await primaryColorInput.fill('#ff5500')
+    await page.getByLabel('Logo URL').fill('https://example.com/contributor-logo.png')
+    await page.getByLabel('Banner URL').fill('https://example.com/contributor-banner.jpg')
     await page.locator('.hub-style-form').getByRole('button', { name: 'Save Style' }).click()
-
     await expect(page.locator('.hub-save-success').first()).toBeVisible()
+
+    const overviewTextarea = page.locator('.hub-overview-form textarea').first()
+    await overviewTextarea.fill('This is the Technology hub — curated for developers.')
+    await page.getByLabel('Curator credit').fill('Contributor Curator')
+    await page.locator('.hub-overview-form').getByRole('button', { name: 'Save Content' }).click()
+    await expect(page.locator('.hub-overview-form .hub-save-success')).toBeVisible()
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.category-logo')).toHaveAttribute(
+      'src',
+      'https://example.com/contributor-logo.png',
+    )
+    await expect(page.locator('.category-banner')).toHaveAttribute(
+      'src',
+      'https://example.com/contributor-banner.jpg',
+    )
+    await expect(page.getByText('This is the Technology hub — curated for developers.')).toBeVisible()
+    await expect(page.getByText('Contributor Curator')).toBeVisible()
   })
 
-  test('domain admin can update hub content via dashboard', async ({ page }) => {
-    const user = makeAdminUser()
+  test('hub management shows an explicit error when saving fails', async ({ page }) => {
+    const user = makeContributorUser()
     const domain = makeTechDomain()
     setupMockApi(page, {
       users: [user],
@@ -803,21 +832,33 @@ test.describe('Hub Management section in dashboard', () => {
       ],
       events: [],
     })
+
+    await page.route('**/graphql', async (route) => {
+      const body = JSON.parse(route.request().postData() || '{}')
+      if ((body.query || '').includes('UpdateDomainStyle')) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            errors: [{ message: 'You must be a global administrator or a domain administrator.' }],
+          }),
+        })
+        return
+      }
+      await route.fallback()
+    })
+
     await loginAs(page, user)
     await page.waitForURL(/\/dashboard$/)
 
-    await expect(page.locator('.hub-management-section')).toBeVisible()
+    await page.locator('.hub-style-form input[placeholder="#137fec"]').fill('#ff5500')
+    await page.locator('.hub-style-form').getByRole('button', { name: 'Save Style' }).click()
 
-    // Fill in overview content and save
-    const overviewTextarea = page.locator('.hub-overview-form textarea').first()
-    await overviewTextarea.fill('This is the Technology hub — curated for developers.')
-    await page.locator('.hub-overview-form').getByRole('button', { name: 'Save Content' }).click()
-
-    await expect(page.locator('.hub-overview-form .hub-save-success')).toBeVisible()
+    await expect(page.getByText('Failed to save. Please try again.')).toBeVisible()
   })
 
   test('hub management section shows View hub link to category page', async ({ page }) => {
-    const user = makeAdminUser()
+    const user = makeContributorUser()
     const domain = makeTechDomain()
     setupMockApi(page, {
       users: [user],

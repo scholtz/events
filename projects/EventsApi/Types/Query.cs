@@ -588,12 +588,19 @@ public sealed class Query
         CancellationToken cancellationToken)
     {
         var userId = claimsPrincipal.GetRequiredUserId();
-        return await dbContext.DomainAdministrators
+        var domains = await dbContext.Domains
             .AsNoTracking()
-            .Where(da => da.UserId == userId)
-            .Select(da => da.Domain)
+            .Include(d => d.Links)
+            .Where(d => dbContext.DomainAdministrators.Any(da => da.DomainId == d.Id && da.UserId == userId))
             .OrderBy(d => d.Name)
             .ToListAsync(cancellationToken);
+
+        foreach (var domain in domains)
+        {
+            domain.Links = domain.Links.OrderBy(l => l.DisplayOrder).ToList();
+        }
+
+        return domains;
     }
 
     /// <summary>

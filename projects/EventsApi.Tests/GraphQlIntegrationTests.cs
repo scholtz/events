@@ -6448,6 +6448,75 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task MyManagedDomains_ReturnsManagedDomainLinksInDisplayOrder()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid domainAdminId = Guid.Empty;
+        Guid domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domainAdmin = CreateUser("mmd-links@example.com", "Managed Links Admin");
+            domainAdminId = domainAdmin.Id;
+
+            var domain = CreateDomain("Hub Links", "hub-links");
+            domainId = domain.Id;
+
+            dbContext.Users.Add(domainAdmin);
+            dbContext.Domains.Add(domain);
+            dbContext.Set<DomainAdministrator>().Add(new DomainAdministrator
+            {
+                DomainId = domain.Id,
+                UserId = domainAdmin.Id,
+            });
+            dbContext.Set<DomainLink>().AddRange(
+                new DomainLink
+                {
+                    DomainId = domain.Id,
+                    Title = "Discord",
+                    Url = "https://discord.example.com",
+                    DisplayOrder = 1,
+                },
+                new DomainLink
+                {
+                    DomainId = domain.Id,
+                    Title = "Newsletter",
+                    Url = "https://newsletter.example.com",
+                    DisplayOrder = 0,
+                });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer", await CreateTokenAsync(factory, domainAdminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyManagedDomains {
+              myManagedDomains {
+                id
+                links {
+                  title
+                  displayOrder
+                }
+              }
+            }
+            """);
+
+        var domains = document.RootElement.GetProperty("data").GetProperty("myManagedDomains");
+        Assert.Equal(1, domains.GetArrayLength());
+        Assert.Equal(domainId.ToString(), domains[0].GetProperty("id").GetString());
+
+        var links = domains[0].GetProperty("links");
+        Assert.Equal(2, links.GetArrayLength());
+        Assert.Equal("Newsletter", links[0].GetProperty("title").GetString());
+        Assert.Equal(0, links[0].GetProperty("displayOrder").GetInt32());
+        Assert.Equal("Discord", links[1].GetProperty("title").GetString());
+        Assert.Equal(1, links[1].GetProperty("displayOrder").GetInt32());
+    }
+
+    [Fact]
     public async Task MyManagedDomains_ReturnsEmptyWhenUserAdministersNoDomains()
     {
         await using var factory = new EventsApiWebApplicationFactory();
