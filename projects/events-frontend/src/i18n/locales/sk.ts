@@ -188,6 +188,7 @@ export default {
     addToCalendar: 'Pridať do kalendára',
     calendarAdded: 'Pridané do kalendára ✓',
     calendarDownloadFailed: 'Stiahnutie zlyhalo — skúste to znova',
+    calendarUnavailable: 'Export do kalendára nie je k dispozícii — dátumy udalosti chýbajú alebo sú neplatné',
     calendarMenuLabel: 'Možnosti kalendára',
     downloadIcs: 'Stiahnuť .ics súbor',
     googleCalendar: 'Google Kalendár',
