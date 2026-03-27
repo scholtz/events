@@ -181,6 +181,11 @@ export const useDomainsStore = defineStore('domains', () => {
       }`,
       { input: { domainId, links } },
     )
+    const applyLinks = (domain: EventDomain) =>
+      domain.id === domainId ? { ...domain, links: data.setDomainLinks } : domain
+
+    domains.value = domains.value.map(applyLinks)
+    myManagedDomains.value = myManagedDomains.value.map(applyLinks)
     return data.setDomainLinks
   }
 

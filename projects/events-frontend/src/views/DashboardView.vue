@@ -12,14 +12,19 @@ const auth = useAuthStore()
 const domainsStore = useDomainsStore()
 
 const overview = computed(() => dashboardStore.overview)
+const MAX_COMMUNITY_LINKS = 10
 
 // ── Hub management state ─────────────────────────────────────────────────────
 const hubStyleForms = ref<Record<string, { primaryColor: string; accentColor: string; logoUrl: string; bannerUrl: string }>>({})
 const hubOverviewForms = ref<Record<string, { overviewContent: string; whatBelongsHere: string; submitEventCta: string; curatorCredit: string }>>({})
+const hubCommunityLinks = ref<Record<string, { title: string; url: string }[]>>({})
+const hubNewLinkForms = ref<Record<string, { title: string; url: string }>>({})
 const hubStyleSaving = ref<Record<string, boolean>>({})
 const hubStyleSuccess = ref<Record<string, boolean>>({})
 const hubOverviewSaving = ref<Record<string, boolean>>({})
 const hubOverviewSuccess = ref<Record<string, boolean>>({})
+const hubLinksSaving = ref<Record<string, boolean>>({})
+const hubLinksSuccess = ref<Record<string, boolean>>({})
 const hubManageError = ref<Record<string, string>>({})
 
 function initHubForms(domains: EventDomain[]) {
@@ -38,6 +43,18 @@ function initHubForms(domains: EventDomain[]) {
         whatBelongsHere: d.whatBelongsHere ?? '',
         submitEventCta: d.submitEventCta ?? '',
         curatorCredit: d.curatorCredit ?? '',
+      }
+    }
+    if (!hubCommunityLinks.value[d.id]) {
+      hubCommunityLinks.value[d.id] = (d.links ?? []).map((link) => ({
+        title: link.title,
+        url: link.url,
+      }))
+    }
+    if (!hubNewLinkForms.value[d.id]) {
+      hubNewLinkForms.value[d.id] = {
+        title: '',
+        url: '',
       }
     }
   }
@@ -90,6 +107,49 @@ async function handleSaveHubOverview(domainId: string) {
     hubManageError.value[domainId] = t('dashboard.hubManageError')
   } finally {
     hubOverviewSaving.value[domainId] = false
+  }
+}
+
+function handleAddHubLink(domainId: string) {
+  const form = hubNewLinkForms.value[domainId]
+  if (!form) {
+    hubManageError.value[domainId] = t('dashboard.hubManageError')
+    return
+  }
+
+  const title = form.title.trim()
+  const url = form.url.trim()
+
+  if (!title || !url || (hubCommunityLinks.value[domainId]?.length ?? 0) >= MAX_COMMUNITY_LINKS) {
+    return
+  }
+
+  hubCommunityLinks.value[domainId] = [
+    ...(hubCommunityLinks.value[domainId] ?? []),
+    { title, url },
+  ]
+  hubNewLinkForms.value[domainId] = { title: '', url: '' }
+  hubLinksSuccess.value[domainId] = false
+}
+
+function handleRemoveHubLink(domainId: string, index: number) {
+  hubCommunityLinks.value[domainId] = (hubCommunityLinks.value[domainId] ?? []).filter(
+    (_, idx) => idx !== index,
+  )
+  hubLinksSuccess.value[domainId] = false
+}
+
+async function handleSaveHubLinks(domainId: string) {
+  hubLinksSaving.value[domainId] = true
+  hubLinksSuccess.value[domainId] = false
+  hubManageError.value[domainId] = ''
+  try {
+    await domainsStore.setDomainLinks(domainId, hubCommunityLinks.value[domainId] ?? [])
+    hubLinksSuccess.value[domainId] = true
+  } catch {
+    hubManageError.value[domainId] = t('admin.communityLinksError')
+  } finally {
+    hubLinksSaving.value[domainId] = false
   }
 }
 
@@ -550,6 +610,88 @@ function providerLabel(provider: string): string {
                 </span>
               </div>
             </form>
+          </div>
+
+          <div class="hub-form-section">
+            <h4 class="hub-form-title">{{ t('admin.communityLinks') }}</h4>
+            <p class="hub-form-helper">{{ t('admin.communityLinksHint') }}</p>
+            <div class="hub-community-links-list">
+              <div
+                v-for="(link, index) in hubCommunityLinks[hub.id]"
+                :key="`${hub.id}-${index}`"
+                class="hub-community-link-item"
+              >
+                <span class="hub-community-link-order">{{ index + 1 }}</span>
+                <div class="hub-community-link-info">
+                  <strong>{{ link.title }}</strong>
+                  <span class="text-secondary hub-community-link-url">{{ link.url }}</span>
+                </div>
+                <button
+                  type="button"
+                  class="btn btn-outline btn-sm"
+                  @click="handleRemoveHubLink(hub.id, index)"
+                >
+                  {{ t('admin.removeCommunityLink') }}
+                </button>
+              </div>
+              <p
+                v-if="!hubCommunityLinks[hub.id]?.length"
+                class="text-secondary hub-community-links-empty"
+              >
+                {{ t('admin.communityLinksEmpty') }}
+              </p>
+            </div>
+
+            <div
+              v-if="(hubCommunityLinks[hub.id]?.length ?? 0) < MAX_COMMUNITY_LINKS"
+              class="hub-add-community-link-form"
+            >
+              <label class="form-field">
+                <span>{{ t('admin.communityLinksLinkTitle') }}</span>
+                <input
+                  v-model="hubNewLinkForms[hub.id]!.title"
+                  class="form-input"
+                  type="text"
+                  maxlength="100"
+                />
+              </label>
+              <label class="form-field">
+                <span>{{ t('admin.communityLinksLinkUrl') }}</span>
+                <input
+                  v-model="hubNewLinkForms[hub.id]!.url"
+                  class="form-input"
+                  type="url"
+                />
+              </label>
+              <button
+                type="button"
+                class="btn btn-outline btn-sm"
+                :disabled="
+                  !hubNewLinkForms[hub.id]!.title.trim() || !hubNewLinkForms[hub.id]!.url.trim()
+                "
+                @click="handleAddHubLink(hub.id)"
+              >
+                {{ t('admin.addCommunityLink') }}
+              </button>
+            </div>
+
+            <div class="hub-form-actions">
+              <button
+                type="button"
+                class="btn btn-primary btn-sm"
+                :disabled="hubLinksSaving[hub.id]"
+                @click="handleSaveHubLinks(hub.id)"
+              >
+                {{
+                  hubLinksSaving[hub.id]
+                    ? t('admin.communityLinksSaving')
+                    : t('admin.saveCommunityLinks')
+                }}
+              </button>
+              <span v-if="hubLinksSuccess[hub.id]" class="hub-save-success">
+                {{ t('admin.communityLinksSaved') }}
+              </span>
+            </div>
           </div>
         </div>
       </section>
@@ -1040,6 +1182,12 @@ tr:hover td {
   margin: 0 0 1rem;
 }
 
+.hub-form-helper {
+  margin: -0.5rem 0 1rem;
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+}
+
 .hub-form-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -1061,6 +1209,64 @@ tr:hover td {
   color: #4ade80;
   font-size: 0.875rem;
   font-weight: 500;
+}
+
+.hub-community-links-list {
+  margin-bottom: 0.75rem;
+}
+
+.hub-community-link-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.hub-community-link-order {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: rgba(19, 127, 236, 0.15);
+  color: var(--color-primary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.hub-community-link-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.hub-community-link-info strong,
+.hub-community-link-url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hub-community-link-url,
+.hub-community-links-empty {
+  font-size: 0.75rem;
+}
+
+.hub-community-links-empty {
+  padding: 0.5rem 0;
+}
+
+.hub-add-community-link-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+  align-items: end;
+  margin-bottom: 0.75rem;
 }
 
 .hub-manage-error {
@@ -1088,6 +1294,9 @@ tr:hover td {
   .hub-form-grid {
     grid-template-columns: 1fr;
   }
+
+  .hub-add-community-link-form {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
-
