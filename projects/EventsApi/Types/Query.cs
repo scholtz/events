@@ -190,6 +190,7 @@ public sealed class Query
         CancellationToken cancellationToken)
         => await dbContext.Domains
             .AsNoTracking()
+            .Include(d => d.Links.OrderBy(l => l.DisplayOrder))
             .SingleOrDefaultAsync(
                 domain => domain.Subdomain == subdomain.Trim().ToLowerInvariant() && domain.IsActive,
                 cancellationToken);
