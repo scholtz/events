@@ -6,7 +6,7 @@ import {
   makeApprovedEvent,
   loginAs,
 } from './helpers/mock-api'
-import type { MockDomainAdministrator } from './helpers/mock-api'
+import type { MockDomainAdministrator, MockDomainLink } from './helpers/mock-api'
 
 test.describe('Domain admin management', () => {
   test('admin sees Manage button on domains tab', async ({ page }) => {
@@ -467,5 +467,175 @@ test.describe('Domain admin management', () => {
     await expect(page.locator('.add-featured-form')).toBeHidden()
     // All 5 events are listed
     await expect(page.locator('.featured-events-list .featured-event-item')).toHaveCount(5)
+  })
+
+  // ── Community links curation ─────────────────────────────────────────────────
+
+  test('domain detail panel shows Community Links section', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      domainAdministrators: [],
+    })
+    await loginAs(page, admin)
+    await page.goto('/admin')
+
+    await page.getByRole('button', { name: /Tags/ }).click()
+    await page.getByRole('button', { name: 'Manage' }).click()
+
+    await expect(page.getByRole('heading', { name: 'Community Links' })).toBeVisible()
+    await expect(page.getByText('No community links yet.')).toBeVisible()
+  })
+
+  test('admin can add a community link and save', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      domainAdministrators: [],
+    })
+    await loginAs(page, admin)
+    await page.goto('/admin')
+
+    await page.getByRole('button', { name: /Tags/ }).click()
+    await page.getByRole('button', { name: 'Manage' }).click()
+
+    await expect(page.getByRole('heading', { name: 'Community Links' })).toBeVisible()
+
+    // Fill in the new link form
+    await page.locator('.add-community-link-form input[type="text"]').fill('Community Website')
+    await page.locator('.add-community-link-form input[type="url"]').fill('https://community.example.com')
+    await page.getByRole('button', { name: 'Add Link' }).click()
+
+    // Link should appear in the list
+    await expect(page.locator('.community-links-list').getByText('Community Website')).toBeVisible()
+
+    // Save the links
+    await page.getByRole('button', { name: 'Save Links' }).click()
+    await expect(page.getByText('✓ Saved').last()).toBeVisible()
+  })
+
+  test('admin can remove a community link', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    const domainLink: MockDomainLink = {
+      id: 'link-1',
+      domainId: domain.id,
+      title: 'Community Discord',
+      url: 'https://discord.gg/community',
+      displayOrder: 0,
+      createdAtUtc: new Date().toISOString(),
+    }
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      domainLinks: [domainLink],
+      domainAdministrators: [],
+    })
+    await loginAs(page, admin)
+    await page.goto('/admin')
+
+    await page.getByRole('button', { name: /Tags/ }).click()
+    await page.getByRole('button', { name: 'Manage' }).click()
+
+    // The existing link should be shown
+    await expect(page.getByRole('heading', { name: 'Community Links' })).toBeVisible()
+    await expect(page.locator('.community-links-list').getByText('Community Discord')).toBeVisible()
+
+    // Remove the link
+    await page.locator('.community-link-item').getByRole('button', { name: 'Remove' }).click()
+
+    // Empty state should appear
+    await expect(page.getByText('No community links yet.')).toBeVisible()
+
+    // Save the cleared list
+    await page.getByRole('button', { name: 'Save Links' }).click()
+    await expect(page.getByText('✓ Saved').last()).toBeVisible()
+  })
+
+  test('community links appear on public category page', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 })
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    const domainLinks: MockDomainLink[] = [
+      {
+        id: 'link-1',
+        domainId: domain.id,
+        title: 'Community Website',
+        url: 'https://community.example.com',
+        displayOrder: 0,
+        createdAtUtc: new Date().toISOString(),
+      },
+      {
+        id: 'link-2',
+        domainId: domain.id,
+        title: 'Join our Discord',
+        url: 'https://discord.gg/tech',
+        displayOrder: 1,
+        createdAtUtc: new Date().toISOString(),
+      },
+    ]
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      domainLinks,
+      domainAdministrators: [],
+    })
+
+    await page.goto('/category/technology')
+
+    // Community links section should be visible
+    await expect(page.getByRole('heading', { name: 'Community Links' })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Community Website' })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Join our Discord' })).toBeVisible()
+
+    // Links should point to the correct URLs
+    await expect(page.getByRole('link', { name: 'Community Website' })).toHaveAttribute('href', 'https://community.example.com')
+    await expect(page.getByRole('link', { name: 'Join our Discord' })).toHaveAttribute('href', 'https://discord.gg/tech')
+  })
+
+  test('community links section is hidden when no links configured', async ({ page }) => {
+    const domain = makeTechDomain()
+    setupMockApi(page, {
+      domains: [domain],
+    })
+
+    await page.goto('/category/technology')
+
+    // No community links section when no links are configured
+    await expect(page.getByRole('heading', { name: 'Community Links' })).toBeHidden()
+  })
+
+  test('add community link form hidden when 10 links already added', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    const domainLinks: MockDomainLink[] = Array.from({ length: 10 }, (_, i) => ({
+      id: `link-${i}`,
+      domainId: domain.id,
+      title: `Link ${i + 1}`,
+      url: `https://example.com/link-${i}`,
+      displayOrder: i,
+      createdAtUtc: new Date().toISOString(),
+    }))
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      domainLinks,
+      domainAdministrators: [],
+    })
+    await loginAs(page, admin)
+    await page.goto('/admin')
+
+    await page.getByRole('button', { name: /Tags/ }).click()
+    await page.getByRole('button', { name: 'Manage' }).click()
+
+    // With 10 links, the add form should be hidden
+    await expect(page.getByRole('heading', { name: 'Community Links' })).toBeVisible()
+    await expect(page.locator('.add-community-link-form')).toBeHidden()
+    // All 10 links are listed
+    await expect(page.locator('.community-link-item')).toHaveCount(10)
   })
 })

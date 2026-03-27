@@ -43,6 +43,14 @@ const domainOverviewForm = ref({
   curatorCredit: '',
 })
 
+// ── Community links state ─────────────────────────────────────────────────
+const communityLinks = ref<{ title: string; url: string }[]>([])
+const communityLinksSaving = ref(false)
+const communityLinksSuccess = ref(false)
+const communityLinksError = ref('')
+const newLinkTitle = ref('')
+const newLinkUrl = ref('')
+
 // ── Featured events curation state ────────────────────────────────────────
 const featuredEvents = ref<import('@/types').CatalogEvent[]>([])
 const featuredEventsLoading = ref(false)
@@ -63,6 +71,10 @@ async function selectDomain(domainId: string) {
   featuredEventsSuccess.value = false
   featuredEventsError.value = ''
   addFeaturedEventId.value = ''
+  communityLinksSuccess.value = false
+  communityLinksError.value = ''
+  newLinkTitle.value = ''
+  newLinkUrl.value = ''
 
   const domain = domainsStore.domains.find((d) => d.id === domainId)
   if (domain) {
@@ -78,6 +90,7 @@ async function selectDomain(domainId: string) {
       submitEventCta: domain.submitEventCta ?? '',
       curatorCredit: domain.curatorCredit ?? '',
     }
+    communityLinks.value = (domain.links ?? []).map((l) => ({ title: l.title, url: l.url }))
   }
 
   await Promise.all([loadDomainAdmins(domainId), loadFeaturedEvents(domainId)])
@@ -218,6 +231,37 @@ async function handleSaveFeaturedEvents() {
     featuredEventsError.value = t('admin.featuredEventsError')
   } finally {
     featuredEventsSaving.value = false
+  }
+}
+
+function handleAddCommunityLink() {
+  const title = newLinkTitle.value.trim()
+  const url = newLinkUrl.value.trim()
+  if (!title || !url) return
+  if (communityLinks.value.length >= 10) return
+  communityLinks.value = [...communityLinks.value, { title, url }]
+  newLinkTitle.value = ''
+  newLinkUrl.value = ''
+  communityLinksSuccess.value = false
+}
+
+function handleRemoveCommunityLink(idx: number) {
+  communityLinks.value = communityLinks.value.filter((_, i) => i !== idx)
+  communityLinksSuccess.value = false
+}
+
+async function handleSaveCommunityLinks() {
+  if (!selectedDomainId.value) return
+  communityLinksSaving.value = true
+  communityLinksSuccess.value = false
+  communityLinksError.value = ''
+  try {
+    await domainsStore.setDomainLinks(selectedDomainId.value, communityLinks.value)
+    communityLinksSuccess.value = true
+  } catch {
+    communityLinksError.value = t('admin.communityLinksError')
+  } finally {
+    communityLinksSaving.value = false
   }
 }
 
@@ -733,6 +777,71 @@ async function handleReviewEvent(eventId: string, status: string) {
                 <span v-if="featuredEventsSuccess" class="save-success">{{ t('admin.featuredEventsSaved') }}</span>
               </div>
             </template>
+          </div>
+
+          <!-- Community links curation section -->
+          <div class="domain-style-section domain-community-links-section">
+            <h3>{{ t('admin.communityLinks') }}</h3>
+            <p class="featured-hint text-secondary">{{ t('admin.communityLinksHint') }}</p>
+            <p v-if="communityLinksError" class="role-error" role="alert">{{ communityLinksError }}</p>
+            <div class="community-links-list">
+              <div
+                v-for="(link, idx) in communityLinks"
+                :key="idx"
+                class="community-link-item"
+              >
+                <span class="community-link-order">{{ idx + 1 }}</span>
+                <div class="community-link-info">
+                  <strong>{{ link.title }}</strong>
+                  <span class="text-secondary community-link-url">{{ link.url }}</span>
+                </div>
+                <button
+                  class="btn btn-outline btn-sm"
+                  type="button"
+                  @click="handleRemoveCommunityLink(idx)"
+                >
+                  {{ t('admin.removeCommunityLink') }}
+                </button>
+              </div>
+              <p v-if="!communityLinks.length" class="text-secondary community-links-empty">
+                {{ t('admin.communityLinksEmpty') }}
+              </p>
+            </div>
+            <!-- Add new link form -->
+            <div v-if="communityLinks.length < 10" class="add-community-link-form">
+              <input
+                v-model="newLinkTitle"
+                class="form-input"
+                type="text"
+                :placeholder="t('admin.communityLinksLinkTitle')"
+                maxlength="100"
+              />
+              <input
+                v-model="newLinkUrl"
+                class="form-input"
+                type="url"
+                :placeholder="t('admin.communityLinksLinkUrl')"
+              />
+              <button
+                class="btn btn-outline btn-sm"
+                type="button"
+                :disabled="!newLinkTitle.trim() || !newLinkUrl.trim()"
+                @click="handleAddCommunityLink"
+              >
+                {{ t('admin.addCommunityLink') }}
+              </button>
+            </div>
+            <div class="style-form-actions">
+              <button
+                class="btn btn-primary btn-sm"
+                type="button"
+                :disabled="communityLinksSaving"
+                @click="handleSaveCommunityLinks"
+              >
+                {{ communityLinksSaving ? t('admin.communityLinksSaving') : t('admin.saveCommunityLinks') }}
+              </button>
+              <span v-if="communityLinksSuccess" class="save-success">{{ t('admin.communityLinksSaved') }}</span>
+            </div>
           </div>
 
           <!-- Domain administrators -->
@@ -1347,5 +1456,72 @@ tr:hover td {
 
 .add-featured-form select {
   flex: 1;
+}
+
+/* ── Community links ──────────────────────────────────────────────────── */
+.community-links-list {
+  margin-bottom: 0.75rem;
+}
+
+.community-link-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
+}
+
+.community-link-order {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  background: rgba(19, 127, 236, 0.15);
+  border-radius: 50%;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.community-link-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.community-link-info strong {
+  font-size: 0.875rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.community-link-url {
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.community-links-empty {
+  font-size: 0.875rem;
+  padding: 0.5rem 0;
+}
+
+.add-community-link-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.add-community-link-form .form-input {
+  flex: 1;
+  min-width: 8rem;
 }
 </style>

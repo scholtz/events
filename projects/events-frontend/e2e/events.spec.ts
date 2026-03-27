@@ -1683,7 +1683,7 @@ test.describe('Event detail — community groups section', () => {
     setupMockApi(page, { events: [event] })
     await page.goto(`/event/${event.slug}`)
 
-    await expect(page.locator('.community-groups-section')).not.toBeVisible()
+    await expect(page.locator('.community-groups-section')).toBeHidden()
   })
 
   test('shows multiple community groups when event belongs to several groups', async ({ page }) => {

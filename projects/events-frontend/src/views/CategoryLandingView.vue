@@ -37,7 +37,8 @@ const EVENT_FIELDS = `
 const DOMAIN_FIELDS = `id name slug subdomain description isActive createdAtUtc
   createdByUserId primaryColor accentColor logoUrl bannerUrl
   overviewContent whatBelongsHere submitEventCta curatorCredit
-  publishedEventCount`
+  publishedEventCount
+  links { id title url displayOrder }`
 
 async function fetchCategoryData() {
   loading.value = true
@@ -286,6 +287,24 @@ const lowSignalMessage = computed(() => {
             </h2>
             <p class="hub-module-body">{{ domain.whatBelongsHere }}</p>
           </div>
+        </div>
+
+        <!-- Community links section -->
+        <div v-if="domain?.links?.length" class="community-links-section">
+          <h2 class="community-links-title">
+            <span class="community-links-icon" aria-hidden="true">🔗</span>
+            {{ t('category.communityLinks') }}
+          </h2>
+          <ul class="community-links-list" aria-label="Community links">
+            <li v-for="link in domain.links" :key="link.id" class="community-link-item">
+              <a
+                :href="link.url"
+                class="community-link"
+                target="_blank"
+                rel="noopener noreferrer"
+              >{{ link.title }}</a>
+            </li>
+          </ul>
         </div>
 
         <!-- Featured Events section -->
@@ -589,6 +608,62 @@ const lowSignalMessage = computed(() => {
   color: var(--color-text-secondary);
   line-height: 1.65;
   margin: 0;
+}
+
+/* ── Community links section ─────────────────────────────── */
+.community-links-section {
+  margin-bottom: 1.5rem;
+  padding: 1.25rem 1.5rem;
+  background: var(--color-surface-raised, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
+  border-radius: var(--radius-md);
+}
+
+.community-links-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+  color: var(--color-text);
+}
+
+.community-links-icon {
+  font-size: 1.125rem;
+}
+
+.community-links-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.community-link-item {
+  display: inline-flex;
+}
+
+.community-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--color-primary);
+  text-decoration: none;
+  padding: 0.3rem 0.75rem;
+  border: 1px solid rgba(19, 127, 236, 0.3);
+  border-radius: var(--radius-sm);
+  background: rgba(19, 127, 236, 0.06);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.community-link:hover {
+  background: rgba(19, 127, 236, 0.12);
+  border-color: rgba(19, 127, 236, 0.5);
+  text-decoration: underline;
 }
 
 /* ── Featured events section ─────────────────────────────── */

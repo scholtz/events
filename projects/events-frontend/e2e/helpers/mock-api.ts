@@ -148,6 +148,15 @@ export type MockFeaturedEvent = {
   displayOrder: number
 }
 
+export type MockDomainLink = {
+  id: string
+  domainId: string
+  title: string
+  url: string
+  displayOrder: number
+  createdAtUtc: string
+}
+
 export type MockCommunityGroup = {
   id: string
   name: string
@@ -207,6 +216,7 @@ export type MockState = {
   users: MockUser[]
   domains: MockDomain[]
   domainAdministrators: MockDomainAdministrator[]
+  domainLinks: MockDomainLink[]
   events: MockEvent[]
   featuredEvents: MockFeaturedEvent[]
   savedSearches: MockSavedSearch[]
@@ -234,6 +244,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
     users: initial?.users ?? [],
     domains: initial?.domains ?? [],
     domainAdministrators: initial?.domainAdministrators ?? [],
+    domainLinks: initial?.domainLinks ?? [],
     events: initial?.events ?? [],
     featuredEvents: initial?.featuredEvents ?? [],
     savedSearches: initial?.savedSearches ?? [],
@@ -954,6 +965,44 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       return
     }
 
+    if (query.includes('mutation') && query.includes('SetDomainLinks')) {
+      const input = variables.input || {}
+      const domain = state.domains.find((d) => d.id === input.domainId)
+      const currentUser = state.users.find((u) => u.id === state.currentUserId)
+      if (!currentUser) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Not authorized', extensions: { code: 'AUTH_NOT_AUTHORIZED' } }] }),
+        })
+        return
+      }
+      const newLinks: MockDomainLink[] = []
+      if (domain) {
+        // Replace links for this domain
+        state.domainLinks = state.domainLinks.filter((l) => l.domainId !== domain.id)
+        const linkItems: { title: string; url: string }[] = input.links ?? []
+        linkItems.forEach((item, i) => {
+          const link: MockDomainLink = {
+            id: `link-${domain.id}-${i}`,
+            domainId: domain.id,
+            title: item.title,
+            url: item.url,
+            displayOrder: i,
+            createdAtUtc: new Date().toISOString(),
+          }
+          state.domainLinks.push(link)
+          newLinks.push(link)
+        })
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { setDomainLinks: newLinks } }),
+      })
+      return
+    }
+
     // ── Queries ──
     if (query.includes('query') && query.includes('AdminOverview')) {
       const currentUser = state.users.find((u) => u.id === state.currentUserId)
@@ -1390,10 +1439,17 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
     }
 
     if (query.includes('query') && query.includes('Domains')) {
+      // Attach domain links to each domain in the list
+      const domainsWithLinks = state.domains.map((d) => ({
+        ...d,
+        links: state.domainLinks
+          .filter((l) => l.domainId === d.id)
+          .sort((a, b) => a.displayOrder - b.displayOrder),
+      }))
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ data: { domains: state.domains } }),
+        body: JSON.stringify({ data: { domains: domainsWithLinks } }),
       })
       return
     }
@@ -1401,10 +1457,19 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
     if (query.includes('query') && query.includes('DomainBySlug')) {
       const slug = variables.slug as string | undefined
       const rawDomain = slug ? state.domains.find((d) => d.slug === slug) ?? null : null
+      // Attach domain links to the domain object
+      const domainWithLinks = rawDomain
+        ? {
+            ...rawDomain,
+            links: state.domainLinks
+              .filter((l) => l.domainId === rawDomain.id)
+              .sort((a, b) => a.displayOrder - b.displayOrder),
+          }
+        : null
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ data: { domainBySlug: rawDomain } }),
+        body: JSON.stringify({ data: { domainBySlug: domainWithLinks } }),
       })
       return
     }
