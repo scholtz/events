@@ -249,6 +249,22 @@ public sealed class AddExternalSourceClaimInput
 }
 
 /// <summary>
+/// Input for selectively importing specific events from a linked external source.
+/// Use previewExternalEvents to obtain the ExternalId values before calling importExternalEvents.
+/// Only group admins may call importExternalEvents.
+/// </summary>
+public sealed class ImportExternalEventsInput
+{
+    /// <summary>
+    /// Stable external identifiers of the events to import.
+    /// These correspond to ExternalEventPreview.ExternalId values returned by
+    /// previewExternalEvents. Events that have already been imported are silently
+    /// skipped; events not found in the current fetch are also skipped.
+    /// </summary>
+    public required List<string> ExternalIds { get; init; }
+}
+
+/// <summary>
 /// Input for creating a new community group. The creator automatically becomes the group admin.
 /// </summary>
 public sealed class CreateCommunityGroupInput

@@ -276,3 +276,28 @@ export interface SyncResult {
   errorCount: number
   summary: string
 }
+
+/**
+ * A candidate event from an external source returned by previewExternalEvents.
+ * Contains duplicate-detection and importability metadata so admins can make
+ * an informed selection before calling importExternalEvents.
+ */
+export interface ExternalEventPreview {
+  externalId: string
+  name: string
+  description: string
+  eventUrl: string | null
+  startsAtUtc: string | null
+  endsAtUtc: string | null
+  city: string | null
+  venueName: string | null
+  isFree: boolean | null
+  priceAmount: number | null
+  currencyCode: string | null
+  /** True if this event was already imported from this claim. */
+  alreadyImported: boolean
+  /** True when the event can be selected for import. False when required fields are missing. */
+  isImportable: boolean
+  /** Human-readable reason why the event cannot be imported, or null if importable. */
+  importBlockReason: string | null
+}

@@ -101,3 +101,43 @@ public sealed record CommunityGroupDetail(
     IReadOnlyList<CatalogEvent> Events,
     int MemberCount,
     CommunityMembership? MyMembership);
+
+/// <summary>
+/// A candidate event returned by previewExternalEvents, enriched with duplicate-detection
+/// and importability metadata so administrators can make an informed selection before import.
+/// </summary>
+public sealed record ExternalEventPreview(
+    /// <summary>
+    /// Stable, platform-specific identifier used for deduplication and selective import.
+    /// Pass this value in ImportExternalEventsInput.ExternalIds to import this event.
+    /// </summary>
+    string ExternalId,
+
+    string Name,
+    string Description,
+    string? EventUrl,
+    DateTime? StartsAtUtc,
+    DateTime? EndsAtUtc,
+    string? City,
+    string? VenueName,
+    bool? IsFree,
+    decimal? PriceAmount,
+    string? CurrencyCode,
+
+    /// <summary>
+    /// True when this external event has already been imported into this community.
+    /// The checkbox should be disabled and an "Already imported" indicator shown.
+    /// </summary>
+    bool AlreadyImported,
+
+    /// <summary>
+    /// True when this event can be selected for import.
+    /// False when a required field is missing (e.g. StartsAtUtc is null).
+    /// </summary>
+    bool IsImportable,
+
+    /// <summary>
+    /// Human-readable reason why the event is not importable, or null when IsImportable is true.
+    /// Display this text next to the disabled row to help the admin understand the issue.
+    /// </summary>
+    string? ImportBlockReason);

@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using EventsApi.Adapters;
 using EventsApi.Data;
 using EventsApi.Data.Entities;
 using EventsApi.Security;
@@ -814,5 +815,87 @@ public sealed class Query
             .OrderBy(esc => esc.SourceType.ToString())
                 .ThenBy(esc => esc.SourceUrl)
             .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Fetches candidate events from a linked external source without importing them.
+    /// Each candidate is annotated with duplicate-detection and importability metadata
+    /// so the administrator can make an informed selection before calling importExternalEvents.
+    /// Only group admins (or global admins) may call this.
+    /// The claim must be in Verified status.
+    /// </summary>
+    [Authorize]
+    public async Task<IReadOnlyList<ExternalEventPreview>> GetPreviewExternalEventsAsync(
+        Guid claimId,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        [Service] ExternalSourceAdapterFactory adapterFactory,
+        CancellationToken cancellationToken)
+    {
+        var claim = await dbContext.ExternalSourceClaims
+            .AsNoTracking()
+            .SingleOrDefaultAsync(esc => esc.Id == claimId, cancellationToken)
+            ?? throw new GraphQLException(
+                ErrorBuilder.New()
+                    .SetMessage("External source claim not found.")
+                    .SetCode("CLAIM_NOT_FOUND")
+                    .Build());
+
+        var userId = claimsPrincipal.GetRequiredUserId();
+        if (!claimsPrincipal.IsAdmin())
+        {
+            var isGroupAdmin = await dbContext.CommunityMemberships.AnyAsync(
+                cm => cm.GroupId == claim.GroupId && cm.UserId == userId &&
+                      cm.Role == CommunityMemberRole.Admin && cm.Status == CommunityMemberStatus.Active,
+                cancellationToken);
+            if (!isGroupAdmin)
+                throw new GraphQLException(
+                    ErrorBuilder.New()
+                        .SetMessage("Only group administrators can preview external events.")
+                        .SetCode("FORBIDDEN")
+                        .Build());
+        }
+
+        if (claim.Status != ExternalSourceClaimStatus.Verified)
+            throw new GraphQLException(
+                ErrorBuilder.New()
+                    .SetMessage("Only verified claims can be previewed. Please wait for a platform admin to verify this claim.")
+                    .SetCode("CLAIM_NOT_VERIFIED")
+                    .Build());
+
+        var adapter = adapterFactory.GetAdapter(claim.SourceType);
+        var externalEvents = await adapter.FetchEventsAsync(claim.SourceIdentifier, cancellationToken);
+
+        // Batch-load already-imported external IDs for this claim to avoid N+1 queries
+        var externalIds = externalEvents.Select(e => e.ExternalId).ToList();
+        var alreadyImportedIds = await dbContext.Events
+            .AsNoTracking()
+            .Where(e => e.ExternalSourceClaimId == claimId && e.ExternalSourceEventId != null
+                        && externalIds.Contains(e.ExternalSourceEventId))
+            .Select(e => e.ExternalSourceEventId!)
+            .ToHashSetAsync(cancellationToken);
+
+        return externalEvents.Select(ext =>
+        {
+            var alreadyImported = alreadyImportedIds.Contains(ext.ExternalId);
+            var isImportable = ext.StartsAtUtc.HasValue;
+            var blockReason = isImportable ? null : "Missing start time — cannot import.";
+
+            return new ExternalEventPreview(
+                ExternalId: ext.ExternalId,
+                Name: ext.Name,
+                Description: ext.Description,
+                EventUrl: ext.EventUrl,
+                StartsAtUtc: ext.StartsAtUtc,
+                EndsAtUtc: ext.EndsAtUtc,
+                City: ext.City,
+                VenueName: ext.VenueName,
+                IsFree: ext.IsFree,
+                PriceAmount: ext.PriceAmount,
+                CurrencyCode: ext.CurrencyCode,
+                AlreadyImported: alreadyImported,
+                IsImportable: isImportable && !alreadyImported,
+                ImportBlockReason: alreadyImported ? "Already imported." : blockReason);
+        }).ToList();
     }
 }

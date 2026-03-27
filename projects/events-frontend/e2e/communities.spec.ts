@@ -10,6 +10,7 @@ import {
   makeApprovedEvent,
   makePendingReviewClaim,
   makeVerifiedClaim,
+  makeExternalEventPreview,
   loginAs,
 } from './helpers/mock-api'
 
@@ -442,7 +443,7 @@ test.describe('External source claims (admin)', () => {
     await expect(page.locator('.claim-status-badge', { hasText: 'Pending review' })).toBeVisible()
   })
 
-  test('shows verified claim with Sync Now button enabled', async ({ page }) => {
+  test('shows verified claim with Preview & Import button enabled', async ({ page }) => {
     const admin = makeAdminUser()
     const group = makePublicGroup()
     const claim = makeVerifiedClaim(group.id)
@@ -455,11 +456,11 @@ test.describe('External source claims (admin)', () => {
     await loginAs(page, admin)
     await page.goto('/community/prague-crypto-circle')
     await expect(page.locator('.claim-status-badge', { hasText: 'Verified' })).toBeVisible()
-    const syncBtn = page.getByRole('button', { name: 'Sync Now' }).first()
-    await expect(syncBtn).toBeEnabled()
+    const previewBtn = page.getByRole('button', { name: 'Preview & Import' }).first()
+    await expect(previewBtn).toBeEnabled()
   })
 
-  test('shows Sync Now disabled for pending-review claim', async ({ page }) => {
+  test('shows Preview & Import disabled for pending-review claim', async ({ page }) => {
     const admin = makeAdminUser()
     const group = makePublicGroup()
     const claim = makePendingReviewClaim(group.id)
@@ -471,8 +472,8 @@ test.describe('External source claims (admin)', () => {
 
     await loginAs(page, admin)
     await page.goto('/community/prague-crypto-circle')
-    const syncBtn = page.getByRole('button', { name: 'Sync Now' }).first()
-    await expect(syncBtn).toBeDisabled()
+    const previewBtn = page.getByRole('button', { name: 'Preview & Import' }).first()
+    await expect(previewBtn).toBeDisabled()
   })
 
   test('admin can add a valid Meetup source claim', async ({ page }) => {
@@ -558,13 +559,192 @@ test.describe('External source claims (admin)', () => {
     state.communityGroups.push(group)
     state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
     state.externalSourceClaims.push(claim)
+    state.externalEventPreviews[claim.id] = []
 
     await loginAs(page, admin)
     await page.goto('/community/prague-crypto-circle')
 
-    await page.getByRole('button', { name: 'Sync Now' }).first().click()
-    // After sync, result summary is shown
-    await expect(page.locator('.sync-result-badge')).toBeVisible()
+    await page.getByRole('button', { name: 'Preview & Import' }).first().click()
+    // Preview panel opens and shows empty state since no candidates
+    await expect(page.locator('.preview-panel')).toBeVisible()
+    await expect(page.locator('.preview-empty')).toBeVisible()
+  })
+
+  test('preview panel shows candidate events with importable and already-imported flags', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makeVerifiedClaim(group.id)
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+    state.externalSourceClaims.push(claim)
+    state.externalEventPreviews[claim.id] = [
+      makeExternalEventPreview({ externalId: 'evt-001', name: 'Eligible Event Alpha' }),
+      makeExternalEventPreview({
+        externalId: 'evt-002',
+        name: 'Already Imported Event',
+        alreadyImported: true,
+        isImportable: false,
+        importBlockReason: 'Already imported.',
+      }),
+      makeExternalEventPreview({
+        externalId: 'evt-003',
+        name: 'Non-importable Event',
+        startsAtUtc: null,
+        isImportable: false,
+        importBlockReason: 'Missing start time — cannot import.',
+      }),
+    ]
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+
+    await page.getByRole('button', { name: 'Preview & Import' }).first().click()
+    await expect(page.locator('.preview-panel')).toBeVisible()
+
+    // All three candidates are shown
+    const rows = page.locator('.preview-candidate-row')
+    await expect(rows).toHaveCount(3)
+
+    // Importable event has enabled checkbox
+    const importableRow = rows.filter({ hasText: 'Eligible Event Alpha' })
+    await expect(importableRow.locator('input[type="checkbox"]')).toBeEnabled()
+
+    // Already-imported event shows badge and disabled checkbox
+    const alreadyRow = rows.filter({ hasText: 'Already Imported Event' })
+    await expect(alreadyRow.locator('.already-imported-badge')).toBeVisible()
+    await expect(alreadyRow.locator('input[type="checkbox"]')).toBeDisabled()
+
+    // Non-importable shows block reason and disabled checkbox
+    const blockRow = rows.filter({ hasText: 'Non-importable Event' })
+    await expect(blockRow.locator('.not-importable-badge')).toBeVisible()
+    await expect(blockRow.locator('input[type="checkbox"]')).toBeDisabled()
+  })
+
+  test('admin can select events and import them', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makeVerifiedClaim(group.id)
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+    state.externalSourceClaims.push(claim)
+    state.externalEventPreviews[claim.id] = [
+      makeExternalEventPreview({ externalId: 'evt-001', name: 'Event to Import' }),
+    ]
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+
+    await page.getByRole('button', { name: 'Preview & Import' }).first().click()
+    await expect(page.locator('.preview-panel')).toBeVisible()
+
+    // Check the checkbox for the importable event
+    const checkbox = page.locator('.preview-candidate-row').locator('input[type="checkbox"]').first()
+    await checkbox.check()
+
+    // Import button shows count=1 and is enabled
+    const importBtn = page.locator('.preview-footer').getByRole('button', { name: /Import 1/ })
+    await expect(importBtn).toBeEnabled()
+    await importBtn.click()
+
+    // After import, the event is now marked as already imported
+    const rows = page.locator('.preview-candidate-row')
+    await expect(rows.filter({ hasText: 'Event to Import' }).locator('.already-imported-badge')).toBeVisible()
+  })
+
+  test('preview panel shows moderation notice', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makeVerifiedClaim(group.id)
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+    state.externalSourceClaims.push(claim)
+    state.externalEventPreviews[claim.id] = [makeExternalEventPreview()]
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+
+    await page.getByRole('button', { name: 'Preview & Import' }).first().click()
+    await expect(page.locator('.preview-moderation-notice')).toBeVisible()
+    await expect(page.locator('.preview-moderation-notice')).toContainText('Pending Approval')
+  })
+
+  test('preview panel can be closed with Close button', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makeVerifiedClaim(group.id)
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+    state.externalSourceClaims.push(claim)
+    state.externalEventPreviews[claim.id] = []
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+
+    await page.getByRole('button', { name: 'Preview & Import' }).first().click()
+    await expect(page.locator('.preview-panel')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Close' }).click()
+    await expect(page.locator('.preview-panel')).toBeHidden()
+  })
+
+  test('select all importable selects only eligible events', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makeVerifiedClaim(group.id)
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+    state.externalSourceClaims.push(claim)
+    state.externalEventPreviews[claim.id] = [
+      makeExternalEventPreview({ externalId: 'evt-001', name: 'Importable A' }),
+      makeExternalEventPreview({ externalId: 'evt-002', name: 'Importable B' }),
+      makeExternalEventPreview({
+        externalId: 'evt-003',
+        name: 'Already Done',
+        alreadyImported: true,
+        isImportable: false,
+        importBlockReason: 'Already imported.',
+      }),
+    ]
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+
+    await page.getByRole('button', { name: 'Preview & Import' }).first().click()
+    await expect(page.locator('.preview-panel')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Select all importable' }).click()
+
+    // Import button should say "Import 2 selected"
+    await expect(page.locator('.preview-footer').getByRole('button', { name: /Import 2/ })).toBeVisible()
+  })
+
+  test('import footer note explains pending approval', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makeVerifiedClaim(group.id)
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+    state.externalSourceClaims.push(claim)
+    state.externalEventPreviews[claim.id] = [makeExternalEventPreview()]
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+
+    await page.getByRole('button', { name: 'Preview & Import' }).first().click()
+    await expect(page.locator('.import-footer-note')).toBeVisible()
+    await expect(page.locator('.import-footer-note')).toContainText('moderation')
   })
 
   test('non-admin does not see external sources section', async ({ page }) => {

@@ -186,6 +186,23 @@ export type MockExternalSourceClaim = {
   lastSyncSkippedCount: number | null
 }
 
+export type MockExternalEventPreview = {
+  externalId: string
+  name: string
+  description: string
+  eventUrl: string | null
+  startsAtUtc: string | null
+  endsAtUtc: string | null
+  city: string | null
+  venueName: string | null
+  isFree: boolean | null
+  priceAmount: number | null
+  currencyCode: string | null
+  alreadyImported: boolean
+  isImportable: boolean
+  importBlockReason: string | null
+}
+
 export type MockState = {
   users: MockUser[]
   domains: MockDomain[]
@@ -200,6 +217,8 @@ export type MockState = {
   communityGroups: MockCommunityGroup[]
   communityMemberships: MockCommunityMembership[]
   externalSourceClaims: MockExternalSourceClaim[]
+  /** Keyed by claimId: the preview candidates returned by previewExternalEvents. */
+  externalEventPreviews: Record<string, MockExternalEventPreview[]>
   vapidPublicKey: string
   currentUserId: string | null
   currentToken: string | null
@@ -225,6 +244,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
     communityGroups: initial?.communityGroups ?? [],
     communityMemberships: initial?.communityMemberships ?? [],
     externalSourceClaims: initial?.externalSourceClaims ?? [],
+    externalEventPreviews: initial?.externalEventPreviews ?? {},
     vapidPublicKey: initial?.vapidPublicKey ?? 'SGVsbG9QbGF5d3JpZ2h0S2V5',
     currentUserId: initial?.currentUserId ?? null,
     currentToken: initial?.currentToken ?? null,
@@ -1321,7 +1341,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       return
     }
 
-    if (query.includes('query') && query.includes('Events')) {
+    if (query.includes('query') && query.includes('Events') && !query.includes('ExternalEvents')) {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -1665,6 +1685,82 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({ data: { triggerExternalSync: result } }),
+      })
+      return
+    }
+
+    if (query.includes('query') && query.includes('PreviewExternalEvents')) {
+      const claimId = variables.claimId as string
+      const claim = state.externalSourceClaims.find((c) => c.id === claimId)
+      if (!claim) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Claim not found', extensions: { code: 'CLAIM_NOT_FOUND' } }] }),
+        })
+        return
+      }
+      if (claim.status !== 'VERIFIED') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Only verified claims can be previewed.', extensions: { code: 'CLAIM_NOT_VERIFIED' } }] }),
+        })
+        return
+      }
+      const previews = state.externalEventPreviews[claimId] ?? []
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { previewExternalEvents: previews } }),
+      })
+      return
+    }
+
+    if (query.includes('mutation') && query.includes('ImportExternalEvents')) {
+      const claimId = variables.claimId as string
+      const selectedIds = (variables.input as { externalIds: string[] }).externalIds ?? []
+      const claim = state.externalSourceClaims.find((c) => c.id === claimId)
+      if (!claim) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Claim not found', extensions: { code: 'CLAIM_NOT_FOUND' } }] }),
+        })
+        return
+      }
+      if (claim.status !== 'VERIFIED') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Only verified claims can be used to import events.', extensions: { code: 'CLAIM_NOT_VERIFIED' } }] }),
+        })
+        return
+      }
+      const previews = state.externalEventPreviews[claimId] ?? []
+      let imported = 0
+      let skipped = 0
+      // Mark selected importable previews as already imported
+      for (const preview of previews) {
+        if (selectedIds.includes(preview.externalId) && preview.isImportable && !preview.alreadyImported) {
+          preview.alreadyImported = true
+          preview.isImportable = false
+          preview.importBlockReason = 'Already imported.'
+          imported++
+        } else if (selectedIds.includes(preview.externalId)) {
+          skipped++
+        }
+      }
+      const summary = `Imported ${imported} event${imported === 1 ? '' : 's'}.`
+      claim.lastSyncAtUtc = new Date().toISOString()
+      claim.lastSyncOutcome = summary
+      claim.lastSyncImportedCount = imported
+      claim.lastSyncSkippedCount = skipped
+      const result = { importedCount: imported, skippedCount: skipped, errorCount: 0, summary }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { importExternalEvents: result } }),
       })
       return
     }
@@ -2053,4 +2149,30 @@ export function makeDraftEvent(overrides: Partial<MockEvent> = {}): MockEvent {
     adminNotes: null,
     ...overrides,
   })
+}
+
+/**
+ * Factory for a single importable external event preview candidate.
+ * The event is marked isImportable=true and alreadyImported=false by default.
+ */
+export function makeExternalEventPreview(
+  overrides: Partial<MockExternalEventPreview> = {},
+): MockExternalEventPreview {
+  return {
+    externalId: 'ext-event-001',
+    name: 'Preview Event Alpha',
+    description: 'A test event from the external source.',
+    eventUrl: 'https://www.meetup.com/test-group/events/001',
+    startsAtUtc: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+    endsAtUtc: null,
+    city: 'Prague',
+    venueName: 'Tech Hub',
+    isFree: true,
+    priceAmount: null,
+    currencyCode: null,
+    alreadyImported: false,
+    isImportable: true,
+    importBlockReason: null,
+    ...overrides,
+  }
 }

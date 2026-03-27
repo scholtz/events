@@ -678,7 +678,7 @@ export default {
     // External source claims
     externalSourcesHeading: 'Connected External Sources',
     externalSourcesDescription:
-      'Link your Meetup or Luma community to import events automatically.',
+      'Link your Meetup or Luma community to preview and selectively import events.',
     addSourceHeading: 'Connect a Source',
     sourceTypeLabel: 'Platform',
     sourceUrlLabel: 'Profile URL',
@@ -697,9 +697,25 @@ export default {
     lastSynced: 'Last synced',
     neverSynced: 'Never synced',
     syncResult: 'Sync complete',
-    syncOnlyVerified: 'Only verified sources can be synced.',
+    syncOnlyVerified: 'Only verified sources can be previewed.',
     errorAddSource: 'Failed to add source. Please check the URL and try again.',
     errorRemoveSource: 'Failed to remove source.',
-    errorSync: 'Sync failed. Please try again.',
+    errorSync: 'Import failed. Please try again.',
+    errorPreview: 'Failed to load preview. Please try again.',
+    previewImportButton: 'Preview & Import',
+    loadingPreview: 'Loading\u2026',
+    previewPanelAriaLabel: 'Event import preview',
+    previewHeading: 'Select Events to Import',
+    previewClose: 'Close',
+    previewModerationNotice:
+      'Imported events enter Pending Approval status. They will not appear publicly until a moderator reviews and approves them.',
+    previewSelectAll: 'Select all importable',
+    previewSelectedCount: '{count} selected',
+    previewEmpty: 'No events found for this source.',
+    alreadyImported: 'Already imported',
+    importButton: 'Import {count} selected',
+    importing: 'Importing\u2026',
+    importFooterNote:
+      'Selected events will be submitted for moderation review before they become publicly visible.',
   },
 }
