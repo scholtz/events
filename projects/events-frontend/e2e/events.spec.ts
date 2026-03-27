@@ -1473,11 +1473,9 @@ test.describe('Event detail page', () => {
     await page.getByRole('button', { name: /Add to calendar/i }).click()
     const googleLink = page.getByRole('menuitem', { name: /Google Calendar/i })
     await expect(googleLink).toBeVisible()
-    const href = googleLink
-    await expect(href).toHaveAttribute('href', )
-    expect(href).toContain('calendar.google.com')
-    // The URL should still include dates (fallback end = start + 1h)
-    expect(href).toContain('dates=')
+    // Link points to Google Calendar and includes date params (fallback end = start + 1h)
+    await expect(googleLink).toHaveAttribute('href', /calendar\.google\.com/)
+    await expect(googleLink).toHaveAttribute('href', /dates=/)
   })
 
   test('event with missing venue shows Google Calendar link without venue in location', async ({
@@ -1502,11 +1500,12 @@ test.describe('Event detail page', () => {
     await page.getByRole('button', { name: /Add to calendar/i }).click()
     const googleLink = page.getByRole('menuitem', { name: /Google Calendar/i })
     await expect(googleLink).toBeVisible()
-    const href = googleLink
-    await expect(href).toHaveAttribute('href', )
-    expect(href).toContain('calendar.google.com')
-    // Online event: location should reference the event URL, not a physical venue
-    expect(href).toContain(encodeURIComponent('https://meet.example.com/event'))
+    // Link points to Google Calendar and includes the online event URL as location
+    await expect(googleLink).toHaveAttribute('href', /calendar\.google\.com/)
+    await expect(googleLink).toHaveAttribute(
+      'href',
+      new RegExp(encodeURIComponent('https://meet.example.com/event').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+    )
   })
 })
 
