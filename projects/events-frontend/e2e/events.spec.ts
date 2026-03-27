@@ -1504,7 +1504,7 @@ test.describe('Event detail page', () => {
     await expect(googleLink).toHaveAttribute('href', /calendar\.google\.com/)
     await expect(googleLink).toHaveAttribute(
       'href',
-      new RegExp(encodeURIComponent('https://meet.example.com/event').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+      /https%3A%2F%2Fmeet\.example\.com%2Fevent/,
     )
   })
 })
