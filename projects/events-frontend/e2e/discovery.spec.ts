@@ -694,7 +694,7 @@ test.describe('Domain filter', () => {
 
     await page.goto('/?subdomain=crypto&domain=crypto')
 
-    await expect(page.getByText('Community Links')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Community Links' })).toBeVisible()
     await expect(page.getByRole('link', { name: 'Community Site' })).toHaveAttribute(
       'href',
       'https://crypto.example.com',

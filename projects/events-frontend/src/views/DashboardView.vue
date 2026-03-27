@@ -12,6 +12,7 @@ const auth = useAuthStore()
 const domainsStore = useDomainsStore()
 
 const overview = computed(() => dashboardStore.overview)
+const MAX_COMMUNITY_LINKS = 10
 
 // ── Hub management state ─────────────────────────────────────────────────────
 const hubStyleForms = ref<Record<string, { primaryColor: string; accentColor: string; logoUrl: string; bannerUrl: string }>>({})
@@ -111,12 +112,15 @@ async function handleSaveHubOverview(domainId: string) {
 
 function handleAddHubLink(domainId: string) {
   const form = hubNewLinkForms.value[domainId]
-  if (!form) return
+  if (!form) {
+    hubManageError.value[domainId] = t('dashboard.hubManageError')
+    return
+  }
 
   const title = form.title.trim()
   const url = form.url.trim()
 
-  if (!title || !url || (hubCommunityLinks.value[domainId]?.length ?? 0) >= 10) {
+  if (!title || !url || (hubCommunityLinks.value[domainId]?.length ?? 0) >= MAX_COMMUNITY_LINKS) {
     return
   }
 
@@ -639,7 +643,7 @@ function providerLabel(provider: string): string {
             </div>
 
             <div
-              v-if="(hubCommunityLinks[hub.id]?.length ?? 0) < 10"
+              v-if="(hubCommunityLinks[hub.id]?.length ?? 0) < MAX_COMMUNITY_LINKS"
               class="hub-add-community-link-form"
             >
               <label class="form-field">

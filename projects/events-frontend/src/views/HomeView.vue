@@ -290,8 +290,8 @@ const emptyStateMessage = computed(() => {
               </a>
             </div>
             <div v-if="activeDomain.links?.length" class="subdomain-community-links">
-              <span class="subdomain-community-links-label">{{ t('category.communityLinks') }}</span>
-              <ul class="subdomain-community-links-list" :aria-label="t('category.communityLinks')">
+              <h2 class="subdomain-community-links-label">{{ t('category.communityLinks') }}</h2>
+              <ul class="subdomain-community-links-list">
                 <li
                   v-for="link in activeDomain.links"
                   :key="link.id"
