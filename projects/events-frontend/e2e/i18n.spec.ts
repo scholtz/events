@@ -450,3 +450,34 @@ test.describe('Localized category landing page', () => {
     await expect(page.getByRole('heading', { name: /Veranstaltungen/ })).toBeVisible()
   })
 })
+
+test.describe('Localized hub context card on event detail', () => {
+  test('hub context heading is localized in Slovak', async ({ page }) => {
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-i18n-sk',
+      slug: 'ev-i18n-sk',
+      domainId: domain.id,
+      domain: { id: domain.id, name: domain.name, slug: domain.slug, subdomain: domain.subdomain, description: 'Tech events' },
+    })
+    setupMockApi(page, { domains: [domain], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+    await page.getByRole('combobox', { name: 'Language' }).selectOption('sk')
+    await expect(page.locator('.hub-context').getByRole('heading', { name: 'O tomto centre' })).toBeVisible()
+  })
+
+  test('hub context explore link is localized in German', async ({ page }) => {
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-i18n-de',
+      slug: 'ev-i18n-de',
+      domainId: domain.id,
+      domain: { id: domain.id, name: domain.name, slug: domain.slug, subdomain: domain.subdomain, description: 'Tech events' },
+    })
+    setupMockApi(page, { domains: [domain], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+    await page.getByRole('combobox', { name: 'Language' }).selectOption('de')
+    await expect(page.locator('.hub-context').getByRole('heading', { name: 'Über diesen Hub' })).toBeVisible()
+    await expect(page.locator('.hub-context-link')).toContainText('Veranstaltungen erkunden')
+  })
+})

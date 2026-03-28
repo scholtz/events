@@ -74,7 +74,7 @@ export type MockEvent = {
   priceAmount: number | null
   currencyCode: string
   domainId: string
-  domain: { id: string; name: string; slug: string; subdomain: string; description?: string | null; logoUrl?: string | null; primaryColor?: string | null; accentColor?: string | null; overviewContent?: string | null }
+  domain: { id: string; name: string; slug: string; subdomain: string; description?: string | null; logoUrl?: string | null; primaryColor?: string | null; accentColor?: string | null; overviewContent?: string | null; curatorCredit?: string | null }
   submittedByUserId: string
   submittedBy: { displayName: string }
   reviewedByUserId: string | null
