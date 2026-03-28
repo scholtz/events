@@ -423,6 +423,7 @@ export default {
     hubSaved: '\u2713 Gespeichert',
     hubViewHub: 'Hub anzeigen',
     hubManageError: 'Speichern fehlgeschlagen. Bitte versuchen Sie es erneut.',
+    hubColorError: 'Farbe muss ein gültiger Hex-Wert sein, z.B. #137fec oder #fff.',
   },
 
   // ── Portfolio (Meine Events) ───────────────────────────────────────────────

@@ -433,6 +433,7 @@ export default {
     hubSaved: '\u2713 Saved',
     hubViewHub: 'View hub',
     hubManageError: 'Failed to save. Please try again.',
+    hubColorError: 'Color must be a valid hex value, e.g. #137fec or #fff.',
   },
 
   // ── Portfolio (My Events) ──────────────────────────────────────────────────
