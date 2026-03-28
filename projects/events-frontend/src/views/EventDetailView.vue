@@ -280,6 +280,11 @@ function handleDownloadIcs() {
   }
 }
 
+const calendarInputValid = computed(() => {
+  if (!event.value) return false
+  return validateCalendarInput(eventToCalendarInput(event.value)).valid
+})
+
 const googleCalendarUrl = computed(() =>
   event.value ? buildGoogleCalendarUrl(eventToCalendarInput(event.value)) : '#',
 )
@@ -499,13 +504,14 @@ function domainHostDisplay(event: {
                   ref="calendarBtnRef"
                   class="btn btn-outline calendar-btn"
                   :aria-expanded="calendarMenuOpen"
-                  aria-haspopup="menu"
-                  :aria-label="calendarError ? t('eventDetail.calendarDownloadFailed') : calendarAdded ? t('eventDetail.calendarAdded') : t('eventDetail.addToCalendar')"
-                  @click="toggleCalendarMenu"
+                  :aria-haspopup="calendarInputValid ? 'menu' : undefined"
+                  :disabled="!calendarInputValid"
+                  :aria-label="!calendarInputValid ? t('eventDetail.calendarUnavailable') : calendarError ? t('eventDetail.calendarDownloadFailed') : calendarAdded ? t('eventDetail.calendarAdded') : t('eventDetail.addToCalendar')"
+                  @click="calendarInputValid && toggleCalendarMenu()"
                 >
                   <span aria-hidden="true">📅</span>
-                  {{ calendarError ? t('eventDetail.calendarDownloadFailed') : calendarAdded ? t('eventDetail.calendarAdded') : t('eventDetail.addToCalendar') }}
-                  <span aria-hidden="true" class="chevron">▾</span>
+                  {{ !calendarInputValid ? t('eventDetail.calendarUnavailable') : calendarError ? t('eventDetail.calendarDownloadFailed') : calendarAdded ? t('eventDetail.calendarAdded') : t('eventDetail.addToCalendar') }}
+                  <span v-if="calendarInputValid" aria-hidden="true" class="chevron">▾</span>
                 </button>
 
                 <div

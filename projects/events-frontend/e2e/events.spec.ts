@@ -1507,6 +1507,49 @@ test.describe('Event detail page', () => {
       /https%3A%2F%2Fmeet\.example\.com%2Fevent/,
     )
   })
+
+  test('calendar button is disabled with unavailable message when event dates are invalid', async ({
+    page,
+  }) => {
+    const invalidDateEvent = makeApprovedEvent({
+      id: 'ev-invalid-date',
+      name: 'Invalid Date Event',
+      slug: 'invalid-date-event',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [] })
+    // Override EventBySlug to return an event with an invalid start date
+    await page.route('**/graphql', async (route) => {
+      const body = route.request().postData() ?? ''
+      if (body.includes('EventBySlug')) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: {
+              eventBySlug: {
+                ...invalidDateEvent,
+                startsAtUtc: 'invalid-date',
+                endsAtUtc: null,
+                interestedCount: 0,
+                communityGroups: [],
+              },
+            },
+          }),
+        })
+        return
+      }
+      await route.fallback()
+    })
+    await page.goto(`/event/${invalidDateEvent.slug}`)
+    await expect(page.getByText(invalidDateEvent.name)).toBeVisible()
+    const calBtn = page.locator('.calendar-btn')
+    await expect(calBtn).toBeVisible()
+    await expect(calBtn).toBeDisabled()
+    await expect(calBtn).toHaveAttribute(
+      'aria-label',
+      /Calendar export unavailable|Kalenderexport nicht verfügbar|Export do kalendára/i,
+    )
+  })
 })
 
 // ---------------------------------------------------------------------------
