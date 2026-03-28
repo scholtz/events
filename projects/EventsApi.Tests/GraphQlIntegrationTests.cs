@@ -8086,6 +8086,317 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task AssociateEventWithGroup_ByEventOwnerEventManager_Succeeds()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid eventManagerId = Guid.Empty;
+        Guid groupId = Guid.Empty;
+        Guid eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var eventManager = CreateUser("cg-evtmgr@example.com", "EventManager");
+            eventManagerId = eventManager.Id;
+            dbContext.Users.Add(eventManager);
+
+            var domain = CreateDomain("Tech", "tech-evtmgr");
+            dbContext.Domains.Add(domain);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "EvtMgr Group",
+                Slug = "evtmgr-group",
+                CreatedByUserId = eventManager.Id,
+            };
+            groupId = group.Id;
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = eventManager.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.EventManager,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+
+            var catalogEvent = CreateEvent("Tech Meetup", "tech-meetup-evtmgr", "Great meetup",
+                "Venue", "Prague", DateTime.UtcNow.AddDays(30), domain, eventManager);
+            eventId = catalogEvent.Id;
+            dbContext.Events.Add(catalogEvent);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, eventManagerId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation Associate($input: CommunityGroupEventInput!) {
+              associateEventWithGroup(input: $input) {
+                id
+                groupId
+                eventId
+              }
+            }
+            """,
+            new { input = new { groupId, eventId } });
+
+        var link = document.RootElement.GetProperty("data").GetProperty("associateEventWithGroup");
+        Assert.Equal(groupId.ToString(), link.GetProperty("groupId").GetString());
+        Assert.Equal(eventId.ToString(), link.GetProperty("eventId").GetString());
+    }
+
+    [Fact]
+    public async Task AssociateEventWithGroup_RegularMember_ReturnsForbidden()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid memberId = Guid.Empty;
+        Guid ownerId = Guid.Empty;
+        Guid groupId = Guid.Empty;
+        Guid eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var owner = CreateUser("cg-assoc-owner2@example.com", "Owner");
+            ownerId = owner.Id;
+            dbContext.Users.Add(owner);
+
+            var member = CreateUser("cg-assoc-member@example.com", "RegularMember");
+            memberId = member.Id;
+            dbContext.Users.Add(member);
+
+            var domain = CreateDomain("Tech", "tech-member-assoc");
+            dbContext.Domains.Add(domain);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Member Test Group",
+                Slug = "member-test-group",
+                CreatedByUserId = owner.Id,
+            };
+            groupId = group.Id;
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = member.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Member,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+
+            var catalogEvent = CreateEvent("Member Event", "member-event", "Event",
+                "Venue", "Prague", DateTime.UtcNow.AddDays(30), domain, owner);
+            eventId = catalogEvent.Id;
+            dbContext.Events.Add(catalogEvent);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, memberId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation Associate($input: CommunityGroupEventInput!) {
+                  associateEventWithGroup(input: $input) { id }
+                }
+                """,
+            variables = new { input = new { groupId, eventId } }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        Assert.Contains("FORBIDDEN", errors.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task LeaveCommunityGroup_LastAdmin_ReturnsError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid groupId = Guid.Empty;
+        Guid membershipId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("cg-lastleave@example.com", "LastLeaveAdmin");
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "LastLeave Group",
+                Slug = "lastleave-group",
+                CreatedByUserId = admin.Id,
+            };
+            groupId = group.Id;
+            dbContext.CommunityGroups.Add(group);
+
+            var membership = new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = admin.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            };
+            membershipId = membership.Id;
+            dbContext.CommunityMemberships.Add(membership);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation Leave($groupId: UUID!) {
+                  leaveCommunityGroup(groupId: $groupId)
+                }
+                """,
+            variables = new { groupId }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out _),
+            "Expected an error when last admin tries to leave the group.");
+    }
+
+    [Fact]
+    public async Task DisassociateEventFromGroup_ByGroupAdmin_Succeeds()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid groupId = Guid.Empty;
+        Guid eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("cg-disassoc@example.com", "DisassocAdmin");
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var domain = CreateDomain("Tech", "tech-disassoc");
+            dbContext.Domains.Add(domain);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Disassoc Group",
+                Slug = "disassoc-group",
+                CreatedByUserId = admin.Id,
+            };
+            groupId = group.Id;
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = admin.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+
+            var catalogEvent = CreateEvent("Disassoc Event", "disassoc-event", "Event",
+                "Venue", "Prague", DateTime.UtcNow.AddDays(30), domain, admin);
+            eventId = catalogEvent.Id;
+            dbContext.Events.Add(catalogEvent);
+
+            dbContext.CommunityGroupEvents.Add(new EventsApi.Data.Entities.CommunityGroupEvent
+            {
+                GroupId = group.Id,
+                EventId = catalogEvent.Id,
+                AddedByUserId = admin.Id,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation Disassociate($input: CommunityGroupEventInput!) {
+              disassociateEventFromGroup(input: $input)
+            }
+            """,
+            new { input = new { groupId, eventId } });
+
+        Assert.True(document.RootElement.GetProperty("data").GetProperty("disassociateEventFromGroup").GetBoolean());
+    }
+
+    [Fact]
+    public async Task DisassociateEventFromGroup_NonAdmin_ReturnsForbidden()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid memberId = Guid.Empty;
+        Guid adminId = Guid.Empty;
+        Guid groupId = Guid.Empty;
+        Guid eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("cg-disassoc-admin@example.com", "DisassocAdmin2");
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var member = CreateUser("cg-disassoc-member@example.com", "NonAdminMember");
+            memberId = member.Id;
+            dbContext.Users.Add(member);
+
+            var domain = CreateDomain("Tech", "tech-disassoc2");
+            dbContext.Domains.Add(domain);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Disassoc2 Group",
+                Slug = "disassoc2-group",
+                CreatedByUserId = admin.Id,
+            };
+            groupId = group.Id;
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = member.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Member,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+
+            var catalogEvent = CreateEvent("Disassoc2 Event", "disassoc2-event", "Event",
+                "Venue", "Prague", DateTime.UtcNow.AddDays(30), domain, admin);
+            eventId = catalogEvent.Id;
+            dbContext.Events.Add(catalogEvent);
+
+            dbContext.CommunityGroupEvents.Add(new EventsApi.Data.Entities.CommunityGroupEvent
+            {
+                GroupId = group.Id,
+                EventId = catalogEvent.Id,
+                AddedByUserId = admin.Id,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, memberId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation Disassociate($input: CommunityGroupEventInput!) {
+                  disassociateEventFromGroup(input: $input)
+                }
+                """,
+            variables = new { input = new { groupId, eventId } }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        Assert.Contains("FORBIDDEN", errors.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task MyCommunityMemberships_Unauthenticated_ReturnsAuthError()
     {
         await using var factory = new EventsApiWebApplicationFactory();
