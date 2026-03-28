@@ -627,7 +627,7 @@ function eventRecommendationClass(item: EventAnalyticsItem): string {
                     v-model="hubOverviewForms[hub.id]!.whatBelongsHere"
                     class="form-input form-textarea"
                     rows="3"
-                    maxlength="2000"
+                    maxlength="1000"
                     placeholder="Describe what types of events belong in this hub…"
                   ></textarea>
                 </label>
@@ -637,7 +637,7 @@ function eventRecommendationClass(item: EventAnalyticsItem): string {
                     v-model="hubOverviewForms[hub.id]!.submitEventCta"
                     class="form-input"
                     type="text"
-                    maxlength="200"
+                    maxlength="300"
                     placeholder="e.g. Organizing a blockchain event? Submit it here."
                   />
                 </label>
