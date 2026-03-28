@@ -727,3 +727,87 @@ describe('timezone-aware Google Calendar URL', () => {
     expect(decodeURIComponent(url)).toContain('ctz=America/New_York')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Canonical platform URL guarantee
+// ---------------------------------------------------------------------------
+
+describe('canonical platform URL in calendar exports', () => {
+  it('Google Calendar sprop contains platform detail URL, not external eventUrl', () => {
+    // The exported calendar URL must point to /event/:slug (the platform detail page),
+    // not the external join/registration URL supplied via eventUrl.
+    const event = makeEvent({
+      slug: 'my-conference',
+      eventUrl: 'https://external-reg.example.com/buy-tickets',
+      attendanceMode: 'IN_PERSON',
+    })
+    const input = eventToCalendarInput(event, { canonicalBaseUrl: testBaseUrl })
+    const url = buildGoogleCalendarUrl(input)
+    const decoded = decodeURIComponent(url)
+    expect(decoded).toContain('/event/my-conference')
+    expect(decoded).not.toContain('external-reg.example.com')
+  })
+
+  it('Outlook link body contains platform detail URL, not external eventUrl', () => {
+    const event = makeEvent({
+      slug: 'my-workshop',
+      eventUrl: 'https://registration-portal.example.com/workshop',
+      attendanceMode: 'IN_PERSON',
+    })
+    const input = eventToCalendarInput(event, { canonicalBaseUrl: testBaseUrl })
+    const url = buildOutlookCalendarUrl(input)
+    const decoded = decodeURIComponent(url)
+    expect(decoded).toContain('/event/my-workshop')
+    expect(decoded).not.toContain('registration-portal.example.com')
+  })
+
+  it('ICS DESCRIPTION contains platform detail URL, not external eventUrl', () => {
+    const event = makeEvent({
+      slug: 'art-expo',
+      eventUrl: 'https://external-art-site.example.com/expo',
+      attendanceMode: 'IN_PERSON',
+    })
+    const input = eventToCalendarInput(event, { canonicalBaseUrl: testBaseUrl })
+    const ics = buildIcsContent(input)
+    expect(ics).toContain('/event/art-expo')
+    expect(ics).not.toContain('external-art-site.example.com')
+  })
+
+  it('online event: Google Calendar location is the join URL, but URL field is the platform URL', () => {
+    // ONLINE events use eventUrl as LOCATION (join link inside the calendar entry),
+    // but the canonical platform URL still appears as the event page reference.
+    const event = makeEvent({
+      slug: 'online-webinar',
+      eventUrl: 'https://zoom.example.com/join/webinar',
+      attendanceMode: 'ONLINE',
+    })
+    const input = eventToCalendarInput(event, { canonicalBaseUrl: testBaseUrl })
+
+    // location = join URL for online events
+    expect(input.location).toBe('https://zoom.example.com/join/webinar')
+    // url (the canonical event page) = platform detail URL
+    expect(input.url).toBe('https://events.example.com/event/online-webinar')
+
+    // ICS LOCATION = join URL, URL = platform URL
+    const ics = buildIcsContent(input)
+    expect(ics).toContain('LOCATION:https://zoom.example.com/join/webinar')
+    expect(ics).toContain('URL:https://events.example.com/event/online-webinar')
+  })
+
+  it('hybrid event: join URL appears in description, platform URL is the event url field', () => {
+    const event = makeEvent({
+      slug: 'hybrid-summit',
+      eventUrl: 'https://stream.example.com/join',
+      attendanceMode: 'HYBRID',
+      venueName: 'Convention Center',
+      city: 'Berlin',
+    })
+    const input = eventToCalendarInput(event, { canonicalBaseUrl: testBaseUrl })
+
+    // url = canonical platform URL
+    expect(input.url).toBe('https://events.example.com/event/hybrid-summit')
+    // description contains both join link and platform URL
+    expect(input.description).toContain('Join online: https://stream.example.com/join')
+    expect(input.description).toContain('Event page: https://events.example.com/event/hybrid-summit')
+  })
+})

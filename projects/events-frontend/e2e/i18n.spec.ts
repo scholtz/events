@@ -481,3 +481,87 @@ test.describe('Localized hub context card on event detail', () => {
     await expect(page.locator('.hub-context-link')).toContainText('Veranstaltungen erkunden')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Calendar localization
+// ---------------------------------------------------------------------------
+
+test.describe('Calendar action localization', () => {
+  test('add to calendar button is localized in German', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-cal-de',
+      name: 'German Calendar Event',
+      slug: 'german-calendar-event',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+
+    await page.goto('/')
+    await page.locator('#language-select').selectOption('de')
+    await page.goto(`/event/${event.slug}`)
+
+    // Button label should be in German
+    await expect(page.getByRole('button', { name: /Zum Kalender hinzufügen/i })).toBeVisible()
+  })
+
+  test('calendar menu aria-label is localized in German', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-cal-menu-de',
+      name: 'German Calendar Menu Event',
+      slug: 'german-calendar-menu-event',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+
+    await page.goto('/')
+    await page.locator('#language-select').selectOption('de')
+    await page.goto(`/event/${event.slug}`)
+
+    await page.getByRole('button', { name: /Zum Kalender hinzufügen/i }).click()
+
+    const menu = page.locator('[role="menu"]')
+    await expect(menu).toBeVisible()
+    await expect(menu).toHaveAttribute('aria-label', 'Kalenderoptionen')
+  })
+
+  test('calendar menu provider labels are localized in German', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-cal-providers-de',
+      name: 'German Providers Event',
+      slug: 'german-providers-event',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+
+    await page.goto('/')
+    await page.locator('#language-select').selectOption('de')
+    await page.goto(`/event/${event.slug}`)
+
+    await page.getByRole('button', { name: /Zum Kalender hinzufügen/i }).click()
+
+    await expect(page.getByRole('menuitem', { name: /Google Kalender/i })).toBeVisible()
+    await expect(page.getByRole('menuitem', { name: /Outlook/i })).toBeVisible()
+  })
+
+  test('calendar KPI card label is localized in German on organizer dashboard', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const event = makeApprovedEvent({
+      id: 'ev-cal-kpi-de',
+      slug: 'cal-kpi-de-event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+    setupMockApi(page, { users: [user], domains: [makeTechDomain()], events: [event] })
+
+    await loginAs(page, user)
+    await page.locator('#language-select').selectOption('de')
+
+    // German 'Calendar Adds' KPI label should appear on the dashboard
+    await expect(page.locator('.stat-label', { hasText: 'Kalendereinträge' })).toBeVisible()
+    // Helper text should also be in German
+    await expect(
+      page.locator('.stat-helper', {
+        hasText: 'Alle bisherigen Kalenderexporte Ihrer veröffentlichten Veranstaltungen',
+      }),
+    ).toBeVisible()
+  })
+})

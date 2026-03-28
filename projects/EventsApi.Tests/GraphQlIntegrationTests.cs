@@ -1555,6 +1555,92 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal(1, analytics2.GetProperty("totalCalendarActions").GetInt32());
     }
 
+    [Fact]
+    public async Task MyDashboard_CalendarAnalytics_Unauthenticated_ReturnsAuthError()
+    {
+        // myDashboard (including calendar analytics) must be protected — unauthenticated
+        // requests must receive AUTH_NOT_AUTHORIZED, not empty data.
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        using var client = factory.CreateClient();
+        // No Authorization header set — anonymous request
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                query MyDashboard {
+                  myDashboard {
+                    totalCalendarActions
+                    eventAnalytics { eventName totalCalendarActions }
+                  }
+                }
+                """
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        var errorMessage = errors.ToString();
+        Assert.True(
+            errorMessage.Contains("AUTH_NOT_AUTHORIZED", StringComparison.OrdinalIgnoreCase)
+            || errorMessage.Contains("not authorized", StringComparison.OrdinalIgnoreCase)
+            || errorMessage.Contains("unauthorized", StringComparison.OrdinalIgnoreCase),
+            $"Expected auth error for unauthenticated calendar analytics access but got: {errorMessage}");
+    }
+
+    [Fact]
+    public async Task TrackCalendarAction_NoPersonalDataStored_PrivacySafe()
+    {
+        // Verifies the aggregate-only privacy guarantee: the stored CalendarAnalyticsAction
+        // contains no user identity (no user ID, email, or display name).
+        await using var factory = new EventsApiWebApplicationFactory();
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("privacy-check@example.com", "Privacy Check User");
+            var domain = CreateDomain("Tech", "privacy-check-tech");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent("Privacy Event", "privacy-event-cal", "Description.",
+                "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, user);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation TrackCalendarAction($input: TrackCalendarActionInput!) {
+                  trackCalendarAction(input: $input)
+                }
+                """,
+            variables = new { input = new { eventId, provider = "ICS" } }
+        });
+
+        response.EnsureSuccessStatusCode();
+        var rawJson = await response.Content.ReadAsStringAsync();
+
+        // The response must not leak any attendee identity fields
+        Assert.DoesNotContain("privacy-check@example.com", rawJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Privacy Check User", rawJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("userId", rawJson, StringComparison.OrdinalIgnoreCase);
+
+        // The stored action itself must have no user identity
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var action = Assert.Single(db.CalendarAnalyticsActions.Where(a => a.EventId == eventId));
+        Assert.Equal(eventId, action.EventId);
+        Assert.Equal("ICS", action.Provider);
+        Assert.NotEqual(Guid.Empty, action.Id);
+        // CalendarAnalyticsAction has no UserId property — confirm by checking the entity fields
+        var actionType = action.GetType();
+        Assert.Null(actionType.GetProperty("UserId"));
+        Assert.Null(actionType.GetProperty("UserEmail"));
+    }
+
     private static async Task SeedAsync(EventsApiWebApplicationFactory factory, Action<AppDbContext> seedAction)
     {
         using var scope = factory.Services.CreateScope();
