@@ -704,7 +704,16 @@ export default {
     signIn: 'Sign in',
     errorAdmin: 'Failed to save. Please try again.',
     associateEvent: 'Add event to community',
+    associatingEvent: 'Adding\u2026',
+    associateEventSuccess: '\u2713 Event added to community',
     disassociateEvent: 'Remove from community',
+    manageEventsHeading: 'Manage Community Events',
+    manageEventsDescription: 'Link your published events to this community by entering the event URL slug.',
+    eventSlugLabel: 'Event slug',
+    eventSlugPlaceholder: 'e.g. my-event-2026',
+    errorAssociateEvent: 'Unable to add event. Make sure the slug is correct and you own the event.',
+    errorDisassociateEvent: 'Unable to remove event from community.',
+    errorEventNotFound: 'Event not found. Check the slug and try again.',
     // External source claims
     externalSourcesHeading: 'Connected External Sources',
     externalSourcesDescription:

@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
 import { useCommunitiesStore } from '@/stores/communities'
 import { useAuthStore } from '@/stores/auth'
+import { useEventsStore } from '@/stores/events'
 import EventCard from '@/components/events/EventCard.vue'
 import type {
   CommunityGroupDetail,
@@ -19,6 +20,7 @@ import type {
 const { t } = useI18n()
 const route = useRoute()
 const communitiesStore = useCommunitiesStore()
+const eventsStore = useEventsStore()
 const auth = useAuthStore()
 
 const detail = ref<CommunityGroupDetail | null>(null)
@@ -62,9 +64,21 @@ const isAdmin = computed(
     myMembership.value?.role === 'ADMIN',
 )
 
+const isEventManager = computed(
+  () => myMembership.value?.status === 'ACTIVE' && myMembership.value?.role === 'EVENT_MANAGER',
+)
+
+const isAdminOrEventManager = computed(() => isAdmin.value || isEventManager.value)
+
 const isMember = computed(() => myMembership.value?.status === 'ACTIVE')
 const isPending = computed(() => myMembership.value?.status === 'PENDING')
 const isRejected = computed(() => myMembership.value?.status === 'REJECTED')
+
+// Event association state
+const associateEventSlug = ref('')
+const associatingEvent = ref(false)
+const associateEventError = ref<string | null>(null)
+const associateEventSuccess = ref<string | null>(null)
 
 async function load() {
   loading.value = true
@@ -194,8 +208,43 @@ async function handleRevoke(membershipId: string) {
   }
 }
 
+async function handleAssociateEvent() {
+  if (!detail.value || !associateEventSlug.value.trim()) return
+  associatingEvent.value = true
+  associateEventError.value = null
+  associateEventSuccess.value = null
+  try {
+    const event = await eventsStore.fetchEventBySlug(associateEventSlug.value.trim())
+    if (!event) {
+      associateEventError.value = t('community.errorEventNotFound')
+      return
+    }
+    await communitiesStore.associateEvent(detail.value.group.id, event.id)
+    associateEventSlug.value = ''
+    associateEventSuccess.value = t('community.associateEventSuccess')
+    // Refresh events list
+    detail.value = await communitiesStore.fetchGroupBySlug(slug.value)
+  } catch (err) {
+    associateEventError.value = err instanceof Error ? err.message : t('community.errorAssociateEvent')
+  } finally {
+    associatingEvent.value = false
+  }
+}
+
+async function handleDisassociateEvent(eventId: string) {
+  if (!detail.value) return
+  try {
+    await communitiesStore.disassociateEvent(detail.value.group.id, eventId)
+    detail.value = {
+      ...detail.value,
+      events: detail.value.events.filter((e) => e.id !== eventId),
+    }
+  } catch (err) {
+    actionError.value = err instanceof Error ? err.message : t('community.errorDisassociateEvent')
+  }
+}
+
 async function handleAddSource() {
-  if (!detail.value || !newSourceUrl.value.trim()) return
   addingSource.value = true
   sourceError.value = null
   try {
@@ -423,12 +472,52 @@ function memberCountText(count: number): string {
               <p class="empty-desc">{{ t('community.noEventsDescription') }}</p>
             </div>
             <div v-else class="events-grid">
-              <EventCard
+              <div
                 v-for="event in detail.events"
                 :key="event.id"
-                :event="event"
-              />
+                class="event-card-wrapper"
+              >
+                <EventCard :event="event" />
+                <button
+                  v-if="isAdmin"
+                  class="btn btn-sm btn-danger disassociate-btn"
+                  :aria-label="t('community.disassociateEvent')"
+                  @click="handleDisassociateEvent(event.id)"
+                >
+                  {{ t('community.disassociateEvent') }}
+                </button>
+              </div>
             </div>
+          </section>
+
+          <!-- Manage events section: visible to admins and event managers -->
+          <section v-if="isAdminOrEventManager" class="admin-section manage-events-section">
+            <h2 class="section-heading">{{ t('community.manageEventsHeading') }}</h2>
+            <p class="section-desc">{{ t('community.manageEventsDescription') }}</p>
+            <div v-if="associateEventError" class="error-banner">{{ associateEventError }}</div>
+            <p v-if="associateEventSuccess" class="success-msg">{{ associateEventSuccess }}</p>
+            <form class="associate-event-form" @submit.prevent="handleAssociateEvent">
+              <label for="associate-event-slug" class="field-label">
+                {{ t('community.eventSlugLabel') }}
+              </label>
+              <div class="associate-event-row">
+                <input
+                  id="associate-event-slug"
+                  v-model="associateEventSlug"
+                  class="input"
+                  type="text"
+                  :placeholder="t('community.eventSlugPlaceholder')"
+                  :disabled="associatingEvent"
+                />
+                <button
+                  type="submit"
+                  class="btn btn-primary"
+                  :disabled="associatingEvent || !associateEventSlug.trim()"
+                >
+                  {{ associatingEvent ? t('community.associatingEvent') : t('community.associateEvent') }}
+                </button>
+              </div>
+            </form>
           </section>
 
           <!-- Admin panel -->
