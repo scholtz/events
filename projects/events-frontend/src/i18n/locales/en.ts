@@ -397,6 +397,22 @@ export default {
     noRecentAdds: 'No recent adds',
     guidanceNoCalendarAdds:
       'Attendees are saving your events but none have added them to their calendar yet. Make sure the date, time, and location are prominent and easy to find.',
+    guidanceNoSavesTitle: 'No saves yet.',
+    guidanceNoSaves:
+      'Share the event link, improve the title or description, or make sure the date and venue are clear to attract interest.',
+    firstEventWelcomeTitle: 'Your first event is submitted!',
+    firstEventWelcome:
+      'Once it is published and attendees start saving or adding it to their calendar, engagement data will appear here.',
+    recommendationRejected:
+      'This event was rejected. Review the moderator feedback below and update your listing before resubmitting.',
+    recommendationDraft:
+      'This event is a draft and not yet visible to the public. Submit it for review when it is ready.',
+    recommendationPending:
+      'Your event is awaiting moderator review. No action is needed right now — you will be notified once it is approved or returned with feedback.',
+    recommendationPublishedNoSaves:
+      'No saves yet for this event. Try sharing the link, improving the title clarity, or strengthening the description and venue details.',
+    adminNotesFeedback: 'Moderator feedback:',
+    metricTimeframeAllTime: 'All-time total',
     hubManagementTitle: 'Hub Management',
     hubManagementDescription:
       'You are an administrator of the following community hubs. Update branding and content to shape how each hub appears to visitors.',

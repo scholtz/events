@@ -5,6 +5,9 @@ import {
   makeContributorUser,
   makeTechDomain,
   makeApprovedEvent,
+  makePendingEvent,
+  makeRejectedEvent,
+  makeDraftEvent,
   loginAs,
   type MockFavoriteEvent,
   type MockCalendarAction,
@@ -177,9 +180,11 @@ test.describe('Organizer analytics dashboard', () => {
     await loginAs(page, user)
     await page.waitForURL(/\/dashboard$/)
 
-    // Low-data guidance should appear
-    await expect(page.getByText(/No saves yet/)).toBeVisible()
-    await expect(page.getByText(/Share your event link/)).toBeVisible()
+    // Low-data guidance section should appear (scoped to avoid matching per-event recommendation rows)
+    const guidanceSection = page.locator('.low-data-guidance')
+    await expect(guidanceSection).toBeVisible()
+    await expect(guidanceSection).toContainText(/No saves yet/)
+    await expect(guidanceSection).toContainText(/Share the event link/)
   })
 
   test('shows empty state when organizer has no events', async ({ page }) => {
@@ -938,5 +943,194 @@ test.describe('Hub Management section in dashboard', () => {
       'href',
       'https://discord.gg/tech',
     )
+  })
+})
+
+// ── Per-event recommendations and guidance tests ──────────────────────────────
+
+test.describe('Per-event recommendations and guidance', () => {
+  test('shows recommendation for rejected event with admin notes', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeRejectedEvent({
+      id: 'ev-rej-rec-1',
+      slug: 'rejected-rec-event',
+      name: 'Rejected Rec Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+      adminNotes: 'Please add more venue details.',
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Recommendation row for rejected event should be visible
+    await expect(page.locator('.event-recommendation-row.rec--rejected')).toBeVisible()
+    await expect(page.locator('.rec-text')).toContainText(/rejected/)
+    // Admin notes should be shown inline
+    await expect(page.locator('.rec-admin-notes')).toContainText('Please add more venue details.')
+  })
+
+  test('shows recommendation for draft event', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeDraftEvent({
+      id: 'ev-draft-rec-1',
+      slug: 'draft-rec-event',
+      name: 'Draft Rec Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Recommendation row for draft event should be visible
+    await expect(page.locator('.event-recommendation-row.rec--draft')).toBeVisible()
+    await expect(page.locator('.rec-text')).toContainText(/draft/)
+  })
+
+  test('shows recommendation for pending approval event', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makePendingEvent({
+      id: 'ev-pend-rec-1',
+      slug: 'pending-rec-event',
+      name: 'Pending Rec Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Recommendation row for pending event should be visible
+    await expect(page.locator('.event-recommendation-row.rec--pending')).toBeVisible()
+    await expect(page.locator('.rec-text')).toContainText(/awaiting moderator review/)
+  })
+
+  test('shows per-event recommendation for published event with no saves', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-pub-nosaves-1',
+      slug: 'pub-nosaves-event',
+      name: 'Published No Saves Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Per-event guidance recommendation for published event with zero saves
+    await expect(page.locator('.event-recommendation-row.rec--guidance')).toBeVisible()
+    await expect(page.locator('.rec-text')).toContainText(/No saves yet/)
+  })
+
+  test('does not show per-event recommendation for published event that already has saves', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-pub-saves-1',
+      slug: 'pub-saves-event',
+      name: 'Published With Saves Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    const state = setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    state.favoriteEvents.push({
+      id: 'fav-ps-1',
+      userId: 'u1',
+      eventId: event.id,
+      createdAtUtc: new Date().toISOString(),
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // No per-event recommendation row should appear (event has saves)
+    await expect(page.locator('.event-recommendation-row')).toHaveCount(0)
+  })
+
+  test('shows first-event welcome guidance when organizer has one pending event and no published events', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makePendingEvent({
+      id: 'ev-first-welcome',
+      slug: 'first-welcome-event',
+      name: 'First Welcome Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // First-event welcome card should appear
+    await expect(page.locator('.first-event-welcome')).toBeVisible()
+    await expect(page.locator('.first-event-welcome')).toContainText(/first event/)
+  })
+
+  test('all-time total label is shown on Total Saves and Calendar Adds KPI cards', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-alltime-1',
+      slug: 'alltime-event',
+      name: 'All-time Label Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // "All-time total" label should appear in both the Total Saves and Calendar Adds KPI cards
+    const savesCard = page.locator('.stat-card', {
+      has: page.locator('.stat-label', { hasText: 'Total Saves' }),
+    })
+    await expect(savesCard.locator('.stat-timeframe')).toBeVisible()
+    await expect(savesCard.locator('.stat-timeframe')).toContainText('All-time total')
+
+    const calCard = page.locator('.stat-card', {
+      has: page.locator('.stat-label', { hasText: 'Calendar Adds' }),
+    })
+    await expect(calCard.locator('.stat-timeframe')).toBeVisible()
+    await expect(calCard.locator('.stat-timeframe')).toContainText('All-time total')
+  })
+
+  test('per-event recommendations are visible on mobile viewport', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeRejectedEvent({
+      id: 'ev-mobile-rec-1',
+      slug: 'mobile-rec-event',
+      name: 'Mobile Rec Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+      adminNotes: 'Add more detail.',
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    await page.setViewportSize({ width: 390, height: 844 })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Recommendation row should still be visible on mobile
+    await expect(page.locator('.event-recommendation-row')).toBeVisible()
   })
 })

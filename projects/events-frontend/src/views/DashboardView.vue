@@ -224,6 +224,22 @@ function providerLabel(provider: string): string {
       return provider
   }
 }
+
+function eventRecommendation(item: EventAnalyticsItem): string | null {
+  if (item.status === 'REJECTED') return t('dashboard.recommendationRejected')
+  if (item.status === 'DRAFT') return t('dashboard.recommendationDraft')
+  if (item.status === 'PENDING_APPROVAL') return t('dashboard.recommendationPending')
+  if (item.status === 'PUBLISHED' && item.totalInterestedCount === 0)
+    return t('dashboard.recommendationPublishedNoSaves')
+  return null
+}
+
+function eventRecommendationClass(item: EventAnalyticsItem): string {
+  if (item.status === 'REJECTED') return 'rec--rejected'
+  if (item.status === 'DRAFT') return 'rec--draft'
+  if (item.status === 'PENDING_APPROVAL') return 'rec--pending'
+  return 'rec--guidance'
+}
 </script>
 
 <template>
@@ -306,6 +322,7 @@ function providerLabel(provider: string): string {
               <div class="stat-number stat-number--primary">{{ overview.totalInterestedCount }}</div>
               <div class="stat-label">{{ t('dashboard.totalSaves') }}</div>
               <div class="stat-helper">{{ t('dashboard.totalSavesHelper') }}</div>
+              <div class="stat-timeframe">{{ t('dashboard.metricTimeframeAllTime') }}</div>
             </div>
           </div>
           <div class="stat-card card">
@@ -314,6 +331,7 @@ function providerLabel(provider: string): string {
               <div class="stat-number stat-number--calendar">{{ overview.totalCalendarActions }}</div>
               <div class="stat-label">{{ t('dashboard.calendarAdds') }}</div>
               <div class="stat-helper">{{ t('dashboard.calendarAddsHelper') }}</div>
+              <div class="stat-timeframe">{{ t('dashboard.metricTimeframeAllTime') }}</div>
             </div>
           </div>
         </div>
@@ -332,8 +350,22 @@ function providerLabel(provider: string): string {
           <RouterLink to="/submit" class="btn btn-primary">{{ t('dashboard.submitFirstEvent') }}</RouterLink>
         </div>
 
+        <!-- First-event welcome guidance for new organizers -->
+        <div
+          v-else-if="overview.totalSubmittedEvents === 1 && overview.publishedEvents === 0"
+          class="card first-event-welcome"
+          role="note"
+          aria-label="Getting started guidance"
+        >
+          <span class="guidance-icon" aria-hidden="true">🎉</span>
+          <div>
+            <strong>{{ t('dashboard.firstEventWelcomeTitle') }}</strong>
+            <p class="first-event-welcome-detail">{{ t('dashboard.firstEventWelcome') }}</p>
+          </div>
+        </div>
+
         <!-- Events analytics table -->
-        <div v-else class="card events-table" aria-label="Per-event analytics">
+        <div v-if="overview.managedEvents.length" class="card events-table" aria-label="Per-event analytics">
           <table>
             <thead>
               <tr>
@@ -350,76 +382,100 @@ function providerLabel(provider: string): string {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="item in overview.eventAnalytics" :key="item.eventId">
-                <td>
-                  <RouterLink
-                    v-if="item.status === 'PUBLISHED'"
-                    :to="`/event/${item.eventSlug}`"
-                    class="event-link"
-                  >
-                    {{ item.eventName }}
-                  </RouterLink>
-                  <span v-else class="event-name-plain">{{ item.eventName }}</span>
-                </td>
-                <td>
-                  <span class="badge" :class="statusBadgeClass(item.status)">
-                    {{ statusLabel(item.status) }}
-                  </span>
-                </td>
-                <td class="date-cell">{{ formatDate(item.startsAtUtc) }}</td>
-                <td class="col-saves">
-                  <span class="saves-count" :aria-label="`${item.totalInterestedCount} saves`">
-                    {{ item.totalInterestedCount }}
-                  </span>
-                </td>
-                <td class="col-momentum">
-                  <span class="trend-badge" :class="trendClass(item)">
-                    {{ trendLabel(item) }}
-                  </span>
-                </td>
-                <td class="col-calendar">
-                  <span
-                    class="saves-count"
-                    :aria-label="`${item.totalCalendarActions} calendar adds`"
-                  >
-                    {{ item.totalCalendarActions }}
-                  </span>
-                  <span
-                    v-if="item.calendarActionsByProvider.length"
-                    class="provider-breakdown"
-                    :aria-label="item.calendarActionsByProvider.map(p => `${providerLabel(p.provider)}: ${p.count}`).join(', ')"
-                  >
-                    <span
-                      v-for="p in item.calendarActionsByProvider"
-                      :key="p.provider"
-                      class="provider-chip"
-                      :title="`${providerLabel(p.provider)}: ${p.count}`"
+              <template v-for="item in overview.eventAnalytics" :key="item.eventId">
+                <tr>
+                  <td>
+                    <RouterLink
+                      v-if="item.status === 'PUBLISHED'"
+                      :to="`/event/${item.eventSlug}`"
+                      class="event-link"
                     >
-                      {{ providerLabel(p.provider) }}&nbsp;{{ p.count }}
+                      {{ item.eventName }}
+                    </RouterLink>
+                    <span v-else class="event-name-plain">{{ item.eventName }}</span>
+                  </td>
+                  <td>
+                    <span class="badge" :class="statusBadgeClass(item.status)">
+                      {{ statusLabel(item.status) }}
                     </span>
-                  </span>
-                </td>
-                <td class="col-cal-trend">
-                  <span class="trend-badge" :class="calendarTrendClass(item)">
-                    {{ calendarTrendLabel(item) }}
-                  </span>
-                </td>
-                <td class="actions-cell">
-                  <RouterLink
-                    v-if="item.status === 'PUBLISHED'"
-                    :to="`/event/${item.eventSlug}`"
-                    class="btn btn-outline btn-sm"
-                  >
-                    {{ t('dashboard.viewDetails') }}
-                  </RouterLink>
-                  <RouterLink
-                    :to="`/edit/${item.eventId}`"
-                    class="btn btn-outline btn-sm btn-edit"
-                  >
-                    {{ t('dashboard.editEvent') }}
-                  </RouterLink>
-                </td>
-              </tr>
+                  </td>
+                  <td class="date-cell">{{ formatDate(item.startsAtUtc) }}</td>
+                  <td class="col-saves">
+                    <span class="saves-count" :aria-label="`${item.totalInterestedCount} saves`">
+                      {{ item.totalInterestedCount }}
+                    </span>
+                  </td>
+                  <td class="col-momentum">
+                    <span class="trend-badge" :class="trendClass(item)">
+                      {{ trendLabel(item) }}
+                    </span>
+                  </td>
+                  <td class="col-calendar">
+                    <span
+                      class="saves-count"
+                      :aria-label="`${item.totalCalendarActions} calendar adds`"
+                    >
+                      {{ item.totalCalendarActions }}
+                    </span>
+                    <span
+                      v-if="item.calendarActionsByProvider.length"
+                      class="provider-breakdown"
+                      :aria-label="item.calendarActionsByProvider.map(p => `${providerLabel(p.provider)}: ${p.count}`).join(', ')"
+                    >
+                      <span
+                        v-for="p in item.calendarActionsByProvider"
+                        :key="p.provider"
+                        class="provider-chip"
+                        :title="`${providerLabel(p.provider)}: ${p.count}`"
+                      >
+                        {{ providerLabel(p.provider) }}&nbsp;{{ p.count }}
+                      </span>
+                    </span>
+                  </td>
+                  <td class="col-cal-trend">
+                    <span class="trend-badge" :class="calendarTrendClass(item)">
+                      {{ calendarTrendLabel(item) }}
+                    </span>
+                  </td>
+                  <td class="actions-cell">
+                    <RouterLink
+                      v-if="item.status === 'PUBLISHED'"
+                      :to="`/event/${item.eventSlug}`"
+                      class="btn btn-outline btn-sm"
+                    >
+                      {{ t('dashboard.viewDetails') }}
+                    </RouterLink>
+                    <RouterLink
+                      :to="`/edit/${item.eventId}`"
+                      class="btn btn-outline btn-sm btn-edit"
+                    >
+                      {{ t('dashboard.editEvent') }}
+                    </RouterLink>
+                  </td>
+                </tr>
+                <!-- Per-event recommendation row -->
+                <tr
+                  v-if="eventRecommendation(item)"
+                  class="event-recommendation-row"
+                  :class="eventRecommendationClass(item)"
+                  role="note"
+                >
+                  <td colspan="8" class="event-recommendation-cell">
+                    <span class="rec-icon" aria-hidden="true">
+                      <template v-if="item.status === 'REJECTED'">⚠️</template>
+                      <template v-else-if="item.status === 'DRAFT'">📝</template>
+                      <template v-else-if="item.status === 'PENDING_APPROVAL'">⏳</template>
+                      <template v-else>💡</template>
+                    </span>
+                    <span class="rec-text">{{ eventRecommendation(item) }}</span>
+                    <!-- Show admin notes inline for rejected events -->
+                    <span v-if="item.status === 'REJECTED' && item.adminNotes" class="rec-admin-notes">
+                      <strong>{{ t('dashboard.adminNotesFeedback') }}</strong>
+                      {{ item.adminNotes }}
+                    </span>
+                  </td>
+                </tr>
+              </template>
             </tbody>
           </table>
 
@@ -432,9 +488,8 @@ function providerLabel(provider: string): string {
           >
             <span class="guidance-icon" aria-hidden="true">💡</span>
             <div>
-              <strong>No saves yet.</strong>
-              Share your event link, improve your description, or ensure the date and venue are
-              clear to attract interest.
+              <strong>{{ t('dashboard.guidanceNoSavesTitle') }}</strong>
+              {{ t('dashboard.guidanceNoSaves') }}
             </div>
           </div>
 
@@ -971,6 +1026,82 @@ tr:hover td {
   font-size: 1.125rem;
   flex-shrink: 0;
   margin-top: 0.05rem;
+}
+
+/* ── First-event welcome card ── */
+.first-event-welcome {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.875rem;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1rem;
+  background: rgba(19, 127, 236, 0.06);
+  border: 1px solid rgba(19, 127, 236, 0.2);
+  font-size: 0.875rem;
+}
+
+.first-event-welcome .guidance-icon {
+  font-size: 1.5rem;
+}
+
+.first-event-welcome-detail {
+  margin: 0.25rem 0 0;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+/* ── Per-event recommendation rows ── */
+.event-recommendation-row td {
+  background: transparent;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.event-recommendation-cell {
+  padding: 0.5rem 1rem 0.625rem !important;
+  font-size: 0.8125rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.rec-icon {
+  flex-shrink: 0;
+  font-size: 0.9375rem;
+}
+
+.rec-text {
+  color: var(--color-text-secondary);
+}
+
+.rec-admin-notes {
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+  opacity: 0.85;
+}
+
+.event-recommendation-row.rec--rejected .rec-text {
+  color: var(--color-danger, #f87171);
+}
+
+.event-recommendation-row.rec--pending .rec-text {
+  color: var(--color-warning, #fbbf24);
+}
+
+.event-recommendation-row.rec--draft .rec-text {
+  color: var(--color-text-secondary);
+}
+
+/* ── Stat timeframe badge ── */
+.stat-timeframe {
+  display: inline-block;
+  margin-top: 0.25rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+  opacity: 0.6;
 }
 
 /* ── Empty states ── */
