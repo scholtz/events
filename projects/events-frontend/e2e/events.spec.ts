@@ -1571,11 +1571,10 @@ test.describe('Event detail page', () => {
     await page.getByRole('button', { name: /Add to calendar/i }).click()
 
     const googleLink = page.getByRole('menuitem', { name: /Google Calendar/i })
-    // The sprop=website: parameter must be the platform event detail URL
-    await expect(googleLink).toHaveAttribute('href', /\/event\/canonical-url-event/)
+    // The sprop=website: parameter must contain the platform event detail URL (URL-encoded in query params)
+    await expect(googleLink).toHaveAttribute('href', /%2Fevent%2Fcanonical-url-event/)
     // Must NOT include the external registration URL
-    const href = (await googleLink.getAttribute('href')) ?? ''
-    expect(decodeURIComponent(href)).not.toContain('external-registration.example.com')
+    await expect(googleLink).not.toHaveAttribute('href', /external-registration\.example\.com/)
   })
 
   test('Outlook link uses platform canonical URL not external eventUrl', async ({ page }) => {
@@ -1594,11 +1593,10 @@ test.describe('Event detail page', () => {
     await page.getByRole('button', { name: /Add to calendar/i }).click()
 
     const outlookLink = page.getByRole('menuitem', { name: /Outlook/i })
-    // The Outlook link body parameter must contain the platform URL
-    await expect(outlookLink).toHaveAttribute('href', /\/event\/outlook-canonical-event/)
+    // The Outlook link body parameter must contain the platform URL (URL-encoded in query params)
+    await expect(outlookLink).toHaveAttribute('href', /%2Fevent%2Foutlook-canonical-event/)
     // Must NOT include the external ticketing URL
-    const href = (await outlookLink.getAttribute('href')) ?? ''
-    expect(decodeURIComponent(href)).not.toContain('external-tickets.example.com')
+    await expect(outlookLink).not.toHaveAttribute('href', /external-tickets\.example\.com/)
   })
 
   test('calendar menu is localized in German', async ({ page }) => {

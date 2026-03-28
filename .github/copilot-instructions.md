@@ -194,6 +194,7 @@ When implementing or modifying add-to-calendar behavior (`useCalendar.ts`, `Even
 - Add or update automated coverage that asserts both:
   - the canonical platform URL is present in exported calendar payloads/deep-links
   - join/location behavior still uses attendee-relevant venue or online URL context where appropriate
+- **When writing E2E tests for Google Calendar and Outlook deep-link `href` attributes**: `URLSearchParams` URL-encodes the canonical path — `/event/slug` becomes `%2Fevent%2Fslug` in the raw `href`. Always use the URL-encoded form in `toHaveAttribute` regex assertions: `await expect(link).toHaveAttribute('href', /%2Fevent%2Fyour-slug/)`. Never use `getAttribute('href')` + decode + string assertion — the ESLint rule `playwright/prefer-web-first-assertions` bans this pattern.
 
 
 ## HotChocolate v15 input type requirements
