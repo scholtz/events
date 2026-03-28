@@ -1775,6 +1775,70 @@ test.describe('Event detail hub context card', () => {
       .evaluate((el) => (el as HTMLElement).getAttribute('style') ?? '')
     expect(hubStyle).toContain('#ff6b35')
   })
+
+  test('hub context card shows curatorCredit as trust signal', async ({ page }) => {
+    const curatedDomain = {
+      id: 'dom-curated',
+      name: 'Blockchain Week',
+      slug: 'blockchain-week',
+      subdomain: 'blockchain',
+      description: null,
+      isActive: true,
+      createdAtUtc: new Date().toISOString(),
+      curatorCredit: 'Prague Blockchain Community',
+    }
+    const event = makeApprovedEvent({
+      id: 'ev-curator',
+      name: 'Blockchain Summit',
+      slug: 'blockchain-summit',
+      domainId: curatedDomain.id,
+      domain: {
+        id: curatedDomain.id,
+        name: curatedDomain.name,
+        slug: curatedDomain.slug,
+        subdomain: curatedDomain.subdomain,
+        curatorCredit: curatedDomain.curatorCredit,
+      },
+    })
+    setupMockApi(page, { domains: [curatedDomain], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await expect(page.locator('.hub-context')).toBeVisible()
+    await expect(page.locator('.hub-context-curator')).toBeVisible()
+    await expect(page.locator('.hub-context-curator')).toContainText('Prague Blockchain Community')
+  })
+
+  test('hub context card does not show curator row when curatorCredit is absent', async ({
+    page,
+  }) => {
+    const plainDomain = {
+      id: 'dom-plain',
+      name: 'Plain Hub',
+      slug: 'plain-hub',
+      subdomain: 'plain',
+      description: 'A plain hub with no curator',
+      isActive: true,
+      createdAtUtc: new Date().toISOString(),
+    }
+    const event = makeApprovedEvent({
+      id: 'ev-plain',
+      name: 'Plain Event',
+      slug: 'plain-event',
+      domainId: plainDomain.id,
+      domain: {
+        id: plainDomain.id,
+        name: plainDomain.name,
+        slug: plainDomain.slug,
+        subdomain: plainDomain.subdomain,
+        description: plainDomain.description,
+      },
+    })
+    setupMockApi(page, { domains: [plainDomain], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await expect(page.locator('.hub-context')).toBeVisible()
+    await expect(page.locator('.hub-context-curator')).toBeHidden()
+  })
 })
 
 test.describe('Event detail — community groups section', () => {

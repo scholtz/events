@@ -671,6 +671,10 @@ function domainHostDisplay(event: {
                   <p v-else-if="hubContextOverviewExcerpt" class="hub-context-description">
                     {{ hubContextOverviewExcerpt }}
                   </p>
+                  <p v-if="event.domain.curatorCredit" class="hub-context-curator">
+                    <span class="hub-context-curator-icon" aria-hidden="true">✓</span>
+                    {{ t('category.curatedBy', { credit: event.domain.curatorCredit }) }}
+                  </p>
                 </div>
               </div>
               <RouterLink
@@ -1090,6 +1094,20 @@ function domainHostDisplay(event: {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+
+.hub-context-curator {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.hub-context-curator-icon {
+  color: var(--hub-accent, var(--color-primary));
+  font-size: 0.875rem;
 }
 
 .hub-context-link {
