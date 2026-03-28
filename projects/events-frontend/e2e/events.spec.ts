@@ -1550,6 +1550,75 @@ test.describe('Event detail page', () => {
       /Calendar export unavailable|Kalenderexport nicht verfügbar|Export do kalendára/i,
     )
   })
+
+  test('Google Calendar link uses platform canonical URL not external eventUrl', async ({
+    page,
+  }) => {
+    // The exported calendar URL must be /event/:slug (the platform detail page),
+    // not the external join/registration URL.
+    const event = makeApprovedEvent({
+      id: 'ev-canonical-url',
+      name: 'Canonical URL Event',
+      slug: 'canonical-url-event',
+      attendanceMode: 'IN_PERSON',
+      eventUrl: 'https://external-registration.example.com/signup',
+      venueName: 'Conference Hall',
+      city: 'Bratislava',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+
+    await page.goto(`/event/${event.slug}`)
+    await page.getByRole('button', { name: /Add to calendar/i }).click()
+
+    const googleLink = page.getByRole('menuitem', { name: /Google Calendar/i })
+    // The sprop=website: parameter must contain the platform event detail URL (URL-encoded in query params)
+    await expect(googleLink).toHaveAttribute('href', /%2Fevent%2Fcanonical-url-event/)
+    // Must NOT include the external registration URL
+    await expect(googleLink).not.toHaveAttribute('href', /external-registration\.example\.com/)
+  })
+
+  test('Outlook link uses platform canonical URL not external eventUrl', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-outlook-canonical',
+      name: 'Outlook Canonical Event',
+      slug: 'outlook-canonical-event',
+      attendanceMode: 'IN_PERSON',
+      eventUrl: 'https://external-tickets.example.com/buy',
+      venueName: 'Expo Centre',
+      city: 'Vienna',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+
+    await page.goto(`/event/${event.slug}`)
+    await page.getByRole('button', { name: /Add to calendar/i }).click()
+
+    const outlookLink = page.getByRole('menuitem', { name: /Outlook/i })
+    // The Outlook link body parameter must contain the platform URL (URL-encoded in query params)
+    await expect(outlookLink).toHaveAttribute('href', /%2Fevent%2Foutlook-canonical-event/)
+    // Must NOT include the external ticketing URL
+    await expect(outlookLink).not.toHaveAttribute('href', /external-tickets\.example\.com/)
+  })
+
+  test('calendar menu is localized in German', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-cal-de-events',
+      name: 'German Calendar Events Test',
+      slug: 'german-cal-events-test',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+
+    await page.goto('/')
+    await page.evaluate(() => localStorage.setItem('app_locale', 'de'))
+    await page.goto(`/event/${event.slug}`)
+
+    await page.getByRole('button', { name: /Zum Kalender hinzufügen/i }).click()
+
+    const menu = page.locator('[role="menu"]')
+    await expect(menu).toBeVisible()
+    await expect(menu).toHaveAttribute('aria-label', 'Kalenderoptionen')
+    await expect(page.getByRole('menuitem', { name: /Google Kalender/i })).toBeVisible()
+    await expect(page.getByRole('menuitem', { name: /Outlook/i })).toBeVisible()
+  })
 })
 
 // ---------------------------------------------------------------------------
