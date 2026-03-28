@@ -387,6 +387,22 @@ export default {
     noRecentAdds: 'Žiadne nedávne pridania',
     guidanceNoCalendarAdds:
       'Účastníci si ukladajú vaše udalosti, ale žiaden si ich zatiaľ nepridalo do kalendára. Uistite sa, že dátum, čas a miesto sú prominentné a ľahko nájditeľné.',
+    guidanceNoSavesTitle: 'Zatiaľ žiadne uloženia.',
+    guidanceNoSaves:
+      'Zdieľajte odkaz na udalosť, vylepšite názov alebo popis, alebo sa uistite, že dátum a miesto sú jasne uvedené.',
+    firstEventWelcomeTitle: 'Vaša prvá udalosť bola odoslaná!',
+    firstEventWelcome:
+      'Keď bude zverejnená a účastníci ju začnú ukladať alebo pridávať do kalendára, zobrazia sa tu údaje o zapojení.',
+    recommendationRejected:
+      'Táto udalosť bola zamietnutá. Skontrolujte spätnú väzbu moderátora nižšie a aktualizujte záznam pred opätovným odoslaním.',
+    recommendationDraft:
+      'Táto udalosť je návrh a ešte nie je verejne viditeľná. Odošlite ju na kontrolu, keď bude pripravená.',
+    recommendationPending:
+      'Vaša udalosť čaká na kontrolu moderátora. Momentálne nie je potrebná žiadna akcia — budete upozornení, keď bude schválená alebo vrátená so spätnou väzbou.',
+    recommendationPublishedNoSaves:
+      'Pre túto udalosť zatiaľ nie sú žiadne uloženia. Skúste zdieľať odkaz, vylepšiť prehľadnosť názvu alebo posilniť popis a údaje o mieste.',
+    adminNotesFeedback: 'Spätná väzba moderátora:',
+    metricTimeframeAllTime: 'Celkový počet za všetky časy',
     hubManagementTitle: 'Správa hubu',
     hubManagementDescription:
       'Ste správcom nasledujúcich komunitných hubov. Aktualizujte branding a obsah, aby ste ovplyvnili, ako sa každý hub zobrazuje návštevníkom.',

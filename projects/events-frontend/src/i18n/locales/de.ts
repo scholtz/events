@@ -387,6 +387,22 @@ export default {
     noRecentAdds: 'Keine aktuellen Hinzufügungen',
     guidanceNoCalendarAdds:
       'Teilnehmer speichern Ihre Veranstaltungen, aber noch niemand hat sie zum Kalender hinzugefügt. Stellen Sie sicher, dass Datum, Uhrzeit und Ort gut sichtbar und leicht auffindbar sind.',
+    guidanceNoSavesTitle: 'Noch keine Speicherungen.',
+    guidanceNoSaves:
+      'Teilen Sie den Veranstaltungslink, verbessern Sie Titel oder Beschreibung, oder stellen Sie sicher, dass Datum und Veranstaltungsort klar angegeben sind.',
+    firstEventWelcomeTitle: 'Ihre erste Veranstaltung wurde eingereicht!',
+    firstEventWelcome:
+      'Sobald sie veröffentlicht ist und Teilnehmer sie speichern oder zum Kalender hinzufügen, werden hier Engagement-Daten angezeigt.',
+    recommendationRejected:
+      'Diese Veranstaltung wurde abgelehnt. Überprüfen Sie das Moderatorenfeedback unten und aktualisieren Sie Ihren Eintrag vor der erneuten Einreichung.',
+    recommendationDraft:
+      'Diese Veranstaltung ist ein Entwurf und noch nicht öffentlich sichtbar. Reichen Sie sie zur Überprüfung ein, wenn sie bereit ist.',
+    recommendationPending:
+      'Ihre Veranstaltung wartet auf die Moderatorenprüfung. Es ist gerade keine Aktion erforderlich — Sie werden benachrichtigt, sobald sie genehmigt oder mit Feedback zurückgegeben wird.',
+    recommendationPublishedNoSaves:
+      'Noch keine Speicherungen für diese Veranstaltung. Versuchen Sie den Link zu teilen, den Titel zu verbessern oder Beschreibung und Veranstaltungsort zu stärken.',
+    adminNotesFeedback: 'Moderatorenfeedback:',
+    metricTimeframeAllTime: 'Gesamtzahl aller Zeiten',
     hubManagementTitle: 'Hub-Verwaltung',
     hubManagementDescription:
       'Sie sind Administrator der folgenden Community-Hubs. Aktualisieren Sie Branding und Inhalt, um das Erscheinungsbild jedes Hubs zu gestalten.',
