@@ -226,6 +226,7 @@ export type MockState = {
   eventReminders: MockEventReminder[]
   communityGroups: MockCommunityGroup[]
   communityMemberships: MockCommunityMembership[]
+  communityGroupEvents: { groupId: string; eventId: string }[]
   externalSourceClaims: MockExternalSourceClaim[]
   /** Keyed by claimId: the preview candidates returned by previewExternalEvents. */
   externalEventPreviews: Record<string, MockExternalEventPreview[]>
@@ -254,6 +255,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
     eventReminders: initial?.eventReminders ?? [],
     communityGroups: initial?.communityGroups ?? [],
     communityMemberships: initial?.communityMemberships ?? [],
+    communityGroupEvents: initial?.communityGroupEvents ?? [],
     externalSourceClaims: initial?.externalSourceClaims ?? [],
     externalEventPreviews: initial?.externalEventPreviews ?? {},
     vapidPublicKey: initial?.vapidPublicKey ?? 'SGVsbG9QbGF5d3JpZ2h0S2V5',
@@ -1203,9 +1205,13 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       const memberships = state.communityMemberships.filter((m) => m.groupId === group.id)
       const myMembership = memberships.find((m) => m.userId === userId) ?? null
       const memberCount = memberships.filter((m) => m.status === 'ACTIVE').length
-      const groupEvents = state.events.filter(
-        (e) => e.status === 'PUBLISHED',
-      )
+      const groupEvents = state.communityGroupEvents.length > 0
+        ? state.events.filter(
+            (e) => e.status === 'PUBLISHED' && state.communityGroupEvents.some((cge) => cge.groupId === group.id && cge.eventId === e.id),
+          )
+        : state.events.filter(
+            (e) => e.status === 'PUBLISHED',
+          )
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -1644,6 +1650,41 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({ data: { revokeMembership: true } }),
+      })
+      return
+    }
+
+    // ── Community group event association mutations ────────────────────────────
+
+    if (query.includes('mutation') && query.includes('AssociateEventWithGroup')) {
+      const userId = getActiveUserId()
+      if (!userId) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Not authorized', extensions: { code: 'AUTH_NOT_AUTHORIZED' } }] }),
+        })
+        return
+      }
+      const input = variables.input as { groupId: string; eventId: string }
+      state.communityGroupEvents.push({ groupId: input.groupId, eventId: input.eventId })
+      const link = { id: `cge-${Date.now()}`, groupId: input.groupId, eventId: input.eventId, addedAtUtc: new Date().toISOString(), addedByUserId: userId }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { associateEventWithGroup: link } }),
+      })
+      return
+    }
+
+    if (query.includes('mutation') && query.includes('DisassociateEventFromGroup')) {
+      const input = variables.input as { groupId: string; eventId: string }
+      const idx = state.communityGroupEvents.findIndex((cge) => cge.groupId === input.groupId && cge.eventId === input.eventId)
+      if (idx !== -1) state.communityGroupEvents.splice(idx, 1)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { disassociateEventFromGroup: true } }),
       })
       return
     }

@@ -245,6 +245,7 @@ async function handleDisassociateEvent(eventId: string) {
 }
 
 async function handleAddSource() {
+  if (!detail.value || !newSourceUrl.value.trim()) return
   addingSource.value = true
   sourceError.value = null
   try {

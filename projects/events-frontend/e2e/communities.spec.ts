@@ -770,3 +770,195 @@ test.describe('External source claims (admin)', () => {
     await expect(page.getByRole('heading', { name: 'Connected External Sources' })).toBeHidden()
   })
 })
+
+// ── Event manager role – manage community events ──────────────────────────────
+
+test.describe('Event manager – manage community events', () => {
+  test('event manager sees Manage Community Events section', async ({ page }) => {
+    const contributor = makeContributorUser()
+    const group = makePublicGroup()
+    const state = setupMockApi(page)
+    state.users.push(contributor)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, contributor.id, 'EVENT_MANAGER'))
+
+    await loginAs(page, contributor)
+    await page.goto('/community/prague-crypto-circle')
+    await expect(page.getByRole('heading', { name: 'Manage Community Events' })).toBeVisible()
+  })
+
+  test('regular member does not see Manage Community Events section', async ({ page }) => {
+    const contributor = makeContributorUser()
+    const group = makePublicGroup()
+    const state = setupMockApi(page)
+    state.users.push(contributor)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, contributor.id, 'MEMBER'))
+
+    await loginAs(page, contributor)
+    await page.goto('/community/prague-crypto-circle')
+    await expect(page.getByRole('heading', { name: 'Manage Community Events' })).toBeHidden()
+  })
+
+  test('unauthenticated user does not see Manage Community Events section', async ({ page }) => {
+    const group = makePublicGroup()
+    const state = setupMockApi(page)
+    state.communityGroups.push(group)
+
+    await page.goto('/community/prague-crypto-circle')
+    await expect(page.getByRole('heading', { name: 'Manage Community Events' })).toBeHidden()
+  })
+
+  test('admin sees Manage Community Events section', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+    await expect(page.getByRole('heading', { name: 'Manage Community Events' })).toBeVisible()
+  })
+
+  test('event manager can associate a published event by slug', async ({ page }) => {
+    const contributor = makeContributorUser()
+    const group = makePublicGroup()
+    const event = makeApprovedEvent({ name: 'Blockchain Summit', slug: 'blockchain-summit' })
+    const state = setupMockApi(page)
+    state.users.push(contributor)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, contributor.id, 'EVENT_MANAGER'))
+    state.events.push(event)
+
+    await loginAs(page, contributor)
+    await page.goto('/community/prague-crypto-circle')
+    await expect(page.getByRole('heading', { name: 'Manage Community Events' })).toBeVisible()
+    await page.getByLabel('Event slug').fill('blockchain-summit')
+    await page.getByRole('button', { name: 'Add event to community' }).click()
+    await expect(page.locator('.success-msg')).toContainText(/Event added to community/i)
+  })
+
+  test('admin can remove an event from the community', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const event = makeApprovedEvent({ name: 'AI Meetup Prague', slug: 'ai-meetup-prague' })
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+    state.events.push(event)
+    state.communityGroupEvents.push({ groupId: group.id, eventId: event.id })
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+    await expect(page.getByText('AI Meetup Prague')).toBeVisible()
+    await page.getByRole('button', { name: 'Remove from community' }).first().click()
+    await expect(page.getByText('AI Meetup Prague')).toBeHidden()
+  })
+})
+
+// ── Error state ───────────────────────────────────────────────────────────────
+
+test.describe('Community detail – error state', () => {
+  test('shows error state when API fails to load community', async ({ page }) => {
+    setupMockApi(page)
+    await page.route('**/graphql', async (route) => {
+      const body = JSON.parse(route.request().postData() ?? '{}')
+      if (body.query?.includes('CommunityGroupBySlug')) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Internal server error' }] }),
+        })
+      } else {
+        await route.fallback()
+      }
+    })
+    await page.goto('/community/prague-crypto-circle')
+    await expect(page.locator('.error-state')).toBeVisible()
+  })
+})
+
+// ── Mobile viewport ───────────────────────────────────────────────────────────
+
+test.describe('Community pages – mobile viewport', () => {
+  test('community list page is usable on mobile', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    const state = setupMockApi(page)
+    state.communityGroups.push(makePublicGroup())
+    await page.goto('/communities')
+    await expect(page.getByRole('heading', { name: 'Community Groups', exact: true })).toBeVisible()
+    await expect(page.getByText('Prague Crypto Circle')).toBeVisible()
+  })
+
+  test('community detail page is usable on mobile', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    const group = makePublicGroup()
+    const state = setupMockApi(page)
+    state.communityGroups.push(group)
+    await page.goto('/community/prague-crypto-circle')
+    await expect(page.getByRole('heading', { name: 'Prague Crypto Circle' })).toBeVisible()
+    await expect(page.getByText('Community Events')).toBeVisible()
+  })
+
+  test('admin panel is accessible on mobile', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+    await expect(page.getByRole('heading', { name: 'Pending Requests' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Members' })).toBeVisible()
+  })
+})
+
+// ── i18n: community pages ─────────────────────────────────────────────────────
+
+test.describe('Community pages – i18n', () => {
+  test('communities list heading is localised in Slovak', async ({ page }) => {
+    const state = setupMockApi(page)
+    state.communityGroups.push(makePublicGroup())
+    await page.goto('/communities')
+    await page.locator('#language-select').selectOption('sk')
+    await expect(page.getByRole('heading', { name: 'Komunitné skupiny', exact: true })).toBeVisible()
+  })
+
+  test('communities list heading is localised in German', async ({ page }) => {
+    const state = setupMockApi(page)
+    state.communityGroups.push(makePublicGroup())
+    await page.goto('/communities')
+    await page.locator('#language-select').selectOption('de')
+    await expect(page.getByRole('heading', { name: 'Community-Gruppen', exact: true })).toBeVisible()
+  })
+
+  test('join button is localised in Slovak', async ({ page }) => {
+    const contributor = makeContributorUser()
+    const group = makePublicGroup()
+    const state = setupMockApi(page)
+    state.users.push(contributor)
+    state.communityGroups.push(group)
+    await loginAs(page, contributor)
+    await page.goto('/community/prague-crypto-circle')
+    await page.locator('#language-select').selectOption('sk')
+    await expect(page.getByRole('button', { name: 'Pripojiť sa' })).toBeVisible()
+  })
+
+  test('manage events heading is localised in German for event manager', async ({ page }) => {
+    const contributor = makeContributorUser()
+    const group = makePublicGroup()
+    const state = setupMockApi(page)
+    state.users.push(contributor)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, contributor.id, 'EVENT_MANAGER'))
+    await loginAs(page, contributor)
+    await page.goto('/community/prague-crypto-circle')
+    await page.locator('#language-select').selectOption('de')
+    await expect(page.getByRole('heading', { name: 'Community-Veranstaltungen verwalten' })).toBeVisible()
+  })
+})
