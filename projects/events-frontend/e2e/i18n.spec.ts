@@ -14,6 +14,8 @@ import {
   loginAs,
   makeAdminUser,
   makeApprovedEvent,
+  makePendingEvent,
+  makeRejectedEvent,
   makeTechDomain,
   setupMockApi,
 } from './helpers/mock-api'
@@ -307,6 +309,67 @@ test.describe('Localized dashboard', () => {
 
     await expect(page.getByText('Vitajte späť')).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Prehľad' })).toBeVisible()
+  })
+
+  test('all-time total label is localized in German', async ({ page }) => {
+    const user = makeAdminUser()
+    const event = makeApprovedEvent({
+      id: 'ev-de-alltime',
+      slug: 'de-alltime-event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+    setupMockApi(page, { users: [user], domains: [makeTechDomain()], events: [event] })
+
+    await loginAs(page, user)
+    await page.locator('#language-select').selectOption('de')
+
+    // German "All-time total" label should appear on KPI cards
+    const savesCard = page.locator('.stat-card', {
+      has: page.locator('.stat-label', { hasText: 'Gesamte Speicherungen' }),
+    })
+    await expect(savesCard.locator('.stat-timeframe')).toContainText('Gesamtzahl aller Zeiten')
+  })
+
+  test('per-event recommendation for rejected event is localized in Slovak', async ({ page }) => {
+    const user = makeAdminUser()
+    const event = makeRejectedEvent({
+      id: 'ev-sk-rejected',
+      slug: 'sk-rejected-event',
+      name: 'Rejected SK Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+      adminNotes: 'Please improve the description.',
+    })
+    setupMockApi(page, { users: [user], domains: [makeTechDomain()], events: [event] })
+
+    await loginAs(page, user)
+    await page.locator('#language-select').selectOption('sk')
+
+    // Slovak rejection recommendation should be visible
+    await expect(page.locator('.event-recommendation-row.rec--rejected')).toBeVisible()
+    await expect(page.locator('.rec-admin-notes')).toBeVisible()
+  })
+
+  test('first-event welcome card is localized in German', async ({ page }) => {
+    const user = makeAdminUser()
+    const event = makePendingEvent({
+      id: 'ev-de-first',
+      slug: 'de-first-event',
+      name: 'First DE Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+    setupMockApi(page, { users: [user], domains: [makeTechDomain()], events: [event] })
+
+    await loginAs(page, user)
+    await page.locator('#language-select').selectOption('de')
+
+    // German first-event welcome should be visible
+    await expect(page.locator('.first-event-welcome')).toBeVisible()
+    await expect(page.locator('.first-event-welcome')).toContainText(
+      'Ihre erste Veranstaltung wurde eingereicht!',
+    )
   })
 })
 

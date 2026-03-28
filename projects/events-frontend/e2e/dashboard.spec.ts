@@ -180,9 +180,11 @@ test.describe('Organizer analytics dashboard', () => {
     await loginAs(page, user)
     await page.waitForURL(/\/dashboard$/)
 
-    // Low-data guidance should appear
-    await expect(page.getByText(/No saves yet/)).toBeVisible()
-    await expect(page.getByText(/Share the event link/)).toBeVisible()
+    // Low-data guidance section should appear (scoped to avoid matching per-event recommendation rows)
+    const guidanceSection = page.locator('.low-data-guidance')
+    await expect(guidanceSection).toBeVisible()
+    await expect(guidanceSection).toContainText(/No saves yet/)
+    await expect(guidanceSection).toContainText(/Share the event link/)
   })
 
   test('shows empty state when organizer has no events', async ({ page }) => {

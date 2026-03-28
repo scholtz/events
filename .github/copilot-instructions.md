@@ -284,6 +284,11 @@ Use Playwright's accessible locators in this order of preference:
 
 **`nth()` index on `v-if` elements**: `v-if` removes the element from the DOM entirely. A `.nth(1)` locator will fail when the preceding sibling is hidden by `v-if` because there is only one matching element in the DOM. In tests that trigger only one of several possible success indicators (e.g. style vs. overview form), use `.first()` instead of a hard-coded index.
 
+**Duplicate guidance text across multiple UI sections**: When a feature adds a new UI section whose copy shares a phrase with an existing section (e.g. "No saves yet." in a low-data guidance banner AND "No saves yet for this event." in a per-event recommendation row), any existing test that uses `page.getByText(/No saves yet/)` will now match TWO elements and fail with a Playwright strict-mode violation. Before shipping UI copy that reuses phrases from other sections:
+1. Grep all test files for the phrase fragment to find affected assertions.
+2. Update those assertions to scope the locator to a container CSS class (e.g. `page.locator('.low-data-guidance').getByText(/No saves yet/)` or `page.locator('.low-data-guidance').toContainText(/No saves yet/)`).
+3. When adding new i18n keys for guidance or recommendation copy, always check whether any existing test uses a broad regex that could match the new text.
+
 ### Assertions
 - Always `await expect(...)` — never use bare `expect()` in async tests.
 - Use `toBeVisible()` to confirm rendered UI, `toContainText()` for partial text.
