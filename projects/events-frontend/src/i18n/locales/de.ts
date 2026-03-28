@@ -188,6 +188,7 @@ export default {
     addToCalendar: 'Zum Kalender hinzufügen',
     calendarAdded: 'Zum Kalender hinzugefügt ✓',
     calendarDownloadFailed: 'Download fehlgeschlagen — bitte erneut versuchen',
+    calendarUnavailable: 'Kalenderexport nicht verfügbar — Veranstaltungsdaten fehlen oder sind ungültig',
     calendarMenuLabel: 'Kalenderoptionen',
     downloadIcs: '.ics-Datei herunterladen',
     googleCalendar: 'Google Kalender',

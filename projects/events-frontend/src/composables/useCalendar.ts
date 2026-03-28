@@ -40,6 +40,52 @@ interface CalendarEventOptions {
 }
 
 // ---------------------------------------------------------------------------
+// Validation
+// ---------------------------------------------------------------------------
+
+/**
+ * Result of validating a CalendarEventInput before generating exports.
+ * When `valid` is false, `errors` lists every problem found so callers can
+ * display a clear explanation to the user instead of generating broken data.
+ */
+export interface CalendarValidationResult {
+  valid: boolean
+  errors: string[]
+}
+
+/**
+ * Validate a CalendarEventInput for data quality issues that would produce
+ * malformed or misleading calendar exports.
+ *
+ * Checks performed:
+ *  1. `startUtc` must be a parseable ISO-8601 date string.
+ *  2. `endUtc`, when provided, must itself be parseable.
+ *  3. `endUtc`, when provided, must not precede `startUtc` (impossible range).
+ *
+ * A missing `endUtc` (null / empty string) is explicitly allowed because the
+ * ICS generator and provider deep-links apply a one-hour fallback in that case.
+ */
+export function validateCalendarInput(input: CalendarEventInput): CalendarValidationResult {
+  const errors: string[] = []
+
+  const startDate = new Date(input.startUtc)
+  if (!input.startUtc || isNaN(startDate.getTime())) {
+    errors.push(`Invalid start date: "${input.startUtc}"`)
+  }
+
+  if (input.endUtc) {
+    const endDate = new Date(input.endUtc)
+    if (isNaN(endDate.getTime())) {
+      errors.push(`Invalid end date: "${input.endUtc}"`)
+    } else if (!isNaN(startDate.getTime()) && endDate < startDate) {
+      errors.push('End date is before start date — impossible date range')
+    }
+  }
+
+  return { valid: errors.length === 0, errors }
+}
+
+// ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 
