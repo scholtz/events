@@ -436,6 +436,16 @@ export default {
     hubViewHub: 'View hub',
     hubManageError: 'Failed to save. Please try again.',
     hubColorError: 'Color must be a valid hex value, e.g. #137fec or #fff.',
+    hubFeaturedEventsTitle: 'Featured Events',
+    hubFeaturedEventsHint: 'Select up to 5 published events to feature at the top of this hub page.',
+    hubFeaturedEventsEmpty: 'No featured events yet.',
+    hubFeaturedEventsSelectPlaceholder: 'Select a published event\u2026',
+    hubFeaturedEventsAdd: 'Add',
+    hubFeaturedEventsRemove: 'Remove',
+    hubFeaturedEventsSave: 'Save Featured Events',
+    hubFeaturedEventsSaving: 'Saving\u2026',
+    hubFeaturedEventsSaved: '\u2713 Saved',
+    hubFeaturedEventsError: 'Failed to save featured events. Please try again.',
   },
 
   // ── Portfolio (My Events) ──────────────────────────────────────────────────

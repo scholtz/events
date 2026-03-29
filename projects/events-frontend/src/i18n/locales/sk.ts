@@ -426,6 +426,16 @@ export default {
     hubViewHub: 'Zobraziť hub',
     hubManageError: 'Nepodarilo sa uložiť. Skúste to znova.',
     hubColorError: 'Farba musí byť platná hex hodnota, napr. #137fec alebo #fff.',
+    hubFeaturedEventsTitle: 'Odporúčané podujatia',
+    hubFeaturedEventsHint: 'Vyberte až 5 zverejnených podujatí, ktoré sa zobrazia na vrchole stránky hubu.',
+    hubFeaturedEventsEmpty: 'Zatiaľ žiadne odporúčané podujatia.',
+    hubFeaturedEventsSelectPlaceholder: 'Vyberte zverejnené podujatie\u2026',
+    hubFeaturedEventsAdd: 'Pridať',
+    hubFeaturedEventsRemove: 'Odstrániť',
+    hubFeaturedEventsSave: 'Uložiť odporúčané',
+    hubFeaturedEventsSaving: 'Ukladám\u2026',
+    hubFeaturedEventsSaved: '\u2713 Uložené',
+    hubFeaturedEventsError: 'Nepodarilo sa uložiť odporúčané podujatia. Skúste to znova.',
   },
 
   // ── Portfolio (Moje udalosti) ──────────────────────────────────────────────

@@ -1095,6 +1095,169 @@ test.describe('Hub Management section in dashboard', () => {
       page.locator('.hub-style-form').getByRole('button', { name: 'Save Style' }),
     ).toBeVisible()
   })
+
+  test('hub management shows Featured Events section with empty state', async ({ page }) => {
+    const user = makeContributorUser()
+    const domain = makeTechDomain()
+    setupMockApi(page, {
+      users: [user],
+      domains: [domain],
+      domainAdministrators: [
+        {
+          id: 'da-1',
+          domainId: domain.id,
+          userId: user.id,
+          user: { displayName: user.displayName, email: user.email },
+          createdAtUtc: new Date().toISOString(),
+        },
+      ],
+      events: [],
+    })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    await expect(page.locator('.hub-management-section')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Featured Events' })).toBeVisible()
+    await expect(page.getByText('No featured events yet.')).toBeVisible()
+  })
+
+  test('domain admin can add and save a featured event from the dashboard', async ({ page }) => {
+    const user = makeContributorUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      name: 'Blockchain Summit',
+      slug: 'blockchain-summit',
+      submittedByUserId: user.id,
+      domainId: domain.id,
+      domain: { id: domain.id, name: domain.name, slug: domain.slug, subdomain: domain.subdomain },
+    })
+    setupMockApi(page, {
+      users: [user],
+      domains: [domain],
+      domainAdministrators: [
+        {
+          id: 'da-1',
+          domainId: domain.id,
+          userId: user.id,
+          user: { displayName: user.displayName, email: user.email },
+          createdAtUtc: new Date().toISOString(),
+        },
+      ],
+      events: [event],
+    })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    await expect(page.locator('.hub-management-section')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Featured Events' })).toBeVisible()
+
+    // Select the event from the dropdown
+    const select = page.locator('.hub-featured-select')
+    await expect(select).toBeVisible()
+    await select.selectOption(event.id)
+    await page.locator('.hub-add-featured-form').getByRole('button', { name: 'Add' }).click()
+
+    // Event should appear in the featured list
+    await expect(
+      page.locator('.hub-featured-events-list').getByText('Blockchain Summit'),
+    ).toBeVisible()
+
+    // Save featured events
+    await page.getByRole('button', { name: 'Save Featured Events' }).click()
+    await expect(page.locator('.hub-save-success').last()).toBeVisible()
+  })
+
+  test('domain admin can remove a featured event from the dashboard', async ({ page }) => {
+    const user = makeContributorUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      name: 'Web3 Conference',
+      slug: 'web3-conference',
+      submittedByUserId: user.id,
+      domainId: domain.id,
+      domain: { id: domain.id, name: domain.name, slug: domain.slug, subdomain: domain.subdomain },
+    })
+    setupMockApi(page, {
+      users: [user],
+      domains: [domain],
+      domainAdministrators: [
+        {
+          id: 'da-1',
+          domainId: domain.id,
+          userId: user.id,
+          user: { displayName: user.displayName, email: user.email },
+          createdAtUtc: new Date().toISOString(),
+        },
+      ],
+      events: [event],
+      featuredEvents: [{ domainSlug: domain.slug, eventId: event.id, displayOrder: 0 }],
+    })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    await expect(page.locator('.hub-management-section')).toBeVisible()
+    // Featured event should be loaded
+    await expect(
+      page.locator('.hub-featured-events-list').getByText('Web3 Conference'),
+    ).toBeVisible()
+
+    // Remove it
+    await page.locator('.hub-featured-event-item').getByRole('button', { name: 'Remove' }).click()
+
+    // Empty state should appear
+    await expect(page.getByText('No featured events yet.')).toBeVisible()
+
+    // Save
+    await page.getByRole('button', { name: 'Save Featured Events' }).click()
+    await expect(page.locator('.hub-save-success').last()).toBeVisible()
+  })
+
+  test('featured events picker is hidden when 5 events are already featured', async ({ page }) => {
+    const user = makeContributorUser()
+    const domain = makeTechDomain()
+    const events = Array.from({ length: 5 }, (_, i) =>
+      makeApprovedEvent({
+        id: `event-feat-${i}`,
+        name: `Featured Event ${i + 1}`,
+        slug: `featured-event-${i}`,
+        submittedByUserId: user.id,
+        domainId: domain.id,
+        domain: {
+          id: domain.id,
+          name: domain.name,
+          slug: domain.slug,
+          subdomain: domain.subdomain,
+        },
+      }),
+    )
+    setupMockApi(page, {
+      users: [user],
+      domains: [domain],
+      domainAdministrators: [
+        {
+          id: 'da-1',
+          domainId: domain.id,
+          userId: user.id,
+          user: { displayName: user.displayName, email: user.email },
+          createdAtUtc: new Date().toISOString(),
+        },
+      ],
+      events,
+      featuredEvents: events.map((e, i) => ({
+        domainSlug: domain.slug,
+        eventId: e.id,
+        displayOrder: i,
+      })),
+    })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    await expect(page.locator('.hub-management-section')).toBeVisible()
+    // All 5 featured events should be listed
+    await expect(page.locator('.hub-featured-event-item')).toHaveCount(5)
+    // The add picker should be hidden since we are at max
+    await expect(page.locator('.hub-add-featured-form')).toBeHidden()
+  })
 })
 
 // ── Per-event recommendations and guidance tests ──────────────────────────────
