@@ -944,6 +944,157 @@ test.describe('Hub Management section in dashboard', () => {
       'https://discord.gg/tech',
     )
   })
+
+  test('invalid hex primary color shows inline error and does not save', async ({ page }) => {
+    const user = makeContributorUser()
+    const domain = makeTechDomain()
+    setupMockApi(page, {
+      users: [user],
+      domains: [domain],
+      domainAdministrators: [
+        {
+          id: 'da-1',
+          domainId: domain.id,
+          userId: user.id,
+          user: { displayName: user.displayName, email: user.email },
+          createdAtUtc: new Date().toISOString(),
+        },
+      ],
+      events: [],
+    })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Enter an invalid color value
+    await page.locator('.hub-style-form input[placeholder="#137fec"]').fill('red')
+    await page.locator('.hub-style-form').getByRole('button', { name: 'Save Style' }).click()
+
+    // Inline error appears
+    await expect(page.locator('.field-error').first()).toBeVisible()
+    await expect(page.locator('.field-error').first()).toContainText(/hex/)
+
+    // Success indicator must NOT appear (save was blocked)
+    await expect(page.locator('.hub-save-success')).toHaveCount(0)
+  })
+
+  test('invalid hex accent color shows inline error', async ({ page }) => {
+    const user = makeContributorUser()
+    const domain = makeTechDomain()
+    setupMockApi(page, {
+      users: [user],
+      domains: [domain],
+      domainAdministrators: [
+        {
+          id: 'da-1',
+          domainId: domain.id,
+          userId: user.id,
+          user: { displayName: user.displayName, email: user.email },
+          createdAtUtc: new Date().toISOString(),
+        },
+      ],
+      events: [],
+    })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Leave primary color blank; enter bad accent color
+    await page.locator('.hub-style-form input[placeholder="#ff5500"]').fill('rgb(255,0,0)')
+    await page.locator('.hub-style-form').getByRole('button', { name: 'Save Style' }).click()
+
+    // Accent-color inline error appears (primary is blank so only one field-error is rendered)
+    await expect(page.locator('.field-error').first()).toBeVisible()
+    await expect(page.locator('.field-error').first()).toContainText(/hex/)
+  })
+
+  test('valid hex color saves successfully without inline error', async ({ page }) => {
+    const user = makeContributorUser()
+    const domain = makeTechDomain()
+    setupMockApi(page, {
+      users: [user],
+      domains: [domain],
+      domainAdministrators: [
+        {
+          id: 'da-1',
+          domainId: domain.id,
+          userId: user.id,
+          user: { displayName: user.displayName, email: user.email },
+          createdAtUtc: new Date().toISOString(),
+        },
+      ],
+      events: [],
+    })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    await page.locator('.hub-style-form input[placeholder="#137fec"]').fill('#137fec')
+    await page.locator('.hub-style-form').getByRole('button', { name: 'Save Style' }).click()
+
+    // Success indicator should appear; no field-level errors
+    await expect(page.locator('.hub-style-form .hub-save-success')).toBeVisible()
+    await expect(page.locator('.field-error')).toHaveCount(0)
+  })
+
+  test('hub style form shows localized color error in Slovak', async ({ page }) => {
+    const user = makeContributorUser()
+    const domain = makeTechDomain()
+    setupMockApi(page, {
+      users: [user],
+      domains: [domain],
+      domainAdministrators: [
+        {
+          id: 'da-1',
+          domainId: domain.id,
+          userId: user.id,
+          user: { displayName: user.displayName, email: user.email },
+          createdAtUtc: new Date().toISOString(),
+        },
+      ],
+      events: [],
+    })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Switch to Slovak
+    await page.getByRole('combobox', { name: 'Language' }).selectOption('sk')
+
+    await page.locator('.hub-style-form input[placeholder="#137fec"]').fill('notacolor')
+    await page.locator('.hub-style-form').getByRole('button', { name: /Uložiť štýl/ }).click()
+
+    // Slovak error message should appear
+    await expect(page.locator('.field-error').first()).toBeVisible()
+    await expect(page.locator('.field-error').first()).toContainText(/hex/)
+  })
+
+  test('hub management section is usable on mobile viewport', async ({ page }) => {
+    const user = makeContributorUser()
+    const domain = makeTechDomain()
+    setupMockApi(page, {
+      users: [user],
+      domains: [domain],
+      domainAdministrators: [
+        {
+          id: 'da-1',
+          domainId: domain.id,
+          userId: user.id,
+          user: { displayName: user.displayName, email: user.email },
+          createdAtUtc: new Date().toISOString(),
+        },
+      ],
+      events: [],
+    })
+    await page.setViewportSize({ width: 390, height: 844 })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Hub management section is visible on mobile
+    await expect(page.locator('.hub-management-section')).toBeVisible()
+    // Primary color input is accessible
+    await expect(page.locator('.hub-style-form input[placeholder="#137fec"]')).toBeVisible()
+    // Save button is accessible
+    await expect(
+      page.locator('.hub-style-form').getByRole('button', { name: 'Save Style' }),
+    ).toBeVisible()
+  })
 })
 
 // ── Per-event recommendations and guidance tests ──────────────────────────────

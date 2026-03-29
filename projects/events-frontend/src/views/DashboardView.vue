@@ -5,6 +5,7 @@ import { useDashboardStore } from '@/stores/dashboard'
 import { useAuthStore } from '@/stores/auth'
 import { useDomainsStore } from '@/stores/domains'
 import type { EventAnalyticsItem, EventDomain } from '@/types'
+import { isValidHexColor } from '@/lib/colorUtils'
 
 const { t, locale } = useI18n()
 const dashboardStore = useDashboardStore()
@@ -13,12 +14,6 @@ const domainsStore = useDomainsStore()
 
 const overview = computed(() => dashboardStore.overview)
 const MAX_COMMUNITY_LINKS = 10
-
-/** Validates a CSS hex color string (3- or 6-digit, with leading #). Returns true if valid or empty. */
-function isValidHexColor(value: string): boolean {
-  if (!value) return true
-  return /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(value.trim())
-}
 
 // ── Hub management state ─────────────────────────────────────────────────────
 const hubStyleForms = ref<Record<string, { primaryColor: string; accentColor: string; logoUrl: string; bannerUrl: string }>>({})
