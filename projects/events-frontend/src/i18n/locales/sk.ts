@@ -222,6 +222,8 @@ export default {
     youveSavedThisEvent: 'Túto udalosť máte uloženú',
     saveToShowInterest: 'Uložte si túto udalosť pre prejavenie záujmu.',
     signInToSave: 'pre uloženie udalosti a prejavenie záujmu.',
+    addToCalendarPrompt: 'Pridajte si ju do kalendára, aby ste ju nezmeškali.',
+    addToCalendarPromptBtn: 'Pridať do kalendára',
     offlineStale:
       'Ste offline — tieto informácie sú z vašej poslednej návštevy a nemusia odrážať najnovšie zmeny.',
     openInOsm: 'Otvoriť v OpenStreetMap ↗',

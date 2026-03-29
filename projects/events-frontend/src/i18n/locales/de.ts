@@ -222,6 +222,8 @@ export default {
     youveSavedThisEvent: 'Sie haben diese Veranstaltung gespeichert',
     saveToShowInterest: 'Speichern Sie diese Veranstaltung, um Ihr Interesse zu zeigen.',
     signInToSave: 'um diese Veranstaltung zu speichern und Ihr Interesse zu zeigen.',
+    addToCalendarPrompt: 'Fügen Sie es Ihrem Kalender hinzu, damit Sie es nicht verpassen.',
+    addToCalendarPromptBtn: 'Zum Kalender hinzufügen',
     offlineStale:
       'Sie sind offline — diese Veranstaltungsinformationen stammen von Ihrem letzten Online-Besuch und spiegeln möglicherweise nicht die neuesten Änderungen wider.',
     openInOsm: 'In OpenStreetMap öffnen ↗',
