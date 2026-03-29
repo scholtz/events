@@ -1329,12 +1329,15 @@ test.describe('Per-event recommendations and guidance', () => {
   test('shows per-event recommendation for published event with no saves', async ({ page }) => {
     const user = makeAdminUser()
     const domain = makeTechDomain()
+    // Use a far-future start date (>7 days) so the standard guidance shows instead of urgent
     const event = makeApprovedEvent({
       id: 'ev-pub-nosaves-1',
       slug: 'pub-nosaves-event',
       name: 'Published No Saves Event',
       submittedByUserId: user.id,
       submittedBy: { displayName: user.displayName },
+      startsAtUtc: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      endsAtUtc: new Date(Date.now() + 31 * 24 * 60 * 60 * 1000).toISOString(),
     })
 
     setupMockApi(page, { users: [user], domains: [domain], events: [event] })
@@ -1446,5 +1449,119 @@ test.describe('Per-event recommendations and guidance', () => {
 
     // Recommendation row should still be visible on mobile
     await expect(page.locator('.event-recommendation-row')).toBeVisible()
+  })
+
+  test('shows urgent approaching-soon recommendation for published event starting within 7 days with no saves', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    // Event starts 3 days from now
+    const soonDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
+    const event = makeApprovedEvent({
+      id: 'ev-approaching-nosaves',
+      slug: 'approaching-nosaves-event',
+      name: 'Approaching No Saves Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+      startsAtUtc: soonDate,
+      endsAtUtc: new Date(Date.now() + 4 * 24 * 60 * 60 * 1000).toISOString(),
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Urgent recommendation row should appear with rec--urgent class
+    await expect(page.locator('.event-recommendation-row.rec--urgent')).toBeVisible()
+    await expect(page.locator('.rec-text')).toContainText(/less than a week/)
+  })
+
+  test('does not show urgent recommendation for published event starting in more than 7 days with no saves', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    // Event starts 14 days from now
+    const futureDate = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+    const event = makeApprovedEvent({
+      id: 'ev-future-nosaves',
+      slug: 'future-nosaves-event',
+      name: 'Future No Saves Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+      startsAtUtc: futureDate,
+      endsAtUtc: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString(),
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Standard (non-urgent) recommendation row should appear
+    await expect(page.locator('.event-recommendation-row.rec--guidance')).toBeVisible()
+    // Should NOT have the urgent class
+    await expect(page.locator('.event-recommendation-row.rec--urgent')).toHaveCount(0)
+    await expect(page.locator('.rec-text')).toContainText(/No saves yet/)
+  })
+
+  test('shows missing-language recommendation for published event with saves but no language set', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-no-language',
+      slug: 'no-language-event',
+      name: 'No Language Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+      language: null,
+    })
+
+    const state = setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    // Add a save so the zero-saves recommendation is suppressed
+    state.favoriteEvents.push({
+      id: 'fav-lang-1',
+      userId: 'u1',
+      eventId: event.id,
+      createdAtUtc: new Date().toISOString(),
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Missing-language recommendation should appear
+    await expect(page.locator('.event-recommendation-row.rec--guidance')).toBeVisible()
+    await expect(page.locator('.rec-text')).toContainText(/language/)
+  })
+
+  test('does not show missing-language recommendation when language is already set', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-has-language',
+      slug: 'has-language-event',
+      name: 'Has Language Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+      language: 'en',
+    })
+
+    const state = setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    state.favoriteEvents.push({
+      id: 'fav-lang-set-1',
+      userId: 'u1',
+      eventId: event.id,
+      createdAtUtc: new Date().toISOString(),
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // No recommendation row should appear (has saves AND has language)
+    await expect(page.locator('.event-recommendation-row')).toHaveCount(0)
   })
 })

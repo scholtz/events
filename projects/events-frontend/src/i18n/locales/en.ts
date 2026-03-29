@@ -413,6 +413,10 @@ export default {
       'Your event is awaiting moderator review. No action is needed right now — you will be notified once it is approved or returned with feedback.',
     recommendationPublishedNoSaves:
       'No saves yet for this event. Try sharing the link, improving the title clarity, or strengthening the description and venue details.',
+    recommendationPublishedApproachingSoon:
+      'This event starts in less than a week and has no saves yet. Share the link now in community channels, social media, or domain-specific groups to reach attendees before it begins.',
+    recommendationPublishedMissingLanguage:
+      "Your event doesn't have a language set. Adding a language tag helps attendees in your community discover this event in their preferred language. Edit the event to add it.",
     adminNotesFeedback: 'Moderator feedback:',
     metricTimeframeAllTime: 'All-time total',
     hubManagementTitle: 'Hub Management',

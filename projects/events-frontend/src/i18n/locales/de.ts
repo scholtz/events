@@ -403,6 +403,10 @@ export default {
       'Ihre Veranstaltung wartet auf die Moderatorenprüfung. Es ist gerade keine Aktion erforderlich — Sie werden benachrichtigt, sobald sie genehmigt oder mit Feedback zurückgegeben wird.',
     recommendationPublishedNoSaves:
       'Noch keine Speicherungen für diese Veranstaltung. Versuchen Sie den Link zu teilen, den Titel zu verbessern oder Beschreibung und Veranstaltungsort zu stärken.',
+    recommendationPublishedApproachingSoon:
+      'Diese Veranstaltung beginnt in weniger als einer Woche und hat noch keine Speicherungen. Teilen Sie den Link jetzt in Community-Kanälen, sozialen Medien oder thematischen Gruppen, um Teilnehmer vor dem Start zu erreichen.',
+    recommendationPublishedMissingLanguage:
+      'Für Ihre Veranstaltung ist keine Sprache festgelegt. Das Hinzufügen eines Sprach-Tags hilft Teilnehmern in Ihrer Community, diese Veranstaltung in ihrer bevorzugten Sprache zu entdecken. Bearbeiten Sie die Veranstaltung, um sie hinzuzufügen.',
     adminNotesFeedback: 'Moderatorenfeedback:',
     metricTimeframeAllTime: 'Gesamtzahl aller Zeiten',
     hubManagementTitle: 'Hub-Verwaltung',
