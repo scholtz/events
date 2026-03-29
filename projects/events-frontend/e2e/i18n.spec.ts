@@ -449,6 +449,67 @@ test.describe('Localized category landing page', () => {
     await expect(page.getByRole('link', { name: 'Alle Veranstaltungen' })).toBeVisible()
     await expect(page.getByRole('heading', { name: /Veranstaltungen/ })).toBeVisible()
   })
+
+  test('hub overview "About this hub" heading is localized in Slovak', async ({ page }) => {
+    const domain = {
+      ...makeTechDomain(),
+      overviewContent: 'A curated community for developer-focused technology events.',
+    }
+    setupMockApi(page, { domains: [domain], events: [makeApprovedEvent()] })
+    await page.goto('/category/technology')
+
+    await page.getByRole('combobox', { name: 'Language' }).selectOption('sk')
+
+    await expect(page.getByRole('heading', { name: 'O tomto hube' })).toBeVisible()
+    await expect(
+      page.getByText('A curated community for developer-focused technology events.'),
+    ).toBeVisible()
+  })
+
+  test('hub overview "What belongs here" heading is localized in German', async ({ page }) => {
+    const domain = {
+      ...makeTechDomain(),
+      whatBelongsHere: 'Developer meetups, hackathons, and engineering conferences.',
+    }
+    setupMockApi(page, { domains: [domain], events: [makeApprovedEvent()] })
+    await page.goto('/category/technology')
+
+    await page.getByRole('combobox', { name: 'Language' }).selectOption('de')
+
+    await expect(page.getByRole('heading', { name: 'Was gehört hierher' })).toBeVisible()
+    await expect(
+      page.getByText('Developer meetups, hackathons, and engineering conferences.'),
+    ).toBeVisible()
+  })
+
+  test('curator credit line is localized in Slovak', async ({ page }) => {
+    const domain = { ...makeTechDomain(), curatorCredit: 'Prague Tech Community' }
+    setupMockApi(page, { domains: [domain], events: [makeApprovedEvent()] })
+    await page.goto('/category/technology')
+
+    await page.getByRole('combobox', { name: 'Language' }).selectOption('sk')
+
+    // Slovak: "Spravuje: {credit}"
+    await expect(page.locator('.curator-credit')).toContainText('Prague Tech Community')
+    await expect(page.locator('.curator-credit')).toContainText('Spravuje')
+  })
+
+  test('featured events section heading is localized in German', async ({ page }) => {
+    const domain = { ...makeTechDomain(), id: 'domain-feat-de' }
+    const event = makeApprovedEvent({ id: 'ev-feat-de', slug: 'ev-feat-de' })
+    setupMockApi(page, {
+      domains: [domain],
+      events: [event],
+      featuredEvents: [{ domainSlug: domain.slug, eventId: event.id, displayOrder: 0 }],
+    })
+    await page.goto('/category/technology')
+
+    await page.getByRole('combobox', { name: 'Language' }).selectOption('de')
+
+    await expect(
+      page.getByRole('heading', { name: 'Hervorgehobene Veranstaltungen' }),
+    ).toBeVisible()
+  })
 })
 
 test.describe('Localized hub context card on event detail', () => {
