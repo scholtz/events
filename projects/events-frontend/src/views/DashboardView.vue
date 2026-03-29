@@ -5,6 +5,7 @@ import { useDashboardStore } from '@/stores/dashboard'
 import { useAuthStore } from '@/stores/auth'
 import { useDomainsStore } from '@/stores/domains'
 import type { EventAnalyticsItem, EventDomain } from '@/types'
+import { isValidHexColor } from '@/lib/colorUtils'
 
 const { t, locale } = useI18n()
 const dashboardStore = useDashboardStore()
@@ -26,6 +27,7 @@ const hubOverviewSuccess = ref<Record<string, boolean>>({})
 const hubLinksSaving = ref<Record<string, boolean>>({})
 const hubLinksSuccess = ref<Record<string, boolean>>({})
 const hubManageError = ref<Record<string, string>>({})
+const hubColorErrors = ref<Record<string, { primaryColor: string; accentColor: string }>>({})
 
 function initHubForms(domains: EventDomain[]) {
   for (const d of domains) {
@@ -36,6 +38,9 @@ function initHubForms(domains: EventDomain[]) {
         logoUrl: d.logoUrl ?? '',
         bannerUrl: d.bannerUrl ?? '',
       }
+    }
+    if (!hubColorErrors.value[d.id]) {
+      hubColorErrors.value[d.id] = { primaryColor: '', accentColor: '' }
     }
     if (!hubOverviewForms.value[d.id]) {
       hubOverviewForms.value[d.id] = {
@@ -64,12 +69,22 @@ async function handleSaveHubStyle(domainId: string) {
   hubStyleSaving.value[domainId] = true
   hubStyleSuccess.value[domainId] = false
   hubManageError.value[domainId] = ''
+  // Client-side color validation
+  const form = hubStyleForms.value[domainId]
+  if (!form) {
+    hubManageError.value[domainId] = t('dashboard.hubManageError')
+    hubStyleSaving.value[domainId] = false
+    return
+  }
+  const colorErr = { primaryColor: '', accentColor: '' }
+  if (!isValidHexColor(form.primaryColor)) colorErr.primaryColor = t('dashboard.hubColorError')
+  if (!isValidHexColor(form.accentColor)) colorErr.accentColor = t('dashboard.hubColorError')
+  hubColorErrors.value[domainId] = colorErr
+  if (colorErr.primaryColor || colorErr.accentColor) {
+    hubStyleSaving.value[domainId] = false
+    return
+  }
   try {
-    const form = hubStyleForms.value[domainId]
-    if (!form) {
-      hubManageError.value[domainId] = t('dashboard.hubManageError')
-      return
-    }
     await domainsStore.updateDomainStyle({
       domainId,
       primaryColor: form.primaryColor || null,
@@ -559,18 +574,38 @@ function eventRecommendationClass(item: EventAnalyticsItem): string {
                   <input
                     v-model="hubStyleForms[hub.id]!.primaryColor"
                     class="form-input"
+                    :class="{ 'input-error': hubColorErrors[hub.id]?.primaryColor }"
                     type="text"
                     placeholder="#137fec"
+                    aria-describedby="`primary-color-error-${hub.id}`"
                   />
+                  <span
+                    v-if="hubColorErrors[hub.id]?.primaryColor"
+                    :id="`primary-color-error-${hub.id}`"
+                    class="field-error"
+                    role="alert"
+                  >
+                    {{ hubColorErrors[hub.id]!.primaryColor }}
+                  </span>
                 </label>
                 <label class="form-field">
                   <span>{{ t('dashboard.hubAccentColor') }}</span>
                   <input
                     v-model="hubStyleForms[hub.id]!.accentColor"
                     class="form-input"
+                    :class="{ 'input-error': hubColorErrors[hub.id]?.accentColor }"
                     type="text"
                     placeholder="#ff5500"
+                    aria-describedby="`accent-color-error-${hub.id}`"
                   />
+                  <span
+                    v-if="hubColorErrors[hub.id]?.accentColor"
+                    :id="`accent-color-error-${hub.id}`"
+                    class="field-error"
+                    role="alert"
+                  >
+                    {{ hubColorErrors[hub.id]!.accentColor }}
+                  </span>
                 </label>
                 <label class="form-field">
                   <span>{{ t('dashboard.hubLogoUrl') }}</span>
@@ -1407,6 +1442,18 @@ tr:hover td {
   background: rgba(248, 113, 113, 0.1);
   border-radius: var(--radius-sm, 4px);
   margin-bottom: 1rem;
+}
+
+.input-error {
+  border-color: var(--color-danger, #f87171) !important;
+  outline-color: var(--color-danger, #f87171);
+}
+
+.field-error {
+  color: var(--color-danger, #f87171);
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+  display: block;
 }
 
 /* ── Responsive ── */

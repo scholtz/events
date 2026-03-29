@@ -423,6 +423,7 @@ export default {
     hubSaved: '\u2713 Uložené',
     hubViewHub: 'Zobraziť hub',
     hubManageError: 'Nepodarilo sa uložiť. Skúste to znova.',
+    hubColorError: 'Farba musí byť platná hex hodnota, napr. #137fec alebo #fff.',
   },
 
   // ── Portfolio (Moje udalosti) ──────────────────────────────────────────────
