@@ -319,12 +319,22 @@ function providerLabel(provider: string): string {
   }
 }
 
+function daysUntilStart(startsAtUtc: string): number {
+  return Math.ceil((new Date(startsAtUtc).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+}
+
 function eventRecommendation(item: EventAnalyticsItem): string | null {
   if (item.status === 'REJECTED') return t('dashboard.recommendationRejected')
   if (item.status === 'DRAFT') return t('dashboard.recommendationDraft')
   if (item.status === 'PENDING_APPROVAL') return t('dashboard.recommendationPending')
-  if (item.status === 'PUBLISHED' && item.totalInterestedCount === 0)
-    return t('dashboard.recommendationPublishedNoSaves')
+  if (item.status === 'PUBLISHED') {
+    if (item.totalInterestedCount === 0) {
+      const days = daysUntilStart(item.startsAtUtc)
+      if (days > 0 && days <= 7) return t('dashboard.recommendationPublishedApproachingSoon')
+      return t('dashboard.recommendationPublishedNoSaves')
+    }
+    if (!item.language) return t('dashboard.recommendationPublishedMissingLanguage')
+  }
   return null
 }
 
@@ -332,6 +342,10 @@ function eventRecommendationClass(item: EventAnalyticsItem): string {
   if (item.status === 'REJECTED') return 'rec--rejected'
   if (item.status === 'DRAFT') return 'rec--draft'
   if (item.status === 'PENDING_APPROVAL') return 'rec--pending'
+  if (item.status === 'PUBLISHED' && item.totalInterestedCount === 0) {
+    const days = daysUntilStart(item.startsAtUtc)
+    if (days > 0 && days <= 7) return 'rec--urgent'
+  }
   return 'rec--guidance'
 }
 </script>
@@ -559,6 +573,7 @@ function eventRecommendationClass(item: EventAnalyticsItem): string {
                       <template v-if="item.status === 'REJECTED'">⚠️</template>
                       <template v-else-if="item.status === 'DRAFT'">📝</template>
                       <template v-else-if="item.status === 'PENDING_APPROVAL'">⏳</template>
+                      <template v-else-if="eventRecommendationClass(item) === 'rec--urgent'">🚨</template>
                       <template v-else>💡</template>
                     </span>
                     <span class="rec-text">{{ eventRecommendation(item) }}</span>
@@ -1297,6 +1312,11 @@ tr:hover td {
 
 .event-recommendation-row.rec--draft .rec-text {
   color: var(--color-text-secondary);
+}
+
+.event-recommendation-row.rec--urgent .rec-text {
+  color: var(--color-warning, #fbbf24);
+  font-weight: 600;
 }
 
 /* ── Stat timeframe badge ── */

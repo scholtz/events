@@ -403,6 +403,10 @@ export default {
       'Vaša udalosť čaká na kontrolu moderátora. Momentálne nie je potrebná žiadna akcia — budete upozornení, keď bude schválená alebo vrátená so spätnou väzbou.',
     recommendationPublishedNoSaves:
       'Pre túto udalosť zatiaľ nie sú žiadne uloženia. Skúste zdieľať odkaz, vylepšiť prehľadnosť názvu alebo posilniť popis a údaje o mieste.',
+    recommendationPublishedApproachingSoon:
+      'Táto udalosť začína za menej ako týždeň a zatiaľ nemá žiadne uloženia. Zdieľajte odkaz teraz v komunitných kanáloch, na sociálnych médiách alebo v tematických skupinách, aby ste oslovili účastníkov pred začiatkom.',
+    recommendationPublishedMissingLanguage:
+      'Vaša udalosť nemá nastavený jazyk. Pridanie jazykového tagu pomáha účastníkom vo vašej komunite objaviť túto udalosť v ich preferovanom jazyku. Upravte udalosť a pridajte ho.',
     adminNotesFeedback: 'Spätná väzba moderátora:',
     metricTimeframeAllTime: 'Celkový počet za všetky časy',
     hubManagementTitle: 'Správa hubu',
