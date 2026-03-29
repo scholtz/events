@@ -11006,4 +11006,238 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal("https://community.example.com", links[0].GetProperty("url").GetString());
         Assert.Equal(0, links[0].GetProperty("displayOrder").GetInt32());
     }
+
+    // ── ICS Endpoint Tests ────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task IcsEndpoint_PublishedEvent_ReturnsIcsFile()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("ics-pub@example.com", "ICS User");
+            var domain = CreateDomain("Tech", "tech-ics-pub");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.Add(CreateEvent(
+                "ICS Test Event", "ics-test-event", "An ICS test event.",
+                "Conference Hall", "Prague",
+                FirstDayOfNextMonthUtc(), domain, user));
+        });
+
+        using var client = factory.CreateClient();
+        var response = await client.GetAsync("/ics/ics-test-event");
+
+        Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
+        var contentType = response.Content.Headers.ContentType?.MediaType;
+        Assert.Equal("text/calendar", contentType);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("BEGIN:VCALENDAR", body);
+        Assert.Contains("BEGIN:VEVENT", body);
+        Assert.Contains("SUMMARY:ICS Test Event", body);
+        Assert.Contains("END:VEVENT", body);
+        Assert.Contains("END:VCALENDAR", body);
+    }
+
+    [Fact]
+    public async Task IcsEndpoint_PublishedEvent_ContentDispositionUsesSlug()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("ics-cd@example.com", "ICS CD User");
+            var domain = CreateDomain("Tech", "tech-ics-cd");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.Add(CreateEvent(
+                "Content-Disposition Event", "cd-test-event", "A CD test.",
+                "Venue", "Prague",
+                FirstDayOfNextMonthUtc(), domain, user));
+        });
+
+        using var client = factory.CreateClient();
+        var response = await client.GetAsync("/ics/cd-test-event");
+
+        Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
+        var cd = response.Content.Headers.ContentDisposition;
+        Assert.NotNull(cd);
+        Assert.Contains("cd-test-event.ics", cd!.FileNameStar ?? cd.FileName ?? "");
+    }
+
+    [Fact]
+    public async Task IcsEndpoint_NotFound_Returns404()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            dbContext.Users.Add(CreateUser("ics-nf@example.com", "ICS NF"));
+            dbContext.Domains.Add(CreateDomain("Tech", "tech-ics-nf"));
+        });
+
+        using var client = factory.CreateClient();
+        var response = await client.GetAsync("/ics/non-existent-event-slug");
+
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task IcsEndpoint_PendingApprovalEvent_Returns404()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("ics-pending@example.com", "ICS Pending User");
+            var domain = CreateDomain("Tech", "tech-ics-pending");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.Add(CreateEvent(
+                "Pending ICS Event", "pending-ics-event", "Not published.",
+                "Venue", "Prague",
+                FirstDayOfNextMonthUtc(), domain, user,
+                status: EventStatus.PendingApproval));
+        });
+
+        using var client = factory.CreateClient();
+        var response = await client.GetAsync("/ics/pending-ics-event");
+
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task IcsEndpoint_RejectedEvent_Returns404()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("ics-rej@example.com", "ICS Rejected User");
+            var domain = CreateDomain("Tech", "tech-ics-rej");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.Add(CreateEvent(
+                "Rejected ICS Event", "rejected-ics-event", "Rejected.",
+                "Venue", "Prague",
+                FirstDayOfNextMonthUtc(), domain, user,
+                status: EventStatus.Rejected));
+        });
+
+        using var client = factory.CreateClient();
+        var response = await client.GetAsync("/ics/rejected-ics-event");
+
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task IcsEndpoint_AnonymousAccess_Succeeds()
+    {
+        // Calendar ICS files for published events must be accessible without authentication.
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("ics-anon@example.com", "ICS Anon User");
+            var domain = CreateDomain("Tech", "tech-ics-anon");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.Add(CreateEvent(
+                "Anon ICS Event", "anon-ics-event", "Public event.",
+                "Venue", "Prague",
+                FirstDayOfNextMonthUtc(), domain, user));
+        });
+
+        // No auth header — request is deliberately anonymous
+        using var client = factory.CreateClient();
+        var response = await client.GetAsync("/ics/anon-ics-event");
+
+        Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task IcsEndpoint_IcsBodyContainsRequiredFields()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("ics-fields@example.com", "ICS Fields User");
+            var domain = CreateDomain("Tech", "tech-ics-fields");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Fields Check Event", "fields-check-event", "Checking all fields.",
+                "Grand Hall", "Vienna",
+                new DateTime(2026, 6, 15, 10, 0, 0, DateTimeKind.Utc), domain, user);
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        var body = await (await client.GetAsync("/ics/fields-check-event")).Content.ReadAsStringAsync();
+
+        Assert.Contains("SUMMARY:Fields Check Event", body);
+        Assert.Contains("DTSTART:", body);
+        Assert.Contains("DTEND:", body);
+        Assert.Contains("DTSTAMP:", body);
+        Assert.Contains("UID:fields-check-event@events-platform", body);
+        Assert.Contains("LOCATION:Grand Hall", body);
+        // Description must contain the canonical event-page URL
+        Assert.Contains("/event/fields-check-event", body);
+    }
+
+    [Fact]
+    public async Task IcsEndpoint_OnlineEvent_UsesEventUrlAsLocation()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("ics-online@example.com", "ICS Online User");
+            var domain = CreateDomain("Tech", "tech-ics-online");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Online ICS Event", "online-ics-event", "A virtual event.",
+                "", "Online",
+                FirstDayOfNextMonthUtc(), domain, user,
+                attendanceMode: AttendanceMode.Online);
+            // Override EventUrl for the online-specific assertion
+            ev.EventUrl = "https://meet.example.com/join/abc123";
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        var body = await (await client.GetAsync("/ics/online-ics-event")).Content.ReadAsStringAsync();
+
+        // For online events the join URL must be the LOCATION field
+        Assert.Contains("LOCATION:https://meet.example.com/join/abc123", body);
+    }
+
+    [Fact]
+    public async Task IcsEndpoint_IcsBodyDoesNotContainAttendeePersonalData()
+    {
+        // Privacy: the ICS file must never expose attendee names, emails, or IDs.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var attendeeEmail = "attendee-private@example.com";
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer = CreateUser("ics-priv-org@example.com", "Organizer");
+            var attendee  = CreateUser(attendeeEmail, "Attendee Name");
+            var domain = CreateDomain("Tech", "tech-ics-priv");
+            dbContext.Users.AddRange(organizer, attendee);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Private ICS Event", "private-ics-event", "Privacy test.",
+                "Venue", "Prague",
+                FirstDayOfNextMonthUtc(), domain, organizer);
+            dbContext.Events.Add(ev);
+            // Add a favourite so an attendee exists in the DB
+            dbContext.FavoriteEvents.Add(new FavoriteEvent
+            {
+                EventId = ev.Id,
+                UserId = attendee.Id,
+                CreatedAtUtc = DateTime.UtcNow,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        var body = await (await client.GetAsync("/ics/private-ics-event")).Content.ReadAsStringAsync();
+
+        Assert.DoesNotContain(attendeeEmail, body);
+        Assert.DoesNotContain("Attendee Name", body);
+    }
 }
