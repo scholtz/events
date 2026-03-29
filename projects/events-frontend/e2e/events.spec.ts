@@ -1655,9 +1655,9 @@ test.describe('Post-save calendar prompt', () => {
     await loginAs(page, contributor)
     await page.goto(`/event/${event.slug}`)
 
-    // Save the event via the favorite button
-    await page.getByRole('button', { name: /Save event/i }).click()
-    // Wait for the saved state to appear
+    // Save the event via the favorite button — accessible name comes from aria-label
+    await page.getByRole('button', { name: /Add to favorites/i }).click()
+    // Wait for the saved state to appear (aria-label changes to "Remove from favorites")
     await expect(page.getByRole('button', { name: /Remove from favorites/i })).toBeVisible()
 
     // The post-save calendar prompt must now be visible
@@ -1675,20 +1675,16 @@ test.describe('Post-save calendar prompt', () => {
       users: [contributor],
       domains: [makeTechDomain()],
       events: [event],
-      favoriteEvents: [
-        {
-          id: 'fav-1',
-          userId: contributor.id,
-          eventId: event.id,
-          createdAtUtc: new Date().toISOString(),
-        },
-      ],
       currentUserId: contributor.id,
     })
     await loginAs(page, contributor)
     await page.goto(`/event/${event.slug}`)
 
-    // Prompt should be visible because the event is already saved
+    // Save the event so the prompt appears
+    await page.getByRole('button', { name: /Add to favorites/i }).click()
+    await expect(page.getByRole('button', { name: /Remove from favorites/i })).toBeVisible()
+
+    // Prompt should be visible after saving
     const promptBtn = page.locator('.calendar-prompt-btn')
     await expect(promptBtn).toBeVisible()
 
