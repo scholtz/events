@@ -527,6 +527,7 @@ export default {
     domainBannerUrl: 'Banner URL',
     domainSaveStyle: 'Save Style',
     domainSaving: 'Saving\u2026',
+    domainColorError: 'Color must be a valid hex value, e.g. #137fec or #fff.',
     hubOverview: 'Hub Overview Content',
     saveOverview: 'Save Overview',
     featuredEvents: 'Featured Events',
