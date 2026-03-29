@@ -230,7 +230,7 @@ export default {
     youveSavedThisEvent: "You've saved this event",
     saveToShowInterest: 'Save this event to show your interest.',
     signInToSave: 'to save this event and show your interest.',
-    addToCalendarPrompt: 'Add it to your calendar so you don't miss it.',
+    addToCalendarPrompt: "Add it to your calendar so you don't miss it.",
     addToCalendarPromptBtn: 'Add to calendar',
     offlineStale:
       "You're offline — this event information is from your last online visit and may not reflect the latest changes.",

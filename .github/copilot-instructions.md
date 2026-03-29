@@ -644,3 +644,31 @@ Every new GraphQL mutation must have integration tests covering:
 2. Forbidden path (wrong role returns FORBIDDEN error)
 3. Unauthenticated path (no token returns AUTH_NOT_AUTHORIZED error)
 4. Edge cases (e.g., last admin cannot leave or be demoted)
+
+
+## i18n string literal safety
+
+When adding i18n key values that contain apostrophes (e.g. "don't", "you've", "it's"):
+- **NEVER use single quotes around a string that contains an apostrophe** — `'Add it to your calendar so you don't miss it.'` is a syntax error because the apostrophe terminates the string.
+- Use **double quotes** for any string value that contains an apostrophe: `"Add it to your calendar so you don't miss it."`
+- Existing pattern in the codebase: `youveSavedThisEvent: "You've saved this event"` — follow this exactly.
+- Run `npm run lint` or `npx oxlint .` locally before committing locale files to catch syntax errors immediately.
+- This applies to ALL THREE locale files (en.ts, sk.ts, de.ts). A single broken string in any locale file will fail the entire frontend build.
+
+## Server-side ICS endpoint
+
+The backend exposes `GET /ics/{slug}` (defined in `Program.cs`) that returns a downloadable `.ics` file for any **published** event:
+- Returns HTTP 200 with `Content-Type: text/calendar;charset=utf-8` and `Content-Disposition: attachment; filename="{slug}.ics"` for published events.
+- Returns HTTP 404 for non-existent slugs, pending-approval events, rejected events, and draft events.
+- Requires no authentication — calendar exports are public for published events.
+- The canonical event-detail URL embedded in the ICS `URL:` and `DESCRIPTION:` fields uses `App:FrontendBaseUrl` from `appsettings.json` (defaults to `https://events.biatec.io`).
+- ICS generation logic lives in `projects/EventsApi/Utilities/IcsBuilder.cs`.
+- Integration tests live in `GraphQlIntegrationTests.cs` in the `// ── ICS Endpoint Tests ──` section.
+
+## Post-save calendar prompt
+
+After a user saves (favorites) a published event, a `.calendar-prompt` div appears in the `.attendee-cta-saved` section of `EventDetailView.vue` with:
+- A short nudge text (`eventDetail.addToCalendarPrompt`)
+- A button (`eventDetail.addToCalendarPromptBtn`) that calls `toggleCalendarMenu()` to open the existing add-to-calendar dropdown
+- Only rendered when `event.status === 'PUBLISHED' && calendarInputValid`
+- E2E tests covering: hidden before save, visible after save, prompt button opens menu, hidden for non-published events — in `e2e/events.spec.ts` under the `Post-save calendar prompt` describe block

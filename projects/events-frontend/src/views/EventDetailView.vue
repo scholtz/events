@@ -645,6 +645,20 @@ function domainHostDisplay(event: {
                   :starts-at-utc="event.startsAtUtc"
                   :is-saved="isFavorited"
                 />
+                <!-- Post-save calendar prompt: encourage the user to also add to calendar -->
+                <div
+                  v-if="event.status === 'PUBLISHED' && calendarInputValid"
+                  class="calendar-prompt"
+                >
+                  <p class="calendar-prompt-text">{{ t('eventDetail.addToCalendarPrompt') }}</p>
+                  <button
+                    class="btn btn-outline btn-sm calendar-prompt-btn"
+                    @click="toggleCalendarMenu"
+                  >
+                    <span aria-hidden="true">📅</span>
+                    {{ t('eventDetail.addToCalendarPromptBtn') }}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1036,6 +1050,27 @@ function domainHostDisplay(event: {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+}
+
+.calendar-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  background: var(--color-surface-raised, #f8f9fa);
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+}
+
+.calendar-prompt-text {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.calendar-prompt-btn {
+  align-self: flex-start;
+  font-size: 0.8125rem;
 }
 
 .link-subtle {
