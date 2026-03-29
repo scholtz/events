@@ -510,6 +510,7 @@ export default {
     domainBannerUrl: 'URL bannera',
     domainSaveStyle: 'Uložiť štýl',
     domainSaving: 'Ukladám\u2026',
+    domainColorError: 'Farba musí byť platná hex hodnota, napr. #137fec alebo #fff.',
     hubOverview: 'Obsah prehľadu hubu',
     saveOverview: 'Uložiť prehľad',
     featuredEvents: 'Odporúčané podujatia',

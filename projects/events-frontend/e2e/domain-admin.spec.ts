@@ -240,6 +240,85 @@ test.describe('Domain admin management', () => {
     await expect(page.getByRole('heading', { name: 'Hub Branding' })).toBeHidden()
   })
 
+  test('invalid primary color shows inline error and does not save', async ({ page }) => {
+    const admin = makeAdminUser()
+    setupMockApi(page, {
+      users: [admin],
+      domains: [makeTechDomain()],
+      domainAdministrators: [],
+    })
+    await loginAs(page, admin)
+    await page.goto('/admin')
+
+    await page.getByRole('button', { name: /Tags/ }).click()
+    await page.getByRole('button', { name: 'Manage' }).click()
+    await expect(page.getByRole('heading', { name: 'Hub Branding' })).toBeVisible()
+
+    // Enter an invalid color
+    await page.locator('input[placeholder="#137fec"]').fill('red')
+    await page.getByRole('button', { name: 'Save Style' }).click()
+
+    // Inline error appears
+    await expect(page.locator('.field-error').first()).toBeVisible()
+    await expect(page.locator('.field-error').first()).toContainText(/hex/)
+
+    // Success indicator must NOT appear (save was blocked)
+    await expect(page.locator('.save-success')).toHaveCount(0)
+  })
+
+  test('invalid accent color shows inline error and does not save', async ({ page }) => {
+    const admin = makeAdminUser()
+    setupMockApi(page, {
+      users: [admin],
+      domains: [makeTechDomain()],
+      domainAdministrators: [],
+    })
+    await loginAs(page, admin)
+    await page.goto('/admin')
+
+    await page.getByRole('button', { name: /Tags/ }).click()
+    await page.getByRole('button', { name: 'Manage' }).click()
+    await expect(page.getByRole('heading', { name: 'Hub Branding' })).toBeVisible()
+
+    // Leave primary blank; enter bad accent color
+    await page.locator('input[placeholder="#ff5500"]').fill('rgb(255,0,0)')
+    await page.getByRole('button', { name: 'Save Style' }).click()
+
+    // Accent-color inline error appears
+    await expect(page.locator('.field-error').first()).toBeVisible()
+    await expect(page.locator('.field-error').first()).toContainText(/hex/)
+
+    // Success indicator must NOT appear
+    await expect(page.locator('.save-success')).toHaveCount(0)
+  })
+
+  test('valid hex color in admin view saves successfully without inline error', async ({
+    page,
+  }) => {
+    const admin = makeAdminUser()
+    setupMockApi(page, {
+      users: [admin],
+      domains: [makeTechDomain()],
+      domainAdministrators: [],
+    })
+    await loginAs(page, admin)
+    await page.goto('/admin')
+
+    await page.getByRole('button', { name: /Tags/ }).click()
+    await page.getByRole('button', { name: 'Manage' }).click()
+    await expect(page.getByRole('heading', { name: 'Hub Branding' })).toBeVisible()
+
+    // Enter valid hex colors
+    await page.locator('input[placeholder="#137fec"]').fill('#137fec')
+    await page.locator('input[placeholder="#ff5500"]').fill('#ff5500')
+    await page.getByRole('button', { name: 'Save Style' }).click()
+
+    // No inline errors
+    await expect(page.locator('.field-error')).toHaveCount(0)
+    // Success indicator appears
+    await expect(page.locator('.save-success')).toBeVisible()
+  })
+
   test('can update hub overview content', async ({ page }) => {
     const admin = makeAdminUser()
     const domain = makeTechDomain()

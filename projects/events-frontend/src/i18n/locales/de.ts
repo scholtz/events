@@ -510,6 +510,7 @@ export default {
     domainBannerUrl: 'Banner-URL',
     domainSaveStyle: 'Stil speichern',
     domainSaving: 'Speichern\u2026',
+    domainColorError: 'Farbe muss ein gültiger Hex-Wert sein, z.B. #137fec oder #fff.',
     hubOverview: 'Hub-Übersichtsinhalt',
     saveOverview: 'Übersicht speichern',
     featuredEvents: 'Hervorgehobene Veranstaltungen',

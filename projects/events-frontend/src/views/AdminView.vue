@@ -5,6 +5,7 @@ import { useEventsStore } from '@/stores/events'
 import { useAuthStore } from '@/stores/auth'
 import { useDomainsStore } from '@/stores/domains'
 import { gqlRequest } from '@/lib/graphql'
+import { isValidHexColor } from '@/lib/colorUtils'
 import type { AdminOverview, CatalogEvent, DomainAdministrator, User } from '@/types'
 
 const { t, locale } = useI18n()
@@ -28,6 +29,7 @@ const addAdminUserId = ref('')
 const domainAdminError = ref('')
 const domainStyleSaving = ref(false)
 const domainStyleSuccess = ref(false)
+const domainStyleColorErrors = ref({ primaryColor: '', accentColor: '' })
 const domainStyleForm = ref({
   primaryColor: '',
   accentColor: '',
@@ -67,6 +69,7 @@ async function selectDomain(domainId: string) {
   selectedDomainId.value = domainId
   domainAdminError.value = ''
   domainStyleSuccess.value = false
+  domainStyleColorErrors.value = { primaryColor: '', accentColor: '' }
   domainOverviewSuccess.value = false
   featuredEventsSuccess.value = false
   featuredEventsError.value = ''
@@ -135,6 +138,18 @@ async function handleSaveDomainStyle() {
   domainStyleSaving.value = true
   domainStyleSuccess.value = false
   domainAdminError.value = ''
+
+  const colorErrors = { primaryColor: '', accentColor: '' }
+  if (!isValidHexColor(domainStyleForm.value.primaryColor))
+    colorErrors.primaryColor = t('admin.domainColorError')
+  if (!isValidHexColor(domainStyleForm.value.accentColor))
+    colorErrors.accentColor = t('admin.domainColorError')
+  domainStyleColorErrors.value = colorErrors
+  if (colorErrors.primaryColor || colorErrors.accentColor) {
+    domainStyleSaving.value = false
+    return
+  }
+
   try {
     await domainsStore.updateDomainStyle({
       domainId: selectedDomainId.value,
@@ -605,19 +620,37 @@ async function handleReviewEvent(eventId: string, status: string) {
                   <span>{{ t('admin.domainPrimaryColor') }}</span>
                   <input
                     v-model="domainStyleForm.primaryColor"
-                    class="form-input"
+                    :class="['form-input', { 'input-error': domainStyleColorErrors.primaryColor }]"
                     type="text"
                     placeholder="#137fec"
+                    aria-describedby="admin-primary-color-error"
                   />
+                  <span
+                    v-if="domainStyleColorErrors.primaryColor"
+                    id="admin-primary-color-error"
+                    class="field-error"
+                    role="alert"
+                  >
+                    {{ domainStyleColorErrors.primaryColor }}
+                  </span>
                 </label>
                 <label class="form-field">
                   <span>{{ t('admin.domainAccentColor') }}</span>
                   <input
                     v-model="domainStyleForm.accentColor"
-                    class="form-input"
+                    :class="['form-input', { 'input-error': domainStyleColorErrors.accentColor }]"
                     type="text"
                     placeholder="#ff5500"
+                    aria-describedby="admin-accent-color-error"
                   />
+                  <span
+                    v-if="domainStyleColorErrors.accentColor"
+                    id="admin-accent-color-error"
+                    class="field-error"
+                    role="alert"
+                  >
+                    {{ domainStyleColorErrors.accentColor }}
+                  </span>
                 </label>
                 <label class="form-field">
                   <span>{{ t('admin.domainLogoUrl') }}</span>
@@ -1355,6 +1388,18 @@ tr:hover td {
   color: #4ade80;
   font-size: 0.875rem;
   font-weight: 500;
+}
+
+.input-error {
+  border-color: var(--color-danger, #f87171) !important;
+  outline-color: var(--color-danger, #f87171);
+}
+
+.field-error {
+  color: var(--color-danger, #f87171);
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+  display: block;
 }
 
 .admin-list {
