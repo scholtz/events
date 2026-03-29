@@ -6549,6 +6549,54 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task UpdateDomainOverview_SubmitEventCtaTooLong_ReturnsError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid domainAdminId = Guid.Empty, domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domainAdmin = CreateUser("lentest-submitcta@example.com", "CTA Length Tester");
+            var domain = CreateDomain("CTA Hub", "cta-hub-len");
+
+            dbContext.Users.Add(domainAdmin);
+            dbContext.Domains.Add(domain);
+
+            domainAdminId = domainAdmin.Id;
+            domainId = domain.Id;
+
+            dbContext.Set<DomainAdministrator>().Add(new DomainAdministrator
+            {
+                DomainId = domain.Id,
+                UserId = domainAdmin.Id
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, domainAdminId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+            mutation UpdateDomainOverview($input: UpdateDomainOverviewInput!) {
+              updateDomainOverview(input: $input) { id }
+            }
+            """,
+            variables = new
+            {
+                input = new
+                {
+                    domainId,
+                    submitEventCta = new string('z', 301)
+                }
+            }
+        });
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("INVALID_SUBMIT_EVENT_CTA", body);
+    }
+
+    [Fact]
     public async Task DomainBySlug_ReturnsOverviewContentFields()
     {
         await using var factory = new EventsApiWebApplicationFactory();
