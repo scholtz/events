@@ -4,7 +4,8 @@ import { useI18n } from 'vue-i18n'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useAuthStore } from '@/stores/auth'
 import { useDomainsStore } from '@/stores/domains'
-import type { EventAnalyticsItem, EventDomain } from '@/types'
+import { gqlRequest } from '@/lib/graphql'
+import type { CatalogEvent, EventAnalyticsItem, EventDomain } from '@/types'
 import { isValidHexColor } from '@/lib/colorUtils'
 
 const { t, locale } = useI18n()
@@ -14,6 +15,7 @@ const domainsStore = useDomainsStore()
 
 const overview = computed(() => dashboardStore.overview)
 const MAX_COMMUNITY_LINKS = 10
+const MAX_FEATURED_EVENTS = 5
 
 // ── Hub management state ─────────────────────────────────────────────────────
 const hubStyleForms = ref<Record<string, { primaryColor: string; accentColor: string; logoUrl: string; bannerUrl: string }>>({})
@@ -28,6 +30,14 @@ const hubLinksSaving = ref<Record<string, boolean>>({})
 const hubLinksSuccess = ref<Record<string, boolean>>({})
 const hubManageError = ref<Record<string, string>>({})
 const hubColorErrors = ref<Record<string, { primaryColor: string; accentColor: string }>>({})
+
+// ── Featured events state ─────────────────────────────────────────────────────
+const hubFeaturedEvents = ref<Record<string, CatalogEvent[]>>({})
+const hubFeaturedEventsLoading = ref<Record<string, boolean>>({})
+const hubFeaturedEventsSaving = ref<Record<string, boolean>>({})
+const hubFeaturedEventsSuccess = ref<Record<string, boolean>>({})
+const hubFeaturedEventsError = ref<Record<string, string>>({})
+const hubAddFeaturedEventId = ref<Record<string, string>>({})
 
 function initHubForms(domains: EventDomain[]) {
   for (const d of domains) {
@@ -61,6 +71,10 @@ function initHubForms(domains: EventDomain[]) {
         title: '',
         url: '',
       }
+    }
+    if (!hubFeaturedEvents.value[d.id]) {
+      hubFeaturedEvents.value[d.id] = []
+      hubAddFeaturedEventId.value[d.id] = ''
     }
   }
 }
@@ -168,11 +182,76 @@ async function handleSaveHubLinks(domainId: string) {
   }
 }
 
+async function loadHubFeaturedEvents(domainId: string) {
+  const domain = domainsStore.myManagedDomains.find((d) => d.id === domainId)
+  if (!domain) return
+  hubFeaturedEventsLoading.value[domainId] = true
+  try {
+    const data = await gqlRequest<{ featuredEventsForDomain: CatalogEvent[] }>(
+      `query FeaturedEventsForDomain($domainSlug: String!) {
+        featuredEventsForDomain(domainSlug: $domainSlug) {
+          id name slug status startsAtUtc
+        }
+      }`,
+      { domainSlug: domain.slug },
+    )
+    hubFeaturedEvents.value[domainId] = data.featuredEventsForDomain
+  } catch {
+    hubFeaturedEvents.value[domainId] = []
+  } finally {
+    hubFeaturedEventsLoading.value[domainId] = false
+  }
+}
+
+function handleAddHubFeaturedEvent(domainId: string) {
+  const eventId = hubAddFeaturedEventId.value[domainId]
+  if (!eventId) return
+  const current = hubFeaturedEvents.value[domainId] ?? []
+  if (current.length >= MAX_FEATURED_EVENTS) return
+  if (current.some((e) => e.id === eventId)) {
+    hubAddFeaturedEventId.value[domainId] = ''
+    return
+  }
+  const eventToAdd = (overview.value?.managedEvents ?? []).find(
+    (e) => e.id === eventId,
+  ) as CatalogEvent | undefined
+  if (eventToAdd) {
+    hubFeaturedEvents.value[domainId] = [...current, eventToAdd]
+    hubAddFeaturedEventId.value[domainId] = ''
+    hubFeaturedEventsSuccess.value[domainId] = false
+  }
+}
+
+function handleRemoveHubFeaturedEvent(domainId: string, eventId: string) {
+  hubFeaturedEvents.value[domainId] = (hubFeaturedEvents.value[domainId] ?? []).filter(
+    (e) => e.id !== eventId,
+  )
+  hubFeaturedEventsSuccess.value[domainId] = false
+}
+
+async function handleSaveHubFeaturedEvents(domainId: string) {
+  hubFeaturedEventsSaving.value[domainId] = true
+  hubFeaturedEventsSuccess.value[domainId] = false
+  hubFeaturedEventsError.value[domainId] = ''
+  try {
+    await domainsStore.setDomainFeaturedEvents(
+      domainId,
+      (hubFeaturedEvents.value[domainId] ?? []).map((e) => e.id),
+    )
+    hubFeaturedEventsSuccess.value[domainId] = true
+  } catch {
+    hubFeaturedEventsError.value[domainId] = t('dashboard.hubFeaturedEventsError')
+  } finally {
+    hubFeaturedEventsSaving.value[domainId] = false
+  }
+}
+
 onMounted(async () => {
   if (auth.isAuthenticated) {
     await dashboardStore.fetchDashboard()
     await domainsStore.fetchMyManagedDomains()
     initHubForms(domainsStore.myManagedDomains)
+    await Promise.all(domainsStore.myManagedDomains.map((d) => loadHubFeaturedEvents(d.id)))
   }
 })
 
@@ -782,6 +861,99 @@ function eventRecommendationClass(item: EventAnalyticsItem): string {
                 {{ t('admin.communityLinksSaved') }}
               </span>
             </div>
+          </div>
+
+          <!-- Featured Events curation -->
+          <div class="hub-form-section">
+            <h4 class="hub-form-title">{{ t('dashboard.hubFeaturedEventsTitle') }}</h4>
+            <p class="hub-form-helper">{{ t('dashboard.hubFeaturedEventsHint') }}</p>
+
+            <div v-if="hubFeaturedEventsLoading[hub.id]" class="hub-featured-loading text-secondary">
+              {{ t('common.loading') }}
+            </div>
+            <template v-else>
+              <ul class="hub-featured-events-list" aria-label="Featured events">
+                <li
+                  v-for="event in hubFeaturedEvents[hub.id]"
+                  :key="event.id"
+                  class="hub-featured-event-item"
+                >
+                  <span class="hub-featured-event-name">{{ event.name }}</span>
+                  <button
+                    type="button"
+                    class="btn btn-outline btn-sm"
+                    @click="handleRemoveHubFeaturedEvent(hub.id, event.id)"
+                  >
+                    {{ t('dashboard.hubFeaturedEventsRemove') }}
+                  </button>
+                </li>
+                <li
+                  v-if="!(hubFeaturedEvents[hub.id]?.length)"
+                  class="hub-featured-empty text-secondary"
+                >
+                  {{ t('dashboard.hubFeaturedEventsEmpty') }}
+                </li>
+              </ul>
+
+              <div
+                v-if="(hubFeaturedEvents[hub.id]?.length ?? 0) < MAX_FEATURED_EVENTS"
+                class="hub-add-featured-form"
+              >
+                <select
+                  v-model="hubAddFeaturedEventId[hub.id]"
+                  class="form-input hub-featured-select"
+                  :aria-label="t('dashboard.hubFeaturedEventsAdd')"
+                >
+                  <option value="">{{ t('dashboard.hubFeaturedEventsSelectPlaceholder') }}</option>
+                  <option
+                    v-for="event in (overview?.managedEvents ?? []).filter(
+                      (e) =>
+                        e.status === 'PUBLISHED' &&
+                        e.domain?.id === hub.id &&
+                        !(hubFeaturedEvents[hub.id] ?? []).some((f) => f.id === e.id)
+                    )"
+                    :key="event.id"
+                    :value="event.id"
+                  >
+                    {{ event.name }}
+                  </option>
+                </select>
+                <button
+                  type="button"
+                  class="btn btn-outline btn-sm"
+                  :disabled="!hubAddFeaturedEventId[hub.id]"
+                  @click="handleAddHubFeaturedEvent(hub.id)"
+                >
+                  {{ t('dashboard.hubFeaturedEventsAdd') }}
+                </button>
+              </div>
+
+              <p
+                v-if="hubFeaturedEventsError[hub.id]"
+                class="hub-featured-error field-error"
+                role="alert"
+              >
+                {{ hubFeaturedEventsError[hub.id] }}
+              </p>
+
+              <div class="hub-form-actions">
+                <button
+                  type="button"
+                  class="btn btn-primary btn-sm"
+                  :disabled="hubFeaturedEventsSaving[hub.id]"
+                  @click="handleSaveHubFeaturedEvents(hub.id)"
+                >
+                  {{
+                    hubFeaturedEventsSaving[hub.id]
+                      ? t('dashboard.hubFeaturedEventsSaving')
+                      : t('dashboard.hubFeaturedEventsSave')
+                  }}
+                </button>
+                <span v-if="hubFeaturedEventsSuccess[hub.id]" class="hub-save-success">
+                  {{ t('dashboard.hubFeaturedEventsSaved') }}
+                </span>
+              </div>
+            </template>
           </div>
         </div>
       </section>
@@ -1433,6 +1605,63 @@ tr:hover td {
   gap: 0.75rem;
   align-items: end;
   margin-bottom: 0.75rem;
+}
+
+.hub-featured-events-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.hub-featured-event-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--color-surface-secondary, rgba(255, 255, 255, 0.04));
+  border-radius: var(--radius-sm, 4px);
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
+}
+
+.hub-featured-event-name {
+  font-size: 0.875rem;
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hub-featured-empty {
+  font-size: 0.875rem;
+  padding: 0.5rem 0;
+  list-style: none;
+}
+
+.hub-add-featured-form {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.hub-featured-select {
+  flex: 1;
+  min-width: 180px;
+}
+
+.hub-featured-loading {
+  font-size: 0.875rem;
+  padding: 0.5rem 0;
+}
+
+.hub-featured-error {
+  margin-bottom: 0.5rem;
 }
 
 .hub-manage-error {

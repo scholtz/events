@@ -426,6 +426,16 @@ export default {
     hubViewHub: 'Hub anzeigen',
     hubManageError: 'Speichern fehlgeschlagen. Bitte versuchen Sie es erneut.',
     hubColorError: 'Farbe muss ein gültiger Hex-Wert sein, z.B. #137fec oder #fff.',
+    hubFeaturedEventsTitle: 'Hervorgehobene Veranstaltungen',
+    hubFeaturedEventsHint: 'W\u00E4hlen Sie bis zu 5 ver\u00F6ffentlichte Veranstaltungen f\u00FCr die Hub-Seite aus.',
+    hubFeaturedEventsEmpty: 'Noch keine hervorgehobenen Veranstaltungen.',
+    hubFeaturedEventsSelectPlaceholder: 'Ver\u00F6ffentlichte Veranstaltung ausw\u00E4hlen\u2026',
+    hubFeaturedEventsAdd: 'Hinzuf\u00FCgen',
+    hubFeaturedEventsRemove: 'Entfernen',
+    hubFeaturedEventsSave: 'Hervorgehobene speichern',
+    hubFeaturedEventsSaving: 'Speichern\u2026',
+    hubFeaturedEventsSaved: '\u2713 Gespeichert',
+    hubFeaturedEventsError: 'Speichern fehlgeschlagen. Bitte erneut versuchen.',
   },
 
   // ── Portfolio (Meine Events) ───────────────────────────────────────────────
