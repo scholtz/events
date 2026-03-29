@@ -653,7 +653,7 @@ function domainHostDisplay(event: {
                   <p class="calendar-prompt-text">{{ t('eventDetail.addToCalendarPrompt') }}</p>
                   <button
                     class="btn btn-outline btn-sm calendar-prompt-btn"
-                    @click="toggleCalendarMenu"
+                    @click.stop="toggleCalendarMenu"
                   >
                     <span aria-hidden="true">📅</span>
                     {{ t('eventDetail.addToCalendarPromptBtn') }}
