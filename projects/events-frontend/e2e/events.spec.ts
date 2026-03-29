@@ -7,6 +7,7 @@ import {
   loginAs,
   makeAdminUser,
   makeApprovedEvent,
+  makeContributorUser,
   makePublicGroup,
   makeTechDomain,
   setupMockApi,
@@ -1618,6 +1619,107 @@ test.describe('Event detail page', () => {
     await expect(menu).toHaveAttribute('aria-label', 'Kalenderoptionen')
     await expect(page.getByRole('menuitem', { name: /Google Kalender/i })).toBeVisible()
     await expect(page.getByRole('menuitem', { name: /Outlook/i })).toBeVisible()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Post-save calendar prompt
+// ---------------------------------------------------------------------------
+
+test.describe('Post-save calendar prompt', () => {
+  test('prompt is hidden before the user saves the event', async ({ page }) => {
+    const contributor = makeContributorUser()
+    const event = makeApprovedEvent({ id: 'ev-prompt-1', slug: 'prompt-event-1' })
+    setupMockApi(page, {
+      users: [contributor],
+      domains: [makeTechDomain()],
+      events: [event],
+      currentUserId: contributor.id,
+    })
+    await loginAs(page, contributor)
+    await page.goto(`/event/${event.slug}`)
+
+    // The user has NOT saved the event, so the prompt must not be visible
+    await expect(page.locator('.calendar-prompt')).toBeHidden()
+  })
+
+  test('prompt appears in the attendee section after saving the event', async ({ page }) => {
+    const contributor = makeContributorUser()
+    const event = makeApprovedEvent({ id: 'ev-prompt-2', slug: 'prompt-event-2' })
+    setupMockApi(page, {
+      users: [contributor],
+      domains: [makeTechDomain()],
+      events: [event],
+      currentUserId: contributor.id,
+    })
+    await loginAs(page, contributor)
+    await page.goto(`/event/${event.slug}`)
+
+    // Save the event via the favorite button — accessible name comes from aria-label
+    await page.getByRole('button', { name: /Add to favorites/i }).click()
+    // Wait for the saved state to appear (aria-label changes to "Remove from favorites")
+    await expect(page.getByRole('button', { name: /Remove from favorites/i })).toBeVisible()
+
+    // The post-save calendar prompt must now be visible
+    await expect(page.locator('.calendar-prompt')).toBeVisible()
+    await expect(page.locator('.calendar-prompt-text')).toContainText(
+      /Add it to your calendar/i,
+    )
+    await expect(page.locator('.calendar-prompt-btn')).toBeVisible()
+  })
+
+  test('prompt button opens the calendar menu', async ({ page }) => {
+    const contributor = makeContributorUser()
+    const event = makeApprovedEvent({ id: 'ev-prompt-3', slug: 'prompt-event-3' })
+    setupMockApi(page, {
+      users: [contributor],
+      domains: [makeTechDomain()],
+      events: [event],
+      currentUserId: contributor.id,
+    })
+    await loginAs(page, contributor)
+    await page.goto(`/event/${event.slug}`)
+
+    // Save the event so the prompt appears
+    await page.getByRole('button', { name: /Add to favorites/i }).click()
+    await expect(page.getByRole('button', { name: /Remove from favorites/i })).toBeVisible()
+
+    // Prompt should be visible after saving
+    const promptBtn = page.locator('.calendar-prompt-btn')
+    await expect(promptBtn).toBeVisible()
+
+    // Clicking the prompt button should open the calendar menu
+    await promptBtn.click()
+    await expect(page.locator('[role="menu"]')).toBeVisible()
+    await expect(page.getByRole('menuitem', { name: /Google Calendar/i })).toBeVisible()
+  })
+
+  test('prompt is not shown for non-published events even when saved', async ({ page }) => {
+    const contributor = makeContributorUser()
+    const event = makeApprovedEvent({
+      id: 'ev-prompt-4',
+      slug: 'prompt-event-4',
+      status: 'PENDING_APPROVAL',
+    })
+    setupMockApi(page, {
+      users: [contributor],
+      domains: [makeTechDomain()],
+      events: [event],
+      favoriteEvents: [
+        {
+          id: 'fav-2',
+          userId: contributor.id,
+          eventId: event.id,
+          createdAtUtc: new Date().toISOString(),
+        },
+      ],
+      currentUserId: contributor.id,
+    })
+    await loginAs(page, contributor)
+    await page.goto(`/event/${event.slug}`)
+
+    // Calendar export is disabled for non-published events — prompt should not appear
+    await expect(page.locator('.calendar-prompt')).toBeHidden()
   })
 })
 

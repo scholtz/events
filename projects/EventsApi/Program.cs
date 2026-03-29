@@ -156,6 +156,41 @@ app.MapGet("/", () => Results.Ok(new
 }));
 
 app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
+
+// ICS calendar export endpoint.
+// Returns a standards-compliant iCalendar file for any published event so that users
+// can add events to their preferred calendar app via a stable, bookmarkable URL without
+// requiring JavaScript.  Authentication is intentionally NOT required — calendar exports
+// are a public, privacy-safe feature for published events.
+app.MapGet("/ics/{slug}", async (
+    string slug,
+    AppDbContext db,
+    IConfiguration config,
+    HttpRequest request,
+    CancellationToken ct) =>
+{
+    var ev = await db.Events
+        .AsNoTracking()
+        .SingleOrDefaultAsync(e => e.Slug == slug, ct);
+
+    if (ev is null || ev.Status != EventStatus.Published)
+        return Results.NotFound();
+
+    // The canonical event URL should point to the frontend application (e.g.
+    // https://events.biatec.io/event/my-event), not to the API server.  Prefer the
+    // configured App:FrontendBaseUrl; fall back to the request's own origin only as a
+    // last resort so that local development still works without configuration.
+    var frontendBase = config["App:FrontendBaseUrl"]?.TrimEnd('/');
+    if (string.IsNullOrWhiteSpace(frontendBase))
+        frontendBase = $"{request.Scheme}://{request.Host}";
+
+    var ics = IcsBuilder.Build(ev, frontendBase);
+    var bytes = Encoding.UTF8.GetBytes(ics);
+
+    return Results.File(bytes, "text/calendar;charset=utf-8", $"{ev.Slug}.ics");
+})
+.WithName("GetEventIcs");
+
 app.MapGraphQL();
 
 using (var scope = app.Services.CreateScope())
