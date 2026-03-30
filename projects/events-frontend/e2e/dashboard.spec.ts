@@ -8,6 +8,9 @@ import {
   makePendingEvent,
   makeRejectedEvent,
   makeDraftEvent,
+  makePublicGroup,
+  makePrivateGroup,
+  makeActiveMembership,
   loginAs,
   type MockFavoriteEvent,
   type MockCalendarAction,
@@ -1603,5 +1606,112 @@ test.describe('Per-event recommendations and guidance', () => {
 
     // No recommendation row should appear (has saves AND has language)
     await expect(page.locator('.event-recommendation-row')).toHaveCount(0)
+  })
+})
+
+// ── My Communities section ────────────────────────────────────────────────────
+
+test.describe('Dashboard – My Communities section', () => {
+  test('shows empty state when user has no community memberships', async ({ page }) => {
+    const user = makeContributorUser()
+    setupMockApi(page, { users: [user] })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    await expect(page.getByRole('heading', { name: 'My Communities' })).toBeVisible()
+    await expect(page.getByText("You haven't joined any community yet.")).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Browse Communities', exact: true }).first()).toBeVisible()
+  })
+
+  test('shows active community memberships with role badges', async ({ page }) => {
+    const user = makeContributorUser()
+    const group = makePublicGroup({ id: 'grp-dash-1', name: 'Blockchain Builders', slug: 'blockchain-builders' })
+    const state = setupMockApi(page, { users: [user] })
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, user.id, 'MEMBER'))
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    await expect(page.getByRole('heading', { name: 'My Communities' })).toBeVisible()
+    await expect(page.locator('.community-item-name', { hasText: 'Blockchain Builders' })).toBeVisible()
+    await expect(page.locator('.community-role-badge', { hasText: 'Member' })).toBeVisible()
+  })
+
+  test('shows admin role badge for group admin', async ({ page }) => {
+    const user = makeContributorUser()
+    const group = makePublicGroup({ id: 'grp-admin-dash', name: 'Admin Circle', slug: 'admin-circle' })
+    const state = setupMockApi(page, { users: [user] })
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, user.id, 'ADMIN'))
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    await expect(page.locator('.community-role-badge', { hasText: 'Admin' })).toBeVisible()
+  })
+
+  test('shows event manager role badge for event manager member', async ({ page }) => {
+    const user = makeContributorUser()
+    const group = makePublicGroup({ id: 'grp-em-dash', name: 'Event Organizers', slug: 'event-organizers' })
+    const state = setupMockApi(page, { users: [user] })
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, user.id, 'EVENT_MANAGER'))
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    await expect(page.locator('.community-role-badge', { hasText: 'Event Manager' })).toBeVisible()
+  })
+
+  test('community item links to group detail page', async ({ page }) => {
+    const user = makeContributorUser()
+    const group = makePublicGroup({ id: 'grp-link-dash', name: 'Link Test Group', slug: 'link-test-group' })
+    const state = setupMockApi(page, { users: [user] })
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, user.id))
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    await page.locator('.community-item', { hasText: 'Link Test Group' }).click()
+    await expect(page).toHaveURL(/\/community\/link-test-group/)
+  })
+
+  test('does not show pending memberships in My Communities', async ({ page }) => {
+    const user = makeContributorUser()
+    const publicGroup = makePublicGroup({ id: 'grp-active-only', name: 'Active Only Group', slug: 'active-only-group' })
+    const privateGroup = makePrivateGroup({ id: 'grp-pending-only', name: 'Pending Group', slug: 'pending-group' })
+    const state = setupMockApi(page, { users: [user] })
+    state.communityGroups.push(publicGroup, privateGroup)
+    state.communityMemberships.push(makeActiveMembership(publicGroup.id, user.id))
+    // Add a PENDING membership for the private group
+    state.communityMemberships.push({
+      id: 'mem-pending-dash',
+      groupId: privateGroup.id,
+      userId: user.id,
+      role: 'MEMBER',
+      status: 'PENDING',
+      createdAtUtc: new Date().toISOString(),
+      reviewedAtUtc: null,
+      reviewedByUserId: null,
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Active group shown, pending group NOT shown
+    await expect(page.locator('.community-item-name', { hasText: 'Active Only Group' })).toBeVisible()
+    await expect(page.locator('.community-item-name', { hasText: 'Pending Group' })).toHaveCount(0)
+  })
+
+  test('unauthenticated user does not see My Communities section', async ({ page }) => {
+    setupMockApi(page)
+    await page.goto('/dashboard')
+
+    await expect(page.getByRole('heading', { name: 'My Communities' })).toHaveCount(0)
+    // Not-logged-in prompt is visible
+    await expect(page.getByRole('heading', { name: 'Sign in required' })).toBeVisible()
   })
 })

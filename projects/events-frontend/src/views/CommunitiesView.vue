@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
 import { useCommunitiesStore } from '@/stores/communities'
@@ -55,6 +55,16 @@ async function submitCreate() {
 }
 
 const hasGroups = computed(() => communitiesStore.groups.length > 0)
+
+// SEO: set page title
+const pageTitle = computed(() => t('community.pageTitle'))
+watch(
+  pageTitle,
+  (title) => {
+    if (typeof document !== 'undefined') document.title = title
+  },
+  { immediate: true },
+)
 </script>
 
 <template>

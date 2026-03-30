@@ -4,18 +4,24 @@ import { useI18n } from 'vue-i18n'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useAuthStore } from '@/stores/auth'
 import { useDomainsStore } from '@/stores/domains'
+import { useCommunitiesStore } from '@/stores/communities'
 import { gqlRequest } from '@/lib/graphql'
-import type { CatalogEvent, EventAnalyticsItem, EventDomain } from '@/types'
+import type { CatalogEvent, EventAnalyticsItem, EventDomain, CommunityMembership } from '@/types'
 import { isValidHexColor } from '@/lib/colorUtils'
 
 const { t, locale } = useI18n()
 const dashboardStore = useDashboardStore()
 const auth = useAuthStore()
 const domainsStore = useDomainsStore()
+const communitiesStore = useCommunitiesStore()
 
 const overview = computed(() => dashboardStore.overview)
 const MAX_COMMUNITY_LINKS = 10
 const MAX_FEATURED_EVENTS = 5
+
+// ── My Communities state ─────────────────────────────────────────────────────
+const myCommunities = ref<CommunityMembership[]>([])
+const myCommunitiesLoading = ref(false)
 
 // ── Hub management state ─────────────────────────────────────────────────────
 const hubStyleForms = ref<Record<string, { primaryColor: string; accentColor: string; logoUrl: string; bannerUrl: string }>>({})
@@ -254,6 +260,13 @@ onMounted(async () => {
     await domainsStore.fetchMyManagedDomains()
     initHubForms(domainsStore.myManagedDomains)
     await Promise.all(domainsStore.myManagedDomains.map((d) => loadHubFeaturedEvents(d.id)))
+    myCommunitiesLoading.value = true
+    try {
+      const memberships = await communitiesStore.fetchMyMemberships()
+      myCommunities.value = memberships.filter((m) => m.status === 'ACTIVE')
+    } finally {
+      myCommunitiesLoading.value = false
+    }
   }
 })
 
@@ -349,6 +362,14 @@ function eventRecommendationClass(item: EventAnalyticsItem): string {
     if (days > 0 && days <= 7) return 'rec--urgent'
   }
   return 'rec--guidance'
+}
+
+function communityRoleLabel(role: string): string {
+  switch (role) {
+    case 'ADMIN': return t('community.adminRole')
+    case 'EVENT_MANAGER': return t('community.eventManagerRole')
+    default: return t('community.memberRole')
+  }
 }
 </script>
 
@@ -616,6 +637,52 @@ function eventRecommendationClass(item: EventAnalyticsItem): string {
           </div>
         </div>
       </template>
+
+      <!-- ── My Communities ─────────────────────────────────────────────────── -->
+      <section
+        v-if="!dashboardStore.loading && !dashboardStore.error"
+        class="my-communities-section"
+        aria-labelledby="my-communities-heading"
+      >
+        <div class="section-header">
+          <h2 id="my-communities-heading">{{ t('dashboard.myCommunitiesTitle') }}</h2>
+          <RouterLink to="/communities" class="btn btn-outline btn-sm">
+            {{ t('dashboard.browseCommunities') }}
+          </RouterLink>
+        </div>
+
+        <!-- Loading -->
+        <div v-if="myCommunitiesLoading" class="communities-loading">
+          <span class="text-secondary">{{ t('common.loading') }}</span>
+        </div>
+
+        <!-- Empty state -->
+        <div v-else-if="myCommunities.length === 0" class="communities-empty card">
+          <p class="communities-empty-title">{{ t('dashboard.noCommunitiesYet') }}</p>
+          <p class="communities-empty-hint">{{ t('dashboard.noCommunitiesHint') }}</p>
+          <RouterLink to="/communities" class="btn btn-primary btn-sm">
+            {{ t('dashboard.browseCommunities') }}
+          </RouterLink>
+        </div>
+
+        <!-- List -->
+        <div v-else class="communities-list">
+          <RouterLink
+            v-for="m in myCommunities"
+            :key="m.id"
+            :to="`/community/${m.group.slug}`"
+            class="community-item card"
+          >
+            <div class="community-item-info">
+              <span class="community-item-name">{{ m.group.name }}</span>
+              <span v-if="m.group.summary" class="community-item-summary">{{ m.group.summary }}</span>
+            </div>
+            <span class="community-role-badge" :class="`role--${m.role.toLowerCase()}`">
+              {{ communityRoleLabel(m.role) }}
+            </span>
+          </RouterLink>
+        </div>
+      </section>
 
       <!-- ── Hub Management (for domain administrators) ──────────────────── -->
       <section
@@ -1715,6 +1782,95 @@ tr:hover td {
   font-size: 0.75rem;
   margin-top: 0.25rem;
   display: block;
+}
+
+/* ── My Communities ── */
+.my-communities-section {
+  margin-top: 2.5rem;
+}
+
+.communities-loading {
+  padding: 1rem 0;
+}
+
+.communities-empty.card {
+  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.communities-empty-title {
+  font-weight: 600;
+  margin: 0;
+}
+
+.communities-empty-hint {
+  color: var(--color-text-secondary);
+  font-size: 0.9375rem;
+  margin: 0 0 0.5rem;
+}
+
+.communities-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.community-item.card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  text-decoration: none;
+  color: inherit;
+  transition: box-shadow 0.15s;
+}
+
+.community-item.card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.community-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.community-item-name {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.community-item-summary {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.community-role-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.2em 0.6em;
+  border-radius: var(--radius-sm, 4px);
+  flex-shrink: 0;
+  background: var(--color-surface-raised);
+  color: var(--color-text-secondary);
+}
+
+.community-role-badge.role--admin {
+  background: var(--color-primary-light, #dbeafe);
+  color: var(--color-primary, #137fec);
+}
+
+.community-role-badge.role--event_manager {
+  background: var(--color-success-light, #dcfce7);
+  color: var(--color-success, #16a34a);
 }
 
 /* ── Responsive ── */

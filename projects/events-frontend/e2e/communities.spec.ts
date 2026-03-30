@@ -918,6 +918,33 @@ test.describe('Community pages – mobile viewport', () => {
   })
 })
 
+// ── SEO: page titles ──────────────────────────────────────────────────────────
+
+test.describe('Community pages – SEO page titles', () => {
+  test('communities list page sets document title', async ({ page }) => {
+    setupMockApi(page)
+    await page.goto('/communities')
+    await expect(page).toHaveTitle('Community Groups')
+  })
+
+  test('community detail page sets document title to group name', async ({ page }) => {
+    const group = makePublicGroup({ name: 'Prague Crypto Circle' })
+    const state = setupMockApi(page)
+    state.communityGroups.push(group)
+    await page.goto('/community/prague-crypto-circle')
+    await expect(page.getByRole('heading', { name: 'Prague Crypto Circle' })).toBeVisible()
+    await expect(page).toHaveTitle('Prague Crypto Circle | Communities')
+  })
+
+  test('community detail page falls back to default title when group is not found', async ({
+    page,
+  }) => {
+    setupMockApi(page)
+    await page.goto('/community/does-not-exist')
+    await expect(page).toHaveTitle('Communities')
+  })
+})
+
 // ── i18n: community pages ─────────────────────────────────────────────────────
 
 test.describe('Community pages – i18n', () => {

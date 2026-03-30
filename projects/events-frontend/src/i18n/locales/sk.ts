@@ -442,6 +442,11 @@ export default {
     hubFeaturedEventsSaving: 'Ukladám\u2026',
     hubFeaturedEventsSaved: '\u2713 Uložené',
     hubFeaturedEventsError: 'Nepodarilo sa uložiť odporúčané podujatia. Skúste to znova.',
+    myCommunitiesTitle: 'Moje komunity',
+    myCommunitiesDescription: 'Komunity, v ktorých ste aktívnym členom.',
+    noCommunitiesYet: 'Zatiaľ nie ste členom žiadnej komunity.',
+    noCommunitiesHint: 'Objavujte a pridávajte sa ku komunitám, aby sa zobrazili tu.',
+    browseCommunities: 'Prezrieť komunity',
   },
 
   // ── Portfolio (Moje udalosti) ──────────────────────────────────────────────
