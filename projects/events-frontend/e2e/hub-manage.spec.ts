@@ -303,7 +303,7 @@ test.describe('Hub Manage page (/hub/:slug/manage)', () => {
 
     // Wait for the event picker to populate, then select
     await expect(page.locator('.hub-featured-select option', { hasText: 'Prague Tech Summit' })).toBeAttached()
-    await page.selectOption('.hub-featured-select', { label: 'Prague Tech Summit' })
+    await page.locator('.hub-featured-select').selectOption({ label: 'Prague Tech Summit' })
     await page
       .locator('.hub-add-featured-form')
       .getByRole('button', { name: 'Add' })

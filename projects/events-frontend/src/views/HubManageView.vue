@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useDomainsStore } from '@/stores/domains'
 import { gqlRequest } from '@/lib/graphql'
@@ -10,7 +10,6 @@ import type { CatalogEvent, EventDomain } from '@/types'
 
 const { t, locale } = useI18n()
 const route = useRoute()
-const router = useRouter()
 const auth = useAuthStore()
 const domainsStore = useDomainsStore()
 
