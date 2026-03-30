@@ -12,6 +12,7 @@ import { useCalendarAnalytics } from '@/composables/useCalendarAnalytics'
 import { buildSubdomainUrl, formatSubdomainHost } from '@/composables/useSubdomain'
 import { usePwa } from '@/composables/usePwa'
 import ReminderToggle from '@/components/events/ReminderToggle.vue'
+import { safeHexColor } from '@/lib/colorUtils'
 
 const { t, locale } = useI18n()
 const route = useRoute()
@@ -35,12 +36,6 @@ const canEdit = computed(() => {
   if (authStore.isAdmin) return true
   return event.value.submittedByUserId === authStore.currentUser?.id
 })
-
-/** Guard against CSS injection in domain color values. Only allows valid 3- or 6-digit hex. */
-function safeHexColor(value: string | null | undefined): string | null {
-  if (!value) return null
-  return /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(value.trim()) ? value.trim() : null
-}
 
 /**
  * Show overviewContent excerpt in the hub context card when the domain has no short description.

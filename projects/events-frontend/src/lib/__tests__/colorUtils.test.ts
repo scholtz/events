@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isValidHexColor } from '@/lib/colorUtils'
+import { isValidHexColor, safeHexColor } from '@/lib/colorUtils'
 
 describe('isValidHexColor', () => {
   // ── Valid values (should return true) ───────────────────────────────────────
@@ -87,5 +87,66 @@ describe('isValidHexColor', () => {
 
   it('rejects a hex value with a space inside', () => {
     expect(isValidHexColor('#ff 550')).toBe(false)
+  })
+})
+
+describe('safeHexColor', () => {
+  // ── Valid values (should return the trimmed color string) ────────────────────
+  it('returns the color for a valid 6-digit hex', () => {
+    expect(safeHexColor('#137fec')).toBe('#137fec')
+  })
+
+  it('returns the color for a valid 3-digit hex', () => {
+    expect(safeHexColor('#fff')).toBe('#fff')
+  })
+
+  it('returns the uppercase hex unchanged', () => {
+    expect(safeHexColor('#AABBCC')).toBe('#AABBCC')
+  })
+
+  it('trims surrounding whitespace before returning the valid color', () => {
+    expect(safeHexColor('  #137fec  ')).toBe('#137fec')
+  })
+
+  // ── Absent / empty values (should return null) ───────────────────────────────
+  it('returns null for null input', () => {
+    expect(safeHexColor(null)).toBeNull()
+  })
+
+  it('returns null for undefined input', () => {
+    expect(safeHexColor(undefined)).toBeNull()
+  })
+
+  it('returns null for an empty string', () => {
+    expect(safeHexColor('')).toBeNull()
+  })
+
+  it('returns null for a whitespace-only string', () => {
+    expect(safeHexColor('   ')).toBeNull()
+  })
+
+  // ── Invalid color values (should return null to prevent CSS injection) ────────
+  it('returns null for a named CSS color', () => {
+    expect(safeHexColor('red')).toBeNull()
+  })
+
+  it('returns null for an rgb() value', () => {
+    expect(safeHexColor('rgb(255, 0, 0)')).toBeNull()
+  })
+
+  it('returns null for a hex missing the leading #', () => {
+    expect(safeHexColor('137fec')).toBeNull()
+  })
+
+  it('returns null for a 7-digit hex (would be CSS injection risk)', () => {
+    expect(safeHexColor('#1234567')).toBeNull()
+  })
+
+  it('returns null for a hex with invalid characters', () => {
+    expect(safeHexColor('#gg0000')).toBeNull()
+  })
+
+  it('returns null for a hex with a space inside', () => {
+    expect(safeHexColor('#ff 550')).toBeNull()
   })
 })

@@ -180,6 +180,33 @@ test.describe('Category landing page', () => {
     await expect(page.getByText('Prague Tech Community')).toBeVisible()
   })
 
+  test('renders tagline when configured', async ({ page }) => {
+    const domain: MockDomain = {
+      ...makeTechDomain(),
+      tagline: 'Discover the future of technology events.',
+    }
+    setupMockApi(page, { domains: [domain], events: [] })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.category-tagline')).toBeVisible()
+    await expect(page.locator('.category-tagline')).toContainText(
+      'Discover the future of technology events.',
+    )
+  })
+
+  test('does not render tagline when domain has none', async ({ page }) => {
+    const domain: MockDomain = {
+      ...makeTechDomain(),
+      tagline: null,
+    }
+    setupMockApi(page, { domains: [domain], events: [] })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.category-tagline')).toBeHidden()
+  })
+
   test('shows default submit event CTA when none configured', async ({ page }) => {
     setupMockApi(page, { domains: [makeTechDomain()], events: [] })
 
