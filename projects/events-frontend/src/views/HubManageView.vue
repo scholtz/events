@@ -75,7 +75,7 @@ function initForms(d: EventDomain) {
 }
 
 async function loadDomain() {
-  if (!auth.isAuthenticated) return
+  if (!auth.isAuthenticated || loading.value) return
   loading.value = true
   error.value = ''
   try {
@@ -289,6 +289,7 @@ watch(
   (isAuth) => {
     if (isAuth && !domain.value && !loading.value) loadDomain()
   },
+  { immediate: true },
 )
 
 /** Published events from this domain not already featured — drives the add-featured picker */
