@@ -278,6 +278,7 @@ public sealed class AppDbInitializer(
         await EnsureDomainColumnAsync("BannerUrl", cancellationToken);
         // ── Domain hub overview content columns ───────────────────────────────
         await EnsureDomainColumnAsync("OverviewContent", cancellationToken);
+        await EnsureDomainColumnAsync("Tagline", cancellationToken);
         await EnsureDomainColumnAsync("WhatBelongsHere", cancellationToken);
         await EnsureDomainColumnAsync("SubmitEventCta", cancellationToken);
         await EnsureDomainColumnAsync("CuratorCredit", cancellationToken);
@@ -507,6 +508,7 @@ public sealed class AppDbInitializer(
             "LogoUrl" => """ALTER TABLE "Domains" ADD COLUMN "LogoUrl" TEXT NULL;""",
             "BannerUrl" => """ALTER TABLE "Domains" ADD COLUMN "BannerUrl" TEXT NULL;""",
             "OverviewContent" => """ALTER TABLE "Domains" ADD COLUMN "OverviewContent" TEXT NULL;""",
+            "Tagline" => """ALTER TABLE "Domains" ADD COLUMN "Tagline" TEXT NULL;""",
             "WhatBelongsHere" => """ALTER TABLE "Domains" ADD COLUMN "WhatBelongsHere" TEXT NULL;""",
             "SubmitEventCta" => """ALTER TABLE "Domains" ADD COLUMN "SubmitEventCta" TEXT NULL;""",
             "CuratorCredit" => """ALTER TABLE "Domains" ADD COLUMN "CuratorCredit" TEXT NULL;""",

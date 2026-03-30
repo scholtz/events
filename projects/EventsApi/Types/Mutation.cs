@@ -422,6 +422,11 @@ public sealed class Mutation
         var domain = await dbContext.Domains.SingleOrDefaultAsync(d => d.Id == input.DomainId, cancellationToken)
             ?? throw CreateError("Domain was not found.", "DOMAIN_NOT_FOUND");
 
+        if (input.Tagline is not null && input.Tagline.Length > 150)
+        {
+            throw CreateError("Tagline must not exceed 150 characters.", "INVALID_TAGLINE");
+        }
+
         if (input.OverviewContent is not null && input.OverviewContent.Length > 2000)
         {
             throw CreateError("Overview content must not exceed 2000 characters.", "INVALID_OVERVIEW_CONTENT");
@@ -442,6 +447,7 @@ public sealed class Mutation
             throw CreateError("Curator credit must not exceed 200 characters.", "INVALID_CURATOR_CREDIT");
         }
 
+        domain.Tagline = NormalizeOptionalValue(input.Tagline);
         domain.OverviewContent = NormalizeOptionalValue(input.OverviewContent);
         domain.WhatBelongsHere = NormalizeOptionalValue(input.WhatBelongsHere);
         domain.SubmitEventCta = NormalizeOptionalValue(input.SubmitEventCta);

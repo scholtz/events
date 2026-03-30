@@ -46,6 +46,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(domain => domain.AccentColor).HasMaxLength(32);
             entity.Property(domain => domain.LogoUrl).HasMaxLength(1000);
             entity.Property(domain => domain.BannerUrl).HasMaxLength(1000);
+            entity.Property(domain => domain.Tagline).HasMaxLength(150);
             entity.Property(domain => domain.OverviewContent).HasMaxLength(2000);
             entity.Property(domain => domain.WhatBelongsHere).HasMaxLength(2000);
             entity.Property(domain => domain.SubmitEventCta).HasMaxLength(300);

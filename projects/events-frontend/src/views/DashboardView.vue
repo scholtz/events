@@ -19,7 +19,7 @@ const MAX_FEATURED_EVENTS = 5
 
 // ── Hub management state ─────────────────────────────────────────────────────
 const hubStyleForms = ref<Record<string, { primaryColor: string; accentColor: string; logoUrl: string; bannerUrl: string }>>({})
-const hubOverviewForms = ref<Record<string, { overviewContent: string; whatBelongsHere: string; submitEventCta: string; curatorCredit: string }>>({})
+const hubOverviewForms = ref<Record<string, { tagline: string; overviewContent: string; whatBelongsHere: string; submitEventCta: string; curatorCredit: string }>>({})
 const hubCommunityLinks = ref<Record<string, { title: string; url: string }[]>>({})
 const hubNewLinkForms = ref<Record<string, { title: string; url: string }>>({})
 const hubStyleSaving = ref<Record<string, boolean>>({})
@@ -54,6 +54,7 @@ function initHubForms(domains: EventDomain[]) {
     }
     if (!hubOverviewForms.value[d.id]) {
       hubOverviewForms.value[d.id] = {
+        tagline: d.tagline ?? '',
         overviewContent: d.overviewContent ?? '',
         whatBelongsHere: d.whatBelongsHere ?? '',
         submitEventCta: d.submitEventCta ?? '',
@@ -126,6 +127,7 @@ async function handleSaveHubOverview(domainId: string) {
     }
     await domainsStore.updateDomainOverview({
       domainId,
+      tagline: form.tagline || null,
       overviewContent: form.overviewContent || null,
       whatBelongsHere: form.whatBelongsHere || null,
       submitEventCta: form.submitEventCta || null,
@@ -740,6 +742,16 @@ function eventRecommendationClass(item: EventAnalyticsItem): string {
             <h4 class="hub-form-title">{{ t('dashboard.hubOverviewTitle') }}</h4>
             <form class="hub-overview-form" @submit.prevent="handleSaveHubOverview(hub.id)">
               <div class="hub-form-grid hub-form-grid--full">
+                <label class="form-field">
+                  <span>{{ t('dashboard.hubTagline') }}</span>
+                  <input
+                    v-model="hubOverviewForms[hub.id]!.tagline"
+                    class="form-input"
+                    type="text"
+                    maxlength="150"
+                    :placeholder="t('admin.domainTaglinePlaceholder')"
+                  />
+                </label>
                 <label class="form-field">
                   <span>{{ t('dashboard.hubOverviewContent') }}</span>
                   <textarea

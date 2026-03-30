@@ -27,6 +27,12 @@ public sealed class EventDomain
     public string? BannerUrl { get; set; }
 
     // ── Curator-managed hub overview content ──────────────────────────────
+    /// <summary>
+    /// Short tagline (≤ 150 chars) shown as the hero subtitle on the public hub page.
+    /// Distinct from <see cref="OverviewContent"/> which is a longer editorial paragraph.
+    /// </summary>
+    public string? Tagline { get; set; }
+
     /// <summary>Short editorial "About this hub" overview shown on the category landing page.</summary>
     public string? OverviewContent { get; set; }
     /// <summary>Guidance about what types of events belong in this hub.</summary>

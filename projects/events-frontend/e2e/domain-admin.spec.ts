@@ -369,6 +369,41 @@ test.describe('Domain admin management', () => {
     await expect(page.getByText('Prague Tech Community')).toBeVisible()
   })
 
+  test('admin can set hub tagline and it appears on public category page', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 })
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      domainAdministrators: [],
+    })
+    await loginAs(page, admin)
+    await page.goto('/admin')
+
+    await page.getByRole('button', { name: /Tags/ }).click()
+    await page.getByRole('button', { name: 'Manage' }).click()
+
+    // Fill tagline field
+    await page.getByLabel('Hub Tagline (optional)').fill('Discover the future of tech events.')
+    await page.getByRole('button', { name: 'Save Overview' }).click()
+    await expect(page.getByText('✓ Saved').first()).toBeVisible()
+
+    // Navigate to public category page and confirm tagline appears
+    await page.goto('/category/technology')
+    await expect(page.locator('.category-tagline')).toContainText('Discover the future of tech events.')
+  })
+
+  test('tagline does not render when absent from domain', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 })
+    const domain = { ...makeTechDomain(), tagline: null }
+    setupMockApi(page, { domains: [domain] })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.category-tagline')).toHaveCount(0)
+  })
+
   test('non-admin contributor cannot access domain branding controls', async ({ page }) => {
     const contributor = {
       id: 'user-contrib',

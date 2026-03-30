@@ -336,6 +336,9 @@ watch(
           </div>
           <div class="subdomain-hero-text">
             <h1>{{ activeDomain.name }} Events</h1>
+            <p v-if="activeDomain.tagline" class="subdomain-tagline">
+              {{ activeDomain.tagline }}
+            </p>
             <p v-if="activeDomain.description" class="subdomain-description">
               {{ activeDomain.description }}
             </p>
@@ -589,6 +592,15 @@ watch(
   letter-spacing: -0.02em;
   margin-bottom: 0.25rem;
   color: var(--color-text);
+}
+
+.subdomain-tagline {
+  font-size: 1.125rem;
+  font-weight: 500;
+  color: var(--subdomain-color, var(--color-text-secondary));
+  margin-bottom: 0.5rem;
+  max-width: 560px;
+  line-height: 1.5;
 }
 
 .subdomain-description {
