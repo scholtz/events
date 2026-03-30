@@ -283,6 +283,13 @@ watch(pageTitle, (title: string) => {
 
 onMounted(loadDomain)
 watch(slug, loadDomain)
+// Re-load when auth state resolves (checkAuth completes after a page reload)
+watch(
+  () => auth.isAuthenticated,
+  (isAuth) => {
+    if (isAuth && !domain.value && !loading.value) loadDomain()
+  },
+)
 
 /** Published events from this domain not already featured — drives the add-featured picker */
 const pickableEvents = computed(() =>
