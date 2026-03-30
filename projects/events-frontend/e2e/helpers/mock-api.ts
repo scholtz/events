@@ -35,6 +35,7 @@ export type MockDomain = {
   accentColor?: string | null
   logoUrl?: string | null
   bannerUrl?: string | null
+  tagline?: string | null
   overviewContent?: string | null
   whatBelongsHere?: string | null
   submitEventCta?: string | null
@@ -922,6 +923,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       const input = variables.input || {}
       const domain = state.domains.find((d) => d.id === input.domainId)
       if (domain) {
+        if ('tagline' in input) domain.tagline = input.tagline ?? null
         domain.overviewContent = input.overviewContent ?? null
         domain.whatBelongsHere = input.whatBelongsHere ?? null
         domain.submitEventCta = input.submitEventCta ?? null

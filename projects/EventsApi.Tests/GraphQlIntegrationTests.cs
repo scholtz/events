@@ -6597,6 +6597,195 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task UpdateDomainOverview_Tagline_PersistsAndReturnsValue()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid domainAdminId = Guid.Empty, domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domainAdmin = CreateUser("tagline-persist@example.com", "Tagline Tester");
+            var domain = CreateDomain("Tagline Hub", "tagline-hub-persist");
+
+            dbContext.Users.Add(domainAdmin);
+            dbContext.Domains.Add(domain);
+
+            domainAdminId = domainAdmin.Id;
+            domainId = domain.Id;
+
+            dbContext.Set<DomainAdministrator>().Add(new DomainAdministrator
+            {
+                DomainId = domain.Id,
+                UserId = domainAdmin.Id
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, domainAdminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation UpdateDomainOverview($input: UpdateDomainOverviewInput!) {
+              updateDomainOverview(input: $input) { id tagline overviewContent }
+            }
+            """,
+            new
+            {
+                input = new
+                {
+                    domainId,
+                    tagline = "Discover the future of blockchain.",
+                    overviewContent = "All about blockchain events."
+                }
+            });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("updateDomainOverview");
+        Assert.Equal("Discover the future of blockchain.", result.GetProperty("tagline").GetString());
+        Assert.Equal("All about blockchain events.", result.GetProperty("overviewContent").GetString());
+
+        // Verify persistence
+        await using var verifyFactory = new EventsApiWebApplicationFactory();
+        await using var scope = verifyFactory.Services.CreateAsyncScope();
+        // Re-fetch from DB via GraphQL to confirm persistence
+        using var client2 = verifyFactory.CreateClient();
+        // Confirm the domain exists with the tagline set via raw DB query
+        await using var db = factory.Services.CreateAsyncScope().ServiceProvider.GetRequiredService<AppDbContext>();
+        var persisted = await db.Domains.FindAsync(domainId);
+        Assert.Equal("Discover the future of blockchain.", persisted!.Tagline);
+    }
+
+    [Fact]
+    public async Task UpdateDomainOverview_TaglineTooLong_ReturnsError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid domainAdminId = Guid.Empty, domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domainAdmin = CreateUser("tagline-len@example.com", "Tagline Len Tester");
+            var domain = CreateDomain("Tagline Len Hub", "tagline-len-hub");
+
+            dbContext.Users.Add(domainAdmin);
+            dbContext.Domains.Add(domain);
+
+            domainAdminId = domainAdmin.Id;
+            domainId = domain.Id;
+
+            dbContext.Set<DomainAdministrator>().Add(new DomainAdministrator
+            {
+                DomainId = domain.Id,
+                UserId = domainAdmin.Id
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, domainAdminId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+            mutation UpdateDomainOverview($input: UpdateDomainOverviewInput!) {
+              updateDomainOverview(input: $input) { id }
+            }
+            """,
+            variables = new
+            {
+                input = new
+                {
+                    domainId,
+                    tagline = new string('t', 151)
+                }
+            }
+        });
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("INVALID_TAGLINE", body);
+    }
+
+    [Fact]
+    public async Task UpdateDomainOverview_TaglineNullClearsField()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid domainAdminId = Guid.Empty, domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domainAdmin = CreateUser("tagline-clear@example.com", "Tagline Clear Tester");
+            var domain = CreateDomain("Tagline Clear Hub", "tagline-clear-hub");
+            domain.Tagline = "Old tagline";
+
+            dbContext.Users.Add(domainAdmin);
+            dbContext.Domains.Add(domain);
+
+            domainAdminId = domainAdmin.Id;
+            domainId = domain.Id;
+
+            dbContext.Set<DomainAdministrator>().Add(new DomainAdministrator
+            {
+                DomainId = domain.Id,
+                UserId = domainAdmin.Id
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, domainAdminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation UpdateDomainOverview($input: UpdateDomainOverviewInput!) {
+              updateDomainOverview(input: $input) { id tagline }
+            }
+            """,
+            new { input = new { domainId, tagline = (string?)null } });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("updateDomainOverview");
+        Assert.True(result.GetProperty("tagline").ValueKind == System.Text.Json.JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task UpdateDomainOverview_EmptyStringTaglineClearsField()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid domainAdminId = Guid.Empty, domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domainAdmin = CreateUser("tagline-emptystr@example.com", "Tagline Empty Str Tester");
+            var domain = CreateDomain("Tagline Empty Str Hub", "tagline-emptystr-hub");
+            domain.Tagline = "Will be cleared";
+
+            dbContext.Users.Add(domainAdmin);
+            dbContext.Domains.Add(domain);
+
+            domainAdminId = domainAdmin.Id;
+            domainId = domain.Id;
+
+            dbContext.Set<DomainAdministrator>().Add(new DomainAdministrator
+            {
+                DomainId = domain.Id,
+                UserId = domainAdmin.Id
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, domainAdminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation UpdateDomainOverview($input: UpdateDomainOverviewInput!) {
+              updateDomainOverview(input: $input) { id tagline }
+            }
+            """,
+            new { input = new { domainId, tagline = "" } });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("updateDomainOverview");
+        Assert.True(result.GetProperty("tagline").ValueKind == System.Text.Json.JsonValueKind.Null);
+    }
+
+    [Fact]
     public async Task DomainBySlug_ReturnsOverviewContentFields()
     {
         await using var factory = new EventsApiWebApplicationFactory();

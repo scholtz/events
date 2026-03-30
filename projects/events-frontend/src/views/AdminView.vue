@@ -39,6 +39,7 @@ const domainStyleForm = ref({
 const domainOverviewSaving = ref(false)
 const domainOverviewSuccess = ref(false)
 const domainOverviewForm = ref({
+  tagline: '',
   overviewContent: '',
   whatBelongsHere: '',
   submitEventCta: '',
@@ -88,6 +89,7 @@ async function selectDomain(domainId: string) {
       bannerUrl: domain.bannerUrl ?? '',
     }
     domainOverviewForm.value = {
+      tagline: domain.tagline ?? '',
       overviewContent: domain.overviewContent ?? '',
       whatBelongsHere: domain.whatBelongsHere ?? '',
       submitEventCta: domain.submitEventCta ?? '',
@@ -174,6 +176,7 @@ async function handleSaveDomainOverview() {
   try {
     await domainsStore.updateDomainOverview({
       domainId: selectedDomainId.value,
+      tagline: domainOverviewForm.value.tagline || null,
       overviewContent: domainOverviewForm.value.overviewContent || null,
       whatBelongsHere: domainOverviewForm.value.whatBelongsHere || null,
       submitEventCta: domainOverviewForm.value.submitEventCta || null,
@@ -689,6 +692,16 @@ async function handleReviewEvent(eventId: string, status: string) {
             <h3>{{ t('admin.hubOverview') }}</h3>
             <form class="style-form" @submit.prevent="handleSaveDomainOverview">
               <div class="overview-form-grid">
+                <label class="form-field">
+                  <span>{{ t('admin.domainTagline') }}</span>
+                  <input
+                    v-model="domainOverviewForm.tagline"
+                    class="form-input"
+                    type="text"
+                    maxlength="150"
+                    :placeholder="t('admin.domainTaglinePlaceholder')"
+                  />
+                </label>
                 <label class="form-field">
                   <span>{{ t('admin.domainOverviewContent') }}</span>
                   <textarea

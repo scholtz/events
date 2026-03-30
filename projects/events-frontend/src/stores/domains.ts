@@ -5,7 +5,7 @@ import type { DomainAdministrator, DomainLink, EventDomain } from '@/types'
 
 const DOMAIN_FIELDS = `id name slug subdomain description isActive createdAtUtc
   createdByUserId primaryColor accentColor logoUrl bannerUrl
-  overviewContent whatBelongsHere submitEventCta curatorCredit
+  tagline overviewContent whatBelongsHere submitEventCta curatorCredit
   links { id domainId title url displayOrder createdAtUtc }`
 
 export const useDomainsStore = defineStore('domains', () => {
@@ -137,6 +137,7 @@ export const useDomainsStore = defineStore('domains', () => {
 
   async function updateDomainOverview(input: {
     domainId: string
+    tagline?: string | null
     overviewContent?: string | null
     whatBelongsHere?: string | null
     submitEventCta?: string | null

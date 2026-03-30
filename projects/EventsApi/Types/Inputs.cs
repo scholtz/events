@@ -114,6 +114,8 @@ public sealed class DomainInput
 public sealed class UpdateDomainOverviewInput
 {
     public Guid DomainId { get; init; }
+    /// <summary>Short tagline (hero subtitle) for the hub, max 150 chars. Pass null to clear.</summary>
+    public string? Tagline { get; init; }
     /// <summary>Short editorial "About this hub" overview. Pass null to clear.</summary>
     public string? OverviewContent { get; init; }
     /// <summary>Guidance about what types of events belong in this hub. Pass null to clear.</summary>

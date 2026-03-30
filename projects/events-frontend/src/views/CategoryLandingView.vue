@@ -36,7 +36,7 @@ const EVENT_FIELDS = `
 
 const DOMAIN_FIELDS = `id name slug subdomain description isActive createdAtUtc
   createdByUserId primaryColor accentColor logoUrl bannerUrl
-  overviewContent whatBelongsHere submitEventCta curatorCredit
+  tagline overviewContent whatBelongsHere submitEventCta curatorCredit
   publishedEventCount
   links { id title url displayOrder }`
 
@@ -212,6 +212,7 @@ const lowSignalMessage = computed(() => {
               <img :src="domain.logoUrl" :alt="domain.name" class="category-logo" />
             </div>
             <h1 class="category-title">{{ t('category.heading', { name: domain.name }) }}</h1>
+            <p v-if="domain.tagline" class="category-tagline">{{ domain.tagline }}</p>
             <p v-if="domain.description" class="category-description">{{ domain.description }}</p>
             <p class="category-event-count">
               {{
@@ -443,6 +444,15 @@ const lowSignalMessage = computed(() => {
   line-height: 1.2;
   margin-bottom: 0.5rem;
   color: var(--color-text);
+}
+
+.category-tagline {
+  font-size: 1.125rem;
+  font-weight: 500;
+  color: var(--category-color, var(--color-text-secondary));
+  max-width: 560px;
+  margin-bottom: 0.5rem;
+  line-height: 1.5;
 }
 
 .category-description {
