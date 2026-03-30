@@ -447,6 +447,7 @@ export default {
     noCommunitiesYet: 'Sie sind noch kein Mitglied einer Community.',
     noCommunitiesHint: 'Entdecken und treten Sie Communitys bei, um sie hier zu sehen.',
     browseCommunities: 'Communitys entdecken',
+    myCommunitiesError: 'Ihre Communitys konnten nicht geladen werden. Bitte erneut versuchen.',
   },
 
   // ── Portfolio (Meine Events) ───────────────────────────────────────────────

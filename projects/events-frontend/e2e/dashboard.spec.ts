@@ -1714,4 +1714,33 @@ test.describe('Dashboard – My Communities section', () => {
     // Not-logged-in prompt is visible
     await expect(page.getByRole('heading', { name: 'Sign in required' })).toBeVisible()
   })
+
+  test('shows error state with retry button when membership fetch fails', async ({ page }) => {
+    const user = makeContributorUser()
+    // Set up mocks FIRST, then register the override
+    setupMockApi(page, { users: [user] })
+    await page.route('**/graphql', async (route) => {
+      const body = JSON.parse(route.request().postData() ?? '{}')
+      if (body.query?.includes('MyCommunityMemberships')) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Service temporarily unavailable' }] }),
+        })
+      } else {
+        await route.fallback()
+      }
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Error state must be shown — not the empty state
+    await expect(page.locator('.communities-error')).toBeVisible()
+    await expect(page.locator('.communities-error')).toContainText('Unable to load your communities')
+    await expect(page.locator('.communities-error').getByRole('button', { name: 'Try again' })).toBeVisible()
+
+    // Empty state must NOT be shown
+    await expect(page.locator('.communities-empty')).toHaveCount(0)
+  })
 })

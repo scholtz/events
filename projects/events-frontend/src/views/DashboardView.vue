@@ -22,6 +22,7 @@ const MAX_FEATURED_EVENTS = 5
 // ── My Communities state ─────────────────────────────────────────────────────
 const myCommunities = ref<CommunityMembership[]>([])
 const myCommunitiesLoading = ref(false)
+const myCommunitiesError = ref<string | null>(null)
 
 // ── Hub management state ─────────────────────────────────────────────────────
 const hubStyleForms = ref<Record<string, { primaryColor: string; accentColor: string; logoUrl: string; bannerUrl: string }>>({})
@@ -254,19 +255,26 @@ async function handleSaveHubFeaturedEvents(domainId: string) {
   }
 }
 
+async function loadMyCommunities() {
+  myCommunitiesLoading.value = true
+  myCommunitiesError.value = null
+  try {
+    const memberships = await communitiesStore.fetchMyMemberships()
+    myCommunities.value = memberships.filter((m) => m.status === 'ACTIVE')
+  } catch {
+    myCommunitiesError.value = t('dashboard.myCommunitiesError')
+  } finally {
+    myCommunitiesLoading.value = false
+  }
+}
+
 onMounted(async () => {
   if (auth.isAuthenticated) {
     await dashboardStore.fetchDashboard()
     await domainsStore.fetchMyManagedDomains()
     initHubForms(domainsStore.myManagedDomains)
     await Promise.all(domainsStore.myManagedDomains.map((d) => loadHubFeaturedEvents(d.id)))
-    myCommunitiesLoading.value = true
-    try {
-      const memberships = await communitiesStore.fetchMyMemberships()
-      myCommunities.value = memberships.filter((m) => m.status === 'ACTIVE')
-    } finally {
-      myCommunitiesLoading.value = false
-    }
+    await loadMyCommunities()
   }
 })
 
@@ -654,6 +662,14 @@ function communityRoleLabel(role: string): string {
         <!-- Loading -->
         <div v-if="myCommunitiesLoading" class="communities-loading">
           <span class="text-secondary">{{ t('common.loading') }}</span>
+        </div>
+
+        <!-- Error state -->
+        <div v-else-if="myCommunitiesError" class="communities-error card" role="alert">
+          <p class="communities-error-message">{{ myCommunitiesError }}</p>
+          <button class="btn btn-outline btn-sm" @click="loadMyCommunities()">
+            {{ t('common.tryAgain') }}
+          </button>
         </div>
 
         <!-- Empty state -->
@@ -1791,6 +1807,22 @@ tr:hover td {
 
 .communities-loading {
   padding: 1rem 0;
+}
+
+.communities-error.card {
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  border-left: 3px solid var(--color-danger, #f87171);
+}
+
+.communities-error-message {
+  margin: 0;
+  color: var(--color-danger, #f87171);
+  font-size: 0.9375rem;
 }
 
 .communities-empty.card {

@@ -447,6 +447,7 @@ export default {
     noCommunitiesYet: 'Zatiaľ nie ste členom žiadnej komunity.',
     noCommunitiesHint: 'Objavujte a pridávajte sa ku komunitám, aby sa zobrazili tu.',
     browseCommunities: 'Prezrieť komunity',
+    myCommunitiesError: 'Nepodarilo sa načítať vaše komunity. Skúste to znova.',
   },
 
   // ── Portfolio (Moje udalosti) ──────────────────────────────────────────────
