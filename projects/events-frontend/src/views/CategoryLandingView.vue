@@ -6,9 +6,13 @@ import EventCard from '@/components/events/EventCard.vue'
 import type { CatalogEvent, EventDomain } from '@/types'
 import { gqlRequest } from '@/lib/graphql'
 import { safeHexColor } from '@/lib/colorUtils'
+import { useAuthStore } from '@/stores/auth'
+import { useDomainsStore } from '@/stores/domains'
 
 const { t } = useI18n()
 const route = useRoute()
+const authStore = useAuthStore()
+const domainsStore = useDomainsStore()
 
 const slug = computed(() => route.params.slug as string)
 
@@ -177,6 +181,20 @@ const lowSignalMessage = computed(() => {
     ? t('home.fewResultsOne')
     : t('home.fewResultsMany', { count })
 })
+
+/** True when the authenticated user is a global admin or administers this specific domain hub. */
+const isHubAdmin = computed(
+  () =>
+    authStore.isAuthenticated &&
+    (authStore.isAdmin ||
+      domainsStore.myManagedDomains.some((d: EventDomain) => d.slug === slug.value)),
+)
+
+onMounted(async () => {
+  if (authStore.isAuthenticated) {
+    await domainsStore.fetchMyManagedDomains()
+  }
+})
 </script>
 
 <template>
@@ -225,6 +243,14 @@ const lowSignalMessage = computed(() => {
               <span class="curator-icon" aria-hidden="true">✓</span>
               {{ t('category.curatedBy', { credit: domain.curatorCredit }) }}
             </p>
+            <!-- Admin: manage hub link -->
+            <RouterLink
+              v-if="isHubAdmin"
+              :to="`/hub/${domain.slug}/manage`"
+              class="btn btn-outline btn-sm manage-hub-btn"
+            >
+              ⚙ {{ t('category.manageHub') }}
+            </RouterLink>
           </template>
 
           <div v-else-if="!loading">
@@ -796,5 +822,10 @@ const lowSignalMessage = computed(() => {
   .featured-grid {
     grid-template-columns: 1fr;
   }
+}
+
+.manage-hub-btn {
+  margin-top: 0.75rem;
+  align-self: flex-start;
 }
 </style>

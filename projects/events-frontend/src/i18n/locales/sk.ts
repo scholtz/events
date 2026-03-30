@@ -612,6 +612,26 @@ export default {
     notFound: 'Kategória nenájdená',
     notFoundDescription: 'Kategória „{slug}" neexistuje alebo už nie je aktívna.',
     errorLoad: 'Nepodarilo sa načítať kategóriu',
+    manageHub: 'Spravovať hub',
+  },
+
+  // ── Hub manage page ────────────────────────────────────────────────────────
+  hubManage: {
+    pageTitle: 'Spravovať hub {name}',
+    pageTitleDefault: 'Spravovať hub',
+    heading: 'Spravovať {name}',
+    manageLabel: 'Spravovať',
+    signInRequired: 'Vyžaduje sa prihlásenie',
+    signInDescription: 'Musíte byť prihlásení, aby ste mohli spravovať hub.',
+    unauthorized: 'Prístup zamietnutý',
+    unauthorizedDescription: 'Nie ste správca hubu „{slug}".',
+    backToDashboard: 'Späť na panel',
+    errorLoad: 'Hub sa nepodarilo načítať',
+    saveError: 'Uloženie zlyhalo. Skúste to znova.',
+    overviewPlaceholder: 'Krátky prehľad o tomto hube…',
+    whatBelongsHerePlaceholder: 'Opíšte, aké typy podujatí patria do tohto hubu…',
+    ctaPlaceholder: 'napr. Organizujete blockchain udalosť? Odošlite ju sem.',
+    curatorCreditPlaceholder: 'napr. Organizátori Prague Blockchain Week',
   },
 
   // ── Push reminders ─────────────────────────────────────────────────────────

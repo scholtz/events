@@ -612,6 +612,26 @@ export default {
     notFound: 'Kategorie nicht gefunden',
     notFoundDescription: 'Die Kategorie „{slug}" existiert nicht oder ist nicht mehr aktiv.',
     errorLoad: 'Kategorie konnte nicht geladen werden',
+    manageHub: 'Hub verwalten',
+  },
+
+  // ── Hub manage page ────────────────────────────────────────────────────────
+  hubManage: {
+    pageTitle: '{name} Hub verwalten',
+    pageTitleDefault: 'Hub verwalten',
+    heading: '{name} verwalten',
+    manageLabel: 'Verwalten',
+    signInRequired: 'Anmeldung erforderlich',
+    signInDescription: 'Sie müssen angemeldet sein, um einen Hub zu verwalten.',
+    unauthorized: 'Zugriff verweigert',
+    unauthorizedDescription: 'Sie sind kein Administrator des Hubs „{slug}".',
+    backToDashboard: 'Zurück zum Dashboard',
+    errorLoad: 'Hub konnte nicht geladen werden',
+    saveError: 'Speichern fehlgeschlagen. Bitte erneut versuchen.',
+    overviewPlaceholder: 'Eine kurze redaktionelle Übersicht über diesen Hub…',
+    whatBelongsHerePlaceholder: 'Beschreiben Sie, welche Arten von Events zu diesem Hub gehören…',
+    ctaPlaceholder: 'z.B. Planen Sie ein Blockchain-Event? Reichen Sie es hier ein.',
+    curatorCreditPlaceholder: 'z.B. Veranstalter der Prague Blockchain Week',
   },
 
   // ── Push reminders ─────────────────────────────────────────────────────────

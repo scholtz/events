@@ -7589,6 +7589,201 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal("Public Featured Event", events[0].GetProperty("name").GetString());
     }
 
+    // ── Additional hub isolation and coverage tests ───────────────────────────
+
+    [Fact]
+    public async Task FeaturedEventsForDomain_DoesNotReturnEventsFromOtherDomains()
+    {
+        // Verifies cross-domain isolation: events from domain B do not appear
+        // in featured events for domain A even if they share the same featuredEvents table.
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("feat-iso@example.com", "Isolation User");
+            var domainA = CreateDomain("Domain A", "domain-a-feat-iso");
+            var domainB = CreateDomain("Domain B", "domain-b-feat-iso");
+
+            var eventA = CreateEvent("Event A", "event-a-feat-iso", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(5), domainA, user);
+            var eventB = CreateEvent("Event B", "event-b-feat-iso", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(7), domainB, user);
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.AddRange(domainA, domainB);
+            dbContext.Events.AddRange(eventA, eventB);
+
+            // Feature event A in domain A, event B in domain B
+            dbContext.Set<DomainFeaturedEvent>().AddRange(
+                new DomainFeaturedEvent { DomainId = domainA.Id, EventId = eventA.Id, DisplayOrder = 0 },
+                new DomainFeaturedEvent { DomainId = domainB.Id, EventId = eventB.Id, DisplayOrder = 0 }
+            );
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query FeaturedEventsForDomain($domainSlug: String!) {
+              featuredEventsForDomain(domainSlug: $domainSlug) { id name }
+            }
+            """,
+            new { domainSlug = "domain-a-feat-iso" });
+
+        var events = document.RootElement.GetProperty("data").GetProperty("featuredEventsForDomain");
+        Assert.Equal(1, events.GetArrayLength());
+        Assert.Equal("Event A", events[0].GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task SetDomainFeaturedEvents_DomainAdminForOtherDomain_Forbidden()
+    {
+        // A domain admin for Domain B must NOT be able to set featured events for Domain A.
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid domainAdminId = Guid.Empty, domainAId = Guid.Empty, eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domainAdmin = CreateUser("feat-wrong-da@example.com", "Wrong Domain Admin");
+            domainAdminId = domainAdmin.Id;
+            var domainA = CreateDomain("Domain A Forbidden", "domain-a-forbidden");
+            domainAId = domainA.Id;
+            var domainB = CreateDomain("Domain B Owner", "domain-b-owner");
+
+            var ev = CreateEvent("Target Event", "target-event-forbidden", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(5), domainA, domainAdmin);
+            eventId = ev.Id;
+
+            dbContext.Users.Add(domainAdmin);
+            dbContext.Domains.AddRange(domainA, domainB);
+            dbContext.Events.Add(ev);
+            // Admin only for domain B, NOT for domain A
+            dbContext.Set<DomainAdministrator>().Add(new DomainAdministrator
+            {
+                DomainId = domainB.Id,
+                UserId = domainAdmin.Id,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer", await CreateTokenAsync(factory, domainAdminId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+            mutation SetFeatured($input: SetDomainFeaturedEventsInput!) {
+              setDomainFeaturedEvents(input: $input) { id }
+            }
+            """,
+            variables = new { input = new { domainId = domainAId, eventIds = new[] { eventId } } }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        var errorMessage = errors.ToString();
+        Assert.True(
+            errorMessage.Contains("AUTH_NOT_AUTHORIZED", StringComparison.OrdinalIgnoreCase)
+            || errorMessage.Contains("FORBIDDEN", StringComparison.OrdinalIgnoreCase)
+            || errorMessage.Contains("not authorized", StringComparison.OrdinalIgnoreCase)
+            || errorMessage.Contains("domain administrator", StringComparison.OrdinalIgnoreCase),
+            $"Expected authorization error but got: {errorMessage}");
+    }
+
+    [Fact]
+    public async Task DomainBySlug_ReturnsAllHubOverviewFieldsTogether()
+    {
+        // Verifies that all curator-managed overview fields are returned together in one query.
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("overview-fields@example.com", "Overview User");
+            var domain = CreateDomain("Overview Hub", "overview-hub-fields");
+            domain.Tagline = "The premier hub for overview testing";
+            domain.OverviewContent = "This is a detailed overview of the hub.";
+            domain.WhatBelongsHere = "Events related to overview testing belong here.";
+            domain.SubmitEventCta = "Submit your overview event here!";
+            domain.CuratorCredit = "Overview Testing Team";
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query DomainBySlug($slug: String!) {
+              domainBySlug(slug: $slug) {
+                tagline
+                overviewContent
+                whatBelongsHere
+                submitEventCta
+                curatorCredit
+              }
+            }
+            """,
+            new { slug = "overview-hub-fields" });
+
+        var d = document.RootElement.GetProperty("data").GetProperty("domainBySlug");
+        Assert.Equal("The premier hub for overview testing", d.GetProperty("tagline").GetString());
+        Assert.Equal("This is a detailed overview of the hub.", d.GetProperty("overviewContent").GetString());
+        Assert.Equal("Events related to overview testing belong here.", d.GetProperty("whatBelongsHere").GetString());
+        Assert.Equal("Submit your overview event here!", d.GetProperty("submitEventCta").GetString());
+        Assert.Equal("Overview Testing Team", d.GetProperty("curatorCredit").GetString());
+    }
+
+    [Fact]
+    public async Task MyManagedDomains_IncludesHubBrandingAndOverviewFields()
+    {
+        // Ensures myManagedDomains returns all branding and overview fields (not just id/name).
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid userId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("mmd-fields@example.com", "MMD Fields User");
+            userId = user.Id;
+            var domain = CreateDomain("MMD Hub", "mmd-hub-fields");
+            domain.PrimaryColor = "#ab1234";
+            domain.Tagline = "MMD tagline value";
+            domain.CuratorCredit = "MMD Curators";
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            dbContext.Set<DomainAdministrator>().Add(new DomainAdministrator
+            {
+                DomainId = domain.Id,
+                UserId = user.Id,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer", await CreateTokenAsync(factory, userId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyManagedDomains {
+              myManagedDomains {
+                id name slug primaryColor tagline curatorCredit
+              }
+            }
+            """);
+
+        var domains = document.RootElement.GetProperty("data").GetProperty("myManagedDomains");
+        Assert.Equal(1, domains.GetArrayLength());
+        var d = domains[0];
+        Assert.Equal("#ab1234", d.GetProperty("primaryColor").GetString());
+        Assert.Equal("MMD tagline value", d.GetProperty("tagline").GetString());
+        Assert.Equal("MMD Curators", d.GetProperty("curatorCredit").GetString());
+    }
+
     // ── Community group tests ─────────────────────────────────────────────────
 
     [Fact]
