@@ -560,3 +560,203 @@ test.describe('Category landing page', () => {
     await expect(page.locator('.category-event-count')).toContainText('17')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Hub navigation journey — circular navigation: hub page ↔ event detail
+// ---------------------------------------------------------------------------
+
+test.describe('Hub navigation journey', () => {
+  test('public visitor navigates from hub page to event detail via event card', async ({ page }) => {
+    const domain: MockDomain = {
+      ...makeTechDomain(),
+      logoUrl: 'https://example.com/tech-logo.png',
+      description: 'Premier tech events in Central Europe.',
+      curatorCredit: 'Prague Tech Community',
+      primaryColor: '#137fec',
+    }
+    const event = makeApprovedEvent({
+      id: 'journey-event-1',
+      name: 'Hub Journey Event',
+      slug: 'hub-journey-event',
+      domainId: domain.id,
+      domain: {
+        id: domain.id,
+        name: domain.name,
+        slug: domain.slug,
+        subdomain: domain.subdomain,
+        description: domain.description,
+        logoUrl: domain.logoUrl,
+        primaryColor: domain.primaryColor,
+        curatorCredit: domain.curatorCredit,
+      },
+    })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    // 1. Visit the branded hub page
+    await page.goto('/category/technology')
+    await expect(page.getByRole('heading', { name: 'Technology Events', level: 1 })).toBeVisible()
+    await expect(page.locator('.category-logo')).toBeVisible()
+    await expect(page.locator('.category-description')).toContainText(
+      'Premier tech events in Central Europe.',
+    )
+
+    // 2. Click through to the event detail via the event title link
+    await page.locator('.event-title-link', { hasText: 'Hub Journey Event' }).click()
+    await expect(page).toHaveURL(/\/event\/hub-journey-event/)
+  })
+
+  test('public visitor returns to hub page via hub context card on event detail', async ({
+    page,
+  }) => {
+    const domain: MockDomain = {
+      ...makeTechDomain(),
+      logoUrl: 'https://example.com/tech-logo.png',
+      description: 'Premier tech events in Central Europe.',
+      curatorCredit: 'Prague Tech Community',
+    }
+    const event = makeApprovedEvent({
+      id: 'journey-event-2',
+      name: 'Hub Return Event',
+      slug: 'hub-return-event',
+      domainId: domain.id,
+      domain: {
+        id: domain.id,
+        name: domain.name,
+        slug: domain.slug,
+        subdomain: domain.subdomain,
+        description: domain.description,
+        logoUrl: domain.logoUrl,
+        curatorCredit: domain.curatorCredit,
+      },
+    })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    // 1. Open event detail directly
+    await page.goto(`/event/${event.slug}`)
+
+    // 2. Hub context card should show domain identity
+    await expect(page.locator('.hub-context')).toBeVisible()
+    await expect(page.locator('.hub-context-name')).toContainText('Technology')
+    await expect(page.locator('.hub-context-description')).toContainText(
+      'Premier tech events in Central Europe.',
+    )
+    await expect(page.locator('.hub-context-logo')).toBeVisible()
+
+    // 3. Click the hub context link to return to the category hub
+    await page.locator('.hub-context-link').click()
+    await expect(page).toHaveURL(/\/category\/technology/)
+    await expect(page.getByRole('heading', { name: 'Technology Events', level: 1 })).toBeVisible()
+  })
+
+  test('full circular hub journey: hub page → event detail → back to hub', async ({ page }) => {
+    const domain: MockDomain = {
+      ...makeTechDomain(),
+      logoUrl: 'https://example.com/tech-logo.png',
+      description: 'Premier tech events in Central Europe.',
+      curatorCredit: 'Prague Tech Community',
+      primaryColor: '#137fec',
+    }
+    const event = makeApprovedEvent({
+      id: 'journey-event-full',
+      name: 'Full Journey Event',
+      slug: 'full-journey-event',
+      domainId: domain.id,
+      domain: {
+        id: domain.id,
+        name: domain.name,
+        slug: domain.slug,
+        subdomain: domain.subdomain,
+        description: domain.description,
+        logoUrl: domain.logoUrl,
+        primaryColor: domain.primaryColor,
+        curatorCredit: domain.curatorCredit,
+      },
+    })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    // Step 1: Visit the branded hub page
+    await page.goto('/category/technology')
+    await expect(page.getByRole('heading', { name: 'Technology Events', level: 1 })).toBeVisible()
+    await expect(page.locator('.category-logo')).toBeVisible()
+    await expect(page.locator('.category-description')).toContainText(
+      'Premier tech events in Central Europe.',
+    )
+    await expect(page.locator('.curator-credit')).toContainText('Prague Tech Community')
+
+    // Step 2: Click through to the event detail
+    await page.locator('.event-title-link', { hasText: 'Full Journey Event' }).click()
+    await expect(page).toHaveURL(/\/event\/full-journey-event/)
+
+    // Step 3: Confirm hub context card links back to hub
+    await expect(page.locator('.hub-context')).toBeVisible()
+    await expect(page.locator('.hub-context-name')).toContainText('Technology')
+    const hubLink = page.locator('.hub-context-link')
+    await expect(hubLink).toHaveAttribute('href', '/category/technology')
+
+    // Step 4: Navigate back to the hub via hub context link
+    await hubLink.click()
+    await expect(page).toHaveURL(/\/category\/technology/)
+    await expect(page.getByRole('heading', { name: 'Technology Events', level: 1 })).toBeVisible()
+  })
+
+  test('hub page empty state: page looks complete when domain has no events', async ({ page }) => {
+    const domain: MockDomain = {
+      ...makeTechDomain(),
+      logoUrl: 'https://example.com/tech-logo.png',
+      description: 'Premier tech events in Central Europe.',
+      curatorCredit: 'Prague Tech Community',
+    }
+    setupMockApi(page, { domains: [domain], events: [] })
+
+    await page.goto('/category/technology')
+
+    // Hub branding is still shown even with no events
+    await expect(page.getByRole('heading', { name: 'Technology Events', level: 1 })).toBeVisible()
+    await expect(page.locator('.category-logo')).toBeVisible()
+    await expect(page.locator('.category-description')).toContainText(
+      'Premier tech events in Central Europe.',
+    )
+    // Empty state message is visible
+    await expect(page.getByRole('heading', { name: 'No upcoming events' })).toBeVisible()
+    // Browse all link is present
+    await expect(page.getByRole('link', { name: 'Browse All Events' })).toBeVisible()
+    // Organizer CTA is still shown
+    await expect(page.getByRole('link', { name: 'Submit an Event' })).toBeVisible()
+  })
+
+  test('hub page fallback: page renders without any brand assets', async ({ page }) => {
+    // Domain with no branding configured at all
+    const unbranded: MockDomain = {
+      ...makeTechDomain(),
+      logoUrl: null,
+      bannerUrl: null,
+      primaryColor: null,
+      accentColor: null,
+      description: null,
+      curatorCredit: null,
+      overviewContent: null,
+      whatBelongsHere: null,
+    }
+    const event = makeApprovedEvent({
+      id: 'unbranded-event',
+      name: 'Unbranded Event',
+      slug: 'unbranded-event',
+    })
+    setupMockApi(page, { domains: [unbranded], events: [event] })
+
+    await page.goto('/category/technology')
+
+    // Page heading is still visible
+    await expect(page.getByRole('heading', { name: 'Technology Events', level: 1 })).toBeVisible()
+    // No logo or banner shown
+    await expect(page.locator('.category-logo')).toBeHidden()
+    await expect(page.locator('.category-banner-wrap')).toBeHidden()
+    // No description or curator sections
+    await expect(page.locator('.category-description')).toBeHidden()
+    await expect(page.locator('.curator-credit')).toBeHidden()
+    // No hub modules
+    await expect(page.locator('.hub-overview-modules')).toBeHidden()
+    // Event list is still shown
+    await expect(page.locator('.event-card', { hasText: 'Unbranded Event' })).toBeVisible()
+  })
+})
