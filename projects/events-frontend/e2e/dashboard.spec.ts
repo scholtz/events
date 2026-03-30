@@ -821,6 +821,46 @@ test.describe('Hub Management section in dashboard', () => {
     await expect(page.getByText('Contributor Curator')).toBeVisible()
   })
 
+  test('contributor domain admin can update hub tagline and see it on the public hub', async ({
+    page,
+  }) => {
+    const user = makeContributorUser()
+    const domain = {
+      ...makeTechDomain(),
+      tagline: null,
+    }
+    setupMockApi(page, {
+      users: [user],
+      domains: [domain],
+      domainAdministrators: [
+        {
+          id: 'da-1',
+          domainId: domain.id,
+          userId: user.id,
+          user: { displayName: user.displayName, email: user.email },
+          createdAtUtc: new Date().toISOString(),
+        },
+      ],
+      events: [],
+    })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    await expect(page.locator('.hub-management-section')).toBeVisible()
+
+    // Fill in the tagline via the hub overview form
+    const taglineInput = page.locator('.hub-overview-form input[type="text"]').first()
+    await taglineInput.fill('Premier tech events in Central Europe.')
+    await page.locator('.hub-overview-form').getByRole('button', { name: 'Save Content' }).click()
+    await expect(page.locator('.hub-overview-form .hub-save-success')).toBeVisible()
+
+    // Navigate to the public category hub page and verify the tagline is shown
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.category-tagline')).toBeVisible()
+    await expect(page.locator('.category-tagline')).toContainText('Premier tech events in Central Europe.')
+  })
+
   test('hub management shows an explicit error when saving fails', async ({ page }) => {
     const user = makeContributorUser()
     const domain = makeTechDomain()

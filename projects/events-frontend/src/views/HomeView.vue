@@ -18,6 +18,7 @@ import { buildMainSiteUrl, formatMainSiteHost, useSubdomain } from '@/composable
 import { usePwa } from '@/composables/usePwa'
 import EventCard from '@/components/events/EventCard.vue'
 import EventFilters from '@/components/events/EventFilters.vue'
+import { safeHexColor } from '@/lib/colorUtils'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -36,12 +37,6 @@ const syncingFromRoute = ref(false)
 // Prevents the route watcher from triggering syncFromRoute when the URL was just
 // updated by the store watcher.  Avoids double-fetch and double-analytics.
 const skipNextRouteSync = ref(false)
-
-/** Guard against CSS injection: only allow valid 3- or 6-digit hex colors. */
-function safeHexColor(value: string | null | undefined): string | null {
-  if (!value) return null
-  return /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(value.trim()) ? value.trim() : null
-}
 
 /** Truncated overview snippet for the subdomain hub header (max 200 chars). */
 const overviewSnippet = computed(() => {

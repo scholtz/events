@@ -4732,6 +4732,7 @@ public sealed class GraphQlIntegrationTests
             domain.AccentColor = "#ffaa00";
             domain.LogoUrl = "https://example.com/web3-logo.png";
             domain.BannerUrl = "https://example.com/web3-banner.jpg";
+            domain.Tagline = "Discover the future of decentralised events.";
             domain.OverviewContent = "The premier hub for Web3 events.";
             domain.WhatBelongsHere = "Blockchain, DeFi, and NFT events.";
             domain.SubmitEventCta = "Submit your Web3 event here.";
@@ -4747,7 +4748,7 @@ public sealed class GraphQlIntegrationTests
             query DomainBySlug($slug: String!) {
               domainBySlug(slug: $slug) {
                 primaryColor accentColor logoUrl bannerUrl
-                overviewContent whatBelongsHere submitEventCta curatorCredit
+                tagline overviewContent whatBelongsHere submitEventCta curatorCredit
               }
             }
             """,
@@ -4758,6 +4759,7 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal("#ffaa00", domain.GetProperty("accentColor").GetString());
         Assert.Equal("https://example.com/web3-logo.png", domain.GetProperty("logoUrl").GetString());
         Assert.Equal("https://example.com/web3-banner.jpg", domain.GetProperty("bannerUrl").GetString());
+        Assert.Equal("Discover the future of decentralised events.", domain.GetProperty("tagline").GetString());
         Assert.Equal("The premier hub for Web3 events.", domain.GetProperty("overviewContent").GetString());
         Assert.Equal("Blockchain, DeFi, and NFT events.", domain.GetProperty("whatBelongsHere").GetString());
         Assert.Equal("Submit your Web3 event here.", domain.GetProperty("submitEventCta").GetString());
@@ -6240,6 +6242,7 @@ public sealed class GraphQlIntegrationTests
             mutation UpdateDomainOverview($input: UpdateDomainOverviewInput!) {
               updateDomainOverview(input: $input) {
                 id
+                tagline
                 overviewContent
                 whatBelongsHere
                 submitEventCta
@@ -6252,6 +6255,7 @@ public sealed class GraphQlIntegrationTests
                 input = new
                 {
                     domainId,
+                    tagline = "Your hub for blockchain and crypto events.",
                     overviewContent = "A community for blockchain and crypto events.",
                     whatBelongsHere = "Blockchain meetups, DeFi talks, and crypto networking events.",
                     submitEventCta = "Organizing a crypto event? Submit it here.",
@@ -6260,6 +6264,7 @@ public sealed class GraphQlIntegrationTests
             });
 
         var result = document.RootElement.GetProperty("data").GetProperty("updateDomainOverview");
+        Assert.Equal("Your hub for blockchain and crypto events.", result.GetProperty("tagline").GetString());
         Assert.Equal("A community for blockchain and crypto events.", result.GetProperty("overviewContent").GetString());
         Assert.Equal("Blockchain meetups, DeFi talks, and crypto networking events.", result.GetProperty("whatBelongsHere").GetString());
         Assert.Equal("Organizing a crypto event? Submit it here.", result.GetProperty("submitEventCta").GetString());
@@ -6269,7 +6274,8 @@ public sealed class GraphQlIntegrationTests
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var persisted = await db.Domains.FindAsync(domainId);
-        Assert.Equal("A community for blockchain and crypto events.", persisted!.OverviewContent);
+        Assert.Equal("Your hub for blockchain and crypto events.", persisted!.Tagline);
+        Assert.Equal("A community for blockchain and crypto events.", persisted.OverviewContent);
         Assert.Equal("Prague Blockchain Week organizers", persisted.CuratorCredit);
     }
 

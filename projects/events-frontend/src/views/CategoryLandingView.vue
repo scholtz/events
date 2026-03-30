@@ -5,6 +5,7 @@ import { useRoute } from 'vue-router'
 import EventCard from '@/components/events/EventCard.vue'
 import type { CatalogEvent, EventDomain } from '@/types'
 import { gqlRequest } from '@/lib/graphql'
+import { safeHexColor } from '@/lib/colorUtils'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -16,12 +17,6 @@ const events = ref<CatalogEvent[]>([])
 const featuredEvents = ref<CatalogEvent[]>([])
 const loading = ref(false)
 const error = ref('')
-
-/** Guard against CSS injection: only allow valid 3- or 6-digit hex colors. */
-function safeHexColor(value: string | null | undefined): string | null {
-  if (!value) return null
-  return /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(value.trim()) ? value.trim() : null
-}
 
 const EVENT_FIELDS = `
   id name slug description eventUrl
