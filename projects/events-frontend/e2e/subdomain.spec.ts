@@ -383,3 +383,143 @@ test.describe('Subdomain hub header', () => {
     await expect(page.locator('.subdomain-community-link', { hasText: 'Community Hub' })).toBeVisible()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Subdomain hub SEO meta tags
+// ---------------------------------------------------------------------------
+
+test.describe('Subdomain hub SEO meta tags', () => {
+  test('sets branded page title when on a subdomain hub', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent()],
+    })
+    await page.goto('/?subdomain=tech')
+
+    await expect(page).toHaveTitle(/Technology Events/)
+  })
+
+  test('sets og:title meta tag to domain name + Events', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent()],
+    })
+    await page.goto('/?subdomain=tech')
+
+    await expect(page.locator('.subdomain-header')).toBeVisible()
+    const ogTitle = await page.evaluate(
+      () => document.querySelector('meta[property="og:title"]')?.getAttribute('content') ?? '',
+    )
+    expect(ogTitle).toContain('Technology Events')
+  })
+
+  test('sets og:description from domain description', async ({ page }) => {
+    const domain = {
+      ...makeTechDomain(),
+      description: 'Cutting-edge technology events for developers.',
+    }
+    setupMockApi(page, { domains: [domain], events: [makeApprovedEvent()] })
+    await page.goto('/?subdomain=tech')
+
+    await expect(page.locator('.subdomain-header')).toBeVisible()
+    const ogDesc = await page.evaluate(
+      () => document.querySelector('meta[property="og:description"]')?.getAttribute('content') ?? '',
+    )
+    expect(ogDesc).toContain('Cutting-edge technology events for developers.')
+  })
+
+  test('sets og:description from overviewContent when description is absent', async ({ page }) => {
+    const domain = {
+      ...makeTechDomain(),
+      description: null,
+      overviewContent: 'The premier hub for technology events in Central Europe.',
+    }
+    setupMockApi(page, { domains: [domain], events: [makeApprovedEvent()] })
+    await page.goto('/?subdomain=tech')
+
+    await expect(page.locator('.subdomain-header')).toBeVisible()
+    const ogDesc = await page.evaluate(
+      () => document.querySelector('meta[property="og:description"]')?.getAttribute('content') ?? '',
+    )
+    expect(ogDesc).toContain('The premier hub for technology events')
+  })
+
+  test('sets og:image to bannerUrl when configured', async ({ page }) => {
+    const domain = {
+      ...makeTechDomain(),
+      bannerUrl: 'https://example.com/tech-banner.jpg',
+    }
+    setupMockApi(page, { domains: [domain], events: [makeApprovedEvent()] })
+    await page.goto('/?subdomain=tech')
+
+    await expect(page.locator('.subdomain-header')).toBeVisible()
+    const ogImage = await page.evaluate(
+      () => document.querySelector('meta[property="og:image"]')?.getAttribute('content') ?? '',
+    )
+    expect(ogImage).toBe('https://example.com/tech-banner.jpg')
+  })
+
+  test('falls back to logoUrl for og:image when no banner is set', async ({ page }) => {
+    const domain = {
+      ...makeTechDomain(),
+      logoUrl: 'https://example.com/tech-logo.png',
+      bannerUrl: null,
+    }
+    setupMockApi(page, { domains: [domain], events: [makeApprovedEvent()] })
+    await page.goto('/?subdomain=tech')
+
+    await expect(page.locator('.subdomain-header')).toBeVisible()
+    const ogImage = await page.evaluate(
+      () => document.querySelector('meta[property="og:image"]')?.getAttribute('content') ?? '',
+    )
+    expect(ogImage).toBe('https://example.com/tech-logo.png')
+  })
+
+  test('sets twitter:card to summary_large_image when banner is present', async ({ page }) => {
+    const domain = {
+      ...makeTechDomain(),
+      bannerUrl: 'https://example.com/tech-banner.jpg',
+    }
+    setupMockApi(page, { domains: [domain], events: [makeApprovedEvent()] })
+    await page.goto('/?subdomain=tech')
+
+    await expect(page.locator('.subdomain-header')).toBeVisible()
+    const twitterCard = await page.evaluate(
+      () => document.querySelector('meta[name="twitter:card"]')?.getAttribute('content') ?? '',
+    )
+    expect(twitterCard).toBe('summary_large_image')
+  })
+
+  test('sets twitter:card to summary when no image assets are configured', async ({ page }) => {
+    const domain = {
+      ...makeTechDomain(),
+      logoUrl: null,
+      bannerUrl: null,
+    }
+    setupMockApi(page, { domains: [domain], events: [makeApprovedEvent()] })
+    await page.goto('/?subdomain=tech')
+
+    await expect(page.locator('.subdomain-header')).toBeVisible()
+    const twitterCard = await page.evaluate(
+      () => document.querySelector('meta[name="twitter:card"]')?.getAttribute('content') ?? '',
+    )
+    expect(twitterCard).toBe('summary')
+  })
+
+  test('i18n: page title uses Slovak locale subdomain title when locale is sk', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent()],
+    })
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'sk')
+    })
+    await page.goto('/?subdomain=tech')
+
+    await expect(page.locator('.subdomain-header')).toBeVisible()
+    // Slovak title format: '{name} – Podujatia'
+    await expect(page).toHaveTitle(/Technology.*Podujatia/)
+  })
+})

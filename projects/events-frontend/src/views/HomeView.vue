@@ -245,6 +245,77 @@ const emptyStateMessage = computed(() => {
 
   return t('home.emptyGeneric')
 })
+
+// ── Subdomain hub SEO meta tags ───────────────────────────────────────────
+
+/** Maximum character length for SEO meta descriptions. */
+const SEO_DESCRIPTION_MAX_LENGTH = 160
+
+/** Page title: branded for subdomain hub, default for main discovery page. */
+const subdomainPageTitle = computed(() =>
+  isSubdomainView.value && activeDomain.value
+    ? t('home.subdomainPageTitle', { name: activeDomain.value.name })
+    : null,
+)
+
+/** SEO description: prefer domain.description, fall back to overviewContent. */
+const subdomainSeoDescription = computed(() => {
+  if (!isSubdomainView.value || !activeDomain.value) return null
+  const raw = activeDomain.value.description || activeDomain.value.overviewContent || ''
+  return raw.slice(0, SEO_DESCRIPTION_MAX_LENGTH)
+})
+
+/** Social sharing image: prefer banner, fall back to logo, fall back to null. */
+const subdomainSocialImage = computed(
+  () =>
+    (isSubdomainView.value &&
+      (activeDomain.value?.bannerUrl ?? activeDomain.value?.logoUrl ?? null)) ||
+    null,
+)
+
+/**
+ * Upsert a `<meta>` element in `<head>`.
+ * Mirrors the same helper used in CategoryLandingView.
+ * Skips setting the tag if content is empty to avoid incomplete social previews.
+ */
+function setMetaTag(attr: 'name' | 'property', attrValue: string, content: string): void {
+  if (typeof document === 'undefined') return
+  if (!content) return
+  let el = document.querySelector<HTMLMetaElement>(`meta[${attr}="${attrValue}"]`)
+  if (!el) {
+    el = document.createElement('meta')
+    el.setAttribute(attr, attrValue)
+    document.head.appendChild(el)
+  }
+  el.content = content
+}
+
+/** Syncs subdomain hub SEO + social meta tags whenever the active domain changes. */
+function updateSubdomainSeoTags(
+  title: string | null,
+  desc: string | null,
+  image: string | null,
+): void {
+  if (!title) return // not in subdomain mode — leave existing tags untouched
+  const url = typeof window !== 'undefined' ? window.location.href : ''
+  setMetaTag('name', 'description', desc ?? '')
+  setMetaTag('property', 'og:type', 'website')
+  setMetaTag('property', 'og:title', title)
+  setMetaTag('property', 'og:description', desc ?? '')
+  setMetaTag('property', 'og:url', url)
+  setMetaTag('property', 'og:image', image ?? '')
+  setMetaTag('name', 'twitter:card', image ? 'summary_large_image' : 'summary')
+  setMetaTag('name', 'twitter:title', title)
+  setMetaTag('name', 'twitter:description', desc ?? '')
+  setMetaTag('name', 'twitter:image', image ?? '')
+  document.title = title
+}
+
+watch(
+  [subdomainPageTitle, subdomainSeoDescription, subdomainSocialImage],
+  ([title, desc, image]) => updateSubdomainSeoTags(title, desc, image),
+  { immediate: true },
+)
 </script>
 
 <template>

@@ -55,6 +55,7 @@ export default {
     allEventsOn: 'Alle Veranstaltungen auf {host}',
     subdomainViewFullHub: 'Zur Hub-Seite',
     subdomainCuratedBy: 'Kuratiert von {credit}',
+    subdomainPageTitle: '{name} Veranstaltungen',
     updatingResults: 'Ergebnisse werden aktualisiert…',
     updatingDescription: 'Ihre Filter werden angewendet und die besten Ergebnisse werden geladen.',
     errorOffline: 'Sie sind offline',
