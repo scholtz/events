@@ -442,6 +442,12 @@ export default {
     hubFeaturedEventsSaving: 'Speichern\u2026',
     hubFeaturedEventsSaved: '\u2713 Gespeichert',
     hubFeaturedEventsError: 'Speichern fehlgeschlagen. Bitte erneut versuchen.',
+    myCommunitiesTitle: 'Meine Communitys',
+    myCommunitiesDescription: 'Communitys, in denen Sie aktives Mitglied sind.',
+    noCommunitiesYet: 'Sie sind noch kein Mitglied einer Community.',
+    noCommunitiesHint: 'Entdecken und treten Sie Communitys bei, um sie hier zu sehen.',
+    browseCommunities: 'Communitys entdecken',
+    myCommunitiesError: 'Ihre Communitys konnten nicht geladen werden. Bitte erneut versuchen.',
   },
 
   // ── Portfolio (Meine Events) ───────────────────────────────────────────────

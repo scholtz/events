@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
@@ -73,6 +73,20 @@ const isAdminOrEventManager = computed(() => isAdmin.value || isEventManager.val
 const isMember = computed(() => myMembership.value?.status === 'ACTIVE')
 const isPending = computed(() => myMembership.value?.status === 'PENDING')
 const isRejected = computed(() => myMembership.value?.status === 'REJECTED')
+
+// SEO: set page title when group loads
+const pageTitle = computed(() =>
+  group.value
+    ? `${group.value.name} | ${t('community.nav')}`
+    : t('community.pageTitleDefault'),
+)
+watch(
+  pageTitle,
+  (title) => {
+    if (typeof document !== 'undefined') document.title = title
+  },
+  { immediate: true },
+)
 
 // Event association state
 const associateEventSlug = ref('')

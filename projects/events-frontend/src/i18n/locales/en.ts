@@ -452,6 +452,12 @@ export default {
     hubFeaturedEventsSaving: 'Saving\u2026',
     hubFeaturedEventsSaved: '\u2713 Saved',
     hubFeaturedEventsError: 'Failed to save featured events. Please try again.',
+    myCommunitiesTitle: 'My Communities',
+    myCommunitiesDescription: 'Communities you are an active member of.',
+    noCommunitiesYet: "You haven't joined any community yet.",
+    noCommunitiesHint: 'Discover and join communities to see them here.',
+    browseCommunities: 'Browse Communities',
+    myCommunitiesError: 'Unable to load your communities. Please try again.',
   },
 
   // ── Portfolio (My Events) ──────────────────────────────────────────────────
