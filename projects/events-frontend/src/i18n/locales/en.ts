@@ -632,6 +632,26 @@ export default {
     notFound: 'Category not found',
     notFoundDescription: 'The category "{slug}" does not exist or is no longer active.',
     errorLoad: 'Unable to load category',
+    manageHub: 'Manage Hub',
+  },
+
+  // ── Hub manage page ────────────────────────────────────────────────────────
+  hubManage: {
+    pageTitle: 'Manage {name} Hub',
+    pageTitleDefault: 'Manage Hub',
+    heading: 'Manage {name}',
+    manageLabel: 'Manage',
+    signInRequired: 'Sign in required',
+    signInDescription: 'You need to be signed in to manage a hub.',
+    unauthorized: 'Access denied',
+    unauthorizedDescription: 'You are not an administrator of the "{slug}" hub.',
+    backToDashboard: 'Back to Dashboard',
+    errorLoad: 'Unable to load hub',
+    saveError: 'Failed to save. Please try again.',
+    overviewPlaceholder: 'A short editorial overview about this hub…',
+    whatBelongsHerePlaceholder: 'Describe what types of events belong in this hub…',
+    ctaPlaceholder: 'e.g. Organizing a blockchain event? Submit it here.',
+    curatorCreditPlaceholder: 'e.g. Prague Blockchain Week organizers',
   },
 
   // ── Push reminders ─────────────────────────────────────────────────────────

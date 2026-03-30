@@ -60,6 +60,11 @@ const router = createRouter({
       name: 'community-detail',
       component: () => import('@/views/CommunityDetailView.vue'),
     },
+    {
+      path: '/hub/:slug/manage',
+      name: 'hub-manage',
+      component: () => import('@/views/HubManageView.vue'),
+    },
   ],
   scrollBehavior() {
     return { top: 0 }
