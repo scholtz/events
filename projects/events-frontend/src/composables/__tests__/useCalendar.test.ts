@@ -4,6 +4,8 @@
  * Covers:
  *  - eventToCalendarInput: ONLINE / HYBRID / IN_PERSON location normalisation,
  *    description building, missing optional fields, organizer metadata
+ *  - validateCalendarInput: valid events, missing/invalid start date,
+ *    invalid end date, end before start (impossible range), null end allowed
  *  - buildIcsContent: RFC 5545 structure, CRLF endings, UTC timestamps,
  *    text escaping (commas / semicolons / newlines / backslashes),
  *    75-octet line folding, fallback DTEND, organizer property
@@ -16,6 +18,7 @@ import {
   buildIcsContent,
   buildOutlookCalendarUrl,
   eventToCalendarInput,
+  validateCalendarInput,
 } from '@/composables/useCalendar'
 import type { CalendarEventInput } from '@/composables/useCalendar'
 import type { CatalogEvent } from '@/types'
@@ -809,5 +812,106 @@ describe('canonical platform URL in calendar exports', () => {
     // description contains both join link and platform URL
     expect(input.description).toContain('Join online: https://stream.example.com/join')
     expect(input.description).toContain('Event page: https://events.example.com/event/hybrid-summit')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// validateCalendarInput
+// ---------------------------------------------------------------------------
+
+describe('validateCalendarInput', () => {
+  describe('valid inputs', () => {
+    it('returns valid=true for a typical event with start and end', () => {
+      const result = validateCalendarInput(makeInput())
+      expect(result.valid).toBe(true)
+      expect(result.errors).toHaveLength(0)
+    })
+
+    it('returns valid=true when endUtc is null (no explicit end time)', () => {
+      const result = validateCalendarInput(makeInput({ endUtc: null }))
+      expect(result.valid).toBe(true)
+      expect(result.errors).toHaveLength(0)
+    })
+
+    it('returns valid=true when endUtc equals startUtc (degenerate but not invalid)', () => {
+      // endUtc == startUtc is not "before" startUtc, so no error
+      const result = validateCalendarInput(
+        makeInput({ startUtc: '2026-06-15T10:00:00Z', endUtc: '2026-06-15T10:00:00Z' }),
+      )
+      expect(result.valid).toBe(true)
+      expect(result.errors).toHaveLength(0)
+    })
+  })
+
+  describe('invalid start date', () => {
+    it('returns valid=false when startUtc is an empty string', () => {
+      const result = validateCalendarInput(makeInput({ startUtc: '' }))
+      expect(result.valid).toBe(false)
+      expect(result.errors).toHaveLength(1)
+      expect(result.errors[0]).toMatch(/Invalid start date/)
+    })
+
+    it('returns valid=false when startUtc is not a parseable date', () => {
+      const result = validateCalendarInput(makeInput({ startUtc: 'not-a-date' }))
+      expect(result.valid).toBe(false)
+      expect(result.errors).toHaveLength(1)
+      expect(result.errors[0]).toMatch(/Invalid start date/)
+    })
+
+    it('includes the bad value in the error message', () => {
+      const result = validateCalendarInput(makeInput({ startUtc: 'bad-value' }))
+      expect(result.errors[0]).toContain('bad-value')
+    })
+  })
+
+  describe('invalid end date', () => {
+    it('returns valid=false when endUtc is not a parseable date', () => {
+      const result = validateCalendarInput(makeInput({ endUtc: 'not-a-date' }))
+      expect(result.valid).toBe(false)
+      expect(result.errors).toHaveLength(1)
+      expect(result.errors[0]).toMatch(/Invalid end date/)
+    })
+
+    it('includes the bad value in the error message for invalid end', () => {
+      const result = validateCalendarInput(makeInput({ endUtc: 'bad-end' }))
+      expect(result.errors[0]).toContain('bad-end')
+    })
+  })
+
+  describe('impossible date range', () => {
+    it('returns valid=false when endUtc precedes startUtc', () => {
+      const result = validateCalendarInput(
+        makeInput({
+          startUtc: '2026-06-15T18:00:00Z',
+          endUtc: '2026-06-15T10:00:00Z', // end before start
+        }),
+      )
+      expect(result.valid).toBe(false)
+      expect(result.errors).toHaveLength(1)
+      expect(result.errors[0]).toMatch(/End date is before start date/)
+    })
+
+    it('does NOT report an impossible range when endUtc is exactly 1 second after startUtc', () => {
+      const result = validateCalendarInput(
+        makeInput({
+          startUtc: '2026-06-15T10:00:00Z',
+          endUtc: '2026-06-15T10:00:01Z',
+        }),
+      )
+      expect(result.valid).toBe(true)
+    })
+  })
+
+  describe('multiple errors', () => {
+    it('collects multiple errors in a single call', () => {
+      // Both startUtc and endUtc are invalid — should accumulate 2 errors
+      const result = validateCalendarInput(
+        makeInput({ startUtc: 'bad-start', endUtc: 'bad-end' }),
+      )
+      // With an invalid startUtc, the end-before-start check is skipped (startDate is NaN),
+      // so we get: 1 error for invalid start + 1 error for invalid end = 2 total
+      expect(result.valid).toBe(false)
+      expect(result.errors.length).toBeGreaterThanOrEqual(2)
+    })
   })
 })

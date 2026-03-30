@@ -41,6 +41,9 @@ The codebase already implements a meaningful part of the platform. This roadmap 
 - Progressive Web App support with offline-aware GraphQL query caching
 - Multilingual frontend foundations with English, Slovak, and German locales
 - Push notification subscriptions and event reminder infrastructure
+- Add-to-calendar actions on event detail pages: ICS file download, Google Calendar deep-link, and Outlook.com deep-link, with graceful disabled state for events with incomplete scheduling data
+- Server-side ICS endpoint (`GET /ics/{slug}`) for bookmarkable, no-JavaScript calendar exports of published events
+- Privacy-safe calendar-intent analytics: aggregate add-to-calendar counts (by provider, 7-day and 30-day trends) visible in the organizer dashboard without exposing attendee identity
 
 ### What is not implemented yet
 
@@ -49,7 +52,6 @@ The codebase already implements a meaningful part of the platform. This roadmap 
 - Comments, discussion forums, or real-time collaboration features
 - Ticketing, subscriptions, or other monetization workflows
 - Rich organizer branding tools for domain hubs, despite backend support for some design fields
-- Calendar-provider integrations beyond analytics and reminder tracking
 
 This roadmap focuses on extending the platform from the working baseline above.
 
@@ -138,7 +140,7 @@ Organizer analytics already exist and should now become more actionable and more
 - Improve metric clarity so organizers understand what each number represents and what period it covers
 - Add more guidance for low-volume and empty states so analytics remain useful when events are new or niche
 - Expand discovery and engagement analytics only where they lead to practical organizer decisions
-- Connect reminder, save, and calendar-intent signals into a clearer event-performance narrative
+- Reminder, save, and calendar-intent signals are now connected into a clearer event-performance narrative in the organizer dashboard
 
 ### Why this matters
 
@@ -184,7 +186,6 @@ Community groups, external sync, richer collaboration, and ecosystem integration
 
 - Community groups with membership and role management
 - External event-source synchronization from platforms such as Meetup or Luma
-- Calendar export and calendar-provider integrations where they help conversion and retention
 - Social and collaborative features such as comments, discussion, or shared curation
 - Partner integrations for ticketing, venues, or distribution
 
