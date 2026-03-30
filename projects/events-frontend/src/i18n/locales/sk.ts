@@ -55,6 +55,7 @@ export default {
     allEventsOn: 'Všetky udalosti na {host}',
     subdomainViewFullHub: 'Zobraziť celú stránku hubu',
     subdomainCuratedBy: 'Spravuje: {credit}',
+    subdomainPageTitle: '{name} – Podujatia',
     updatingResults: 'Aktualizácia výsledkov…',
     updatingDescription: 'Aplikujú sa vaše filtre a načítavajú sa najlepšie výsledky.',
     errorOffline: 'Ste offline',
