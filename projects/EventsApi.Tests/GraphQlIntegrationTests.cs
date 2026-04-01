@@ -11344,6 +11344,266 @@ public sealed class GraphQlIntegrationTests
         Assert.Contains("FORBIDDEN", errors.ToString());
     }
 
+    // ── ReviewExternalSourceClaim mutation ────────────────────────────────────
+
+    [Fact]
+    public async Task ReviewExternalSourceClaim_GlobalAdmin_CanVerifyClaim()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("review-admin@example.com", "Review Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var owner = CreateUser("review-owner@example.com", "Owner");
+            dbContext.Users.AddRange(admin, owner);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Review Group", Slug = "review-group",
+                IsActive = true, CreatedByUserId = owner.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/review-group",
+                SourceIdentifier = "review-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.PendingReview,
+                CreatedByUserId = owner.Id,
+            };
+            claimId = claim.Id;
+            dbContext.ExternalSourceClaims.Add(claim);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation ReviewClaim($input: ReviewExternalSourceClaimInput!) {
+              reviewExternalSourceClaim(input: $input) { id status }
+            }
+            """,
+            new { input = new { claimId, newStatus = "VERIFIED" } });
+
+        var result = doc.RootElement.GetProperty("data").GetProperty("reviewExternalSourceClaim");
+        Assert.Equal("VERIFIED", result.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task ReviewExternalSourceClaim_GlobalAdmin_CanRejectClaim()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("reject-admin@example.com", "Reject Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var owner = CreateUser("reject-owner@example.com", "Owner");
+            dbContext.Users.AddRange(admin, owner);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Reject Group", Slug = "reject-group",
+                IsActive = true, CreatedByUserId = owner.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Luma,
+                SourceUrl = "https://lu.ma/reject-group",
+                SourceIdentifier = "reject-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.PendingReview,
+                CreatedByUserId = owner.Id,
+            };
+            claimId = claim.Id;
+            dbContext.ExternalSourceClaims.Add(claim);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation ReviewClaim($input: ReviewExternalSourceClaimInput!) {
+              reviewExternalSourceClaim(input: $input) { id status }
+            }
+            """,
+            new { input = new { claimId, newStatus = "REJECTED" } });
+
+        var result = doc.RootElement.GetProperty("data").GetProperty("reviewExternalSourceClaim");
+        Assert.Equal("REJECTED", result.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task ReviewExternalSourceClaim_NonAdmin_ReturnsForbidden()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid userId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("review-non-admin@example.com", "Non Admin");
+            userId = user.Id;
+            var owner = CreateUser("review-owner2@example.com", "Owner");
+            dbContext.Users.AddRange(user, owner);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Non Admin Review Group", Slug = "non-admin-review-group",
+                IsActive = true, CreatedByUserId = owner.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/non-admin-review-group",
+                SourceIdentifier = "non-admin-review-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.PendingReview,
+                CreatedByUserId = owner.Id,
+            };
+            claimId = claim.Id;
+            dbContext.ExternalSourceClaims.Add(claim);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation ReviewClaim($input: ReviewExternalSourceClaimInput!) {
+                  reviewExternalSourceClaim(input: $input) { id status }
+                }
+                """,
+            variables = new { input = new { claimId, newStatus = "VERIFIED" } }
+        });
+        response.EnsureSuccessStatusCode();
+        using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+
+        Assert.True(doc.RootElement.TryGetProperty("errors", out var errors));
+        Assert.Contains("FORBIDDEN", errors.ToString());
+    }
+
+    [Fact]
+    public async Task ReviewExternalSourceClaim_Unauthenticated_ReturnsAuthError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        var response = await factory.CreateClient().PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation ReviewClaim($input: ReviewExternalSourceClaimInput!) {
+                  reviewExternalSourceClaim(input: $input) { id status }
+                }
+                """,
+            variables = new { input = new { claimId = Guid.NewGuid(), newStatus = "VERIFIED" } }
+        });
+        response.EnsureSuccessStatusCode();
+        using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+
+        Assert.True(doc.RootElement.TryGetProperty("errors", out var errors));
+        var errStr = errors.ToString();
+        Assert.True(
+            errStr.Contains("AUTH_NOT_AUTHORIZED", StringComparison.OrdinalIgnoreCase)
+            || errStr.Contains("not authorized", StringComparison.OrdinalIgnoreCase)
+            || errStr.Contains("unauthorized", StringComparison.OrdinalIgnoreCase),
+            $"Expected auth error but got: {errStr}");
+    }
+
+    [Fact]
+    public async Task AdminOverview_IncludesPendingExternalSourceClaims()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("aov-admin@example.com", "Admin Overview Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var owner = CreateUser("aov-owner@example.com", "Owner");
+            dbContext.Users.AddRange(admin, owner);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "AOV Group", Slug = "aov-group",
+                IsActive = true, CreatedByUserId = owner.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            // A pending claim that should appear in the overview
+            dbContext.ExternalSourceClaims.Add(new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/aov-group",
+                SourceIdentifier = "aov-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.PendingReview,
+                CreatedByUserId = owner.Id,
+            });
+
+            // A verified claim that should NOT appear in the pending list
+            dbContext.ExternalSourceClaims.Add(new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Luma,
+                SourceUrl = "https://lu.ma/aov-group",
+                SourceIdentifier = "aov-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.Verified,
+                CreatedByUserId = owner.Id,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            query {
+              adminOverview {
+                pendingExternalSourceClaims {
+                  id
+                  sourceType
+                  sourceUrl
+                  status
+                  group { name }
+                }
+              }
+            }
+            """);
+
+        var claims = doc.RootElement
+            .GetProperty("data")
+            .GetProperty("adminOverview")
+            .GetProperty("pendingExternalSourceClaims")
+            .EnumerateArray()
+            .ToList();
+
+        Assert.Single(claims);
+        Assert.Equal("PENDING_REVIEW", claims[0].GetProperty("status").GetString());
+        Assert.Equal("MEETUP", claims[0].GetProperty("sourceType").GetString());
+        Assert.Equal("AOV Group", claims[0].GetProperty("group").GetProperty("name").GetString());
+    }
+
     // ── Domains query includes community links ──────────────────────────────
 
     [Fact]

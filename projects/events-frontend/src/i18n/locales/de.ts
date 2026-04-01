@@ -582,6 +582,18 @@ export default {
     communityLinksSaved: '\u2713 Gespeichert',
     communityLinksSaving: 'Speichern\u2026',
     communityLinksError: 'Fehler beim Speichern der Links. Bitte erneut versuchen.',
+    tabExternalClaims: 'Quellenansprüche',
+    externalClaimsHeading: 'Ausstehende externe Quellenansprüche',
+    externalClaimsDescription: 'Überprüfen und verifizieren oder ablehnen Sie externe Quellenansprüche, die von Community-Administratoren eingereicht wurden.',
+    claimCommunity: 'Community',
+    claimPlatform: 'Plattform',
+    claimUrl: 'Quell-URL',
+    claimSubmittedBy: 'Eingereicht von',
+    claimDate: 'Datum',
+    claimActions: 'Aktionen',
+    verifyClaim: 'Verifizieren',
+    rejectClaim: 'Ablehnen',
+    noExternalClaims: 'Keine ausstehenden Ansprüche zur Überprüfung.',
   },
 
   attendanceMode: {

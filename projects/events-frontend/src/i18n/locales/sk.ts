@@ -582,6 +582,18 @@ export default {
     communityLinksSaved: '\u2713 Uložené',
     communityLinksSaving: 'Ukladám\u2026',
     communityLinksError: 'Nepodarilo sa uložiť odkazy. Skúste to znova.',
+    tabExternalClaims: 'Nároky zdrojov',
+    externalClaimsHeading: 'Čakajúce nároky externých zdrojov',
+    externalClaimsDescription: 'Skontrolujte a overte alebo zamietajte nároky na vlastníctvo externých zdrojov podané správcami komunity.',
+    claimCommunity: 'Komunita',
+    claimPlatform: 'Platforma',
+    claimUrl: 'URL zdroja',
+    claimSubmittedBy: 'Odoslal',
+    claimDate: 'Dátum',
+    claimActions: 'Akcie',
+    verifyClaim: 'Overiť',
+    rejectClaim: 'Zamietnuť',
+    noExternalClaims: 'Žiadne čakajúce nároky na kontrolu.',
   },
 
   attendanceMode: {

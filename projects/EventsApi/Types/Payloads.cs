@@ -56,7 +56,8 @@ public sealed record AdminOverview(
     int TotalPendingEvents,
     IReadOnlyList<ApplicationUser> Users,
     IReadOnlyList<CatalogEvent> PendingReviewEvents,
-    IReadOnlyList<EventDomain> Domains);
+    IReadOnlyList<EventDomain> Domains,
+    IReadOnlyList<ExternalSourceClaim> PendingExternalSourceClaims);
 
 /// <summary>
 /// Represents the user's current push notification subscription status.

@@ -601,6 +601,18 @@ export default {
     communityLinksSaved: '\u2713 Saved',
     communityLinksSaving: 'Saving\u2026',
     communityLinksError: 'Failed to save community links. Please try again.',
+    tabExternalClaims: 'Source Claims',
+    externalClaimsHeading: 'Pending External Source Claims',
+    externalClaimsDescription: 'Review and verify or reject external source ownership claims submitted by community administrators.',
+    claimCommunity: 'Community',
+    claimPlatform: 'Platform',
+    claimUrl: 'Source URL',
+    claimSubmittedBy: 'Submitted by',
+    claimDate: 'Date',
+    claimActions: 'Actions',
+    verifyClaim: 'Verify',
+    rejectClaim: 'Reject',
+    noExternalClaims: 'No pending claims to review.',
   },
 
   // ── Attendance mode labels ─────────────────────────────────────────────────
