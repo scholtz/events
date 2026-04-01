@@ -857,6 +857,8 @@ test.describe('Admin – external source claim review', () => {
     await page.goto('/admin')
     await page.getByRole('button', { name: /Source Claims/ }).click()
 
+    // Wait for claim row to appear before asserting aria-label
+    await expect(page.locator('.claim-row')).toHaveCount(1)
     const verifyBtn = page.locator('.claim-row').getByRole('button', { name: /Verify/i })
     await expect(verifyBtn).toHaveAttribute('aria-label', new RegExp(group.name))
   })
@@ -871,6 +873,8 @@ test.describe('Admin – external source claim review', () => {
     await page.goto('/admin')
     await page.getByRole('button', { name: /Source Claims/ }).click()
 
+    // Wait for claim row to appear before asserting aria-label
+    await expect(page.locator('.claim-row')).toHaveCount(1)
     const rejectBtn = page.locator('.claim-row').getByRole('button', { name: /Reject/i })
     await expect(rejectBtn).toHaveAttribute('aria-label', new RegExp(group.name))
   })
