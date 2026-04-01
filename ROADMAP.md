@@ -44,6 +44,10 @@ The codebase already implements a meaningful part of the platform. This roadmap 
 - Add-to-calendar actions on event detail pages: ICS file download, Google Calendar deep-link, and Outlook.com deep-link, with graceful disabled state for events with incomplete scheduling data
 - Server-side ICS endpoint (`GET /ics/{slug}`) for bookmarkable, no-JavaScript calendar exports of published events
 - Privacy-safe calendar-intent analytics: aggregate add-to-calendar counts (by provider, 7-day and 30-day trends) visible in the organizer dashboard without exposing attendee identity
+- Branded domain hub management: domain stewards can configure logos, banners, color accents, taglines, editorial overview content, curator attribution, featured events, and community links via a dedicated hub management UI at `/hub/:slug/manage`
+- Category landing pages and subdomain hub pages surface domain branding and administrator-managed metadata, with graceful fallbacks when assets are absent
+- Event detail pages show a domain hub context card linking back to the relevant category hub, including logo, description, and curator credit
+- Hub management workflow respects current permission model: domain administrators manage only their own hub identity without requiring global admin access
 
 ### What is not implemented yet
 
@@ -51,7 +55,6 @@ The codebase already implements a meaningful part of the platform. This roadmap 
 - Sync from external event platforms such as Meetup or Luma
 - Comments, discussion forums, or real-time collaboration features
 - Ticketing, subscriptions, or other monetization workflows
-- Rich organizer branding tools for domain hubs, despite backend support for some design fields
 
 This roadmap focuses on extending the platform from the working baseline above.
 
@@ -118,13 +121,18 @@ Better organizer tooling improves catalog quality. Strong discovery depends on s
 
 The roadmap should align more closely with the product's differentiator: domain and category ownership. Categories are not just tags. They are the beginning of community-specific event surfaces.
 
-### Priorities
+### Delivered
 
-- Make domain pages feel like lightweight community homepages with stronger identity and curation
-- Expose domain metadata and administrator-managed content more clearly in the frontend
-- Build the missing UI for existing backend design fields such as logos, banners, and color themes
-- Improve domain administration workflows and permissions, especially where domain-specific stewardship should not require global admin access
-- Keep event-to-domain linking consistent across homepage, category pages, and event detail surfaces
+- Category landing pages and subdomain hub pages now render domain logos, banners, primary and accent colors, taglines, curator credits, editorial overviews, featured events, and community links.
+- The hub management UI (`/hub/:slug/manage`) lets domain stewards configure all branding and metadata fields within validated, bounded controls.
+- Event detail pages show a hub context card linking back to the relevant category hub.
+- Domain administrators manage only their own hub without global admin permissions.
+
+### Next priorities
+
+- Deepen community-group ownership and event curation within hubs
+- Support programmatic featured-event scheduling (e.g. time-windowed highlights)
+- Keep event-to-domain linking consistent as new discovery surfaces are added
 
 ### Why this matters
 
