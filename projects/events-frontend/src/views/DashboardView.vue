@@ -8,6 +8,12 @@ import { useCommunitiesStore } from '@/stores/communities'
 import { gqlRequest } from '@/lib/graphql'
 import type { CatalogEvent, EventAnalyticsItem, EventDomain, CommunityMembership } from '@/types'
 import { isValidHexColor } from '@/lib/colorUtils'
+import {
+  saveTrendVariant,
+  calendarTrendVariant,
+  eventRecommendationType,
+  eventRecommendationVariant,
+} from '@/composables/useAnalyticsGuidance'
 
 const { t, locale } = useI18n()
 const dashboardStore = useDashboardStore()
@@ -306,27 +312,25 @@ function statusBadgeClass(status: string): string {
 }
 
 function trendLabel(item: EventAnalyticsItem): string {
-  if (item.interestedLast7Days > 0) return t('dashboard.trendThisWeek', { count: item.interestedLast7Days })
-  if (item.interestedLast30Days > 0) return t('dashboard.trendThisMonth', { count: item.interestedLast30Days })
+  const variant = saveTrendVariant(item)
+  if (variant === 'trend--active') return t('dashboard.trendThisWeek', { count: item.interestedLast7Days })
+  if (variant === 'trend--recent') return t('dashboard.trendThisMonth', { count: item.interestedLast30Days })
   return t('dashboard.noRecentSaves')
 }
 
 function trendClass(item: EventAnalyticsItem): string {
-  if (item.interestedLast7Days > 0) return 'trend--active'
-  if (item.interestedLast30Days > 0) return 'trend--recent'
-  return 'trend--quiet'
+  return saveTrendVariant(item)
 }
 
 function calendarTrendLabel(item: EventAnalyticsItem): string {
-  if (item.calendarActionsLast7Days > 0) return t('dashboard.trendThisWeek', { count: item.calendarActionsLast7Days })
-  if (item.calendarActionsLast30Days > 0) return t('dashboard.trendThisMonth', { count: item.calendarActionsLast30Days })
+  const variant = calendarTrendVariant(item)
+  if (variant === 'trend--active') return t('dashboard.trendThisWeek', { count: item.calendarActionsLast7Days })
+  if (variant === 'trend--recent') return t('dashboard.trendThisMonth', { count: item.calendarActionsLast30Days })
   return t('dashboard.noRecentAdds')
 }
 
 function calendarTrendClass(item: EventAnalyticsItem): string {
-  if (item.calendarActionsLast7Days > 0) return 'trend--active'
-  if (item.calendarActionsLast30Days > 0) return 'trend--recent'
-  return 'trend--quiet'
+  return calendarTrendVariant(item)
 }
 
 function providerLabel(provider: string): string {
@@ -342,34 +346,21 @@ function providerLabel(provider: string): string {
   }
 }
 
-function daysUntilStart(startsAtUtc: string): number {
-  return Math.ceil((new Date(startsAtUtc).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-}
-
 function eventRecommendation(item: EventAnalyticsItem): string | null {
-  if (item.status === 'REJECTED') return t('dashboard.recommendationRejected')
-  if (item.status === 'DRAFT') return t('dashboard.recommendationDraft')
-  if (item.status === 'PENDING_APPROVAL') return t('dashboard.recommendationPending')
-  if (item.status === 'PUBLISHED') {
-    if (item.totalInterestedCount === 0) {
-      const days = daysUntilStart(item.startsAtUtc)
-      if (days > 0 && days <= 7) return t('dashboard.recommendationPublishedApproachingSoon')
-      return t('dashboard.recommendationPublishedNoSaves')
-    }
-    if (!item.language) return t('dashboard.recommendationPublishedMissingLanguage')
+  const type = eventRecommendationType(item)
+  switch (type) {
+    case 'rejected': return t('dashboard.recommendationRejected')
+    case 'draft': return t('dashboard.recommendationDraft')
+    case 'pending': return t('dashboard.recommendationPending')
+    case 'publishedApproachingSoon': return t('dashboard.recommendationPublishedApproachingSoon')
+    case 'publishedNoSaves': return t('dashboard.recommendationPublishedNoSaves')
+    case 'publishedMissingLanguage': return t('dashboard.recommendationPublishedMissingLanguage')
+    default: return null
   }
-  return null
 }
 
 function eventRecommendationClass(item: EventAnalyticsItem): string {
-  if (item.status === 'REJECTED') return 'rec--rejected'
-  if (item.status === 'DRAFT') return 'rec--draft'
-  if (item.status === 'PENDING_APPROVAL') return 'rec--pending'
-  if (item.status === 'PUBLISHED' && item.totalInterestedCount === 0) {
-    const days = daysUntilStart(item.startsAtUtc)
-    if (days > 0 && days <= 7) return 'rec--urgent'
-  }
-  return 'rec--guidance'
+  return eventRecommendationVariant(item)
 }
 
 function communityRoleLabel(role: string): string {
