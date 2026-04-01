@@ -110,6 +110,7 @@ export default {
   },
 
   filters: {
+    title: 'Veranstaltungssuche',
     keyword: 'Stichwort',
     keywordPlaceholder: 'Veranstaltungen, Themen oder Orte suchen',
     domain: 'Tag',

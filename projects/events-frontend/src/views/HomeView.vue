@@ -576,9 +576,9 @@ watch(
               <button
                 v-if="emptyStateRecoveryAction"
                 class="btn btn-outline recovery-action"
-                @click="emptyStateRecoveryAction!.action()"
+                @click="emptyStateRecoveryAction.action()"
               >
-                {{ emptyStateRecoveryAction!.label }}
+                {{ emptyStateRecoveryAction.label }}
               </button>
               <RouterLink v-if="!eventsStore.hasActiveFilters" to="/submit" class="btn btn-primary">{{
                 t('home.submitAnEvent')

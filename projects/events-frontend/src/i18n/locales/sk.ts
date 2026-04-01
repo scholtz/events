@@ -109,7 +109,8 @@ export default {
     recoveryShowAllPrices: 'Zobraziť všetky ceny',
   },
 
-  filters: {
+    filters: {
+    title: 'Vyhľadávanie udalostí',
     keyword: 'Kľúčové slovo',
     keywordPlaceholder: 'Hľadať udalosti, témy alebo miesta',
     domain: 'Tag',
