@@ -6,7 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useDomainsStore } from '@/stores/domains'
 import { gqlRequest } from '@/lib/graphql'
 import { isValidHexColor } from '@/lib/colorUtils'
-import type { CatalogEvent, EventDomain } from '@/types'
+import type { CatalogEvent, EventDomain, ScheduledFeaturedEvent } from '@/types'
 
 const { t, locale } = useI18n()
 const route = useRoute()
@@ -57,6 +57,31 @@ const featuredError = ref('')
 const addFeaturedEventId = ref('')
 const availableEvents = ref<CatalogEvent[]>([])
 
+// ── Scheduled featured events state ──────────────────────────────────────────
+const schedules = ref<ScheduledFeaturedEvent[]>([])
+const schedulesLoading = ref(false)
+const schedulesError = ref('')
+const schedulesSaving = ref(false)
+
+// Form for creating a new schedule
+const newScheduleForm = ref({
+  eventId: '',
+  startsAtUtc: '',
+  endsAtUtc: '',
+  priority: 0,
+})
+const newScheduleError = ref('')
+const newScheduleSuccess = ref(false)
+
+// Track which schedule entry is being edited inline (null = none)
+const editingScheduleId = ref<string | null>(null)
+const editScheduleForm = ref({
+  startsAtUtc: '',
+  endsAtUtc: '',
+  priority: 0,
+})
+const editScheduleError = ref('')
+
 function initForms(d: EventDomain) {
   styleForm.value = {
     primaryColor: d.primaryColor ?? '',
@@ -100,6 +125,7 @@ async function loadDomain() {
     if (domain.value) {
       await loadFeaturedEvents()
       await loadAvailableEvents()
+      await loadScheduledFeaturedEvents()
     }
   } catch {
     error.value = t('hubManage.errorLoad')
@@ -140,6 +166,156 @@ async function loadAvailableEvents() {
     availableEvents.value = data.events
   } catch {
     availableEvents.value = []
+  }
+}
+
+async function loadScheduledFeaturedEvents() {
+  if (!domain.value) return
+  schedulesLoading.value = true
+  schedulesError.value = ''
+  try {
+    schedules.value = await domainsStore.fetchScheduledFeaturedEvents(domain.value.id)
+  } catch {
+    schedulesError.value = t('hubManage.schedules.loadError')
+    schedules.value = []
+  } finally {
+    schedulesLoading.value = false
+  }
+}
+
+function scheduleStatus(s: ScheduledFeaturedEvent): 'upcoming' | 'active' | 'expired' {
+  const now = Date.now()
+  const starts = new Date(s.startsAtUtc).getTime()
+  const ends = new Date(s.endsAtUtc).getTime()
+  if (now < starts) return 'upcoming'
+  if (now >= ends) return 'expired'
+  return 'active'
+}
+
+function formatDateTime(dateStr: string): string {
+  return new Date(dateStr).toLocaleString(locale.value, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  })
+}
+
+function toDatetimeLocalValue(utcIso: string): string {
+  // Truncate UTC ISO to "YYYY-MM-DDTHH:mm" — datetime-local input format.
+  // No timezone conversion is performed here; fromDatetimeLocalValue() is
+  // responsible for re-attaching the UTC indicator ('Z') before sending to the API.
+  if (!utcIso) return ''
+  return utcIso.slice(0, 16)
+}
+
+function fromDatetimeLocalValue(value: string): string {
+  // datetime-local returns "YYYY-MM-DDTHH:mm" (no seconds). Append ':00.000Z'
+  // to produce a valid UTC ISO string. If the value already contains seconds
+  // (two or more colons after 'T'), only append '.000Z'.
+  if (!value) return ''
+  if (value.endsWith('Z')) return value
+  // Count colons after the 'T' separator to detect HH:mm vs HH:mm:ss format
+  const timePart = value.split('T')[1] ?? ''
+  const hasSeconds = (timePart.match(/:/g) ?? []).length >= 2
+  return hasSeconds ? `${value}.000Z` : `${value}:00.000Z`
+}
+
+function newScheduleFormError(): string {
+  if (!newScheduleForm.value.eventId) return t('hubManage.schedules.errorSelectEvent')
+  const starts = newScheduleForm.value.startsAtUtc
+  const ends = newScheduleForm.value.endsAtUtc
+  if (!starts || !ends) return t('hubManage.schedules.errorDatesRequired')
+  if (new Date(fromDatetimeLocalValue(starts)) >= new Date(fromDatetimeLocalValue(ends)))
+    return t('hubManage.schedules.errorStartBeforeEnd')
+  return ''
+}
+
+async function handleCreateSchedule() {
+  newScheduleError.value = newScheduleFormError()
+  if (newScheduleError.value) return
+  newScheduleSuccess.value = false
+  schedulesSaving.value = true
+  try {
+    const created = await domainsStore.scheduleFeaturedEvent(
+      domain.value!.id,
+      newScheduleForm.value.eventId,
+      fromDatetimeLocalValue(newScheduleForm.value.startsAtUtc),
+      fromDatetimeLocalValue(newScheduleForm.value.endsAtUtc),
+      newScheduleForm.value.priority,
+    )
+    schedules.value = [...schedules.value, created].sort(
+      (a, b) => new Date(a.startsAtUtc).getTime() - new Date(b.startsAtUtc).getTime(),
+    )
+    newScheduleForm.value = { eventId: '', startsAtUtc: '', endsAtUtc: '', priority: 0 }
+    newScheduleSuccess.value = true
+  } catch (err) {
+    newScheduleError.value =
+      err instanceof Error ? err.message : t('hubManage.schedules.saveError')
+  } finally {
+    schedulesSaving.value = false
+  }
+}
+
+function startEditSchedule(s: ScheduledFeaturedEvent) {
+  editingScheduleId.value = s.id
+  editScheduleForm.value = {
+    startsAtUtc: toDatetimeLocalValue(s.startsAtUtc),
+    endsAtUtc: toDatetimeLocalValue(s.endsAtUtc),
+    priority: s.priority,
+  }
+  editScheduleError.value = ''
+}
+
+function cancelEditSchedule() {
+  editingScheduleId.value = null
+  editScheduleError.value = ''
+}
+
+async function handleUpdateSchedule(scheduleId: string) {
+  const starts = fromDatetimeLocalValue(editScheduleForm.value.startsAtUtc)
+  const ends = fromDatetimeLocalValue(editScheduleForm.value.endsAtUtc)
+  if (!editScheduleForm.value.startsAtUtc || !editScheduleForm.value.endsAtUtc) {
+    editScheduleError.value = t('hubManage.schedules.errorDatesRequired')
+    return
+  }
+  if (new Date(starts) >= new Date(ends)) {
+    editScheduleError.value = t('hubManage.schedules.errorStartBeforeEnd')
+    return
+  }
+  editScheduleError.value = ''
+  schedulesSaving.value = true
+  try {
+    const updated = await domainsStore.updateScheduledFeaturedEvent(
+      scheduleId,
+      starts,
+      ends,
+      editScheduleForm.value.priority,
+    )
+    schedules.value = schedules.value
+      .map((s) => (s.id === scheduleId ? updated : s))
+      .sort((a, b) => new Date(a.startsAtUtc).getTime() - new Date(b.startsAtUtc).getTime())
+    editingScheduleId.value = null
+  } catch (err) {
+    editScheduleError.value =
+      err instanceof Error ? err.message : t('hubManage.schedules.saveError')
+  } finally {
+    schedulesSaving.value = false
+  }
+}
+
+async function handleRemoveSchedule(scheduleId: string) {
+  schedulesSaving.value = true
+  try {
+    await domainsStore.removeScheduledFeaturedEvent(scheduleId)
+    schedules.value = schedules.value.filter((s) => s.id !== scheduleId)
+    if (editingScheduleId.value === scheduleId) editingScheduleId.value = null
+  } catch {
+    schedulesError.value = t('hubManage.schedules.saveError')
+  } finally {
+    schedulesSaving.value = false
   }
 }
 
@@ -579,6 +755,186 @@ const pickableEvents = computed(() =>
           </template>
         </section>
 
+        <!-- ── Scheduled Featured Events ───────────────────────────── -->
+        <section class="manage-section card" aria-labelledby="schedules-heading">
+          <h2 id="schedules-heading" class="manage-section-title">
+            {{ t('hubManage.schedules.title') }}
+          </h2>
+          <p class="manage-section-hint">{{ t('hubManage.schedules.hint') }}</p>
+
+          <div v-if="schedulesLoading" class="hub-featured-loading text-secondary">
+            {{ t('common.loading') }}
+          </div>
+          <template v-else>
+            <p v-if="schedulesError" class="manage-error" role="alert">{{ schedulesError }}</p>
+
+            <!-- Schedule list -->
+            <ul class="hub-schedule-list" aria-label="Scheduled featured events">
+              <li
+                v-for="s in schedules"
+                :key="s.id"
+                class="hub-schedule-item"
+                :class="`hub-schedule-item--${scheduleStatus(s)}`"
+              >
+                <template v-if="editingScheduleId === s.id">
+                  <!-- Inline edit form -->
+                  <div class="hub-schedule-edit-form">
+                    <div class="hub-form-grid">
+                      <label class="form-field">
+                        <span>{{ t('hubManage.schedules.startsAt') }}</span>
+                        <input
+                          v-model="editScheduleForm.startsAtUtc"
+                          class="form-input"
+                          type="datetime-local"
+                        />
+                      </label>
+                      <label class="form-field">
+                        <span>{{ t('hubManage.schedules.endsAt') }}</span>
+                        <input
+                          v-model="editScheduleForm.endsAtUtc"
+                          class="form-input"
+                          type="datetime-local"
+                        />
+                      </label>
+                      <label class="form-field">
+                        <span>{{ t('hubManage.schedules.priority') }}</span>
+                        <input
+                          v-model.number="editScheduleForm.priority"
+                          class="form-input"
+                          type="number"
+                          min="0"
+                        />
+                      </label>
+                    </div>
+                    <p v-if="editScheduleError" class="field-error" role="alert">
+                      {{ editScheduleError }}
+                    </p>
+                    <div class="hub-form-actions">
+                      <button
+                        type="button"
+                        class="btn btn-primary btn-sm"
+                        :disabled="schedulesSaving"
+                        @click="handleUpdateSchedule(s.id)"
+                      >
+                        {{ t('hubManage.schedules.save') }}
+                      </button>
+                      <button
+                        type="button"
+                        class="btn btn-outline btn-sm"
+                        @click="cancelEditSchedule"
+                      >
+                        {{ t('common.cancel') }}
+                      </button>
+                    </div>
+                  </div>
+                </template>
+                <template v-else>
+                  <div class="hub-schedule-info">
+                    <span class="hub-schedule-event-name">{{ s.event?.name ?? s.eventId }}</span>
+                    <span class="hub-schedule-meta text-secondary">
+                      {{ formatDateTime(s.startsAtUtc) }} → {{ formatDateTime(s.endsAtUtc) }}
+                    </span>
+                    <span
+                      class="hub-schedule-status-badge"
+                      :class="`hub-schedule-status-badge--${scheduleStatus(s)}`"
+                    >
+                      {{ t(`hubManage.schedules.status.${scheduleStatus(s)}`) }}
+                    </span>
+                    <span v-if="s.priority > 0" class="hub-schedule-priority text-secondary">
+                      {{ t('hubManage.schedules.priorityLabel', { n: s.priority }) }}
+                    </span>
+                  </div>
+                  <div class="hub-schedule-actions">
+                    <button
+                      type="button"
+                      class="btn btn-outline btn-sm"
+                      @click="startEditSchedule(s)"
+                    >
+                      {{ t('hubManage.schedules.edit') }}
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-outline btn-sm btn-danger"
+                      :disabled="schedulesSaving"
+                      @click="handleRemoveSchedule(s.id)"
+                    >
+                      {{ t('hubManage.schedules.remove') }}
+                    </button>
+                  </div>
+                </template>
+              </li>
+              <li v-if="!schedules.length" class="hub-featured-empty text-secondary">
+                {{ t('hubManage.schedules.empty') }}
+              </li>
+            </ul>
+
+            <!-- Create new schedule form -->
+            <details class="hub-schedule-create-details">
+              <summary class="hub-schedule-create-summary">
+                {{ t('hubManage.schedules.addNew') }}
+              </summary>
+              <div class="hub-schedule-create-form">
+                <div class="hub-form-grid">
+                  <label class="form-field">
+                    <span>{{ t('hubManage.schedules.event') }}</span>
+                    <select v-model="newScheduleForm.eventId" class="form-input">
+                      <option value="">{{ t('hubManage.schedules.selectEvent') }}</option>
+                      <option
+                        v-for="ev in availableEvents"
+                        :key="ev.id"
+                        :value="ev.id"
+                      >
+                        {{ ev.name }}
+                      </option>
+                    </select>
+                  </label>
+                  <label class="form-field">
+                    <span>{{ t('hubManage.schedules.startsAt') }}</span>
+                    <input
+                      v-model="newScheduleForm.startsAtUtc"
+                      class="form-input"
+                      type="datetime-local"
+                    />
+                  </label>
+                  <label class="form-field">
+                    <span>{{ t('hubManage.schedules.endsAt') }}</span>
+                    <input
+                      v-model="newScheduleForm.endsAtUtc"
+                      class="form-input"
+                      type="datetime-local"
+                    />
+                  </label>
+                  <label class="form-field">
+                    <span>{{ t('hubManage.schedules.priority') }}</span>
+                    <input
+                      v-model.number="newScheduleForm.priority"
+                      class="form-input"
+                      type="number"
+                      min="0"
+                    />
+                  </label>
+                </div>
+                <p v-if="newScheduleError" class="field-error" role="alert">
+                  {{ newScheduleError }}
+                </p>
+                <div class="hub-form-actions">
+                  <button
+                    type="button"
+                    class="btn btn-primary"
+                    :disabled="schedulesSaving"
+                    @click="handleCreateSchedule"
+                  >
+                    {{ schedulesSaving ? t('common.saving') : t('hubManage.schedules.create') }}
+                  </button>
+                  <span v-if="newScheduleSuccess" class="hub-save-success">
+                    {{ t('hubManage.schedules.created') }}
+                  </span>
+                </div>
+              </div>
+            </details>
+          </template>
+        </section>
+
         <!-- ── Community Links ─────────────────────────────────────── -->
         <section class="manage-section card" aria-labelledby="links-heading">
           <h2 id="links-heading" class="manage-section-title">{{ t('admin.communityLinks') }}</h2>
@@ -959,5 +1315,119 @@ const pickableEvents = computed(() =>
   .hub-add-community-link-form {
     grid-template-columns: 1fr;
   }
+}
+
+/* ── Scheduled featured events ── */
+.hub-schedule-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.hub-schedule-item {
+  border-radius: var(--radius-sm, 4px);
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
+  background: var(--color-surface-secondary, rgba(255, 255, 255, 0.04));
+  padding: 0.75rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.hub-schedule-item--active {
+  border-color: rgba(74, 222, 128, 0.4);
+}
+
+.hub-schedule-item--expired {
+  opacity: 0.6;
+}
+
+.hub-schedule-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.hub-schedule-event-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.hub-schedule-meta {
+  font-size: 0.75rem;
+}
+
+.hub-schedule-priority {
+  font-size: 0.75rem;
+}
+
+.hub-schedule-status-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.125rem 0.4rem;
+  border-radius: 999px;
+  background: var(--color-border, rgba(255, 255, 255, 0.1));
+  width: fit-content;
+}
+
+.hub-schedule-status-badge--active {
+  background: rgba(74, 222, 128, 0.15);
+  color: #4ade80;
+}
+
+.hub-schedule-status-badge--upcoming {
+  background: rgba(96, 165, 250, 0.15);
+  color: #60a5fa;
+}
+
+.hub-schedule-status-badge--expired {
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--color-text-secondary);
+}
+
+.hub-schedule-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.hub-schedule-edit-form {
+  width: 100%;
+}
+
+.hub-schedule-create-details {
+  margin-top: 0.5rem;
+}
+
+.hub-schedule-create-summary {
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-primary, #137fec);
+  padding: 0.375rem 0;
+  user-select: none;
+}
+
+.hub-schedule-create-form {
+  padding-top: 0.75rem;
+}
+
+.btn-danger {
+  color: var(--color-danger, #f87171);
+  border-color: rgba(248, 113, 113, 0.3);
+}
+
+.btn-danger:hover {
+  background: rgba(248, 113, 113, 0.08);
 }
 </style>

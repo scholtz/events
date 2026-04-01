@@ -14,6 +14,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<DiscoveryAnalyticsAction> DiscoveryAnalyticsActions => Set<DiscoveryAnalyticsAction>();
     public DbSet<DomainAdministrator> DomainAdministrators => Set<DomainAdministrator>();
     public DbSet<DomainFeaturedEvent> DomainFeaturedEvents => Set<DomainFeaturedEvent>();
+    public DbSet<ScheduledFeaturedEvent> ScheduledFeaturedEvents => Set<ScheduledFeaturedEvent>();
     public DbSet<DomainLink> DomainLinks => Set<DomainLink>();
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
     public DbSet<EventReminder> EventReminders => Set<EventReminder>();
@@ -72,6 +73,27 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .WithMany()
                 .HasForeignKey(fe => fe.EventId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ScheduledFeaturedEvent>(entity =>
+        {
+            entity.HasIndex(sfe => new { sfe.DomainId, sfe.StartsAtUtc });
+            entity.HasIndex(sfe => sfe.EndsAtUtc);
+
+            entity.HasOne(sfe => sfe.Domain)
+                .WithMany()
+                .HasForeignKey(sfe => sfe.DomainId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(sfe => sfe.Event)
+                .WithMany()
+                .HasForeignKey(sfe => sfe.EventId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(sfe => sfe.CreatedBy)
+                .WithMany()
+                .HasForeignKey(sfe => sfe.CreatedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<DomainLink>(entity =>

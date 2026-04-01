@@ -149,6 +149,17 @@ export type MockFeaturedEvent = {
   displayOrder: number
 }
 
+export type MockScheduledFeaturedEvent = {
+  id: string
+  domainId: string
+  eventId: string
+  startsAtUtc: string
+  endsAtUtc: string
+  priority: number
+  createdAtUtc: string
+  createdByUserId: string | null
+}
+
 export type MockDomainLink = {
   id: string
   domainId: string
@@ -220,6 +231,7 @@ export type MockState = {
   domainLinks: MockDomainLink[]
   events: MockEvent[]
   featuredEvents: MockFeaturedEvent[]
+  scheduledFeaturedEvents: MockScheduledFeaturedEvent[]
   savedSearches: MockSavedSearch[]
   favoriteEvents: MockFavoriteEvent[]
   calendarActions: MockCalendarAction[]
@@ -249,6 +261,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
     domainLinks: initial?.domainLinks ?? [],
     events: initial?.events ?? [],
     featuredEvents: initial?.featuredEvents ?? [],
+    scheduledFeaturedEvents: initial?.scheduledFeaturedEvents ?? [],
     savedSearches: initial?.savedSearches ?? [],
     favoriteEvents: initial?.favoriteEvents ?? [],
     calendarActions: initial?.calendarActions ?? [],
@@ -1329,17 +1342,169 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
 
     if (query.includes('query') && query.includes('FeaturedEventsForDomain')) {
       const domainSlug = variables.domainSlug as string | undefined
-      const fes = domainSlug
-        ? state.featuredEvents
-            .filter((fe) => fe.domainSlug === domainSlug)
-            .sort((a, b) => a.displayOrder - b.displayOrder)
-            .map((fe) => state.events.find((e) => e.id === fe.eventId && e.status === 'PUBLISHED'))
+      const now = Date.now()
+
+      // Prefer active scheduled highlights
+      const domain = domainSlug ? state.domains.find((d) => d.slug === domainSlug) : undefined
+      const activeScheduled = domain
+        ? state.scheduledFeaturedEvents
+            .filter((sfe) => sfe.domainId === domain.id)
+            .filter((sfe) => new Date(sfe.startsAtUtc).getTime() <= now && new Date(sfe.endsAtUtc).getTime() > now)
+            .sort((a, b) => {
+              // Mirror backend deterministic order:
+              // 1. Priority ascending  2. EndsAtUtc ascending  3. PublishedAtUtc descending
+              const priorityDiff = a.priority - b.priority
+              if (priorityDiff !== 0) return priorityDiff
+              const endsDiff = new Date(a.endsAtUtc).getTime() - new Date(b.endsAtUtc).getTime()
+              if (endsDiff !== 0) return endsDiff
+              const evA = state.events.find((e) => e.id === a.eventId)
+              const evB = state.events.find((e) => e.id === b.eventId)
+              return new Date(evB?.publishedAtUtc ?? 0).getTime() - new Date(evA?.publishedAtUtc ?? 0).getTime()
+            })
+            .map((sfe) => state.events.find((e) => e.id === sfe.eventId && e.status === 'PUBLISHED'))
             .filter((e): e is MockEvent => e !== undefined)
         : []
+
+      const fes = activeScheduled.length > 0
+        ? activeScheduled
+        : domainSlug
+          ? state.featuredEvents
+              .filter((fe) => fe.domainSlug === domainSlug)
+              .sort((a, b) => a.displayOrder - b.displayOrder)
+              .map((fe) => state.events.find((e) => e.id === fe.eventId && e.status === 'PUBLISHED'))
+              .filter((e): e is MockEvent => e !== undefined)
+          : []
+
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({ data: { featuredEventsForDomain: fes } }),
+      })
+      return
+    }
+
+    if (query.includes('query') && query.includes('GetScheduledFeaturedEvents')) {
+      const domainId = variables.domainId as string | undefined
+      if (!state.currentUserId) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Not authorized', extensions: { code: 'AUTH_NOT_AUTHORIZED' } }] }),
+        })
+        return
+      }
+      const sfes = domainId
+        ? state.scheduledFeaturedEvents
+            .filter((sfe) => sfe.domainId === domainId)
+            .sort((a, b) => new Date(a.startsAtUtc).getTime() - new Date(b.startsAtUtc).getTime())
+            .map((sfe) => {
+              const ev = state.events.find((e) => e.id === sfe.eventId)
+              return {
+                ...sfe,
+                event: ev
+                  ? { id: ev.id, name: ev.name, slug: ev.slug, status: ev.status, startsAtUtc: ev.startsAtUtc, domain: ev.domain }
+                  : null,
+              }
+            })
+        : []
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { scheduledFeaturedEvents: sfes } }),
+      })
+      return
+    }
+
+    if (query.includes('mutation') && query.includes('ScheduleFeaturedEvent')) {
+      if (!state.currentUserId) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Not authorized', extensions: { code: 'AUTH_NOT_AUTHORIZED' } }] }),
+        })
+        return
+      }
+      const input = variables.input || {}
+      const ev = state.events.find((e) => e.id === input.eventId)
+      const newSfe: MockScheduledFeaturedEvent = {
+        id: `sfe-${Date.now()}`,
+        domainId: input.domainId,
+        eventId: input.eventId,
+        startsAtUtc: input.startsAtUtc,
+        endsAtUtc: input.endsAtUtc,
+        priority: input.priority ?? 0,
+        createdAtUtc: new Date().toISOString(),
+        createdByUserId: state.currentUserId,
+      }
+      state.scheduledFeaturedEvents.push(newSfe)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            scheduleFeaturedEvent: {
+              ...newSfe,
+              event: ev ? { id: ev.id, name: ev.name, slug: ev.slug, status: ev.status, startsAtUtc: ev.startsAtUtc, domain: ev.domain } : null,
+            },
+          },
+        }),
+      })
+      return
+    }
+
+    if (query.includes('mutation') && query.includes('UpdateScheduledFeaturedEvent')) {
+      if (!state.currentUserId) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Not authorized', extensions: { code: 'AUTH_NOT_AUTHORIZED' } }] }),
+        })
+        return
+      }
+      const input = variables.input || {}
+      const sfe = state.scheduledFeaturedEvents.find((s) => s.id === input.scheduleId)
+      if (!sfe) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Schedule not found', extensions: { code: 'SCHEDULE_NOT_FOUND' } }] }),
+        })
+        return
+      }
+      sfe.startsAtUtc = input.startsAtUtc
+      sfe.endsAtUtc = input.endsAtUtc
+      sfe.priority = input.priority ?? 0
+      const ev = state.events.find((e) => e.id === sfe.eventId)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            updateScheduledFeaturedEvent: {
+              ...sfe,
+              event: ev ? { id: ev.id, name: ev.name, slug: ev.slug, status: ev.status, startsAtUtc: ev.startsAtUtc, domain: ev.domain } : null,
+            },
+          },
+        }),
+      })
+      return
+    }
+
+    if (query.includes('mutation') && query.includes('RemoveScheduledFeaturedEvent')) {
+      if (!state.currentUserId) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Not authorized', extensions: { code: 'AUTH_NOT_AUTHORIZED' } }] }),
+        })
+        return
+      }
+      const scheduleId = variables.scheduleId as string
+      state.scheduledFeaturedEvents = state.scheduledFeaturedEvents.filter((s) => s.id !== scheduleId)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { removeScheduledFeaturedEvent: true } }),
       })
       return
     }

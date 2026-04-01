@@ -473,6 +473,30 @@ public sealed class AppDbInitializer(
                 """,
                 cancellationToken);
         }
+
+        // ── ScheduledFeaturedEvents table ─────────────────────────────────────
+        if (!await TableExistsAsync("ScheduledFeaturedEvents", cancellationToken))
+        {
+            await _dbContext.Database.ExecuteSqlRawAsync(
+                """
+                CREATE TABLE "ScheduledFeaturedEvents" (
+                    "Id" TEXT NOT NULL CONSTRAINT "PK_ScheduledFeaturedEvents" PRIMARY KEY,
+                    "DomainId" TEXT NOT NULL,
+                    "EventId" TEXT NOT NULL,
+                    "StartsAtUtc" TEXT NOT NULL,
+                    "EndsAtUtc" TEXT NOT NULL,
+                    "Priority" INTEGER NOT NULL DEFAULT 0,
+                    "CreatedAtUtc" TEXT NOT NULL,
+                    "CreatedByUserId" TEXT NULL,
+                    CONSTRAINT "FK_ScheduledFeaturedEvents_Domains_DomainId" FOREIGN KEY ("DomainId") REFERENCES "Domains" ("Id") ON DELETE CASCADE,
+                    CONSTRAINT "FK_ScheduledFeaturedEvents_Events_EventId" FOREIGN KEY ("EventId") REFERENCES "Events" ("Id") ON DELETE CASCADE,
+                    CONSTRAINT "FK_ScheduledFeaturedEvents_Users_CreatedByUserId" FOREIGN KEY ("CreatedByUserId") REFERENCES "Users" ("Id") ON DELETE SET NULL
+                );
+                CREATE INDEX "IX_ScheduledFeaturedEvents_DomainId_StartsAtUtc" ON "ScheduledFeaturedEvents" ("DomainId", "StartsAtUtc");
+                CREATE INDEX "IX_ScheduledFeaturedEvents_EndsAtUtc" ON "ScheduledFeaturedEvents" ("EndsAtUtc");
+                """,
+                cancellationToken);
+        }
     }
 
     private async Task EnsureSavedSearchColumnAsync(string columnName, CancellationToken cancellationToken)

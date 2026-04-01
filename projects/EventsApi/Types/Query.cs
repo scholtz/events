@@ -222,7 +222,34 @@ public sealed class Query
         CancellationToken cancellationToken)
     {
         var normalizedSlug = domainSlug.Trim().ToLowerInvariant();
+        var now = DateTime.UtcNow;
 
+        // Prefer active scheduled highlights when any exist.
+        var scheduled = await dbContext.ScheduledFeaturedEvents
+            .AsNoTracking()
+            .Where(sfe => sfe.Domain.Slug == normalizedSlug && sfe.Domain.IsActive)
+            .Where(sfe => sfe.StartsAtUtc <= now && sfe.EndsAtUtc > now)
+            .Where(sfe => sfe.Event.Status == EventStatus.Published)
+            // Deterministic conflict-resolution order (documented on ScheduledFeaturedEvent):
+            //   1. Priority ascending (lower value = higher importance, e.g. 0 beats 5)
+            //   2. Nearest EndsAtUtc first (promote event with shortest remaining window)
+            //   3. Event.PublishedAtUtc descending (newest publish date wins any remaining tie)
+            .OrderBy(sfe => sfe.Priority)
+            .ThenBy(sfe => sfe.EndsAtUtc)
+            .ThenByDescending(sfe => sfe.Event.PublishedAtUtc)
+            .Include(sfe => sfe.Event)
+                .ThenInclude(e => e.Domain)
+            .Include(sfe => sfe.Event)
+                .ThenInclude(e => e.SubmittedBy)
+            .Select(sfe => sfe.Event)
+            .ToListAsync(cancellationToken);
+
+        if (scheduled.Count > 0)
+        {
+            return scheduled;
+        }
+
+        // Fallback: return static curated featured events.
         return await dbContext.DomainFeaturedEvents
             .AsNoTracking()
             .Where(fe => fe.Domain.Slug == normalizedSlug && fe.Domain.IsActive)
@@ -233,6 +260,47 @@ public sealed class Query
             .Include(fe => fe.Event)
                 .ThenInclude(e => e.SubmittedBy)
             .Select(fe => fe.Event)
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Returns all scheduled featured-event entries for a domain hub.
+    /// Includes upcoming, currently active, and recently expired schedules.
+    /// Restricted to domain administrators and global administrators.
+    /// </summary>
+    [Authorize]
+    public async Task<IReadOnlyList<ScheduledFeaturedEvent>> GetScheduledFeaturedEventsAsync(
+        Guid domainId,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        if (!claimsPrincipal.IsAdmin())
+        {
+            var currentUserId = claimsPrincipal.GetRequiredUserId();
+            var isDomainAdmin = await dbContext.DomainAdministrators.AnyAsync(
+                da => da.DomainId == domainId && da.UserId == currentUserId,
+                cancellationToken);
+
+            if (!isDomainAdmin)
+            {
+                throw new GraphQLException(
+                    ErrorBuilder.New()
+                        .SetMessage("You must be a global administrator or a domain administrator to view scheduled featured events.")
+                        .SetCode("FORBIDDEN")
+                        .Build());
+            }
+        }
+
+        return await dbContext.ScheduledFeaturedEvents
+            .AsNoTracking()
+            .Where(sfe => sfe.DomainId == domainId)
+            .Include(sfe => sfe.Event)
+                .ThenInclude(e => e.Domain)
+            .Include(sfe => sfe.Event)
+                .ThenInclude(e => e.SubmittedBy)
+            .OrderBy(sfe => sfe.StartsAtUtc)
+            .ThenBy(sfe => sfe.Priority)
             .ToListAsync(cancellationToken);
     }
 

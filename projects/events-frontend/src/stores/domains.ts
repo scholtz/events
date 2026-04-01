@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { gqlRequest } from '@/lib/graphql'
-import type { DomainAdministrator, DomainLink, EventDomain } from '@/types'
+import type { DomainAdministrator, DomainLink, EventDomain, ScheduledFeaturedEvent } from '@/types'
 
 const DOMAIN_FIELDS = `id name slug subdomain description isActive createdAtUtc
   createdByUserId primaryColor accentColor logoUrl bannerUrl
@@ -190,6 +190,61 @@ export const useDomainsStore = defineStore('domains', () => {
     return data.setDomainLinks
   }
 
+  const SCHEDULED_FEATURED_EVENT_FIELDS = `
+    id domainId eventId startsAtUtc endsAtUtc priority createdAtUtc createdByUserId
+    event { id name slug status startsAtUtc domain { id name slug } }
+  `
+
+  async function fetchScheduledFeaturedEvents(domainId: string): Promise<ScheduledFeaturedEvent[]> {
+    const data = await gqlRequest<{ scheduledFeaturedEvents: ScheduledFeaturedEvent[] }>(
+      `query GetScheduledFeaturedEvents($domainId: UUID!) {
+        scheduledFeaturedEvents(domainId: $domainId) { ${SCHEDULED_FEATURED_EVENT_FIELDS} }
+      }`,
+      { domainId },
+    )
+    return data.scheduledFeaturedEvents
+  }
+
+  async function scheduleFeaturedEvent(
+    domainId: string,
+    eventId: string,
+    startsAtUtc: string,
+    endsAtUtc: string,
+    priority: number,
+  ): Promise<ScheduledFeaturedEvent> {
+    const data = await gqlRequest<{ scheduleFeaturedEvent: ScheduledFeaturedEvent }>(
+      `mutation ScheduleFeaturedEvent($input: ScheduleFeaturedEventInput!) {
+        scheduleFeaturedEvent(input: $input) { ${SCHEDULED_FEATURED_EVENT_FIELDS} }
+      }`,
+      { input: { domainId, eventId, startsAtUtc, endsAtUtc, priority } },
+    )
+    return data.scheduleFeaturedEvent
+  }
+
+  async function updateScheduledFeaturedEvent(
+    scheduleId: string,
+    startsAtUtc: string,
+    endsAtUtc: string,
+    priority: number,
+  ): Promise<ScheduledFeaturedEvent> {
+    const data = await gqlRequest<{ updateScheduledFeaturedEvent: ScheduledFeaturedEvent }>(
+      `mutation UpdateScheduledFeaturedEvent($input: UpdateScheduledFeaturedEventInput!) {
+        updateScheduledFeaturedEvent(input: $input) { ${SCHEDULED_FEATURED_EVENT_FIELDS} }
+      }`,
+      { input: { scheduleId, startsAtUtc, endsAtUtc, priority } },
+    )
+    return data.updateScheduledFeaturedEvent
+  }
+
+  async function removeScheduledFeaturedEvent(scheduleId: string): Promise<void> {
+    await gqlRequest<{ removeScheduledFeaturedEvent: boolean }>(
+      `mutation RemoveScheduledFeaturedEvent($scheduleId: UUID!) {
+        removeScheduledFeaturedEvent(scheduleId: $scheduleId)
+      }`,
+      { scheduleId },
+    )
+  }
+
   return {
     domains,
     loading,
@@ -206,5 +261,9 @@ export const useDomainsStore = defineStore('domains', () => {
     updateDomainOverview,
     setDomainFeaturedEvents,
     setDomainLinks,
+    fetchScheduledFeaturedEvents,
+    scheduleFeaturedEvent,
+    updateScheduledFeaturedEvent,
+    removeScheduledFeaturedEvent,
   }
 })
