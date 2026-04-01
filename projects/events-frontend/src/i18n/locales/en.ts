@@ -103,6 +103,17 @@ export default {
       'Only 1 event here so far — this is a niche or emerging area. Broaden your filters or check back soon for more.',
     fewResultsMany:
       'Only {count} events here so far — this is a niche or emerging area. Broaden your filters or check back soon for more.',
+    lowSignalClearFilters: 'Clear filters',
+    lowSignalBrowseAll: 'Browse all events',
+    // Rank context: subtle label explaining why results appear in this order
+    rankContextUpcoming: 'Sorted by upcoming date',
+    rankContextNewest: 'Newest additions first',
+    rankContextRelevance: 'Best matches for "{search}"',
+    // Recovery actions shown in empty state as a secondary action
+    recoveryTryOnline: 'Try online events',
+    recoveryTryInPerson: 'Try in-person events',
+    recoveryClearDates: 'Clear date range',
+    recoveryShowAllPrices: 'Show all prices',
   },
 
   // ── Event Filters ──────────────────────────────────────────────────────────

@@ -98,10 +98,18 @@ export default {
       'Zatiaľ len 1 udalosť — táto oblasť je úzka alebo vznikajúca. Rozšírte filtre alebo sa vráťte neskôr.',
     fewResultsMany:
       'Zatiaľ len {count} udalosti — táto oblasť je úzka alebo vznikajúca. Rozšírte filtre alebo sa vráťte neskôr.',
+    lowSignalClearFilters: 'Vymazať filtre',
+    lowSignalBrowseAll: 'Zobraziť všetky udalosti',
+    rankContextUpcoming: 'Zoradené podľa dátumu',
+    rankContextNewest: 'Najnovšie príspevky',
+    rankContextRelevance: 'Najlepšie zhody pre „{search}"',
+    recoveryTryOnline: 'Vyskúšať online udalosti',
+    recoveryTryInPerson: 'Vyskúšať osobné udalosti',
+    recoveryClearDates: 'Vymazať rozsah dátumov',
+    recoveryShowAllPrices: 'Zobraziť všetky ceny',
   },
 
   filters: {
-    title: 'Vyhľadávanie udalostí',
     keyword: 'Kľúčové slovo',
     keywordPlaceholder: 'Hľadať udalosti, témy alebo miesta',
     domain: 'Tag',

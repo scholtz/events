@@ -98,10 +98,18 @@ export default {
       'Bisher nur 1 Veranstaltung — das ist ein Nischen- oder Wachstumsbereich. Filter erweitern oder später wiederkommen.',
     fewResultsMany:
       'Bisher nur {count} Veranstaltungen — das ist ein Nischen- oder Wachstumsbereich. Filter erweitern oder später wiederkommen.',
+    lowSignalClearFilters: 'Filter löschen',
+    lowSignalBrowseAll: 'Alle Veranstaltungen anzeigen',
+    rankContextUpcoming: 'Nach Datum sortiert',
+    rankContextNewest: 'Neueste zuerst',
+    rankContextRelevance: 'Beste Treffer für „{search}"',
+    recoveryTryOnline: 'Online-Veranstaltungen versuchen',
+    recoveryTryInPerson: 'Präsenzveranstaltungen versuchen',
+    recoveryClearDates: 'Datumsbereich löschen',
+    recoveryShowAllPrices: 'Alle Preise anzeigen',
   },
 
   filters: {
-    title: 'Veranstaltungssuche',
     keyword: 'Stichwort',
     keywordPlaceholder: 'Veranstaltungen, Themen oder Orte suchen',
     domain: 'Tag',

@@ -241,6 +241,76 @@ const emptyStateMessage = computed(() => {
   return t('home.emptyGeneric')
 })
 
+/**
+ * Context-aware secondary recovery action for the empty state.
+ * Shown alongside the primary "Clear filters" button to give users a targeted
+ * next step based on which single filter produced zero results.
+ */
+const emptyStateRecoveryAction = computed<{ label: string; action: () => void } | null>(() => {
+  if (!eventsStore.hasActiveFilters) return null
+  const filters = eventsStore.filters
+  const chips = eventsStore.activeFilterChips.filter((c) => c.key !== 'sortBy')
+  if (chips.length === 0) return null
+
+  // If ALL active chips are date chips, offer to clear the date range
+  const dateKeys = new Set(['dateFrom', 'dateTo'])
+  if (chips.every((c) => dateKeys.has(c.key))) {
+    return {
+      label: t('home.recoveryClearDates'),
+      action: () => eventsStore.setFilters({ dateFrom: '', dateTo: '' }),
+    }
+  }
+
+  if (chips.length !== 1) return null
+  const chip = chips[0]
+  if (!chip) return null
+
+  if (chip.key === 'attendanceMode') {
+    if (filters.attendanceMode === 'IN_PERSON') {
+      return {
+        label: t('home.recoveryTryOnline'),
+        action: () => eventsStore.setFilters({ attendanceMode: 'ONLINE' }),
+      }
+    }
+    if (filters.attendanceMode === 'ONLINE') {
+      return {
+        label: t('home.recoveryTryInPerson'),
+        action: () => eventsStore.setFilters({ attendanceMode: 'IN_PERSON' }),
+      }
+    }
+  }
+
+  if (chip.key === 'location') {
+    return {
+      label: t('home.recoveryTryOnline'),
+      action: () => eventsStore.setFilters({ location: '', attendanceMode: 'ONLINE' }),
+    }
+  }
+
+  if (chip.key === 'priceType') {
+    return {
+      label: t('home.recoveryShowAllPrices'),
+      action: () => eventsStore.setFilters({ priceType: 'ALL', priceMin: '', priceMax: '' }),
+    }
+  }
+
+  return null
+})
+
+/**
+ * Subtle label explaining the current result ordering to help users understand
+ * why events appear in this order. Not shown when there are no results.
+ */
+const rankContext = computed<{ label: string } | null>(() => {
+  if (eventsStore.discoveryEvents.length === 0) return null
+  const sort = eventsStore.filters.sortBy
+  if (sort === 'NEWEST') return { label: t('home.rankContextNewest') }
+  if (sort === 'RELEVANCE' && eventsStore.filters.search) {
+    return { label: t('home.rankContextRelevance', { search: eventsStore.filters.search }) }
+  }
+  return { label: t('home.rankContextUpcoming') }
+})
+
 // ── Subdomain hub SEO meta tags ───────────────────────────────────────────
 
 /** Maximum character length for SEO meta descriptions. */
@@ -464,9 +534,22 @@ watch(
             <p class="results-summary" role="status" aria-live="polite">
               {{ resultsSummary }}
             </p>
+            <div v-if="rankContext" class="rank-context-badge" aria-live="polite">
+              {{ rankContext.label }}
+            </div>
             <div v-if="lowSignalMessage" class="low-signal-notice" role="status" aria-live="polite">
               <span class="low-signal-icon" aria-hidden="true">🌱</span>
-              {{ lowSignalMessage }}
+              <span class="low-signal-text">{{ lowSignalMessage }}</span>
+              <button
+                v-if="eventsStore.hasActiveFilters"
+                class="btn btn-sm low-signal-action"
+                @click="clearDiscoveryFilters"
+              >
+                {{ t('home.lowSignalClearFilters') }}
+              </button>
+              <RouterLink v-else to="/" class="btn btn-sm low-signal-action">
+                {{ t('home.lowSignalBrowseAll') }}
+              </RouterLink>
             </div>
             <div class="events-grid">
               <EventCard
@@ -490,7 +573,14 @@ watch(
               >
                 {{ t('home.clearFilters') }}
               </button>
-              <RouterLink v-else to="/submit" class="btn btn-primary">{{
+              <button
+                v-if="emptyStateRecoveryAction"
+                class="btn btn-outline recovery-action"
+                @click="emptyStateRecoveryAction!.action()"
+              >
+                {{ emptyStateRecoveryAction!.label }}
+              </button>
+              <RouterLink v-if="!eventsStore.hasActiveFilters" to="/submit" class="btn btn-primary">{{
                 t('home.submitAnEvent')
               }}</RouterLink>
             </div>
@@ -786,10 +876,21 @@ watch(
   margin-bottom: 0.75rem;
 }
 
+/* Subtle rank-context label explaining current sort order */
+.rank-context-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  margin-bottom: 0.75rem;
+  opacity: 0.8;
+}
+
 /* Low-signal notice shown when only a few results are present */
 .low-signal-notice {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.5rem;
   padding: 0.625rem 0.875rem;
   margin-bottom: 0.75rem;
@@ -798,11 +899,35 @@ watch(
   border: 1px solid var(--color-border);
   border-radius: 0.5rem;
   font-size: 0.8125rem;
+  flex-wrap: wrap;
 }
 
 .low-signal-icon {
   flex-shrink: 0;
   line-height: 1.4;
+}
+
+.low-signal-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.low-signal-action {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.625rem;
+  white-space: nowrap;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.low-signal-action:hover {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
 }
 
 .events-grid {
