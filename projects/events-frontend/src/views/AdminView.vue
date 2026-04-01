@@ -1034,7 +1034,6 @@ async function handleReviewExternalSourceClaim(claimId: string, newStatus: 'VERI
           </div>
         </div>
       </div>
-    </template>
 
       <!-- External source claims management -->
       <div v-if="activeTab === 'claims'" class="admin-section">

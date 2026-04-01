@@ -1056,6 +1056,19 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
               })),
               pendingReviewEvents,
               domains: state.domains,
+              pendingExternalSourceClaims: state.externalSourceClaims
+                .filter((c) => c.status === 'PENDING_REVIEW')
+                .map((c) => {
+                  const group = state.communityGroups.find((g) => g.id === c.groupId) ?? null
+                  const createdBy = state.users.find((u) => u.id === c.createdByUserId) ?? null
+                  return {
+                    ...c,
+                    group: group ? { id: group.id, name: group.name, slug: group.slug } : null,
+                    createdBy: createdBy
+                      ? { displayName: createdBy.displayName, email: createdBy.email }
+                      : null,
+                  }
+                }),
             },
           },
         }),
@@ -2047,6 +2060,35 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({ data: { importExternalEvents: result } }),
+      })
+      return
+    }
+
+    if (query.includes('mutation') && query.includes('ReviewExternalSourceClaim')) {
+      const input = variables.input as { claimId: string; newStatus: string }
+      const currentUser = state.users.find((u) => u.id === state.currentUserId)
+      if (!currentUser || currentUser.role !== 'ADMIN') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Only global administrators can review external source claims.', extensions: { code: 'FORBIDDEN' } }] }),
+        })
+        return
+      }
+      const claim = state.externalSourceClaims.find((c) => c.id === input.claimId)
+      if (!claim) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Claim not found', extensions: { code: 'CLAIM_NOT_FOUND' } }] }),
+        })
+        return
+      }
+      claim.status = input.newStatus as MockExternalSourceClaim['status']
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { reviewExternalSourceClaim: claim } }),
       })
       return
     }

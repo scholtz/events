@@ -2,8 +2,11 @@ import { test, expect } from '@playwright/test'
 import {
   setupMockApi,
   makeAdminUser,
+  makeContributorUser,
   makeTechDomain,
   makeApprovedEvent,
+  makePublicGroup,
+  makePendingReviewClaim,
   loginAs,
 } from './helpers/mock-api'
 import type { MockDomainAdministrator, MockDomainLink } from './helpers/mock-api'
@@ -751,5 +754,96 @@ test.describe('Domain admin management', () => {
     await expect(page.locator('.add-community-link-form')).toBeHidden()
     // All 10 links are listed
     await expect(page.locator('.community-link-item')).toHaveCount(10)
+  })
+})
+
+// ── External source claim review (admin) ──────────────────────────────────────
+
+test.describe('Admin – external source claim review', () => {
+  test('admin sees Source Claims tab with pending count', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makePendingReviewClaim(group.id)
+    setupMockApi(page, { users: [admin], communityGroups: [group], externalSourceClaims: [claim] })
+
+    await loginAs(page, admin)
+    await page.goto('/admin')
+
+    await expect(page.getByRole('button', { name: /Source Claims/ })).toBeVisible()
+  })
+
+  test('admin sees pending claim in Source Claims tab', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makePendingReviewClaim(group.id)
+    setupMockApi(page, { users: [admin], communityGroups: [group], externalSourceClaims: [claim] })
+
+    await loginAs(page, admin)
+    await page.goto('/admin')
+
+    await page.getByRole('button', { name: /Source Claims/ }).click()
+
+    await expect(page.locator('.claim-row')).toHaveCount(1)
+    await expect(page.locator('.source-type-badge')).toContainText('MEETUP')
+    await expect(page.getByRole('link', { name: group.name })).toBeVisible()
+  })
+
+  test('admin can verify a pending claim', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makePendingReviewClaim(group.id)
+    setupMockApi(page, { users: [admin], communityGroups: [group], externalSourceClaims: [claim] })
+
+    await loginAs(page, admin)
+    await page.goto('/admin')
+
+    await page.getByRole('button', { name: /Source Claims/ }).click()
+
+    await page.locator('.claim-row').getByRole('button', { name: /Verify/i }).click()
+
+    // After verifying, claim moves out of pending list → empty state shown
+    await expect(page.locator('.claim-row')).toHaveCount(0)
+    await expect(page.locator('.empty-table')).toBeVisible()
+  })
+
+  test('admin can reject a pending claim', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makePendingReviewClaim(group.id)
+    setupMockApi(page, { users: [admin], communityGroups: [group], externalSourceClaims: [claim] })
+
+    await loginAs(page, admin)
+    await page.goto('/admin')
+
+    await page.getByRole('button', { name: /Source Claims/ }).click()
+
+    await page.locator('.claim-row').getByRole('button', { name: /Reject/i }).click()
+
+    // After rejection, claim moves out of pending list → empty state shown
+    await expect(page.locator('.claim-row')).toHaveCount(0)
+    await expect(page.locator('.empty-table')).toBeVisible()
+  })
+
+  test('shows empty state when no pending claims', async ({ page }) => {
+    const admin = makeAdminUser()
+    setupMockApi(page, { users: [admin] })
+
+    await loginAs(page, admin)
+    await page.goto('/admin')
+
+    await page.getByRole('button', { name: /Source Claims/ }).click()
+
+    await expect(page.locator('.empty-table')).toBeVisible()
+  })
+
+  test('non-admin does not see Source Claims tab', async ({ page }) => {
+    const contributor = makeContributorUser()
+    setupMockApi(page, { users: [contributor] })
+
+    await loginAs(page, contributor)
+    await page.goto('/admin')
+
+    // Non-admin sees login prompt, not admin tabs
+    await expect(page.getByRole('button', { name: /Source Claims/ })).toBeHidden()
   })
 })
