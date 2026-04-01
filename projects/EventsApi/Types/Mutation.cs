@@ -1876,6 +1876,11 @@ public sealed class Mutation
             esc => esc.Id == input.ClaimId, cancellationToken)
             ?? throw CreateError("External source claim not found.", "CLAIM_NOT_FOUND");
 
+        if (claim.Status != ExternalSourceClaimStatus.PendingReview)
+            throw CreateError(
+                "Only claims in PendingReview status can be reviewed. This claim has already been decided.",
+                "CLAIM_NOT_PENDING");
+
         claim.Status = input.NewStatus;
         await dbContext.SaveChangesAsync(cancellationToken);
         return claim;

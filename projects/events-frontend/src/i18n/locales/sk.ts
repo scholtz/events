@@ -594,6 +594,9 @@ export default {
     verifyClaim: 'Overiť',
     rejectClaim: 'Zamietnuť',
     noExternalClaims: 'Žiadne čakajúce nároky na kontrolu.',
+    claimVerifyAriaLabel: 'Overiť nárok od {name}',
+    claimRejectAriaLabel: 'Zamietnuť nárok od {name}',
+    claimReviewError: 'Kontrola nároku zlyhala. Skúste to prosím znovu.',
   },
 
   attendanceMode: {

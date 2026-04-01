@@ -440,7 +440,7 @@ async function handleReviewExternalSourceClaim(claimId: string, newStatus: 'VERI
     )
     await fetchAdminOverview()
   } catch {
-    claimReviewError.value = 'Failed to review claim. Please try again.'
+    claimReviewError.value = t('admin.claimReviewError')
   } finally {
     claimReviewLoading.value = null
   }
@@ -1081,7 +1081,7 @@ async function handleReviewExternalSourceClaim(claimId: string, newStatus: 'VERI
                     <button
                       class="btn btn-success btn-sm"
                       :disabled="claimReviewLoading === claim.id"
-                      :aria-label="`Verify claim from ${claim.group?.name}`"
+                      :aria-label="t('admin.claimVerifyAriaLabel', { name: claim.group?.name })"
                       @click="handleReviewExternalSourceClaim(claim.id, 'VERIFIED')"
                     >
                       {{ t('admin.verifyClaim') }}
@@ -1089,7 +1089,7 @@ async function handleReviewExternalSourceClaim(claimId: string, newStatus: 'VERI
                     <button
                       class="btn btn-danger btn-sm"
                       :disabled="claimReviewLoading === claim.id"
-                      :aria-label="`Reject claim from ${claim.group?.name}`"
+                      :aria-label="t('admin.claimRejectAriaLabel', { name: claim.group?.name })"
                       @click="handleReviewExternalSourceClaim(claim.id, 'REJECTED')"
                     >
                       {{ t('admin.rejectClaim') }}

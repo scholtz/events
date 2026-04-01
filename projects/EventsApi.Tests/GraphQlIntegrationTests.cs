@@ -11529,6 +11529,90 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task ReviewExternalSourceClaim_AlreadyDecided_ReturnsClaimNotPendingError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid verifiedClaimId = Guid.Empty;
+        Guid rejectedClaimId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("decided-admin@example.com", "Decided Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var owner = CreateUser("decided-owner@example.com", "Owner");
+            dbContext.Users.AddRange(admin, owner);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Decided Group", Slug = "decided-group",
+                IsActive = true, CreatedByUserId = owner.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            var verifiedClaim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/decided-group",
+                SourceIdentifier = "decided-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.Verified,
+                CreatedByUserId = owner.Id,
+            };
+            verifiedClaimId = verifiedClaim.Id;
+
+            var rejectedClaim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Luma,
+                SourceUrl = "https://lu.ma/decided-group",
+                SourceIdentifier = "decided-group-luma",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.Rejected,
+                CreatedByUserId = owner.Id,
+            };
+            rejectedClaimId = rejectedClaim.Id;
+
+            dbContext.ExternalSourceClaims.AddRange(verifiedClaim, rejectedClaim);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        // Attempting to reject an already-verified claim must fail
+        var verifiedResponse = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation ReviewClaim($input: ReviewExternalSourceClaimInput!) {
+                  reviewExternalSourceClaim(input: $input) { id status }
+                }
+                """,
+            variables = new { input = new { claimId = verifiedClaimId, newStatus = "REJECTED" } }
+        });
+        verifiedResponse.EnsureSuccessStatusCode();
+        using var verifiedDoc = await JsonDocument.ParseAsync(await verifiedResponse.Content.ReadAsStreamAsync());
+        Assert.True(verifiedDoc.RootElement.TryGetProperty("errors", out var verifiedErrors),
+            "Expected errors for already-verified claim");
+        Assert.Contains("CLAIM_NOT_PENDING", verifiedErrors.ToString());
+
+        // Attempting to verify an already-rejected claim must fail
+        var rejectedResponse = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation ReviewClaim($input: ReviewExternalSourceClaimInput!) {
+                  reviewExternalSourceClaim(input: $input) { id status }
+                }
+                """,
+            variables = new { input = new { claimId = rejectedClaimId, newStatus = "VERIFIED" } }
+        });
+        rejectedResponse.EnsureSuccessStatusCode();
+        using var rejectedDoc = await JsonDocument.ParseAsync(await rejectedResponse.Content.ReadAsStreamAsync());
+        Assert.True(rejectedDoc.RootElement.TryGetProperty("errors", out var rejectedErrors),
+            "Expected errors for already-rejected claim");
+        Assert.Contains("CLAIM_NOT_PENDING", rejectedErrors.ToString());
+    }
+
+    [Fact]
     public async Task AdminOverview_IncludesPendingExternalSourceClaims()
     {
         await using var factory = new EventsApiWebApplicationFactory();

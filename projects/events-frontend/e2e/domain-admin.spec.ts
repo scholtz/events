@@ -846,4 +846,63 @@ test.describe('Admin – external source claim review', () => {
     // Non-admin sees login prompt, not admin tabs
     await expect(page.getByRole('button', { name: /Source Claims/ })).toBeHidden()
   })
+
+  test('Verify button has accessible aria-label with group name', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makePendingReviewClaim(group.id)
+    setupMockApi(page, { users: [admin], communityGroups: [group], externalSourceClaims: [claim] })
+
+    await loginAs(page, admin)
+    await page.goto('/admin')
+    await page.getByRole('button', { name: /Source Claims/ }).click()
+
+    const verifyBtn = page.locator('.claim-row').getByRole('button', { name: /Verify/i })
+    await expect(verifyBtn).toHaveAttribute('aria-label', new RegExp(group.name))
+  })
+
+  test('Reject button has accessible aria-label with group name', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makePendingReviewClaim(group.id)
+    setupMockApi(page, { users: [admin], communityGroups: [group], externalSourceClaims: [claim] })
+
+    await loginAs(page, admin)
+    await page.goto('/admin')
+    await page.getByRole('button', { name: /Source Claims/ }).click()
+
+    const rejectBtn = page.locator('.claim-row').getByRole('button', { name: /Reject/i })
+    await expect(rejectBtn).toHaveAttribute('aria-label', new RegExp(group.name))
+  })
+
+  test('shows localized error banner when review mutation fails', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makePendingReviewClaim(group.id)
+    setupMockApi(page, { users: [admin], communityGroups: [group], externalSourceClaims: [claim] })
+
+    // Override the review mutation to return an error
+    await page.route('**/graphql', async (route) => {
+      const body = JSON.parse(route.request().postData() ?? '{}')
+      if (body.query?.includes('ReviewExternalSourceClaim')) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Internal server error' }] }),
+        })
+      } else {
+        await route.fallback()
+      }
+    })
+
+    await loginAs(page, admin)
+    await page.goto('/admin')
+    await page.getByRole('button', { name: /Source Claims/ }).click()
+
+    await page.locator('.claim-row').getByRole('button', { name: /Verify/i }).click()
+
+    // Error banner should appear with localized (English) error text
+    await expect(page.locator('.error-banner[role="alert"]')).toBeVisible()
+    await expect(page.locator('.error-banner[role="alert"]')).toContainText(/Failed to review claim/)
+  })
 })

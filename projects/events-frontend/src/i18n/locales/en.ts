@@ -613,6 +613,9 @@ export default {
     verifyClaim: 'Verify',
     rejectClaim: 'Reject',
     noExternalClaims: 'No pending claims to review.',
+    claimVerifyAriaLabel: 'Verify claim from {name}',
+    claimRejectAriaLabel: 'Reject claim from {name}',
+    claimReviewError: 'Failed to review claim. Please try again.',
   },
 
   // ── Attendance mode labels ─────────────────────────────────────────────────

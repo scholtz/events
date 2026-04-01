@@ -2084,6 +2084,14 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         })
         return
       }
+      if (claim.status !== 'PENDING_REVIEW') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Only claims in PendingReview status can be reviewed. This claim has already been decided.', extensions: { code: 'CLAIM_NOT_PENDING' } }] }),
+        })
+        return
+      }
       claim.status = input.newStatus as MockExternalSourceClaim['status']
       await route.fulfill({
         status: 200,

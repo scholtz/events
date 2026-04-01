@@ -594,6 +594,9 @@ export default {
     verifyClaim: 'Verifizieren',
     rejectClaim: 'Ablehnen',
     noExternalClaims: 'Keine ausstehenden Ansprüche zur Überprüfung.',
+    claimVerifyAriaLabel: 'Anspruch von {name} verifizieren',
+    claimRejectAriaLabel: 'Anspruch von {name} ablehnen',
+    claimReviewError: 'Überprüfung des Anspruchs fehlgeschlagen. Bitte versuchen Sie es erneut.',
   },
 
   attendanceMode: {
