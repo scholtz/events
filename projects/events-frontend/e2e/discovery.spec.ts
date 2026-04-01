@@ -2488,3 +2488,207 @@ test.describe('Default sort — upcoming before past', () => {
     await expect(cards.first()).toContainText('Upcoming Conf')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Rank context badge — explains why results appear in their order
+// ---------------------------------------------------------------------------
+
+test.describe('Rank context badge', () => {
+  test('default UPCOMING sort shows "Sorted by upcoming date" context', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent()],
+    })
+    await page.goto('/')
+
+    await expect(page.locator('.rank-context-badge')).toBeVisible()
+    await expect(page.locator('.rank-context-badge')).toContainText('Sorted by upcoming date')
+  })
+
+  test('NEWEST sort shows "Newest additions first" context', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent()],
+    })
+    await page.goto('/?sort=newest')
+
+    await expect(page.locator('.rank-context-badge')).toBeVisible()
+    await expect(page.locator('.rank-context-badge')).toContainText('Newest additions first')
+  })
+
+  test('RELEVANCE sort with search shows "Best matches for" context', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ name: 'Tech Summit' })],
+    })
+    await page.goto('/?sort=relevance&q=tech')
+
+    await expect(page.locator('.rank-context-badge')).toBeVisible()
+    await expect(page.locator('.rank-context-badge')).toContainText('Best matches for')
+  })
+
+  test('rank context badge is not shown when there are no results', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [],
+    })
+    await page.goto('/')
+
+    await expect(page.locator('.rank-context-badge')).toBeHidden()
+  })
+
+  test('rank context badge is visible on mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent()],
+    })
+    await page.goto('/')
+
+    await expect(page.locator('.rank-context-badge')).toBeVisible()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Empty state recovery actions — context-aware secondary actions
+// ---------------------------------------------------------------------------
+
+test.describe('Empty state recovery actions', () => {
+  test('IN_PERSON mode empty state shows "Try online events" recovery button', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ attendanceMode: 'ONLINE' })],
+    })
+    await page.goto('/?mode=in-person')
+
+    await expect(page.locator('.empty-state')).toBeVisible()
+    await expect(
+      page.locator('.empty-state .recovery-action', { hasText: 'Try online events' }),
+    ).toBeVisible()
+  })
+
+  test('clicking "Try online events" from IN_PERSON empty state switches to online results', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-online', name: 'Online Summit', slug: 'online-summit', attendanceMode: 'ONLINE' }),
+      ],
+    })
+    await page.goto('/?mode=in-person')
+
+    await page.locator('.empty-state .recovery-action', { hasText: 'Try online events' }).click()
+
+    await expect(page.locator('.event-card', { hasText: 'Online Summit' })).toBeVisible()
+    await expect(page.locator('.empty-state')).toBeHidden()
+  })
+
+  test('ONLINE mode empty state shows "Try in-person events" recovery button', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ attendanceMode: 'IN_PERSON' })],
+    })
+    await page.goto('/?mode=online')
+
+    await expect(page.locator('.empty-state')).toBeVisible()
+    await expect(
+      page.locator('.empty-state .recovery-action', { hasText: 'Try in-person events' }),
+    ).toBeVisible()
+  })
+
+  test('location empty state shows "Try online events" recovery button', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ city: 'Bratislava' })],
+    })
+    await page.goto('/?location=NonExistentCity')
+
+    await expect(page.locator('.empty-state')).toBeVisible()
+    await expect(
+      page.locator('.empty-state .recovery-action', { hasText: 'Try online events' }),
+    ).toBeVisible()
+  })
+
+  test('price empty state shows "Show all prices" recovery button', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ isFree: true })],
+    })
+    await page.goto('/?price=paid')
+
+    await expect(page.locator('.empty-state')).toBeVisible()
+    await expect(
+      page.locator('.empty-state .recovery-action', { hasText: 'Show all prices' }),
+    ).toBeVisible()
+  })
+
+  test('date empty state shows "Clear date range" recovery button', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent()],
+    })
+    // Date range far in the past produces 0 results
+    await page.goto('/?from=2000-01-01&to=2000-01-31')
+
+    await expect(page.locator('.empty-state')).toBeVisible()
+    await expect(
+      page.locator('.empty-state .recovery-action', { hasText: 'Clear date range' }),
+    ).toBeVisible()
+  })
+
+  test('multi-filter empty state does not show a secondary recovery button', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [],
+    })
+    await page.goto('/?mode=in-person&location=NonExistent')
+
+    await expect(page.locator('.empty-state')).toBeVisible()
+    await expect(page.locator('.empty-state .recovery-action')).toBeHidden()
+  })
+
+  test('no-filter empty state shows submit event link, not recovery button', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [],
+    })
+    await page.goto('/')
+
+    await expect(page.locator('.empty-state')).toBeVisible()
+    await expect(page.locator('.empty-state .recovery-action')).toBeHidden()
+    await expect(page.locator('.empty-state').getByRole('link', { name: 'Submit an Event', exact: true })).toBeVisible()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Low-signal notice — inline recovery action
+// ---------------------------------------------------------------------------
+
+test.describe('Low-signal notice recovery action', () => {
+  test('low-signal notice with active filter shows "Clear filters" button', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-1', name: 'Solo Event', slug: 'solo-event' })],
+    })
+    await page.goto('/?domain=technology')
+
+    await expect(page.locator('.low-signal-notice')).toBeVisible()
+    await expect(
+      page.locator('.low-signal-notice .low-signal-action', { hasText: 'Clear filters' }),
+    ).toBeVisible()
+  })
+
+  test('low-signal notice without filters shows "Browse all events" link', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-1', name: 'Solo Event', slug: 'solo-event' })],
+    })
+    await page.goto('/')
+
+    await expect(page.locator('.low-signal-notice')).toBeVisible()
+    await expect(
+      page.locator('.low-signal-notice .low-signal-action', { hasText: 'Browse all events' }),
+    ).toBeVisible()
+  })
+})
