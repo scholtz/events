@@ -11,6 +11,7 @@ import {
   makePendingReviewClaim,
   makeVerifiedClaim,
   makeExternalEventPreview,
+  makeTechDomain,
   loginAs,
 } from './helpers/mock-api'
 
@@ -987,5 +988,90 @@ test.describe('Community pages – i18n', () => {
     await page.goto('/community/prague-crypto-circle')
     await page.locator('#language-select').selectOption('de')
     await expect(page.getByRole('heading', { name: 'Community-Veranstaltungen verwalten' })).toBeVisible()
+  })
+})
+
+// ── Submit event with community group ─────────────────────────────────────────
+
+test.describe('Submit event with community group selection', () => {
+  test('event manager sees community group selector on submit form', async ({ page }) => {
+    const contributor = makeContributorUser()
+    const group = makePublicGroup()
+    const state = setupMockApi(page)
+    state.domains.push(makeTechDomain())
+    state.users.push(contributor)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, contributor.id, 'EVENT_MANAGER'))
+
+    await loginAs(page, contributor)
+    await page.goto('/submit')
+
+    // The community group selector should be visible because the user manages a group
+    await expect(page.getByLabel('Community Group')).toBeVisible()
+    // The default is "No community"
+    await expect(page.getByLabel('Community Group')).toHaveValue('')
+  })
+
+  test('regular user without managed groups does not see community group selector', async ({ page }) => {
+    const contributor = makeContributorUser()
+    // contributor is a plain MEMBER — no admin/event-manager role
+    const group = makePublicGroup()
+    const state = setupMockApi(page)
+    state.domains.push(makeTechDomain())
+    state.users.push(contributor)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, contributor.id, 'MEMBER'))
+
+    await loginAs(page, contributor)
+    await page.goto('/submit')
+
+    // Selector must not be shown when user has no admin/event-manager memberships
+    await expect(page.locator('#event-community-group')).toBeHidden()
+  })
+
+  test('event manager can submit event for their community group', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const domain = makeTechDomain()
+    const state = setupMockApi(page)
+    state.domains.push(domain)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+
+    await loginAs(page, admin)
+    await page.goto('/submit')
+
+    // Fill step 1 — Basic Info
+    await page.locator('#event-title').fill('Community Test Event')
+    await page.locator('#event-description').fill('An event submitted for the community.')
+    await page.locator('#event-domain').selectOption(domain.slug)
+    // Select the community group
+    await page.getByLabel('Community Group').selectOption(group.id)
+
+    // Advance through remaining steps quickly using "Next"
+    await page.getByRole('button', { name: 'Next' }).click()
+
+    // Step 2 — Date & Time: fill required start date
+    await page.locator('#event-date').fill('2026-12-01')
+    await page.getByRole('button', { name: 'Next' }).click()
+
+    // Step 3 — Pricing: free by default, just continue
+    await page.getByRole('button', { name: 'Next' }).click()
+
+    // Step 4 — Location: optional, continue
+    await page.getByRole('button', { name: 'Next' }).click()
+
+    // Step 5 — Event link: required
+    await page.locator('#event-link').fill('https://example.com/community-test-event')
+    await page.getByRole('button', { name: 'Submit Event' }).click()
+
+    // After submission, should show success message
+    await expect(page.getByRole('heading', { name: 'Event Submitted!' })).toBeVisible()
+
+    // The event must be linked to the community group in mock state
+    expect(
+      state.communityGroupEvents.some((cge) => cge.groupId === group.id),
+    ).toBe(true)
   })
 })

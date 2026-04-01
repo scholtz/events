@@ -114,7 +114,42 @@ public sealed class Mutation
         dbContext.Events.Add(catalogEvent);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        // Add additional tags (beyond the primary domain)
+        // Optionally link the event to a community group.
+        // The caller must be an active Admin or EventManager in the group.
+        // The association is created even while the event is PendingApproval so that
+        // once a moderator publishes the event it immediately appears on the community page.
+        // The CommunityGroupEvent record is staged here and persisted in the single
+        // SaveChangesAsync call inside SyncEventTagsAsync below, avoiding an extra round-trip.
+        if (input.CommunityGroupId.HasValue)
+        {
+            var groupId = input.CommunityGroupId.Value;
+            _ = await dbContext.CommunityGroups.SingleOrDefaultAsync(
+                cg => cg.Id == groupId && cg.IsActive, cancellationToken)
+                ?? throw CreateError("Community group not found.", "GROUP_NOT_FOUND");
+
+            if (!claimsPrincipal.IsAdmin())
+            {
+                var membership = await dbContext.CommunityMemberships.SingleOrDefaultAsync(
+                    cm => cm.GroupId == groupId && cm.UserId == currentUser.Id && cm.Status == CommunityMemberStatus.Active,
+                    cancellationToken);
+                var hasGroupRole = membership?.Role is CommunityMemberRole.Admin or CommunityMemberRole.EventManager;
+                if (!hasGroupRole)
+                    throw CreateError(
+                        "You must be an active Admin or Event Manager in this community to submit events for it.",
+                        "FORBIDDEN");
+            }
+
+            dbContext.CommunityGroupEvents.Add(new CommunityGroupEvent
+            {
+                GroupId = groupId,
+                EventId = catalogEvent.Id,
+                AddedByUserId = currentUser.Id,
+            });
+        }
+
+        // Add additional tags (beyond the primary domain).
+        // SyncEventTagsAsync calls SaveChangesAsync internally, which also persists
+        // the CommunityGroupEvent record staged above in the same round-trip.
         await SyncEventTagsAsync(dbContext, catalogEvent.Id, domain.Id, input.AdditionalTagSlugs, cancellationToken);
 
         return await dbContext.Events

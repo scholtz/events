@@ -479,6 +479,10 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         eventTags: [],
       }
       state.events.unshift(newEvent)
+      // If the caller specified a community group, link the new event to it
+      if (input.communityGroupId) {
+        state.communityGroupEvents.push({ groupId: input.communityGroupId as string, eventId: newEvent.id })
+      }
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

@@ -78,6 +78,14 @@ public sealed class EventSubmissionInput
     /// Optional; events without a language are shown in all language-filter contexts.
     /// </summary>
     public string? Language { get; init; }
+
+    /// <summary>
+    /// Optional community group to associate this event with.
+    /// The caller must be an active Admin or EventManager in the specified group.
+    /// The association is created immediately; the event will appear on the community page
+    /// once it is approved and published.
+    /// </summary>
+    public Guid? CommunityGroupId { get; init; }
 }
 
 public sealed class SavedSearchInput

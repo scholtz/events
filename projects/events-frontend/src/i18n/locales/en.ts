@@ -333,6 +333,9 @@ export default {
     draftLoaded: 'Draft restored — you can continue where you left off.',
     freeEventNote: 'This event is free — no price needed.',
     previewTitle: 'Review Your Event',
+    communityGroupLabel: 'Community Group',
+    communityGroupNone: 'No community (personal event)',
+    communityGroupHint: 'Associate this event with one of your managed communities. It will appear on the community page once published.',
   },
 
   // ── Edit Event ─────────────────────────────────────────────────────────────

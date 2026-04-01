@@ -4,11 +4,16 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useEventsStore } from '@/stores/events'
 import { useDomainsStore } from '@/stores/domains'
+import { useAuthStore } from '@/stores/auth'
+import { useCommunitiesStore } from '@/stores/communities'
+import type { CommunityMembership } from '@/types'
 
 const { t } = useI18n()
 const router = useRouter()
 const eventsStore = useEventsStore()
 const domainsStore = useDomainsStore()
+const auth = useAuthStore()
+const communitiesStore = useCommunitiesStore()
 
 // ── Step management ────────────────────────────────────────────────────────
 const TOTAL_STEPS = 5
@@ -36,7 +41,31 @@ const form = reactive({
   latitude: '',
   longitude: '',
   eventUrl: '',
+  communityGroupId: '' as string,
 })
+
+// ── Community groups the current user manages ───────────────────────────────
+const myManagedGroups = ref<Pick<CommunityMembership, 'groupId' | 'group'>[]>([])
+
+// Use watch so we respect the async checkAuth() race: auth.isAuthenticated may be
+// false on the first render tick and becomes true once checkAuth() resolves.
+watch(
+  () => auth.isAuthenticated,
+  async (isAuth) => {
+    if (!isAuth) return
+    try {
+      const memberships = await communitiesStore.fetchMyMemberships()
+      myManagedGroups.value = memberships.filter(
+        (m) =>
+          m.status === 'ACTIVE' &&
+          (m.role === 'ADMIN' || m.role === 'EVENT_MANAGER'),
+      )
+    } catch {
+      // Not critical — submitting without a group still works
+    }
+  },
+  { immediate: true },
+)
 
 // ── Draft persistence ──────────────────────────────────────────────────────
 function saveDraft() {
@@ -230,6 +259,7 @@ async function handleSubmit() {
         : new Date(form.startsAtUtc).toISOString(),
       attendanceMode: form.attendanceMode as 'IN_PERSON' | 'ONLINE' | 'HYBRID',
       timezone: form.timezone.trim() || undefined,
+      communityGroupId: form.communityGroupId || undefined,
     })
     clearDraft()
     submitted.value = true
@@ -375,6 +405,24 @@ loadDraft()
                 </option>
               </select>
               <p class="field-hint">{{ t('submitEvent.additionalTagsHint') }}</p>
+            </div>
+
+            <!-- Community group (only shown when the user manages at least one group) -->
+            <div v-if="myManagedGroups.length > 0" class="form-group">
+              <label class="form-label" for="event-community-group">
+                {{ t('submitEvent.communityGroupLabel') }}
+              </label>
+              <select
+                id="event-community-group"
+                v-model="form.communityGroupId"
+                class="form-select"
+              >
+                <option value="">{{ t('submitEvent.communityGroupNone') }}</option>
+                <option v-for="m in myManagedGroups" :key="m.groupId" :value="m.groupId">
+                  {{ m.group.name }}
+                </option>
+              </select>
+              <p class="field-hint">{{ t('submitEvent.communityGroupHint') }}</p>
             </div>
 
             <div class="form-group">

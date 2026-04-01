@@ -322,6 +322,9 @@ export default {
     draftLoaded: 'Koncept obnovený — môžete pokračovať tam, kde ste prestali.',
     freeEventNote: 'Táto udalosť je zadarmo — cena nie je potrebná.',
     previewTitle: 'Skontrolujte svoju udalosť',
+    communityGroupLabel: 'Komunitná skupina',
+    communityGroupNone: 'Bez komunity (osobná udalosť)',
+    communityGroupHint: 'Priraďte túto udalosť k jednej z vašich spravovaných komunít. Po zverejnení sa zobrazí na stránke komunity.',
   },
 
   // ── Edit Event ─────────────────────────────────────────────────────────────

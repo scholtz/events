@@ -322,6 +322,9 @@ export default {
     draftLoaded: 'Entwurf wiederhergestellt — Sie können dort weitermachen, wo Sie aufgehört haben.',
     freeEventNote: 'Diese Veranstaltung ist kostenlos — kein Preis erforderlich.',
     previewTitle: 'Veranstaltung überprüfen',
+    communityGroupLabel: 'Community-Gruppe',
+    communityGroupNone: 'Keine Community (persönliche Veranstaltung)',
+    communityGroupHint: 'Verknüpfen Sie diese Veranstaltung mit einer Ihrer verwalteten Communities. Sie wird nach der Veröffentlichung auf der Community-Seite angezeigt.',
   },
 
   // ── Edit Event ─────────────────────────────────────────────────────────────

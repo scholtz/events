@@ -302,6 +302,7 @@ export const useEventsStore = defineStore('events', () => {
     endsAtUtc: string
     attendanceMode?: 'IN_PERSON' | 'ONLINE' | 'HYBRID'
     timezone?: string | null
+    communityGroupId?: string | null
   }) {
     const data = await gqlRequest<{ submitEvent: CatalogEvent }>(
       `mutation SubmitEvent($input: EventSubmissionInput!) {

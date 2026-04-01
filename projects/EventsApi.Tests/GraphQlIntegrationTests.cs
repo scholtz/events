@@ -12472,5 +12472,238 @@ public sealed class GraphQlIntegrationTests
         var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
         Assert.True(document.RootElement.TryGetProperty("errors", out _));
     }
+
+    // ── SubmitEvent with communityGroupId ─────────────────────────────────────
+
+    [Fact]
+    public async Task SubmitEvent_WithCommunityGroupId_EventManagerRole_CreatesGroupEventLink()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid userId = Guid.Empty;
+        Guid groupId = Guid.Empty;
+
+        var nextMonth = DateTime.UtcNow.AddDays(30);
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("submit-community@example.com", "Community Submitter");
+            userId = user.Id;
+            dbContext.Users.Add(user);
+
+            var domain = CreateDomain("Community Tech", "community-tech-submit");
+            dbContext.Domains.Add(domain);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Submit Test Group",
+                Slug = "submit-test-group",
+                Visibility = CommunityVisibility.Public,
+                IsActive = true,
+                CreatedByUserId = user.Id,
+            };
+            groupId = group.Id;
+            dbContext.CommunityGroups.Add(group);
+
+            // User is an EventManager in the group
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = user.Id,
+                Role = CommunityMemberRole.EventManager,
+                Status = CommunityMemberStatus.Active,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer", await CreateTokenAsync(factory, userId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation SubmitForCommunity($input: EventSubmissionInput!) {
+              submitEvent(input: $input) { id name }
+            }
+            """,
+            new
+            {
+                input = new
+                {
+                    domainSlug = "community-tech-submit",
+                    name = "Community Event Alpha",
+                    description = "An event for the community.",
+                    eventUrl = "https://example.com/community-event-alpha",
+                    venueName = "The Hub",
+                    addressLine1 = "Main St 1",
+                    city = "Prague",
+                    countryCode = "CZ",
+                    isFree = true,
+                    currencyCode = "EUR",
+                    latitude = 50.075m,
+                    longitude = 14.437m,
+                    startsAtUtc = nextMonth,
+                    endsAtUtc = nextMonth.AddHours(3),
+                    attendanceMode = "IN_PERSON",
+                    communityGroupId = groupId,
+                }
+            });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("submitEvent");
+        Assert.Equal("Community Event Alpha", result.GetProperty("name").GetString());
+
+        // Verify the CommunityGroupEvent record was created
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dbCtx = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var eventId = Guid.Parse(result.GetProperty("id").GetString()!);
+        var link = await dbCtx.CommunityGroupEvents.SingleOrDefaultAsync(
+            cge => cge.GroupId == groupId && cge.EventId == eventId);
+        Assert.NotNull(link);
+    }
+
+    [Fact]
+    public async Task SubmitEvent_WithCommunityGroupId_NonMember_ReturnsForbidden()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid userId = Guid.Empty;
+        Guid groupId = Guid.Empty;
+
+        var nextMonth = DateTime.UtcNow.AddDays(30);
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("submit-community-nonmember@example.com", "Non Member");
+            userId = user.Id;
+            dbContext.Users.Add(user);
+
+            var domain = CreateDomain("Community Tech NM", "community-tech-nm");
+            dbContext.Domains.Add(domain);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Exclusive Group",
+                Slug = "exclusive-group-nm",
+                Visibility = CommunityVisibility.Private,
+                IsActive = true,
+            };
+            groupId = group.Id;
+            dbContext.CommunityGroups.Add(group);
+            // user is NOT a member of this group
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer", await CreateTokenAsync(factory, userId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation SubmitForCommunity($input: EventSubmissionInput!) {
+                  submitEvent(input: $input) { id }
+                }
+                """,
+            variables = new
+            {
+                input = new
+                {
+                    domainSlug = "community-tech-nm",
+                    name = "Unauthorized Community Event",
+                    description = "Should fail.",
+                    eventUrl = "https://example.com",
+                    venueName = "",
+                    addressLine1 = "",
+                    city = "Prague",
+                    countryCode = "CZ",
+                    isFree = true,
+                    currencyCode = "EUR",
+                    latitude = 0m,
+                    longitude = 0m,
+                    startsAtUtc = nextMonth,
+                    endsAtUtc = nextMonth.AddHours(2),
+                    attendanceMode = "IN_PERSON",
+                    communityGroupId = groupId,
+                }
+            }
+        });
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("FORBIDDEN", body);
+    }
+
+    [Fact]
+    public async Task SubmitEvent_WithCommunityGroupId_RegularMember_ReturnsForbidden()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid userId = Guid.Empty;
+        Guid groupId = Guid.Empty;
+
+        var nextMonth = DateTime.UtcNow.AddDays(30);
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("submit-community-member@example.com", "Regular Member");
+            userId = user.Id;
+            dbContext.Users.Add(user);
+
+            var domain = CreateDomain("Community Tech Reg", "community-tech-reg");
+            dbContext.Domains.Add(domain);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Members Only Group",
+                Slug = "members-only-group",
+                Visibility = CommunityVisibility.Public,
+                IsActive = true,
+            };
+            groupId = group.Id;
+            dbContext.CommunityGroups.Add(group);
+
+            // User is a plain Member (not Admin or EventManager)
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = user.Id,
+                Role = CommunityMemberRole.Member,
+                Status = CommunityMemberStatus.Active,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer", await CreateTokenAsync(factory, userId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation SubmitForCommunity($input: EventSubmissionInput!) {
+                  submitEvent(input: $input) { id }
+                }
+                """,
+            variables = new
+            {
+                input = new
+                {
+                    domainSlug = "community-tech-reg",
+                    name = "Regular Member Community Event",
+                    description = "Should fail.",
+                    eventUrl = "https://example.com",
+                    venueName = "",
+                    addressLine1 = "",
+                    city = "Prague",
+                    countryCode = "CZ",
+                    isFree = true,
+                    currencyCode = "EUR",
+                    latitude = 0m,
+                    longitude = 0m,
+                    startsAtUtc = nextMonth,
+                    endsAtUtc = nextMonth.AddHours(2),
+                    attendanceMode = "IN_PERSON",
+                    communityGroupId = groupId,
+                }
+            }
+        });
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("FORBIDDEN", body);
+    }
 }
 
