@@ -169,6 +169,7 @@ export interface AdminOverview {
   users: User[]
   pendingReviewEvents: CatalogEvent[]
   domains: EventDomain[]
+  pendingExternalSourceClaims: ExternalSourceClaim[]
 }
 
 /** Frontend filter state for the events listing */
@@ -280,6 +281,10 @@ export interface ExternalSourceClaim {
   lastSyncOutcome: string | null
   lastSyncImportedCount: number | null
   lastSyncSkippedCount: number | null
+  /** Navigation property — present when the query includes group { ... } */
+  group?: { id: string; name: string; slug: string } | null
+  /** Navigation property — present when the query includes createdBy { ... } */
+  createdBy?: { displayName: string; email: string } | null
 }
 
 /** Result of a manual sync operation */

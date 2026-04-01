@@ -1856,6 +1856,37 @@ public sealed class Mutation
     }
 
     /// <summary>
+    /// Allows a global admin to approve (Verified) or reject a pending external-source
+    /// ownership claim. Only global admins may call this mutation.
+    /// </summary>
+    [Authorize]
+    public async Task<ExternalSourceClaim> ReviewExternalSourceClaimAsync(
+        ReviewExternalSourceClaimInput input,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        if (!claimsPrincipal.IsAdmin())
+            throw CreateError("Only global administrators can review external source claims.", "FORBIDDEN");
+
+        if (input.NewStatus == ExternalSourceClaimStatus.PendingReview)
+            throw CreateError("Cannot set a claim back to PendingReview.", "INVALID_STATUS");
+
+        var claim = await dbContext.ExternalSourceClaims.SingleOrDefaultAsync(
+            esc => esc.Id == input.ClaimId, cancellationToken)
+            ?? throw CreateError("External source claim not found.", "CLAIM_NOT_FOUND");
+
+        if (claim.Status != ExternalSourceClaimStatus.PendingReview)
+            throw CreateError(
+                "Only claims in PendingReview status can be reviewed. This claim has already been decided.",
+                "CLAIM_NOT_PENDING");
+
+        claim.Status = input.NewStatus;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return claim;
+    }
+
+    /// <summary>
     /// <summary>
     /// Selectively imports specific events from a linked external source.
     /// Use previewExternalEvents first to fetch candidate events with duplicate-detection

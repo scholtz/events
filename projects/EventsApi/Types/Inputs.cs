@@ -349,6 +349,25 @@ public sealed class SetDomainLinksInput
 }
 
 /// <summary>
+/// Input for a global admin to approve or reject an external-source ownership claim.
+/// Only global admins may call reviewExternalSourceClaim.
+/// </summary>
+public sealed class ReviewExternalSourceClaimInput
+{
+    /// <summary>ID of the claim to review.</summary>
+    public Guid ClaimId { get; init; }
+
+    /// <summary>
+    /// New status for the claim.
+    /// Only Verified and Rejected are valid targets; PendingReview is not a valid transition.
+    /// </summary>
+    public ExternalSourceClaimStatus NewStatus { get; init; }
+
+    /// <summary>Optional admin note attached to the review decision (e.g. rejection reason).</summary>
+    public string? AdminNote { get; init; }
+}
+
+/// <summary>
 /// Input for creating a new time-windowed scheduled featured-event entry.
 /// The event must be published and belong to the target domain hub.
 /// StartsAtUtc must be before EndsAtUtc.

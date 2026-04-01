@@ -518,6 +518,14 @@ public sealed class Query
             catalogEvent => catalogEvent.Status == EventStatus.Published,
             cancellationToken);
 
+        var pendingExternalSourceClaims = await dbContext.ExternalSourceClaims
+            .AsNoTracking()
+            .Include(esc => esc.Group)
+            .Include(esc => esc.CreatedBy)
+            .Where(esc => esc.Status == ExternalSourceClaimStatus.PendingReview)
+            .OrderBy(esc => esc.CreatedAtUtc)
+            .ToListAsync(cancellationToken);
+
         return new AdminOverview(
             TotalUsers: users.Count,
             TotalDomains: domains.Count,
@@ -525,7 +533,8 @@ public sealed class Query
             TotalPendingEvents: pendingReviewEvents.Count,
             Users: users,
             PendingReviewEvents: pendingReviewEvents,
-            Domains: domains);
+            Domains: domains,
+            PendingExternalSourceClaims: pendingExternalSourceClaims);
     }
 
     private static IOrderedQueryable<CatalogEvent> ApplySorting(

@@ -13,7 +13,7 @@ const eventsStore = useEventsStore()
 const auth = useAuthStore()
 const domainsStore = useDomainsStore()
 
-const activeTab = ref<'events' | 'domains' | 'users'>('events')
+const activeTab = ref<'events' | 'domains' | 'users' | 'claims'>('events')
 
 const newDomain = ref({ name: '', slug: '', subdomain: '', description: '' })
 
@@ -314,6 +314,11 @@ async function fetchAdminOverview() {
             submittedBy { displayName }
           }
           domains { id name slug subdomain description isActive createdAtUtc }
+          pendingExternalSourceClaims {
+            id groupId sourceType sourceUrl sourceIdentifier status createdAtUtc
+            group { id name slug }
+            createdBy { displayName email }
+          }
         }
       }`,
     )
@@ -419,6 +424,27 @@ async function handleReviewEvent(eventId: string, status: string) {
     // Review failed – the events store handles the error state
   }
 }
+
+const claimReviewLoading = ref<string | null>(null)
+const claimReviewError = ref<string | null>(null)
+
+async function handleReviewExternalSourceClaim(claimId: string, newStatus: 'VERIFIED' | 'REJECTED') {
+  claimReviewLoading.value = claimId
+  claimReviewError.value = null
+  try {
+    await gqlRequest(
+      `mutation ReviewExternalSourceClaim($input: ReviewExternalSourceClaimInput!) {
+        reviewExternalSourceClaim(input: $input) { id status }
+      }`,
+      { input: { claimId, newStatus } },
+    )
+    await fetchAdminOverview()
+  } catch {
+    claimReviewError.value = t('admin.claimReviewError')
+  } finally {
+    claimReviewLoading.value = null
+  }
+}
 </script>
 
 <template>
@@ -456,6 +482,16 @@ async function handleReviewEvent(eventId: string, status: string) {
         >
           {{ t('admin.tabUsers') }}
           <span class="tab-count">{{ adminOverview?.users.length ?? 0 }}</span>
+        </button>
+        <button
+          :class="['tab-btn', { active: activeTab === 'claims' }]"
+          @click="activeTab = 'claims'"
+        >
+          {{ t('admin.tabExternalClaims') }}
+          <span
+            class="tab-count"
+            :class="{ 'tab-count-alert': (adminOverview?.pendingExternalSourceClaims?.length ?? 0) > 0 }"
+          >{{ adminOverview?.pendingExternalSourceClaims?.length ?? 0 }}</span>
         </button>
       </div>
 
@@ -995,6 +1031,77 @@ async function handleReviewEvent(eventId: string, status: string) {
           <div v-else-if="!adminOverview?.users.length" class="empty-table">
             <div class="empty-icon">👤</div>
             <p>No users found.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- External source claims management -->
+      <div v-if="activeTab === 'claims'" class="admin-section">
+        <div v-if="claimReviewError" class="error-banner" role="alert">{{ claimReviewError }}</div>
+        <div class="claims-table card">
+          <h3>{{ t('admin.externalClaimsHeading') }}</h3>
+          <p class="section-desc">{{ t('admin.externalClaimsDescription') }}</p>
+          <div v-if="adminLoading" class="empty-table">
+            <p>{{ t('common.loading') }}</p>
+          </div>
+          <template v-else-if="adminOverview?.pendingExternalSourceClaims?.length">
+            <table>
+              <thead>
+                <tr>
+                  <th>{{ t('admin.claimCommunity') }}</th>
+                  <th>{{ t('admin.claimPlatform') }}</th>
+                  <th>{{ t('admin.claimUrl') }}</th>
+                  <th>{{ t('admin.claimSubmittedBy') }}</th>
+                  <th>{{ t('admin.claimDate') }}</th>
+                  <th>{{ t('admin.claimActions') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="claim in adminOverview.pendingExternalSourceClaims"
+                  :key="claim.id"
+                  class="claim-row"
+                >
+                  <td>
+                    <RouterLink :to="`/community/${claim.group?.slug}`" class="link">
+                      {{ claim.group?.name ?? claim.groupId }}
+                    </RouterLink>
+                  </td>
+                  <td>
+                    <span class="source-type-badge">{{ claim.sourceType }}</span>
+                  </td>
+                  <td>
+                    <a :href="claim.sourceUrl" target="_blank" rel="noopener noreferrer" class="link">
+                      {{ claim.sourceUrl }}
+                    </a>
+                  </td>
+                  <td>{{ claim.createdBy?.displayName ?? '—' }}</td>
+                  <td>{{ formatDate(claim.createdAtUtc) }}</td>
+                  <td class="actions-cell">
+                    <button
+                      class="btn btn-success btn-sm"
+                      :disabled="claimReviewLoading === claim.id"
+                      :aria-label="t('admin.claimVerifyAriaLabel', { name: claim.group?.name })"
+                      @click="handleReviewExternalSourceClaim(claim.id, 'VERIFIED')"
+                    >
+                      {{ t('admin.verifyClaim') }}
+                    </button>
+                    <button
+                      class="btn btn-danger btn-sm"
+                      :disabled="claimReviewLoading === claim.id"
+                      :aria-label="t('admin.claimRejectAriaLabel', { name: claim.group?.name })"
+                      @click="handleReviewExternalSourceClaim(claim.id, 'REJECTED')"
+                    >
+                      {{ t('admin.rejectClaim') }}
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </template>
+          <div v-else class="empty-table">
+            <div class="empty-icon">✅</div>
+            <p>{{ t('admin.noExternalClaims') }}</p>
           </div>
         </div>
       </div>
