@@ -538,6 +538,154 @@ public sealed class Mutation
             .ToList();
     }
 
+    // ── Scheduled featured-event mutations ────────────────────────────────────
+
+    private const int MaxScheduledFeaturedEventsPerDomain = 20;
+
+    /// <summary>
+    /// Creates a new time-windowed scheduled featured-event entry for a domain hub.
+    /// The event must be published and belong to the target domain.
+    /// StartsAtUtc must be strictly before EndsAtUtc.
+    /// Maximum 20 scheduled entries per domain (across all time windows).
+    /// Restricted to domain administrators and global administrators.
+    /// </summary>
+    [Authorize]
+    public async Task<ScheduledFeaturedEvent> ScheduleFeaturedEventAsync(
+        ScheduleFeaturedEventInput input,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        await EnsureDomainAdminOrGlobalAdminAsync(input.DomainId, claimsPrincipal, dbContext, cancellationToken);
+
+        var domain = await dbContext.Domains.SingleOrDefaultAsync(d => d.Id == input.DomainId, cancellationToken)
+            ?? throw CreateError("Domain was not found.", "DOMAIN_NOT_FOUND");
+
+        var catalogEvent = await dbContext.Events
+            .Include(e => e.Domain)
+            .Include(e => e.SubmittedBy)
+            .SingleOrDefaultAsync(e => e.Id == input.EventId, cancellationToken)
+            ?? throw CreateError("Event was not found.", "EVENT_NOT_FOUND");
+
+        if (catalogEvent.DomainId != input.DomainId)
+        {
+            throw CreateError(
+                $"Event '{catalogEvent.Name}' does not belong to this domain and cannot be scheduled here.",
+                "EVENT_WRONG_DOMAIN");
+        }
+
+        if (catalogEvent.Status != EventStatus.Published)
+        {
+            throw CreateError(
+                $"Event '{catalogEvent.Name}' is not published and cannot be scheduled.",
+                "EVENT_NOT_PUBLISHED");
+        }
+
+        var startsAtUtc = DateTime.SpecifyKind(input.StartsAtUtc, DateTimeKind.Utc);
+        var endsAtUtc = DateTime.SpecifyKind(input.EndsAtUtc, DateTimeKind.Utc);
+
+        if (startsAtUtc >= endsAtUtc)
+        {
+            throw CreateError(
+                "StartsAtUtc must be before EndsAtUtc.",
+                "INVALID_TIME_RANGE");
+        }
+
+        var count = await dbContext.ScheduledFeaturedEvents.CountAsync(
+            sfe => sfe.DomainId == input.DomainId,
+            cancellationToken);
+
+        if (count >= MaxScheduledFeaturedEventsPerDomain)
+        {
+            throw CreateError(
+                $"A domain hub can have at most {MaxScheduledFeaturedEventsPerDomain} scheduled featured events.",
+                "TOO_MANY_SCHEDULED_FEATURES");
+        }
+
+        var userId = claimsPrincipal.GetRequiredUserId();
+
+        var schedule = new ScheduledFeaturedEvent
+        {
+            DomainId = input.DomainId,
+            EventId = input.EventId,
+            StartsAtUtc = startsAtUtc,
+            EndsAtUtc = endsAtUtc,
+            Priority = input.Priority,
+            CreatedByUserId = userId,
+        };
+
+        dbContext.ScheduledFeaturedEvents.Add(schedule);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        // Populate navigation properties for the response
+        schedule.Domain = domain;
+        schedule.Event = catalogEvent;
+        return schedule;
+    }
+
+    /// <summary>
+    /// Updates the time window and/or priority of an existing scheduled featured-event entry.
+    /// StartsAtUtc must be strictly before EndsAtUtc.
+    /// Restricted to domain administrators and global administrators.
+    /// </summary>
+    [Authorize]
+    public async Task<ScheduledFeaturedEvent> UpdateScheduledFeaturedEventAsync(
+        UpdateScheduledFeaturedEventInput input,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var schedule = await dbContext.ScheduledFeaturedEvents
+            .Include(sfe => sfe.Event)
+                .ThenInclude(e => e.Domain)
+            .Include(sfe => sfe.Event)
+                .ThenInclude(e => e.SubmittedBy)
+            .Include(sfe => sfe.Domain)
+            .SingleOrDefaultAsync(sfe => sfe.Id == input.ScheduleId, cancellationToken)
+            ?? throw CreateError("Scheduled featured event was not found.", "SCHEDULE_NOT_FOUND");
+
+        await EnsureDomainAdminOrGlobalAdminAsync(schedule.DomainId, claimsPrincipal, dbContext, cancellationToken);
+
+        var startsAtUtc = DateTime.SpecifyKind(input.StartsAtUtc, DateTimeKind.Utc);
+        var endsAtUtc = DateTime.SpecifyKind(input.EndsAtUtc, DateTimeKind.Utc);
+
+        if (startsAtUtc >= endsAtUtc)
+        {
+            throw CreateError(
+                "StartsAtUtc must be before EndsAtUtc.",
+                "INVALID_TIME_RANGE");
+        }
+
+        schedule.StartsAtUtc = startsAtUtc;
+        schedule.EndsAtUtc = endsAtUtc;
+        schedule.Priority = input.Priority;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return schedule;
+    }
+
+    /// <summary>
+    /// Removes a scheduled featured-event entry.
+    /// Restricted to domain administrators and global administrators.
+    /// </summary>
+    [Authorize]
+    public async Task<bool> RemoveScheduledFeaturedEventAsync(
+        Guid scheduleId,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var schedule = await dbContext.ScheduledFeaturedEvents
+            .SingleOrDefaultAsync(sfe => sfe.Id == scheduleId, cancellationToken)
+            ?? throw CreateError("Scheduled featured event was not found.", "SCHEDULE_NOT_FOUND");
+
+        await EnsureDomainAdminOrGlobalAdminAsync(schedule.DomainId, claimsPrincipal, dbContext, cancellationToken);
+
+        dbContext.ScheduledFeaturedEvents.Remove(schedule);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     /// <summary>
     /// Replaces the curated community/external links for a domain hub atomically.
     /// Pass an empty list to remove all links.

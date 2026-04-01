@@ -314,3 +314,40 @@ export interface ExternalEventPreview {
   /** Human-readable reason why the event cannot be imported, or null if importable. */
   importBlockReason: string | null
 }
+
+/** Status of a scheduled featured-event entry, computed from the time window. */
+export type ScheduleStatus = 'upcoming' | 'active' | 'expired'
+
+/** Matches backend ScheduledFeaturedEvent entity */
+export interface ScheduledFeaturedEvent {
+  id: string
+  domainId: string
+  eventId: string
+  /** The event that is being scheduled for featured promotion. */
+  event: CatalogEvent
+  /** UTC start of the promotion window (inclusive). */
+  startsAtUtc: string
+  /** UTC end of the promotion window (exclusive). */
+  endsAtUtc: string
+  /** Priority for conflict resolution — lower value = displayed first (default 0). */
+  priority: number
+  createdAtUtc: string
+  createdByUserId: string | null
+}
+
+/** Input for creating a new scheduled featured-event entry. */
+export interface ScheduleFeaturedEventInput {
+  domainId: string
+  eventId: string
+  startsAtUtc: string
+  endsAtUtc: string
+  priority: number
+}
+
+/** Input for updating an existing scheduled featured-event entry. */
+export interface UpdateScheduledFeaturedEventInput {
+  scheduleId: string
+  startsAtUtc: string
+  endsAtUtc: string
+  priority: number
+}

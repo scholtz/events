@@ -339,3 +339,44 @@ public sealed class SetDomainLinksInput
     /// <summary>Ordered list of links to set. DisplayOrder is assigned from the list position (0-based).</summary>
     public required List<DomainLinkItem> Links { get; init; }
 }
+
+/// <summary>
+/// Input for creating a new time-windowed scheduled featured-event entry.
+/// The event must be published and belong to the target domain hub.
+/// StartsAtUtc must be before EndsAtUtc.
+/// Maximum 20 active scheduled entries per domain.
+/// </summary>
+public sealed class ScheduleFeaturedEventInput
+{
+    public Guid DomainId { get; init; }
+    public Guid EventId { get; init; }
+
+    /// <summary>UTC date-time when the promotion window opens (inclusive).</summary>
+    public DateTime StartsAtUtc { get; init; }
+
+    /// <summary>UTC date-time when the promotion window closes (exclusive).</summary>
+    public DateTime EndsAtUtc { get; init; }
+
+    /// <summary>
+    /// Explicit priority for conflict resolution — lower value = displayed first.
+    /// Defaults to 0 when omitted.
+    /// </summary>
+    public int Priority { get; init; } = 0;
+}
+
+/// <summary>
+/// Input for updating an existing scheduled featured-event entry.
+/// </summary>
+public sealed class UpdateScheduledFeaturedEventInput
+{
+    public Guid ScheduleId { get; init; }
+
+    /// <summary>Updated UTC start of the promotion window.</summary>
+    public DateTime StartsAtUtc { get; init; }
+
+    /// <summary>Updated UTC end of the promotion window.</summary>
+    public DateTime EndsAtUtc { get; init; }
+
+    /// <summary>Updated priority for conflict resolution.</summary>
+    public int Priority { get; init; } = 0;
+}
