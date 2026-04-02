@@ -160,6 +160,18 @@ export interface EventAnalyticsItem {
   timezone: string | null
 }
 
+/** Lightweight community group summary for global admin oversight */
+export interface CommunityGroupAdminSummary {
+  id: string
+  name: string
+  slug: string
+  visibility: CommunityVisibility
+  isActive: boolean
+  activeMemberCount: number
+  pendingRequestCount: number
+  createdAtUtc: string
+}
+
 /** Matches backend AdminOverview response */
 export interface AdminOverview {
   totalUsers: number
@@ -170,6 +182,8 @@ export interface AdminOverview {
   pendingReviewEvents: CatalogEvent[]
   domains: EventDomain[]
   pendingExternalSourceClaims: ExternalSourceClaim[]
+  totalCommunityGroups: number
+  communityGroups: CommunityGroupAdminSummary[]
 }
 
 /** Frontend filter state for the events listing */

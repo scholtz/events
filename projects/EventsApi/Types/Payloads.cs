@@ -57,7 +57,22 @@ public sealed record AdminOverview(
     IReadOnlyList<ApplicationUser> Users,
     IReadOnlyList<CatalogEvent> PendingReviewEvents,
     IReadOnlyList<EventDomain> Domains,
-    IReadOnlyList<ExternalSourceClaim> PendingExternalSourceClaims);
+    IReadOnlyList<ExternalSourceClaim> PendingExternalSourceClaims,
+    int TotalCommunityGroups,
+    IReadOnlyList<CommunityGroupAdminSummary> CommunityGroups);
+
+/// <summary>
+/// A lightweight summary of a community group for global admin oversight.
+/// </summary>
+public sealed record CommunityGroupAdminSummary(
+    Guid Id,
+    string Name,
+    string Slug,
+    EventsApi.Data.Entities.CommunityVisibility Visibility,
+    bool IsActive,
+    int ActiveMemberCount,
+    int PendingRequestCount,
+    DateTime CreatedAtUtc);
 
 /// <summary>
 /// Represents the user's current push notification subscription status.

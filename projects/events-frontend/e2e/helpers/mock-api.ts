@@ -1069,6 +1069,20 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
                       : null,
                   }
                 }),
+              totalCommunityGroups: state.communityGroups.length,
+              communityGroups: state.communityGroups.map((g) => {
+                const memberships = state.communityMemberships.filter((m) => m.groupId === g.id)
+                return {
+                  id: g.id,
+                  name: g.name,
+                  slug: g.slug,
+                  visibility: g.visibility,
+                  isActive: g.isActive,
+                  activeMemberCount: memberships.filter((m) => m.status === 'ACTIVE').length,
+                  pendingRequestCount: memberships.filter((m) => m.status === 'PENDING').length,
+                  createdAtUtc: g.createdAtUtc,
+                }
+              }),
             },
           },
         }),

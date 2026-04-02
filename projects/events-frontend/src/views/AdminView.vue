@@ -13,7 +13,7 @@ const eventsStore = useEventsStore()
 const auth = useAuthStore()
 const domainsStore = useDomainsStore()
 
-const activeTab = ref<'events' | 'domains' | 'users' | 'claims'>('events')
+const activeTab = ref<'events' | 'domains' | 'users' | 'claims' | 'communities'>('events')
 
 const newDomain = ref({ name: '', slug: '', subdomain: '', description: '' })
 
@@ -302,6 +302,7 @@ async function fetchAdminOverview() {
           totalDomains
           totalPublishedEvents
           totalPendingEvents
+          totalCommunityGroups
           users { id displayName email role createdAtUtc }
           pendingReviewEvents {
             id name slug description eventUrl
@@ -318,6 +319,10 @@ async function fetchAdminOverview() {
             id groupId sourceType sourceUrl sourceIdentifier status createdAtUtc
             group { id name slug }
             createdBy { displayName email }
+          }
+          communityGroups {
+            id name slug visibility isActive
+            activeMemberCount pendingRequestCount createdAtUtc
           }
         }
       }`,
@@ -492,6 +497,16 @@ async function handleReviewExternalSourceClaim(claimId: string, newStatus: 'VERI
             class="tab-count"
             :class="{ 'tab-count-alert': (adminOverview?.pendingExternalSourceClaims?.length ?? 0) > 0 }"
           >{{ adminOverview?.pendingExternalSourceClaims?.length ?? 0 }}</span>
+        </button>
+        <button
+          :class="['tab-btn', { active: activeTab === 'communities' }]"
+          @click="activeTab = 'communities'"
+        >
+          {{ t('admin.tabCommunities') }}
+          <span
+            class="tab-count"
+            :class="{ 'tab-count-alert': (adminOverview?.communityGroups?.some((g) => g.pendingRequestCount > 0) ?? false) }"
+          >{{ adminOverview?.totalCommunityGroups ?? 0 }}</span>
         </button>
       </div>
 
@@ -1105,6 +1120,73 @@ async function handleReviewExternalSourceClaim(claimId: string, newStatus: 'VERI
           </div>
         </div>
       </div>
+
+      <!-- Communities management -->
+      <div v-if="activeTab === 'communities'" class="admin-section">
+        <div class="communities-admin-table card">
+          <h3>{{ t('admin.allCommunityGroupsHeading') }}</h3>
+          <p class="section-desc">{{ t('admin.allCommunityGroupsDescription') }}</p>
+          <div v-if="adminLoading" class="empty-table">
+            <p>{{ t('common.loading') }}</p>
+          </div>
+          <template v-else-if="adminOverview?.communityGroups?.length">
+            <table>
+              <thead>
+                <tr>
+                  <th>{{ t('admin.communityGroupName') }}</th>
+                  <th>{{ t('admin.communityGroupVisibility') }}</th>
+                  <th>{{ t('admin.communityGroupMembers') }}</th>
+                  <th>{{ t('admin.communityGroupPending') }}</th>
+                  <th>{{ t('admin.communityGroupStatus') }}</th>
+                  <th>{{ t('admin.communityGroupActions') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="group in adminOverview.communityGroups"
+                  :key="group.id"
+                  class="community-row"
+                >
+                  <td>
+                    <RouterLink :to="`/community/${group.slug}`" class="link">
+                      {{ group.name }}
+                    </RouterLink>
+                  </td>
+                  <td>
+                    <span :class="['visibility-badge', group.visibility === 'PUBLIC' ? 'public' : 'private']">
+                      {{ group.visibility === 'PUBLIC' ? t('community.public') : t('community.private') }}
+                    </span>
+                  </td>
+                  <td>{{ group.activeMemberCount }}</td>
+                  <td>
+                    <span :class="{ 'pending-badge': group.pendingRequestCount > 0 }">
+                      {{ group.pendingRequestCount }}
+                    </span>
+                  </td>
+                  <td>
+                    <span :class="['status-badge', group.isActive ? 'active' : 'inactive']">
+                      {{ group.isActive ? t('admin.communityGroupActive') : t('admin.communityGroupInactive') }}
+                    </span>
+                  </td>
+                  <td class="actions-cell">
+                    <RouterLink
+                      :to="`/community/${group.slug}`"
+                      class="btn btn-outline btn-sm"
+                      :aria-label="t('admin.communityGroupViewAriaLabel', { name: group.name })"
+                    >
+                      {{ t('admin.communityGroupView') }}
+                    </RouterLink>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </template>
+          <div v-else class="empty-table">
+            <div class="empty-icon">👥</div>
+            <p>{{ t('admin.noCommunityGroups') }}</p>
+          </div>
+        </div>
+      </div>
     </template>
 
     <div v-else class="card login-prompt">
@@ -1689,4 +1771,66 @@ tr:hover td {
   flex: 1;
   min-width: 8rem;
 }
-</style>
+
+/* ── Communities admin tab ──────────────────────────────────────────────── */
+.communities-admin-table {
+  overflow-x: auto;
+}
+
+.communities-admin-table h3 {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.visibility-badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.visibility-badge.public {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--color-success, #10b981);
+}
+
+.visibility-badge.private {
+  background: rgba(139, 92, 246, 0.12);
+  color: #8b5cf6;
+}
+
+.pending-badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: rgba(251, 191, 36, 0.18);
+  color: var(--color-warning, #f59e0b);
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.status-badge.active {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--color-success, #10b981);
+}
+
+.status-badge.inactive {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--color-error, #ef4444);
+}
+
+.community-row td {
+  vertical-align: middle;
+}</style>
