@@ -73,10 +73,20 @@ describe('i18n', () => {
     })
 
     it('returns en when no localStorage value exists', async () => {
+      // Mock navigator.languages to be undefined to test fallback
+      const originalNavigator = global.navigator
+      Object.defineProperty(global, 'navigator', {
+        value: { languages: undefined },
+        writable: true,
+      })
       const { detectLocale } = await import('../index')
-      // navigator.languages is not available in vitest, so it falls back to 'en'
       const result = detectLocale()
       expect(result).toBe('en')
+      // Restore
+      Object.defineProperty(global, 'navigator', {
+        value: originalNavigator,
+        writable: true,
+      })
     })
 
     it('persistLocale stores the locale in localStorage', async () => {
