@@ -285,9 +285,9 @@ async function confirmRemoveSource() {
   const claimId = confirmRemoveClaimId.value
   if (!claimId) return
   sourceError.value = null
-  confirmRemoveClaimId.value = null
   try {
     await communitiesStore.removeExternalSource(claimId)
+    confirmRemoveClaimId.value = null
     externalSources.value = externalSources.value.filter((s) => s.id !== claimId)
     delete syncResults.value[claimId]
     if (previewClaimId.value === claimId) {
@@ -651,11 +651,11 @@ function memberCountText(count: number): string {
                     >{{ claimStatusLabel(source.status) }}</span>
                   </div>
                   <!-- Rejection note shown to the community admin -->
-                  <div v-if="source.status === 'REJECTED'" class="rejection-note" role="alert">
-                    <span v-if="source.adminNote">
+                  <div v-if="source.status === 'REJECTED'" class="rejection-note">
+                    <span v-if="source.adminNote" role="alert">
                       {{ t('community.claimRejectedNote', { note: source.adminNote }) }}
                     </span>
-                    <span v-else>{{ t('community.claimRejectedNoNote') }}</span>
+                    <span v-else role="alert">{{ t('community.claimRejectedNoNote') }}</span>
                   </div>
                   <div class="source-sync-info">
                     <span class="last-sync-text">

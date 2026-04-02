@@ -1100,10 +1100,12 @@ async function handleReviewExternalSourceClaim(
                   <td>{{ formatDate(claim.createdAtUtc) }}</td>
                   <td class="actions-cell">
                     <textarea
-                      v-model="rejectionNoteInputs[claim.id]"
+                      :value="rejectionNoteInputs[claim.id] ?? ''"
                       class="rejection-note-input"
                       :placeholder="t('admin.rejectionNotePlaceholder')"
+                      :aria-label="t('admin.rejectionNotePlaceholder')"
                       rows="2"
+                      @input="rejectionNoteInputs[claim.id] = ($event.target as HTMLTextAreaElement).value"
                     />
                     <div class="claim-review-buttons">
                       <button

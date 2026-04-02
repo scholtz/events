@@ -571,20 +571,33 @@ public sealed class AppDbInitializer(
         await _dbContext.Database.ExecuteSqlRawAsync(commandText, cancellationToken);
     }
 
-    private async Task EnsureExternalSourceClaimColumnAsync(string columnName, CancellationToken cancellationToken)
+    /// <summary>
+    /// Generic helper: adds a column to an existing table only if the column is absent.
+    /// The caller is responsible for providing the correct DDL snippet.
+    /// </summary>
+    private async Task EnsureColumnAsync(
+        string tableName,
+        string columnName,
+        string ddlSnippet,
+        CancellationToken cancellationToken)
     {
-        if (await TableColumnExistsAsync("ExternalSourceClaims", columnName, cancellationToken))
+        if (await TableColumnExistsAsync(tableName, columnName, cancellationToken))
         {
             return;
         }
 
-        var commandText = columnName switch
+        await _dbContext.Database.ExecuteSqlRawAsync(ddlSnippet, cancellationToken);
+    }
+
+    private async Task EnsureExternalSourceClaimColumnAsync(string columnName, CancellationToken cancellationToken)
+    {
+        var ddl = columnName switch
         {
             "AdminNote" => """ALTER TABLE "ExternalSourceClaims" ADD COLUMN "AdminNote" TEXT NULL;""",
             _ => throw new InvalidOperationException($"Unsupported ExternalSourceClaims column '{columnName}'.")
         };
 
-        await _dbContext.Database.ExecuteSqlRawAsync(commandText, cancellationToken);
+        await EnsureColumnAsync("ExternalSourceClaims", columnName, ddl, cancellationToken);
     }
 
     private async Task<bool> TableExistsAsync(string tableName, CancellationToken cancellationToken)
