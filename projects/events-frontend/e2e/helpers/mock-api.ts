@@ -2109,7 +2109,14 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         return
       }
       claim.status = input.newStatus as MockExternalSourceClaim['status']
-      if (input.adminNote) claim.adminNote = input.adminNote as string
+      // Mirror backend semantics: only store adminNote on REJECTED; clear to null on VERIFIED.
+      // Normalize whitespace-only notes to null so mock and production behave identically.
+      if (input.newStatus === 'REJECTED') {
+        const trimmed = typeof input.adminNote === 'string' ? input.adminNote.trim() : ''
+        claim.adminNote = trimmed.length > 0 ? trimmed : null
+      } else {
+        claim.adminNote = null
+      }
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

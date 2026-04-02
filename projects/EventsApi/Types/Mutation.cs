@@ -1884,10 +1884,11 @@ public sealed class Mutation
         claim.Status = input.NewStatus;
         // Only record the admin note on rejection; clear any stale note when verifying
         // so that verified claims cannot carry rejection-style text.
+        // Normalize whitespace-only notes to null so the moderation record is unambiguous.
         if (input.NewStatus == ExternalSourceClaimStatus.Rejected)
         {
-            if (input.AdminNote is { Length: > 0 })
-                claim.AdminNote = input.AdminNote.Trim();
+            var trimmed = input.AdminNote?.Trim();
+            claim.AdminNote = trimmed is { Length: > 0 } ? trimmed : null;
         }
         else
         {

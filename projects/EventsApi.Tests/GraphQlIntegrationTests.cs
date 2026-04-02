@@ -11571,6 +11571,68 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task ReviewExternalSourceClaim_WhitespaceOnlyNote_NormalizedToNull()
+    {
+        // A whitespace-only note must be treated as "no note" — persisted as null, not "".
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("ws-note-admin@example.com", "WS Note Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var owner = CreateUser("ws-note-owner@example.com", "WS Note Owner");
+            dbContext.Users.AddRange(admin, owner);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "WS Note Group", Slug = "ws-note-group",
+                IsActive = true, CreatedByUserId = owner.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Luma,
+                SourceUrl = "https://lu.ma/ws-note-group",
+                SourceIdentifier = "ws-note-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.PendingReview,
+                CreatedByUserId = owner.Id,
+            };
+            claimId = claim.Id;
+            dbContext.ExternalSourceClaims.Add(claim);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        // Reject with a whitespace-only note — must be stored as null, not "".
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation ReviewClaim($input: ReviewExternalSourceClaimInput!) {
+              reviewExternalSourceClaim(input: $input) { id status adminNote }
+            }
+            """,
+            new { input = new { claimId, newStatus = "REJECTED", adminNote = "   " } });
+
+        var result = doc.RootElement.GetProperty("data").GetProperty("reviewExternalSourceClaim");
+        Assert.Equal("REJECTED", result.GetProperty("status").GetString());
+        Assert.True(result.GetProperty("adminNote").ValueKind == System.Text.Json.JsonValueKind.Null,
+            "adminNote must be null when the supplied note is whitespace-only");
+
+        // Verify persisted in DB
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<EventsApi.Data.AppDbContext>();
+        var persisted = await db.ExternalSourceClaims.FindAsync(claimId);
+        Assert.NotNull(persisted);
+        Assert.Null(persisted.AdminNote);
+    }
+
+    [Fact]
     public async Task ReviewExternalSourceClaim_NonAdmin_ReturnsForbidden()
     {
         await using var factory = new EventsApiWebApplicationFactory();
