@@ -295,6 +295,7 @@ export interface ExternalSourceClaim {
   lastSyncOutcome: string | null
   lastSyncImportedCount: number | null
   lastSyncSkippedCount: number | null
+  adminNote: string | null
   /** Navigation property — present when the query includes group { ... } */
   group?: { id: string; name: string; slug: string } | null
   /** Navigation property — present when the query includes createdBy { ... } */

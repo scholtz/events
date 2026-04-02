@@ -308,6 +308,18 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         modelBuilder.Entity<CatalogEvent>(entity =>
         {
             entity.Property(ce => ce.ExternalSourceEventId).HasMaxLength(1000);
+
+            // Database-level deduplication guard: prevents duplicate imported events even under
+            // concurrent syncs. The filter restricts the unique constraint to rows where both
+            // columns are non-null, so manually submitted events (neither column set) are
+            // unaffected. A concurrent insert that races past the application-level AnyAsync
+            // check will fail here with a DbUpdateException, which the import flow treats as
+            // an already-imported skip rather than a hard error.
+            entity.HasIndex(ce => new { ce.ExternalSourceClaimId, ce.ExternalSourceEventId })
+                .IsUnique()
+                .HasFilter("""
+                    "ExternalSourceClaimId" IS NOT NULL AND "ExternalSourceEventId" IS NOT NULL
+                    """);
         });
 
         modelBuilder.Entity<EventTag>(entity =>

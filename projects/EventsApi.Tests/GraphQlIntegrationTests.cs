@@ -11449,6 +11449,451 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task ReviewExternalSourceClaim_WithAdminNote_StoresNoteOnRejection()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("note-admin@example.com", "Note Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var owner = CreateUser("note-owner@example.com", "Note Owner");
+            dbContext.Users.AddRange(admin, owner);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Note Group", Slug = "note-group",
+                IsActive = true, CreatedByUserId = owner.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/note-group",
+                SourceIdentifier = "note-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.PendingReview,
+                CreatedByUserId = owner.Id,
+            };
+            claimId = claim.Id;
+            dbContext.ExternalSourceClaims.Add(claim);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation ReviewClaim($input: ReviewExternalSourceClaimInput!) {
+              reviewExternalSourceClaim(input: $input) { id status adminNote }
+            }
+            """,
+            new { input = new { claimId, newStatus = "REJECTED", adminNote = "We could not verify your ownership of this group." } });
+
+        var result = doc.RootElement.GetProperty("data").GetProperty("reviewExternalSourceClaim");
+        Assert.Equal("REJECTED", result.GetProperty("status").GetString());
+        Assert.Equal("We could not verify your ownership of this group.", result.GetProperty("adminNote").GetString());
+
+        // Verify persisted in DB
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<EventsApi.Data.AppDbContext>();
+        var persisted = await db.ExternalSourceClaims.FindAsync(claimId);
+        Assert.NotNull(persisted);
+        Assert.Equal("We could not verify your ownership of this group.", persisted.AdminNote);
+    }
+
+    [Fact]
+    public async Task ReviewExternalSourceClaim_Verify_DoesNotStoreAdminNote()
+    {
+        // Even if the admin accidentally submits a note while clicking Verify,
+        // the backend must discard it so verified claims never carry rejection text.
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("verify-note-admin@example.com", "Verify Note Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var owner = CreateUser("verify-note-owner@example.com", "Verify Note Owner");
+            dbContext.Users.AddRange(admin, owner);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Verify Note Group", Slug = "verify-note-group",
+                IsActive = true, CreatedByUserId = owner.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/verify-note-group",
+                SourceIdentifier = "verify-note-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.PendingReview,
+                CreatedByUserId = owner.Id,
+            };
+            claimId = claim.Id;
+            dbContext.ExternalSourceClaims.Add(claim);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        // Submit with adminNote but newStatus = VERIFIED — note must be discarded.
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation ReviewClaim($input: ReviewExternalSourceClaimInput!) {
+              reviewExternalSourceClaim(input: $input) { id status adminNote }
+            }
+            """,
+            new { input = new { claimId, newStatus = "VERIFIED", adminNote = "This should not be stored." } });
+
+        var result = doc.RootElement.GetProperty("data").GetProperty("reviewExternalSourceClaim");
+        Assert.Equal("VERIFIED", result.GetProperty("status").GetString());
+        Assert.True(result.GetProperty("adminNote").ValueKind == System.Text.Json.JsonValueKind.Null,
+            "adminNote must be null on a verified claim");
+
+        // Verify persisted in DB
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<EventsApi.Data.AppDbContext>();
+        var persisted = await db.ExternalSourceClaims.FindAsync(claimId);
+        Assert.NotNull(persisted);
+        Assert.Null(persisted.AdminNote);
+    }
+
+    [Fact]
+    public async Task ReviewExternalSourceClaim_WhitespaceOnlyNote_NormalizedToNull()
+    {
+        // A whitespace-only note must be treated as "no note" — persisted as null, not "".
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("ws-note-admin@example.com", "WS Note Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var owner = CreateUser("ws-note-owner@example.com", "WS Note Owner");
+            dbContext.Users.AddRange(admin, owner);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "WS Note Group", Slug = "ws-note-group",
+                IsActive = true, CreatedByUserId = owner.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Luma,
+                SourceUrl = "https://lu.ma/ws-note-group",
+                SourceIdentifier = "ws-note-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.PendingReview,
+                CreatedByUserId = owner.Id,
+            };
+            claimId = claim.Id;
+            dbContext.ExternalSourceClaims.Add(claim);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        // Reject with a whitespace-only note — must be stored as null, not "".
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation ReviewClaim($input: ReviewExternalSourceClaimInput!) {
+              reviewExternalSourceClaim(input: $input) { id status adminNote }
+            }
+            """,
+            new { input = new { claimId, newStatus = "REJECTED", adminNote = "   " } });
+
+        var result = doc.RootElement.GetProperty("data").GetProperty("reviewExternalSourceClaim");
+        Assert.Equal("REJECTED", result.GetProperty("status").GetString());
+        Assert.True(result.GetProperty("adminNote").ValueKind == System.Text.Json.JsonValueKind.Null,
+            "adminNote must be null when the supplied note is whitespace-only");
+
+        // Verify persisted in DB
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<EventsApi.Data.AppDbContext>();
+        var persisted = await db.ExternalSourceClaims.FindAsync(claimId);
+        Assert.NotNull(persisted);
+        Assert.Null(persisted.AdminNote);
+    }
+
+    [Fact]
+    public async Task ReviewExternalSourceClaim_AdminNoteTooLong_ReturnsValidationError()
+    {
+        // AdminNote is bounded at 2 000 characters. Submitting more must return a validation error.
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("toolong-admin@example.com", "Too Long Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var owner = CreateUser("toolong-owner@example.com", "Too Long Owner");
+            dbContext.Users.AddRange(admin, owner);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Too Long Note Group", Slug = "toolong-note-group",
+                IsActive = true, CreatedByUserId = owner.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/toolong-note-group",
+                SourceIdentifier = "toolong-note-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.PendingReview,
+                CreatedByUserId = owner.Id,
+            };
+            claimId = claim.Id;
+            dbContext.ExternalSourceClaims.Add(claim);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        // Note is 2 001 characters — one over the 2 000 limit.
+        var tooLongNote = new string('x', 2001);
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation ReviewClaim($input: ReviewExternalSourceClaimInput!) {
+                  reviewExternalSourceClaim(input: $input) { id status adminNote }
+                }
+                """,
+            variables = new { input = new { claimId, newStatus = "REJECTED", adminNote = tooLongNote } }
+        });
+        response.EnsureSuccessStatusCode();
+        using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+
+        Assert.True(doc.RootElement.TryGetProperty("errors", out var errors),
+            "Expected a validation error for an overlong AdminNote.");
+        Assert.Contains("2 000", errors.ToString()); // error message mentions the character limit
+
+        // DB must remain unchanged — claim still PENDING_REVIEW, no note stored.
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<EventsApi.Data.AppDbContext>();
+        var persisted = await db.ExternalSourceClaims.FindAsync(claimId);
+        Assert.NotNull(persisted);
+        Assert.Equal(EventsApi.Data.Entities.ExternalSourceClaimStatus.PendingReview, persisted.Status);
+        Assert.Null(persisted.AdminNote);
+    }
+
+    [Fact]
+    public async Task AddExternalSourceClaim_DifferentGroups_CanClaimSameSource()
+    {
+        // The uniqueness constraint is scoped to (GroupId, SourceType, SourceIdentifier).
+        // Two distinct community groups are each allowed to connect the same external source —
+        // they manage independent import workflows for their own communities.
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid admin1Id = Guid.Empty;
+        Guid admin2Id = Guid.Empty;
+        Guid group1Id = Guid.Empty;
+        Guid group2Id = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin1 = CreateUser("mg-admin1@example.com", "Multi Group Admin 1");
+            var admin2 = CreateUser("mg-admin2@example.com", "Multi Group Admin 2");
+            admin1Id = admin1.Id;
+            admin2Id = admin2.Id;
+            dbContext.Users.AddRange(admin1, admin2);
+
+            var group1 = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Multi Group A", Slug = "multi-group-a",
+                IsActive = true, CreatedByUserId = admin1.Id,
+            };
+            var group2 = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Multi Group B", Slug = "multi-group-b",
+                IsActive = true, CreatedByUserId = admin2.Id,
+            };
+            group1Id = group1.Id;
+            group2Id = group2.Id;
+            dbContext.CommunityGroups.AddRange(group1, group2);
+
+            dbContext.CommunityMemberships.AddRange(
+                new EventsApi.Data.Entities.CommunityMembership
+                {
+                    GroupId = group1.Id, UserId = admin1.Id,
+                    Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                    Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+                },
+                new EventsApi.Data.Entities.CommunityMembership
+                {
+                    GroupId = group2.Id, UserId = admin2.Id,
+                    Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                    Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+                });
+        });
+
+        const string addMutation = """
+            mutation AddClaim($groupId: UUID!, $input: AddExternalSourceClaimInput!) {
+              addExternalSourceClaim(groupId: $groupId, input: $input) { id status }
+            }
+            """;
+        const string sharedUrl = "https://lu.ma/shared-luma-community";
+
+        // Group A admin claims the source — should succeed.
+        using var client1 = factory.CreateClient();
+        client1.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, admin1Id));
+
+        using var doc1 = await ExecuteGraphQlAsync(
+            client1, addMutation,
+            new { groupId = group1Id, input = new { sourceType = "LUMA", sourceUrl = sharedUrl } });
+        Assert.False(doc1.RootElement.TryGetProperty("errors", out _),
+            "Group A claiming the shared source must succeed.");
+
+        // Group B admin claims the same URL — must also succeed (different group).
+        using var client2 = factory.CreateClient();
+        client2.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, admin2Id));
+
+        using var doc2 = await ExecuteGraphQlAsync(
+            client2, addMutation,
+            new { groupId = group2Id, input = new { sourceType = "LUMA", sourceUrl = sharedUrl } });
+        Assert.False(doc2.RootElement.TryGetProperty("errors", out _),
+            "Group B claiming the same shared source must also succeed — the uniqueness constraint is per-group.");
+    }
+
+    [Fact]
+    public async Task TriggerExternalSync_DbLevelDuplicateGuard_IsIdempotent()
+    {
+        // Regression test for the DB-level unique index on (ExternalSourceClaimId, ExternalSourceEventId).
+        // Pre-seed a CatalogEvent with the same ExternalSourceClaimId + ExternalSourceEventId that
+        // the adapter would produce, then verify that a sync skips it gracefully (no exception, no
+        // duplicate row created).
+        var externalEvents = new List<EventsApi.Adapters.ExternalEventData>
+        {
+            new(
+                ExternalId: "db-guard-ext-001",
+                Name: "DB Guard Event",
+                Description: "Used to verify the DB-level deduplication constraint.",
+                EventUrl: "https://www.meetup.com/db-guard/events/db-guard-ext-001",
+                StartsAtUtc: new DateTime(2031, 1, 1, 10, 0, 0, DateTimeKind.Utc),
+                EndsAtUtc: new DateTime(2031, 1, 1, 12, 0, 0, DateTimeKind.Utc),
+                VenueName: "Guard Venue",
+                AddressLine1: null, City: "Bratislava", CountryCode: "SK",
+                Latitude: null, Longitude: null, IsFree: true,
+                PriceAmount: null, CurrencyCode: null, Language: null),
+        };
+
+        await using var factory = new EventsApiWebApplicationFactory(services =>
+        {
+            var adapter = new SeededMeetupAdapter(externalEvents);
+            services.RemoveAll<EventsApi.Adapters.ExternalSourceAdapterFactory>();
+            services.AddSingleton(new EventsApi.Adapters.ExternalSourceAdapterFactory(adapter, adapter));
+        });
+
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("dbguard-admin@example.com", "DB Guard Admin");
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var domain = CreateDomain("DB Guard Domain", "db-guard-domain");
+            dbContext.Domains.Add(domain);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "DB Guard Group", Slug = "db-guard-group",
+                IsActive = true, CreatedByUserId = admin.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id, UserId = admin.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/db-guard",
+                SourceIdentifier = "db-guard",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.Verified,
+                CreatedByUserId = admin.Id,
+            };
+            claimId = claim.Id;
+            dbContext.ExternalSourceClaims.Add(claim);
+
+            // Pre-seed the event as if a previous sync already imported it.
+            dbContext.Events.Add(new EventsApi.Data.Entities.CatalogEvent
+            {
+                Name = "DB Guard Event",
+                Slug = "db-guard-event",
+                Description = "Pre-seeded by a prior sync.",
+                EventUrl = "https://www.meetup.com/db-guard/events/db-guard-ext-001",
+                VenueName = "Guard Venue",
+                AddressLine1 = "",
+                City = "Bratislava",
+                CountryCode = "SK",
+                StartsAtUtc = new DateTime(2031, 1, 1, 10, 0, 0, DateTimeKind.Utc),
+                EndsAtUtc = new DateTime(2031, 1, 1, 12, 0, 0, DateTimeKind.Utc),
+                Status = EventsApi.Data.Entities.EventStatus.PendingApproval,
+                DomainId = domain.Id,
+                SubmittedByUserId = admin.Id,
+                ExternalSourceClaimId = claimId,
+                ExternalSourceEventId = "db-guard-ext-001",
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        // A sync with the same event pre-seeded must skip gracefully with 0 errors.
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation Sync($claimId: UUID!) {
+              triggerExternalSync(claimId: $claimId) {
+                importedCount skippedCount errorCount
+              }
+            }
+            """,
+            new { claimId });
+
+        var result = doc.RootElement.GetProperty("data").GetProperty("triggerExternalSync");
+        Assert.Equal(0, result.GetProperty("importedCount").GetInt32());
+        Assert.Equal(1, result.GetProperty("skippedCount").GetInt32());
+        Assert.Equal(0, result.GetProperty("errorCount").GetInt32());
+
+        // Confirm exactly one DB record for this external ID — no duplicate created.
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<EventsApi.Data.AppDbContext>();
+        var count = await db.Events.CountAsync(e => e.ExternalSourceEventId == "db-guard-ext-001");
+        Assert.Equal(1, count);
+    }
+
+    [Fact]
     public async Task ReviewExternalSourceClaim_NonAdmin_ReturnsForbidden()
     {
         await using var factory = new EventsApiWebApplicationFactory();

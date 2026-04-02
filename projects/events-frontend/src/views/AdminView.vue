@@ -432,17 +432,23 @@ async function handleReviewEvent(eventId: string, status: string) {
 
 const claimReviewLoading = ref<string | null>(null)
 const claimReviewError = ref<string | null>(null)
+const rejectionNoteInputs = ref<Record<string, string>>({})
 
-async function handleReviewExternalSourceClaim(claimId: string, newStatus: 'VERIFIED' | 'REJECTED') {
+async function handleReviewExternalSourceClaim(
+  claimId: string,
+  newStatus: 'VERIFIED' | 'REJECTED',
+) {
   claimReviewLoading.value = claimId
   claimReviewError.value = null
+  const adminNote = newStatus === 'REJECTED' ? rejectionNoteInputs.value[claimId]?.trim() || undefined : undefined
   try {
     await gqlRequest(
       `mutation ReviewExternalSourceClaim($input: ReviewExternalSourceClaimInput!) {
         reviewExternalSourceClaim(input: $input) { id status }
       }`,
-      { input: { claimId, newStatus } },
+      { input: { claimId, newStatus, adminNote } },
     )
+    delete rejectionNoteInputs.value[claimId]
     await fetchAdminOverview()
   } catch {
     claimReviewError.value = t('admin.claimReviewError')
@@ -1093,22 +1099,32 @@ async function handleReviewExternalSourceClaim(claimId: string, newStatus: 'VERI
                   <td>{{ claim.createdBy?.displayName ?? '—' }}</td>
                   <td>{{ formatDate(claim.createdAtUtc) }}</td>
                   <td class="actions-cell">
-                    <button
-                      class="btn btn-success btn-sm"
-                      :disabled="claimReviewLoading === claim.id"
-                      :aria-label="t('admin.claimVerifyAriaLabel', { name: claim.group?.name })"
-                      @click="handleReviewExternalSourceClaim(claim.id, 'VERIFIED')"
-                    >
-                      {{ t('admin.verifyClaim') }}
-                    </button>
-                    <button
-                      class="btn btn-danger btn-sm"
-                      :disabled="claimReviewLoading === claim.id"
-                      :aria-label="t('admin.claimRejectAriaLabel', { name: claim.group?.name })"
-                      @click="handleReviewExternalSourceClaim(claim.id, 'REJECTED')"
-                    >
-                      {{ t('admin.rejectClaim') }}
-                    </button>
+                    <textarea
+                      :value="rejectionNoteInputs[claim.id] ?? ''"
+                      class="rejection-note-input"
+                      :placeholder="t('admin.rejectionNotePlaceholder')"
+                      :aria-label="t('admin.rejectionNotePlaceholder')"
+                      rows="2"
+                      @input="rejectionNoteInputs[claim.id] = ($event.target as HTMLTextAreaElement).value"
+                    />
+                    <div class="claim-review-buttons">
+                      <button
+                        class="btn btn-success btn-sm"
+                        :disabled="claimReviewLoading === claim.id"
+                        :aria-label="t('admin.claimVerifyAriaLabel', { name: claim.group?.name })"
+                        @click="handleReviewExternalSourceClaim(claim.id, 'VERIFIED')"
+                      >
+                        {{ t('admin.verifyClaim') }}
+                      </button>
+                      <button
+                        class="btn btn-danger btn-sm"
+                        :disabled="claimReviewLoading === claim.id"
+                        :aria-label="t('admin.claimRejectAriaLabel', { name: claim.group?.name })"
+                        @click="handleReviewExternalSourceClaim(claim.id, 'REJECTED')"
+                      >
+                        {{ t('admin.rejectClaim') }}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               </tbody>
@@ -1372,9 +1388,27 @@ tr:hover td {
 
 .actions-cell {
   display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  align-items: flex-start;
+}
+
+.rejection-note-input {
+  width: 100%;
+  min-width: 14rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8125rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  resize: vertical;
+}
+
+.claim-review-buttons {
+  display: flex;
   gap: 0.375rem;
   flex-wrap: wrap;
-  align-items: center;
 }
 
 .btn-success {

@@ -44,6 +44,7 @@ const newSourceType = ref<ExternalSourceType>('MEETUP')
 const newSourceUrl = ref('')
 const addingSource = ref(false)
 const syncResults = ref<Record<string, SyncResult>>({})
+const confirmRemoveClaimId = ref<string | null>(null)
 
 // Preview-and-select state
 const previewClaimId = ref<string | null>(null)
@@ -277,9 +278,16 @@ async function handleAddSource() {
 }
 
 async function handleRemoveSource(claimId: string) {
+  confirmRemoveClaimId.value = claimId
+}
+
+async function confirmRemoveSource() {
+  const claimId = confirmRemoveClaimId.value
+  if (!claimId) return
   sourceError.value = null
   try {
     await communitiesStore.removeExternalSource(claimId)
+    confirmRemoveClaimId.value = null
     externalSources.value = externalSources.value.filter((s) => s.id !== claimId)
     delete syncResults.value[claimId]
     if (previewClaimId.value === claimId) {
@@ -642,6 +650,13 @@ function memberCountText(count: number): string {
                       :class="source.status.toLowerCase().replace('_', '-')"
                     >{{ claimStatusLabel(source.status) }}</span>
                   </div>
+                  <!-- Rejection note shown to the community admin -->
+                  <div v-if="source.status === 'REJECTED'" class="rejection-note">
+                    <span v-if="source.adminNote" role="alert">
+                      {{ t('community.claimRejectedNote', { note: source.adminNote }) }}
+                    </span>
+                    <span v-else role="alert">{{ t('community.claimRejectedNoNote') }}</span>
+                  </div>
                   <div class="source-sync-info">
                     <span class="last-sync-text">
                       {{
@@ -654,7 +669,25 @@ function memberCountText(count: number): string {
                       {{ syncResults[source.id]!.summary }}
                     </span>
                   </div>
-                  <div class="source-actions">
+                  <!-- Inline removal confirmation dialog -->
+                  <div
+                    v-if="confirmRemoveClaimId === source.id"
+                    class="remove-confirm"
+                    role="alertdialog"
+                    :aria-label="t('community.removeSourceConfirmHeading')"
+                  >
+                    <p class="remove-confirm-heading">{{ t('community.removeSourceConfirmHeading') }}</p>
+                    <p class="remove-confirm-body">{{ t('community.removeSourceConfirmBody') }}</p>
+                    <div class="remove-confirm-actions">
+                      <button class="btn btn-sm btn-danger" @click="confirmRemoveSource">
+                        {{ t('community.removeSourceConfirmYes') }}
+                      </button>
+                      <button class="btn btn-sm btn-ghost" @click="confirmRemoveClaimId = null">
+                        {{ t('community.removeSourceConfirmNo') }}
+                      </button>
+                    </div>
+                  </div>
+                  <div v-else class="source-actions">
                     <button
                       class="btn btn-sm btn-primary"
                       :disabled="previewClaimId === source.id || source.status !== 'VERIFIED'"
@@ -1226,6 +1259,40 @@ function memberCountText(count: number): string {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+
+.rejection-note {
+  font-size: 0.8125rem;
+  color: #b91c1c;
+  background: #fef2f2;
+  padding: 0.375rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border-left: 3px solid #b91c1c;
+}
+
+.remove-confirm {
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 1rem;
+}
+
+.remove-confirm-heading {
+  font-weight: 600;
+  font-size: 0.9375rem;
+  margin: 0 0 0.25rem;
+  color: var(--color-text-primary);
+}
+
+.remove-confirm-body {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  margin: 0 0 0.75rem;
+}
+
+.remove-confirm-actions {
+  display: flex;
+  gap: 0.5rem;
 }
 
 .source-error {

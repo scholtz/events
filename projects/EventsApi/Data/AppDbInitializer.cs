@@ -465,6 +465,7 @@ public sealed class AppDbInitializer(
                     "LastSyncOutcome" TEXT NULL,
                     "LastSyncImportedCount" INTEGER NULL,
                     "LastSyncSkippedCount" INTEGER NULL,
+                    "AdminNote" TEXT NULL,
                     CONSTRAINT "FK_ExternalSourceClaims_CommunityGroups_GroupId" FOREIGN KEY ("GroupId") REFERENCES "CommunityGroups" ("Id") ON DELETE CASCADE,
                     CONSTRAINT "FK_ExternalSourceClaims_Users_CreatedByUserId" FOREIGN KEY ("CreatedByUserId") REFERENCES "Users" ("Id") ON DELETE RESTRICT
                 );
@@ -473,6 +474,22 @@ public sealed class AppDbInitializer(
                 """,
                 cancellationToken);
         }
+        else
+        {
+            // Migrate existing ExternalSourceClaims tables that predate the AdminNote column.
+            await EnsureExternalSourceClaimColumnAsync("AdminNote", cancellationToken);
+        }
+
+        // Add the deduplication index on Events(ExternalSourceClaimId, ExternalSourceEventId)
+        // if it doesn't exist yet (new databases have it via EF; existing databases need migration).
+        await EnsureIndexAsync(
+            "IX_Events_ExternalSourceClaimId_ExternalSourceEventId",
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_Events_ExternalSourceClaimId_ExternalSourceEventId"
+                ON "Events" ("ExternalSourceClaimId", "ExternalSourceEventId")
+                WHERE "ExternalSourceClaimId" IS NOT NULL AND "ExternalSourceEventId" IS NOT NULL;
+            """,
+            cancellationToken);
 
         // ── ScheduledFeaturedEvents table ─────────────────────────────────────
         if (!await TableExistsAsync("ScheduledFeaturedEvents", cancellationToken))
@@ -565,6 +582,55 @@ public sealed class AppDbInitializer(
         await _dbContext.Database.ExecuteSqlRawAsync(commandText, cancellationToken);
     }
 
+    /// <summary>
+    /// Generic helper: adds a column to an existing table only if the column is absent.
+    /// The caller is responsible for providing the correct DDL snippet.
+    /// </summary>
+    private async Task EnsureColumnAsync(
+        string tableName,
+        string columnName,
+        string ddlSnippet,
+        CancellationToken cancellationToken)
+    {
+        if (await TableColumnExistsAsync(tableName, columnName, cancellationToken))
+        {
+            return;
+        }
+
+        await _dbContext.Database.ExecuteSqlRawAsync(ddlSnippet, cancellationToken);
+    }
+
+    private async Task EnsureExternalSourceClaimColumnAsync(string columnName, CancellationToken cancellationToken)
+    {
+        var ddl = columnName switch
+        {
+            "AdminNote" => """ALTER TABLE "ExternalSourceClaims" ADD COLUMN "AdminNote" TEXT NULL;""",
+            _ => throw new InvalidOperationException($"Unsupported ExternalSourceClaims column '{columnName}'.")
+        };
+
+        await EnsureColumnAsync("ExternalSourceClaims", columnName, ddl, cancellationToken);
+    }
+
+    /// <summary>
+    /// Executes a DDL statement only if the specified index does not yet exist in sqlite_master.
+    /// Idempotent — safe to call on every startup.
+    /// </summary>
+    private async Task EnsureIndexAsync(string indexName, string ddl, CancellationToken cancellationToken)
+    {
+        var connection = (SqliteConnection)_dbContext.Database.GetDbConnection();
+        if (connection.State != ConnectionState.Open)
+            await connection.OpenAsync(cancellationToken);
+
+        await using var checkCmd = connection.CreateCommand();
+        checkCmd.CommandText = "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = $name LIMIT 1;";
+        checkCmd.Parameters.AddWithValue("$name", indexName);
+        var exists = await checkCmd.ExecuteScalarAsync(cancellationToken);
+        if (exists is not null)
+            return;
+
+        await _dbContext.Database.ExecuteSqlRawAsync(ddl, cancellationToken);
+    }
+
     private async Task<bool> TableExistsAsync(string tableName, CancellationToken cancellationToken)
     {
         var connection = (SqliteConnection)_dbContext.Database.GetDbConnection();
@@ -594,6 +660,7 @@ public sealed class AppDbInitializer(
             "Events" => """PRAGMA table_info("Events");""",
             "SavedSearches" => """PRAGMA table_info("SavedSearches");""",
             "Domains" => """PRAGMA table_info("Domains");""",
+            "ExternalSourceClaims" => """PRAGMA table_info("ExternalSourceClaims");""",
             _ => throw new InvalidOperationException($"Unsupported schema table '{tableName}'.")
         };
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);

@@ -597,6 +597,7 @@ export default {
     claimVerifyAriaLabel: 'Anspruch von {name} verifizieren',
     claimRejectAriaLabel: 'Anspruch von {name} ablehnen',
     claimReviewError: 'Überprüfung des Anspruchs fehlgeschlagen. Bitte versuchen Sie es erneut.',
+    rejectionNotePlaceholder: 'Optional: Begründen Sie, warum dieser Anspruch abgelehnt wird',
     tabCommunities: 'Communitys',
     allCommunityGroupsHeading: 'Alle Community-Gruppen',
     allCommunityGroupsDescription: 'Plattformweite Übersicht aller Community-Gruppen mit Mitgliederzahlen und ausstehenden Beitrittsanfragen.',
@@ -850,5 +851,12 @@ export default {
     importing: 'Wird importiert\u2026',
     importFooterNote:
       'Ausgew\u00e4hlte Veranstaltungen werden zur Moderationspr\u00fcfung eingereicht, bevor sie \u00f6ffentlich sichtbar werden.',
+    removeSourceConfirmHeading: 'Quellenverbindung entfernen?',
+    removeSourceConfirmBody:
+      'Dadurch wird die Verbindung entfernt. Bereits in die Plattform importierte Veranstaltungen werden nicht gelöscht.',
+    removeSourceConfirmYes: 'Entfernen',
+    removeSourceConfirmNo: 'Abbrechen',
+    claimRejectedNote: 'Abgelehnt: {note}',
+    claimRejectedNoNote: 'Dieser Anspruch wurde vom Plattformadministrator abgelehnt.',
   },
 }

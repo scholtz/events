@@ -50,4 +50,10 @@ public sealed class ExternalSourceClaim
 
     /// <summary>Number of events skipped (duplicate) in the last sync.</summary>
     public int? LastSyncSkippedCount { get; set; }
+
+    /// <summary>
+    /// Optional note recorded by the platform admin when reviewing this claim.
+    /// Typically used to communicate a rejection reason to the community administrator.
+    /// </summary>
+    public string? AdminNote { get; set; }
 }

@@ -616,6 +616,7 @@ export default {
     claimVerifyAriaLabel: 'Verify claim from {name}',
     claimRejectAriaLabel: 'Reject claim from {name}',
     claimReviewError: 'Failed to review claim. Please try again.',
+    rejectionNotePlaceholder: 'Optional: explain why this claim is being rejected',
     tabCommunities: 'Communities',
     allCommunityGroupsHeading: 'All Community Groups',
     allCommunityGroupsDescription: 'Platform-wide overview of all community groups, their membership counts, and pending join requests.',
@@ -875,5 +876,12 @@ export default {
     importing: 'Importing\u2026',
     importFooterNote:
       'Selected events will be submitted for moderation review before they become publicly visible.',
+    removeSourceConfirmHeading: 'Remove source connection?',
+    removeSourceConfirmBody:
+      "This will remove the connection. Events already imported into the platform will not be deleted.",
+    removeSourceConfirmYes: 'Remove',
+    removeSourceConfirmNo: 'Cancel',
+    claimRejectedNote: 'Rejected: {note}',
+    claimRejectedNoNote: 'This claim was rejected by the platform administrator.',
   },
 }
