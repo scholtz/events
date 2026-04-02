@@ -205,6 +205,7 @@ export type MockExternalSourceClaim = {
   lastSyncOutcome: string | null
   lastSyncImportedCount: number | null
   lastSyncSkippedCount: number | null
+  adminNote: string | null
 }
 
 export type MockExternalEventPreview = {
@@ -1939,6 +1940,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         lastSyncOutcome: null,
         lastSyncImportedCount: null,
         lastSyncSkippedCount: null,
+        adminNote: null,
       }
       state.externalSourceClaims.push(claim)
       await route.fulfill({
@@ -2107,6 +2109,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         return
       }
       claim.status = input.newStatus as MockExternalSourceClaim['status']
+      if (input.adminNote) claim.adminNote = input.adminNote as string
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -2437,6 +2440,7 @@ export function makePendingReviewClaim(
     lastSyncOutcome: null,
     lastSyncImportedCount: null,
     lastSyncSkippedCount: null,
+    adminNote: null,
     ...overrides,
   }
 }
@@ -2459,6 +2463,7 @@ export function makeVerifiedClaim(
     lastSyncOutcome: null,
     lastSyncImportedCount: null,
     lastSyncSkippedCount: null,
+    adminNote: null,
     ...overrides,
   }
 }

@@ -465,6 +465,7 @@ public sealed class AppDbInitializer(
                     "LastSyncOutcome" TEXT NULL,
                     "LastSyncImportedCount" INTEGER NULL,
                     "LastSyncSkippedCount" INTEGER NULL,
+                    "AdminNote" TEXT NULL,
                     CONSTRAINT "FK_ExternalSourceClaims_CommunityGroups_GroupId" FOREIGN KEY ("GroupId") REFERENCES "CommunityGroups" ("Id") ON DELETE CASCADE,
                     CONSTRAINT "FK_ExternalSourceClaims_Users_CreatedByUserId" FOREIGN KEY ("CreatedByUserId") REFERENCES "Users" ("Id") ON DELETE RESTRICT
                 );
@@ -472,6 +473,11 @@ public sealed class AppDbInitializer(
                     ON "ExternalSourceClaims" ("GroupId", "SourceType", "SourceIdentifier");
                 """,
                 cancellationToken);
+        }
+        else
+        {
+            // Migrate existing ExternalSourceClaims tables that predate the AdminNote column.
+            await EnsureExternalSourceClaimColumnAsync("AdminNote", cancellationToken);
         }
 
         // ── ScheduledFeaturedEvents table ─────────────────────────────────────
@@ -565,6 +571,22 @@ public sealed class AppDbInitializer(
         await _dbContext.Database.ExecuteSqlRawAsync(commandText, cancellationToken);
     }
 
+    private async Task EnsureExternalSourceClaimColumnAsync(string columnName, CancellationToken cancellationToken)
+    {
+        if (await TableColumnExistsAsync("ExternalSourceClaims", columnName, cancellationToken))
+        {
+            return;
+        }
+
+        var commandText = columnName switch
+        {
+            "AdminNote" => """ALTER TABLE "ExternalSourceClaims" ADD COLUMN "AdminNote" TEXT NULL;""",
+            _ => throw new InvalidOperationException($"Unsupported ExternalSourceClaims column '{columnName}'.")
+        };
+
+        await _dbContext.Database.ExecuteSqlRawAsync(commandText, cancellationToken);
+    }
+
     private async Task<bool> TableExistsAsync(string tableName, CancellationToken cancellationToken)
     {
         var connection = (SqliteConnection)_dbContext.Database.GetDbConnection();
@@ -594,6 +616,7 @@ public sealed class AppDbInitializer(
             "Events" => """PRAGMA table_info("Events");""",
             "SavedSearches" => """PRAGMA table_info("SavedSearches");""",
             "Domains" => """PRAGMA table_info("Domains");""",
+            "ExternalSourceClaims" => """PRAGMA table_info("ExternalSourceClaims");""",
             _ => throw new InvalidOperationException($"Unsupported schema table '{tableName}'.")
         };
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);

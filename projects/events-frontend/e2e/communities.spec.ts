@@ -546,9 +546,77 @@ test.describe('External source claims (admin)', () => {
     await page.goto('/community/prague-crypto-circle')
 
     await expect(page.locator('.source-row')).toHaveCount(1)
+    // First click shows the inline confirmation dialog
     await page.locator('.source-row').getByRole('button', { name: 'Remove' }).click()
+    await expect(page.locator('.remove-confirm')).toBeVisible()
+    await expect(page.getByRole('alertdialog')).toBeVisible()
+    // Confirm the removal
+    await page.locator('.remove-confirm').getByRole('button', { name: 'Remove' }).click()
     await expect(page.locator('.source-row')).toHaveCount(0)
     await expect(page.locator('.empty-sources')).toBeVisible()
+  })
+
+  test('remove confirmation dialog can be cancelled', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makePendingReviewClaim(group.id)
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+    state.externalSourceClaims.push(claim)
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+
+    await expect(page.locator('.source-row')).toHaveCount(1)
+    await page.locator('.source-row').getByRole('button', { name: 'Remove' }).click()
+    await expect(page.locator('.remove-confirm')).toBeVisible()
+    // Cancel — source should still be there
+    await page.locator('.remove-confirm').getByRole('button', { name: 'Cancel' }).click()
+    await expect(page.locator('.remove-confirm')).not.toBeVisible()
+    await expect(page.locator('.source-row')).toHaveCount(1)
+  })
+
+  test('rejected claim shows rejection note to community admin', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makePendingReviewClaim(group.id, {
+      status: 'REJECTED',
+      adminNote: 'We could not verify ownership of this Meetup group.',
+    })
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+    state.externalSourceClaims.push(claim)
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+
+    await expect(page.locator('.rejection-note')).toBeVisible()
+    await expect(page.locator('.rejection-note')).toContainText(
+      'We could not verify ownership of this Meetup group.',
+    )
+  })
+
+  test('rejected claim without note shows generic rejection message', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makePendingReviewClaim(group.id, { status: 'REJECTED', adminNote: null })
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+    state.externalSourceClaims.push(claim)
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+
+    await expect(page.locator('.rejection-note')).toBeVisible()
+    await expect(page.locator('.rejection-note')).toContainText(
+      'This claim was rejected by the platform administrator.',
+    )
   })
 
   test('admin can trigger sync on a verified claim and sees result', async ({ page }) => {

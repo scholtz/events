@@ -1882,6 +1882,8 @@ public sealed class Mutation
                 "CLAIM_NOT_PENDING");
 
         claim.Status = input.NewStatus;
+        if (input.AdminNote is { Length: > 0 })
+            claim.AdminNote = input.AdminNote.Trim();
         await dbContext.SaveChangesAsync(cancellationToken);
         return claim;
     }

@@ -597,6 +597,7 @@ export default {
     claimVerifyAriaLabel: 'Overiť nárok od {name}',
     claimRejectAriaLabel: 'Zamietnuť nárok od {name}',
     claimReviewError: 'Kontrola nároku zlyhala. Skúste to prosím znovu.',
+    rejectionNotePlaceholder: 'Voliteľné: vysvetlite, prečo sa tento nárok zamieta',
     tabCommunities: 'Komunity',
     allCommunityGroupsHeading: 'Všetky komunitné skupiny',
     allCommunityGroupsDescription: 'Prehľad všetkých komunitných skupín na platforme vrátane počtu členov a čakajúcich žiadostí.',
@@ -850,5 +851,12 @@ export default {
     importing: 'Importujem\u2026',
     importFooterNote:
       'Vybrané podujatia budú odoslané na moderátorskú kontrolu pred tým, ako budú verejne viditeľné.',
+    removeSourceConfirmHeading: 'Odstrániť prepojenie zdroja?',
+    removeSourceConfirmBody:
+      'Tým sa odstráni prepojenie. Udalosti, ktoré už boli importované do platformy, sa nevymažú.',
+    removeSourceConfirmYes: 'Odstrániť',
+    removeSourceConfirmNo: 'Zrušiť',
+    claimRejectedNote: 'Zamietnuté: {note}',
+    claimRejectedNoNote: 'Tento nárok bol zamietnutý správcom platformy.',
   },
 }

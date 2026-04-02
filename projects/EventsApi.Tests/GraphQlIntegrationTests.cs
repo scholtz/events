@@ -11449,6 +11449,65 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task ReviewExternalSourceClaim_WithAdminNote_StoresNoteOnRejection()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("note-admin@example.com", "Note Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var owner = CreateUser("note-owner@example.com", "Note Owner");
+            dbContext.Users.AddRange(admin, owner);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Note Group", Slug = "note-group",
+                IsActive = true, CreatedByUserId = owner.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/note-group",
+                SourceIdentifier = "note-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.PendingReview,
+                CreatedByUserId = owner.Id,
+            };
+            claimId = claim.Id;
+            dbContext.ExternalSourceClaims.Add(claim);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation ReviewClaim($input: ReviewExternalSourceClaimInput!) {
+              reviewExternalSourceClaim(input: $input) { id status adminNote }
+            }
+            """,
+            new { input = new { claimId, newStatus = "REJECTED", adminNote = "We could not verify your ownership of this group." } });
+
+        var result = doc.RootElement.GetProperty("data").GetProperty("reviewExternalSourceClaim");
+        Assert.Equal("REJECTED", result.GetProperty("status").GetString());
+        Assert.Equal("We could not verify your ownership of this group.", result.GetProperty("adminNote").GetString());
+
+        // Verify persisted in DB
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<EventsApi.Data.AppDbContext>();
+        var persisted = await db.ExternalSourceClaims.FindAsync(claimId);
+        Assert.NotNull(persisted);
+        Assert.Equal("We could not verify your ownership of this group.", persisted.AdminNote);
+    }
+
+    [Fact]
     public async Task ReviewExternalSourceClaim_NonAdmin_ReturnsForbidden()
     {
         await using var factory = new EventsApiWebApplicationFactory();

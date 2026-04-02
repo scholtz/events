@@ -27,6 +27,7 @@ const EXTERNAL_SOURCE_CLAIM_FIELDS = `
   id groupId sourceType sourceUrl sourceIdentifier status
   createdByUserId createdAtUtc
   lastSyncAtUtc lastSyncOutcome lastSyncImportedCount lastSyncSkippedCount
+  adminNote
 `
 
 export const useCommunitiesStore = defineStore('communities', () => {
