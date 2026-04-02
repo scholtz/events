@@ -33,11 +33,8 @@
 
 import { expect, test } from '@playwright/test'
 import {
-  makeApprovedEvent,
-  makeAdminUser,
   makeTechDomain,
   setupMockApi,
-  loginAs,
 } from './helpers/mock-api'
 
 // ─────────────────────────────────────────────────────────────────────────────

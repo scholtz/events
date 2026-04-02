@@ -574,7 +574,7 @@ test.describe('External source claims (admin)', () => {
     await expect(page.locator('.remove-confirm')).toBeVisible()
     // Cancel — source should still be there
     await page.locator('.remove-confirm').getByRole('button', { name: 'Cancel' }).click()
-    await expect(page.locator('.remove-confirm')).not.toBeVisible()
+    await expect(page.locator('.remove-confirm')).toBeHidden()
     await expect(page.locator('.source-row')).toHaveCount(1)
   })
 
