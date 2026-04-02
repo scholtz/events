@@ -426,6 +426,31 @@ public sealed class AppDbInitializer(
                 """,
                 cancellationToken);
         }
+        else
+        {
+            // Migrate existing groups: for each group that has no Owner yet, promote the
+            // earliest active Admin (the group creator) to Owner to enforce ownership semantics.
+            await _dbContext.Database.ExecuteSqlRawAsync(
+                """
+                UPDATE "CommunityMemberships"
+                SET "Role" = 'Owner'
+                WHERE "Role" = 'Admin'
+                  AND "Status" = 'Active'
+                  AND "Id" IN (
+                      SELECT cm."Id"
+                      FROM "CommunityMemberships" cm
+                      WHERE cm."Role" = 'Admin'
+                        AND cm."Status" = 'Active'
+                        AND NOT EXISTS (
+                            SELECT 1 FROM "CommunityMemberships" o
+                            WHERE o."GroupId" = cm."GroupId" AND o."Role" = 'Owner' AND o."Status" = 'Active'
+                        )
+                      GROUP BY cm."GroupId"
+                      HAVING cm."CreatedAtUtc" = MIN(cm."CreatedAtUtc")
+                  );
+                """,
+                cancellationToken);
+        }
 
         // ── CommunityGroupEvents table ────────────────────────────────────────
         if (!await TableExistsAsync("CommunityGroupEvents", cancellationToken))

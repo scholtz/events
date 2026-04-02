@@ -237,7 +237,7 @@ export interface FavoriteEvent {
 
 export type CommunityVisibility = 'PUBLIC' | 'PRIVATE'
 
-export type CommunityMemberRole = 'ADMIN' | 'EVENT_MANAGER' | 'MEMBER'
+export type CommunityMemberRole = 'OWNER' | 'ADMIN' | 'EVENT_MANAGER' | 'MEMBER'
 
 export type CommunityMemberStatus = 'ACTIVE' | 'PENDING' | 'REJECTED'
 

@@ -185,7 +185,7 @@ export type MockCommunityMembership = {
   id: string
   groupId: string
   userId: string
-  role: 'ADMIN' | 'EVENT_MANAGER' | 'MEMBER'
+  role: 'OWNER' | 'ADMIN' | 'EVENT_MANAGER' | 'MEMBER'
   status: 'ACTIVE' | 'PENDING' | 'REJECTED'
   createdAtUtc: string
   reviewedAtUtc: string | null
@@ -1723,10 +1723,10 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       }
       state.communityGroups.push(group)
       state.communityMemberships.push({
-        id: `mem-${Date.now()}-admin`,
+        id: `mem-${Date.now()}-owner`,
         groupId: group.id,
         userId,
-        role: 'ADMIN',
+        role: 'OWNER',
         status: 'ACTIVE',
         createdAtUtc: new Date().toISOString(),
         reviewedAtUtc: null,

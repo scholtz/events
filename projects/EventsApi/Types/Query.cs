@@ -845,7 +845,8 @@ public sealed class Query
         {
             var isGroupAdmin = await dbContext.CommunityMemberships.AnyAsync(
                 cm => cm.GroupId == groupId && cm.UserId == userId &&
-                      cm.Role == CommunityMemberRole.Admin && cm.Status == CommunityMemberStatus.Active,
+                      (cm.Role == CommunityMemberRole.Admin || cm.Role == CommunityMemberRole.Owner) &&
+                      cm.Status == CommunityMemberStatus.Active,
                 cancellationToken);
             if (!isGroupAdmin)
                 throw new GraphQLException(
@@ -880,7 +881,8 @@ public sealed class Query
         {
             var isGroupAdmin = await dbContext.CommunityMemberships.AnyAsync(
                 cm => cm.GroupId == groupId && cm.UserId == userId &&
-                      cm.Role == CommunityMemberRole.Admin && cm.Status == CommunityMemberStatus.Active,
+                      (cm.Role == CommunityMemberRole.Admin || cm.Role == CommunityMemberRole.Owner) &&
+                      cm.Status == CommunityMemberStatus.Active,
                 cancellationToken);
             if (!isGroupAdmin)
                 throw new GraphQLException(
@@ -919,7 +921,8 @@ public sealed class Query
         {
             var isGroupAdmin = await dbContext.CommunityMemberships.AnyAsync(
                 cm => cm.GroupId == groupId && cm.UserId == userId &&
-                      cm.Role == CommunityMemberRole.Admin && cm.Status == CommunityMemberStatus.Active,
+                      (cm.Role == CommunityMemberRole.Admin || cm.Role == CommunityMemberRole.Owner) &&
+                      cm.Status == CommunityMemberStatus.Active,
                 cancellationToken);
             if (!isGroupAdmin)
                 throw new GraphQLException(
@@ -966,7 +969,8 @@ public sealed class Query
         {
             var isGroupAdmin = await dbContext.CommunityMemberships.AnyAsync(
                 cm => cm.GroupId == claim.GroupId && cm.UserId == userId &&
-                      cm.Role == CommunityMemberRole.Admin && cm.Status == CommunityMemberStatus.Active,
+                      (cm.Role == CommunityMemberRole.Admin || cm.Role == CommunityMemberRole.Owner) &&
+                      cm.Status == CommunityMemberStatus.Active,
                 cancellationToken);
             if (!isGroupAdmin)
                 throw new GraphQLException(

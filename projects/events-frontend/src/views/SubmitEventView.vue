@@ -58,7 +58,7 @@ watch(
       myManagedGroups.value = memberships.filter(
         (m) =>
           m.status === 'ACTIVE' &&
-          (m.role === 'ADMIN' || m.role === 'EVENT_MANAGER'),
+          (m.role === 'OWNER' || m.role === 'ADMIN' || m.role === 'EVENT_MANAGER'),
       )
     } catch {
       // Not critical — submitting without a group still works

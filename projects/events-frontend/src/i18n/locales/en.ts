@@ -777,6 +777,7 @@ export default {
     memberRole: 'Member',
     eventManagerRole: 'Event Manager',
     adminRole: 'Admin',
+    ownerRole: 'Owner',
     eventsHeading: 'Community Events',
     noEvents: 'No events yet',
     noEventsDescription: 'This community has not associated any events yet.',
