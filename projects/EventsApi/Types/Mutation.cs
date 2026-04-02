@@ -1160,6 +1160,14 @@ public sealed class Mutation
         return slug;
     }
 
+    /// <summary>
+    /// Returns true when a <see cref="DbUpdateException"/> was caused by a UNIQUE constraint
+    /// violation, which is used to make concurrent import operations idempotent instead of
+    /// returning an error when two syncs race to insert the same external event.
+    /// </summary>
+    private static bool IsUniqueConstraintViolation(DbUpdateException ex) =>
+        ex.InnerException?.Message.Contains("UNIQUE constraint failed", StringComparison.OrdinalIgnoreCase) == true;
+
     // ── Push notification subscription mutations ──────────────────────────────
 
     /// <summary>
@@ -1769,6 +1777,13 @@ public sealed class Mutation
     /// Only group admins (or global admins) may call this.
     /// The claim enters PendingReview status until verified by a platform admin.
     /// </summary>
+    /// <remarks>
+    /// Multi-group claiming is intentionally permitted: two different community groups can each
+    /// connect the same external source (e.g. a Meetup group that both communities track). The
+    /// uniqueness constraint is scoped to (GroupId, SourceType, SourceIdentifier) — a single
+    /// group cannot have two claims to the same source, but other groups may connect it
+    /// independently. Each claim drives its own verification workflow and event-import pipeline.
+    /// </remarks>
     [Authorize]
     public async Task<ExternalSourceClaim> AddExternalSourceClaimAsync(
         Guid groupId,
@@ -1871,6 +1886,11 @@ public sealed class Mutation
 
         if (input.NewStatus == ExternalSourceClaimStatus.PendingReview)
             throw CreateError("Cannot set a claim back to PendingReview.", "INVALID_STATUS");
+
+        // Validate AdminNote length before doing any DB work.
+        // Check the raw (un-trimmed) length — consistent with the [MaxLength(2000)] annotation on the input type.
+        if (input.AdminNote is { Length: > 2000 })
+            throw CreateError("Admin note must not exceed 2 000 characters.", "VALIDATION_ERROR");
 
         var claim = await dbContext.ExternalSourceClaims.SingleOrDefaultAsync(
             esc => esc.Id == input.ClaimId, cancellationToken)
@@ -2033,6 +2053,23 @@ public sealed class Mutation
                 await dbContext.SaveChangesAsync(cancellationToken);
                 importedCount++;
             }
+            catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+            {
+                // Another concurrent sync inserted this event between our AnyAsync check and
+                // SaveChangesAsync. Treat as already-imported (skip) rather than an error.
+                logger.LogInformation(
+                    "ImportExternalEvents for claim {ClaimId}: event '{ExternalId}' already imported (concurrent insert).",
+                    claimId, ext.ExternalId);
+
+                foreach (var entry in dbContext.ChangeTracker.Entries()
+                             .Where(e => e.State == EntityState.Added)
+                             .ToList())
+                {
+                    entry.State = EntityState.Detached;
+                }
+
+                skippedCount++;
+            }
             catch (Exception ex)
             {
                 logger.LogError(ex,
@@ -2174,6 +2211,23 @@ public sealed class Mutation
 
                 await dbContext.SaveChangesAsync(cancellationToken);
                 importedCount++;
+            }
+            catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+            {
+                // Concurrent sync inserted this event between our AnyAsync check and SaveChangesAsync.
+                // Treat as already-imported (skip) to keep the operation idempotent.
+                logger.LogInformation(
+                    "Sync for claim {ClaimId}: event '{ExternalId}' already imported (concurrent insert).",
+                    claimId, ext.ExternalId);
+
+                foreach (var entry in dbContext.ChangeTracker.Entries()
+                             .Where(e => e.State == EntityState.Added)
+                             .ToList())
+                {
+                    entry.State = EntityState.Detached;
+                }
+
+                skippedCount++;
             }
             catch (Exception ex)
             {

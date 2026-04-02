@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using EventsApi.Data.Entities;
 
 namespace EventsApi.Types;
@@ -363,7 +364,17 @@ public sealed class ReviewExternalSourceClaimInput
     /// </summary>
     public ExternalSourceClaimStatus NewStatus { get; init; }
 
-    /// <summary>Optional admin note attached to the review decision (e.g. rejection reason).</summary>
+    /// <summary>
+    /// Optional admin note attached to the review decision (e.g. rejection reason).
+    /// Maximum 2 000 characters. Only stored when NewStatus is REJECTED; cleared on VERIFIED.
+    /// </summary>
+    /// <remarks>
+    /// The <see cref="MaxLengthAttribute"/> here serves as documentation and may inform tooling/
+    /// Swagger annotations; the enforcement is done explicitly in
+    /// <c>ReviewExternalSourceClaimAsync</c> because HotChocolate does not enforce DataAnnotations
+    /// on input types by default.
+    /// </remarks>
+    [MaxLength(2000)]
     public string? AdminNote { get; init; }
 }
 

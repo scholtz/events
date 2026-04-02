@@ -480,6 +480,17 @@ public sealed class AppDbInitializer(
             await EnsureExternalSourceClaimColumnAsync("AdminNote", cancellationToken);
         }
 
+        // Add the deduplication index on Events(ExternalSourceClaimId, ExternalSourceEventId)
+        // if it doesn't exist yet (new databases have it via EF; existing databases need migration).
+        await EnsureIndexAsync(
+            "IX_Events_ExternalSourceClaimId_ExternalSourceEventId",
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_Events_ExternalSourceClaimId_ExternalSourceEventId"
+                ON "Events" ("ExternalSourceClaimId", "ExternalSourceEventId")
+                WHERE "ExternalSourceClaimId" IS NOT NULL AND "ExternalSourceEventId" IS NOT NULL;
+            """,
+            cancellationToken);
+
         // ── ScheduledFeaturedEvents table ─────────────────────────────────────
         if (!await TableExistsAsync("ScheduledFeaturedEvents", cancellationToken))
         {
@@ -598,6 +609,26 @@ public sealed class AppDbInitializer(
         };
 
         await EnsureColumnAsync("ExternalSourceClaims", columnName, ddl, cancellationToken);
+    }
+
+    /// <summary>
+    /// Executes a DDL statement only if the specified index does not yet exist in sqlite_master.
+    /// Idempotent — safe to call on every startup.
+    /// </summary>
+    private async Task EnsureIndexAsync(string indexName, string ddl, CancellationToken cancellationToken)
+    {
+        var connection = (SqliteConnection)_dbContext.Database.GetDbConnection();
+        if (connection.State != ConnectionState.Open)
+            await connection.OpenAsync(cancellationToken);
+
+        await using var checkCmd = connection.CreateCommand();
+        checkCmd.CommandText = "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = $name LIMIT 1;";
+        checkCmd.Parameters.AddWithValue("$name", indexName);
+        var exists = await checkCmd.ExecuteScalarAsync(cancellationToken);
+        if (exists is not null)
+            return;
+
+        await _dbContext.Database.ExecuteSqlRawAsync(ddl, cancellationToken);
     }
 
     private async Task<bool> TableExistsAsync(string tableName, CancellationToken cancellationToken)
