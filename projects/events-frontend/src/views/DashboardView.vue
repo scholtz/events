@@ -365,6 +365,7 @@ function eventRecommendationClass(item: EventAnalyticsItem): string {
 
 function communityRoleLabel(role: string): string {
   switch (role) {
+    case 'OWNER': return t('community.ownerRole')
     case 'ADMIN': return t('community.adminRole')
     case 'EVENT_MANAGER': return t('community.eventManagerRole')
     default: return t('community.memberRole')

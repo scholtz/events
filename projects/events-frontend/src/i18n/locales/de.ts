@@ -755,6 +755,7 @@ export default {
     memberRole: 'Mitglied',
     eventManagerRole: 'Veranstaltungsmanager',
     adminRole: 'Administrator',
+    ownerRole: 'Inhaber',
     eventsHeading: 'Community-Veranstaltungen',
     noEvents: 'Noch keine Veranstaltungen',
     noEventsDescription: 'Diese Community hat noch keine Veranstaltungen hinzugef\u00fcgt.',

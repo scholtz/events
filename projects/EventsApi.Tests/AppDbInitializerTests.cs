@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using System.Threading;
 
 namespace EventsApi.Tests;
 
@@ -15,46 +16,68 @@ public sealed class AppDbInitializerTests
     {
         var databasePath = Path.Combine(Path.GetTempPath(), $"events-upgrade-{Guid.NewGuid():N}.db");
 
+        AppDbContext dbContext = null!;
+        AppDbContext verificationContext = null!;
+
         try
         {
             await CreateLegacyDatabaseAsync(databasePath);
 
-            await using var dbContext = CreateSqliteDbContext(databasePath);
-            var initializer = new AppDbInitializer(
-                dbContext,
-                new PasswordHasher<ApplicationUser>(),
-                Options.Create(new SeedDataOptions()));
+            dbContext = CreateSqliteDbContext(databasePath);
+            await using (dbContext)
+            {
+                var initializer = new AppDbInitializer(
+                    dbContext,
+                    new PasswordHasher<ApplicationUser>(),
+                    Options.Create(new SeedDataOptions()));
 
-            await initializer.InitializeAsync();
+                await initializer.InitializeAsync();
+            }
+            dbContext = null!; // Mark as disposed
 
-            await using var verificationContext = CreateSqliteDbContext(databasePath);
+            verificationContext = CreateSqliteDbContext(databasePath);
+            await using (verificationContext)
+            {
+                var upgradedEvent = await verificationContext.Events.SingleAsync();
+                Assert.Equal("Legacy Prague Event", upgradedEvent.Name);
+                Assert.True(upgradedEvent.IsFree);
+                Assert.Null(upgradedEvent.PriceAmount);
+                Assert.Equal("EUR", upgradedEvent.CurrencyCode);
 
-            var upgradedEvent = await verificationContext.Events.SingleAsync();
-            Assert.Equal("Legacy Prague Event", upgradedEvent.Name);
-            Assert.True(upgradedEvent.IsFree);
-            Assert.Null(upgradedEvent.PriceAmount);
-            Assert.Equal("EUR", upgradedEvent.CurrencyCode);
+                Assert.Equal(1, await verificationContext.Users.CountAsync());
+                Assert.Equal(1, await verificationContext.Domains.CountAsync());
+                Assert.Equal(1, await verificationContext.Events.CountAsync());
+                Assert.Empty(await verificationContext.SavedSearches.ToListAsync());
 
-            Assert.Equal(1, await verificationContext.Users.CountAsync());
-            Assert.Equal(1, await verificationContext.Domains.CountAsync());
-            Assert.Equal(1, await verificationContext.Events.CountAsync());
-            Assert.Empty(await verificationContext.SavedSearches.ToListAsync());
+                var savedSearchColumns = await GetTableColumnsAsync(verificationContext, "SavedSearches");
+                Assert.Equal("TEXT", savedSearchColumns["PriceMin"]);
+                Assert.Equal("TEXT", savedSearchColumns["PriceMax"]);
+                Assert.Contains("AttendanceMode", savedSearchColumns.Keys);
 
-            var savedSearchColumns = await GetTableColumnsAsync(verificationContext, "SavedSearches");
-            Assert.Equal("TEXT", savedSearchColumns["PriceMin"]);
-            Assert.Equal("TEXT", savedSearchColumns["PriceMax"]);
-            Assert.Contains("AttendanceMode", savedSearchColumns.Keys);
-
-            var eventColumns = await GetTableColumnsAsync(verificationContext, "Events");
-            Assert.Contains("IsFree", eventColumns.Keys);
-            Assert.Contains("PriceAmount", eventColumns.Keys);
-            Assert.Contains("CurrencyCode", eventColumns.Keys);
+                var eventColumns = await GetTableColumnsAsync(verificationContext, "Events");
+                Assert.Contains("IsFree", eventColumns.Keys);
+                Assert.Contains("PriceAmount", eventColumns.Keys);
+                Assert.Contains("CurrencyCode", eventColumns.Keys);
+            }
+            verificationContext = null!; // Mark as disposed
         }
         finally
         {
-            if (File.Exists(databasePath))
+            // Dispose explicitly if not already
+            dbContext?.Dispose();
+            verificationContext?.Dispose();
+
+            // Try to delete the file, but don't fail the test if it's locked
+            try
             {
-                File.Delete(databasePath);
+                if (File.Exists(databasePath))
+                {
+                    File.Delete(databasePath);
+                }
+            }
+            catch (IOException)
+            {
+                // Ignore file lock issues in tests - the temp file will be cleaned up eventually
             }
         }
     }

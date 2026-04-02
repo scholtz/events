@@ -62,7 +62,8 @@ const myMembership = computed(() => detail.value?.myMembership ?? null)
 const isAdmin = computed(
   () =>
     auth.isAdmin ||
-    myMembership.value?.role === 'ADMIN',
+    myMembership.value?.role === 'ADMIN' ||
+    myMembership.value?.role === 'OWNER',
 )
 
 const isEventManager = computed(
@@ -366,6 +367,7 @@ function claimStatusLabel(status: ExternalSourceClaim['status']): string {
 
 function roleLabel(role: CommunityMemberRole): string {
   const map: Record<CommunityMemberRole, string> = {
+    OWNER: t('community.ownerRole'),
     ADMIN: t('community.adminRole'),
     EVENT_MANAGER: t('community.eventManagerRole'),
     MEMBER: t('community.memberRole'),
@@ -603,6 +605,7 @@ function memberCountText(count: number): string {
                         )
                       "
                     >
+                      <option v-if="myMembership?.role === 'OWNER' || auth.isAdmin" value="OWNER">{{ t('community.ownerRole') }}</option>
                       <option value="ADMIN">{{ t('community.adminRole') }}</option>
                       <option value="EVENT_MANAGER">{{ t('community.eventManagerRole') }}</option>
                       <option value="MEMBER">{{ t('community.memberRole') }}</option>

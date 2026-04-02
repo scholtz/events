@@ -755,6 +755,7 @@ export default {
     memberRole: 'Člen',
     eventManagerRole: 'Správca podujatí',
     adminRole: 'Správca',
+    ownerRole: 'Vlastník',
     eventsHeading: 'Podujatia komunity',
     noEvents: 'Zatiaľ žiadne podujatia',
     noEventsDescription: 'Táto komunita zatiaľ nepridala žiadne podujatia.',

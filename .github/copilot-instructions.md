@@ -592,58 +592,9 @@ Events support multiple tags via the `EventTag` junction entity (many-to-many re
 
 Global admins can edit any event. The `canEdit` computed property in `EventDetailView.vue` checks `authStore.isAdmin || event.submittedByUserId === authStore.currentUser?.id`. The `AdminView.vue` events table includes an Edit button (RouterLink to `/edit/:id`) for each event.
 
-## Community groups quality standards
+## Important: Do not implement community groups yet
 
-When implementing or extending community group features (`CommunitiesView.vue`, `CommunityDetailView.vue`, `communities.ts` store, and related backend), always follow these standards.
-
-### Full vertical slice requirement
-Every PR that touches community group features must deliver all of the following:
-1. **Backend**: GraphQL resolver changes (if any) + integration tests
-2. **Frontend**: View and store changes, all three locale files (en.ts, sk.ts, de.ts)
-3. **Mock API**: Handlers for every new mutation in `e2e/helpers/mock-api.ts` (including state mutations so subsequent queries reflect the change)
-4. **E2E tests**: All scenarios described below
-
-### When adding new i18n keys
-Always add the key in **all three** locale files (`en.ts`, `sk.ts`, `de.ts`) in the same commit. A build with a key in `en.ts` but missing from `sk.ts`/`de.ts` will still type-check (TypeScript does not enforce locale key parity) but will silently show the raw key string at runtime in non-English locales, which is a regression.
-
-### Mock API handlers for community mutations
-Every new GraphQL mutation that modifies community state must:
-1. Be handled in `e2e/helpers/mock-api.ts` (check for the mutation name with `query.includes('mutation') && query.includes('MutationName')`)
-2. Update `state` so subsequent queries reflect the change (e.g., `AssociateEventWithGroup` must push to `state.communityGroupEvents` so `CommunityGroupBySlug` returns the event)
-3. Use `MockState` fields for tracking associations (e.g., `communityGroupEvents: { groupId: string; eventId: string }[]`)
-
-### Error state test pattern
-When writing an E2E test for an error state that requires overriding a specific GraphQL operation:
-```ts
-// CORRECT: setupMockApi first (registers catch-all handler), then register the override AFTER
-setupMockApi(page)
-await page.route('**/graphql', async (route) => {
-  const body = JSON.parse(route.request().postData() ?? '{}')
-  if (body.query?.includes('TargetQueryName')) {
-    await route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify({ errors: [{ message: 'Error' }] }) })
-  } else {
-    await route.fallback()  // falls through to setupMockApi's handler
-  }
-})
-```
-Do NOT register the error override before `setupMockApi` — Playwright processes handlers LIFO but `route.fallback()` passes to the next handler.
-
-### E2E test coverage requirements for community pages
-Every community-related change must have tests covering:
-1. Role-based visibility: `isAdmin`, `isEventManager`, `isMember`, `isPending`, unauthenticated — each sees/hides the correct UI sections
-2. Successful action flows: join, request, approve/reject, assign role, associate/disassociate event
-3. Error state: API failure shows `.error-state` with a descriptive heading
-4. Empty state: community with no events, no members, no pending requests
-5. Mobile viewport (390×844): key sections visible and usable
-6. i18n: at least one test per major section in Slovak and German
-
-### Backend test coverage requirements
-Every new GraphQL mutation must have integration tests covering:
-1. Happy path (authorized caller succeeds)
-2. Forbidden path (wrong role returns FORBIDDEN error)
-3. Unauthenticated path (no token returns AUTH_NOT_AUTHORIZED error)
-4. Edge cases (e.g., last admin cannot leave or be demoted)
+Community groups are listed in the ROADMAP as expansion work that is not yet implemented. Do not start implementing community groups, membership management, or related features until explicitly approved. The current product foundation focuses on event discovery, submission, moderation, domain curation, and organizer workflows. Community groups will be added later as a separate initiative.
 
 
 ## i18n string literal safety

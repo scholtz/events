@@ -132,10 +132,10 @@ public sealed class Mutation
                 var membership = await dbContext.CommunityMemberships.SingleOrDefaultAsync(
                     cm => cm.GroupId == groupId && cm.UserId == currentUser.Id && cm.Status == CommunityMemberStatus.Active,
                     cancellationToken);
-                var hasGroupRole = membership?.Role is CommunityMemberRole.Admin or CommunityMemberRole.EventManager;
+                var hasGroupRole = membership?.Role is CommunityMemberRole.Admin or CommunityMemberRole.EventManager or CommunityMemberRole.Owner;
                 if (!hasGroupRole)
                     throw CreateError(
-                        "You must be an active Admin or Event Manager in this community to submit events for it.",
+                        "You must be an active Owner, Admin or Event Manager in this community to submit events for it.",
                         "FORBIDDEN");
             }
 
@@ -1345,7 +1345,7 @@ public sealed class Mutation
     // ── Community group mutations ─────────────────────────────────────────────
 
     /// <summary>
-    /// Creates a new community group. The caller automatically becomes the group admin.
+    /// Creates a new community group. The caller automatically becomes the group owner.
     /// Duplicate slugs return a SLUG_TAKEN error.
     /// </summary>
     [Authorize]
@@ -1382,12 +1382,12 @@ public sealed class Mutation
         dbContext.CommunityGroups.Add(group);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        // Creator becomes first admin
+        // Creator becomes the group owner
         dbContext.CommunityMemberships.Add(new CommunityMembership
         {
             GroupId = group.Id,
             UserId = userId,
-            Role = CommunityMemberRole.Admin,
+            Role = CommunityMemberRole.Owner,
             Status = CommunityMemberStatus.Active,
         });
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -1414,7 +1414,8 @@ public sealed class Mutation
         {
             var isGroupAdmin = await dbContext.CommunityMemberships.AnyAsync(
                 cm => cm.GroupId == groupId && cm.UserId == userId &&
-                      cm.Role == CommunityMemberRole.Admin && cm.Status == CommunityMemberStatus.Active,
+                      (cm.Role == CommunityMemberRole.Admin || cm.Role == CommunityMemberRole.Owner) &&
+                      cm.Status == CommunityMemberStatus.Active,
                 cancellationToken);
             if (!isGroupAdmin)
                 throw CreateError("Only group administrators can update the group.", "FORBIDDEN");
@@ -1541,16 +1542,17 @@ public sealed class Mutation
             cm => cm.GroupId == groupId && cm.UserId == userId, cancellationToken)
             ?? throw CreateError("You are not a member of this group.", "NOT_MEMBER");
 
-        if (membership.Role == CommunityMemberRole.Admin && membership.Status == CommunityMemberStatus.Active)
+        if (membership.Role is CommunityMemberRole.Owner or CommunityMemberRole.Admin &&
+            membership.Status == CommunityMemberStatus.Active)
         {
-            var adminCount = await dbContext.CommunityMemberships.CountAsync(
-                cm => cm.GroupId == groupId && cm.Role == CommunityMemberRole.Admin &&
+            var ownerCount = await dbContext.CommunityMemberships.CountAsync(
+                cm => cm.GroupId == groupId && cm.Role == CommunityMemberRole.Owner &&
                       cm.Status == CommunityMemberStatus.Active,
                 cancellationToken);
-            if (adminCount <= 1)
+            if (ownerCount <= 1 && membership.Role == CommunityMemberRole.Owner)
                 throw CreateError(
-                    "You are the last administrator. Promote another member to admin before leaving.",
-                    "LAST_ADMIN");
+                    "You are the last owner. Transfer ownership to another member before leaving.",
+                    "LAST_OWNER");
         }
 
         dbContext.CommunityMemberships.Remove(membership);
@@ -1582,7 +1584,8 @@ public sealed class Mutation
         {
             var isGroupAdmin = await dbContext.CommunityMemberships.AnyAsync(
                 cm => cm.GroupId == membership.GroupId && cm.UserId == userId &&
-                      cm.Role == CommunityMemberRole.Admin && cm.Status == CommunityMemberStatus.Active,
+                      (cm.Role == CommunityMemberRole.Admin || cm.Role == CommunityMemberRole.Owner) &&
+                      cm.Status == CommunityMemberStatus.Active,
                 cancellationToken);
             if (!isGroupAdmin)
                 throw CreateError("Only group administrators can review membership requests.", "FORBIDDEN");
@@ -1596,8 +1599,9 @@ public sealed class Mutation
     }
 
     /// <summary>
-    /// Assigns a new role to an active group member. Only group admins may call this.
-    /// A group admin cannot demote themselves if they are the last admin.
+    /// Assigns a new role to an active group member. Only group owners and admins may call this.
+    /// Only an owner can promote a member to owner (ownership transfer).
+    /// The last owner cannot be demoted or have their role changed.
     /// </summary>
     [Authorize]
     public async Task<CommunityMembership> AssignMemberRoleAsync(
@@ -1616,25 +1620,37 @@ public sealed class Mutation
             throw CreateError("Role can only be changed for active members.", "INVALID_STATE");
 
         var userId = claimsPrincipal.GetRequiredUserId();
+        bool callerIsGroupOwner = false;
         if (!claimsPrincipal.IsAdmin())
         {
-            var isGroupAdmin = await dbContext.CommunityMemberships.AnyAsync(
+            var callerMembership = await dbContext.CommunityMemberships.SingleOrDefaultAsync(
                 cm => cm.GroupId == membership.GroupId && cm.UserId == userId &&
-                      cm.Role == CommunityMemberRole.Admin && cm.Status == CommunityMemberStatus.Active,
-                cancellationToken);
-            if (!isGroupAdmin)
-                throw CreateError("Only group administrators can assign member roles.", "FORBIDDEN");
-        }
-
-        // Prevent demoting the last admin
-        if (membership.Role == CommunityMemberRole.Admin && role != CommunityMemberRole.Admin)
-        {
-            var adminCount = await dbContext.CommunityMemberships.CountAsync(
-                cm => cm.GroupId == membership.GroupId && cm.Role == CommunityMemberRole.Admin &&
                       cm.Status == CommunityMemberStatus.Active,
                 cancellationToken);
-            if (adminCount <= 1)
-                throw CreateError("Cannot demote the last group administrator.", "LAST_ADMIN");
+            var isGroupAdmin = callerMembership?.Role is CommunityMemberRole.Admin or CommunityMemberRole.Owner;
+            if (!isGroupAdmin)
+                throw CreateError("Only group administrators can assign member roles.", "FORBIDDEN");
+            callerIsGroupOwner = callerMembership?.Role == CommunityMemberRole.Owner;
+        }
+        else
+        {
+            // Global admins are treated as owners for permission purposes
+            callerIsGroupOwner = true;
+        }
+
+        // Only an owner (or global admin) can assign the Owner role (ownership transfer)
+        if (role == CommunityMemberRole.Owner && !callerIsGroupOwner)
+            throw CreateError("Only the group owner can transfer ownership to another member.", "FORBIDDEN");
+
+        // Prevent demoting the last owner
+        if (membership.Role == CommunityMemberRole.Owner && role != CommunityMemberRole.Owner)
+        {
+            var ownerCount = await dbContext.CommunityMemberships.CountAsync(
+                cm => cm.GroupId == membership.GroupId && cm.Role == CommunityMemberRole.Owner &&
+                      cm.Status == CommunityMemberStatus.Active,
+                cancellationToken);
+            if (ownerCount <= 1)
+                throw CreateError("Cannot demote the last group owner. Transfer ownership first.", "LAST_OWNER");
         }
 
         membership.Role = role;
@@ -1663,20 +1679,21 @@ public sealed class Mutation
         {
             var isGroupAdmin = await dbContext.CommunityMemberships.AnyAsync(
                 cm => cm.GroupId == membership.GroupId && cm.UserId == userId &&
-                      cm.Role == CommunityMemberRole.Admin && cm.Status == CommunityMemberStatus.Active,
+                      (cm.Role == CommunityMemberRole.Admin || cm.Role == CommunityMemberRole.Owner) &&
+                      cm.Status == CommunityMemberStatus.Active,
                 cancellationToken);
             if (!isGroupAdmin)
                 throw CreateError("Only group administrators can revoke memberships.", "FORBIDDEN");
         }
 
-        if (membership.Role == CommunityMemberRole.Admin && membership.Status == CommunityMemberStatus.Active)
+        if (membership.Role == CommunityMemberRole.Owner && membership.Status == CommunityMemberStatus.Active)
         {
-            var adminCount = await dbContext.CommunityMemberships.CountAsync(
-                cm => cm.GroupId == membership.GroupId && cm.Role == CommunityMemberRole.Admin &&
+            var ownerCount = await dbContext.CommunityMemberships.CountAsync(
+                cm => cm.GroupId == membership.GroupId && cm.Role == CommunityMemberRole.Owner &&
                       cm.Status == CommunityMemberStatus.Active,
                 cancellationToken);
-            if (adminCount <= 1)
-                throw CreateError("Cannot remove the last group administrator.", "LAST_ADMIN");
+            if (ownerCount <= 1)
+                throw CreateError("Cannot remove the last group owner.", "LAST_OWNER");
         }
 
         dbContext.CommunityMemberships.Remove(membership);
@@ -1715,11 +1732,11 @@ public sealed class Mutation
                 cm => cm.GroupId == input.GroupId && cm.UserId == userId && cm.Status == CommunityMemberStatus.Active,
                 cancellationToken);
 
-            var hasGroupRole = membership?.Role is CommunityMemberRole.Admin or CommunityMemberRole.EventManager;
+            var hasGroupRole = membership?.Role is CommunityMemberRole.Admin or CommunityMemberRole.EventManager or CommunityMemberRole.Owner;
             var isEventOwner = catalogEvent.SubmittedByUserId == userId;
 
             if (!hasGroupRole || !isEventOwner)
-                throw CreateError("You must be a group admin or event manager and own the event to associate it.", "FORBIDDEN");
+                throw CreateError("You must be a group owner, admin, or event manager and own the event to associate it.", "FORBIDDEN");
         }
 
         if (await dbContext.CommunityGroupEvents.AnyAsync(
@@ -1759,7 +1776,8 @@ public sealed class Mutation
         {
             var isGroupAdmin = await dbContext.CommunityMemberships.AnyAsync(
                 cm => cm.GroupId == input.GroupId && cm.UserId == userId &&
-                      cm.Role == CommunityMemberRole.Admin && cm.Status == CommunityMemberStatus.Active,
+                      (cm.Role == CommunityMemberRole.Admin || cm.Role == CommunityMemberRole.Owner) &&
+                      cm.Status == CommunityMemberStatus.Active,
                 cancellationToken);
             if (!isGroupAdmin)
                 throw CreateError("Only group administrators can remove event associations.", "FORBIDDEN");
@@ -1802,7 +1820,8 @@ public sealed class Mutation
         {
             var isGroupAdmin = await dbContext.CommunityMemberships.AnyAsync(
                 cm => cm.GroupId == groupId && cm.UserId == userId &&
-                      cm.Role == CommunityMemberRole.Admin && cm.Status == CommunityMemberStatus.Active,
+                      (cm.Role == CommunityMemberRole.Admin || cm.Role == CommunityMemberRole.Owner) &&
+                      cm.Status == CommunityMemberStatus.Active,
                 cancellationToken);
             if (!isGroupAdmin)
                 throw CreateError("Only group administrators can add external source claims.", "FORBIDDEN");
@@ -1859,7 +1878,8 @@ public sealed class Mutation
         {
             var isGroupAdmin = await dbContext.CommunityMemberships.AnyAsync(
                 cm => cm.GroupId == claim.GroupId && cm.UserId == userId &&
-                      cm.Role == CommunityMemberRole.Admin && cm.Status == CommunityMemberStatus.Active,
+                      (cm.Role == CommunityMemberRole.Admin || cm.Role == CommunityMemberRole.Owner) &&
+                      cm.Status == CommunityMemberStatus.Active,
                 cancellationToken);
             if (!isGroupAdmin)
                 throw CreateError("Only group administrators can remove external source claims.", "FORBIDDEN");
@@ -1954,7 +1974,8 @@ public sealed class Mutation
         {
             var isGroupAdmin = await dbContext.CommunityMemberships.AnyAsync(
                 cm => cm.GroupId == claim.GroupId && cm.UserId == userId &&
-                      cm.Role == CommunityMemberRole.Admin && cm.Status == CommunityMemberStatus.Active,
+                      (cm.Role == CommunityMemberRole.Admin || cm.Role == CommunityMemberRole.Owner) &&
+                      cm.Status == CommunityMemberStatus.Active,
                 cancellationToken);
             if (!isGroupAdmin)
                 throw CreateError("Only group administrators can import external events.", "FORBIDDEN");
@@ -2123,7 +2144,8 @@ public sealed class Mutation
         {
             var isGroupAdmin = await dbContext.CommunityMemberships.AnyAsync(
                 cm => cm.GroupId == claim.GroupId && cm.UserId == userId &&
-                      cm.Role == CommunityMemberRole.Admin && cm.Status == CommunityMemberStatus.Active,
+                      (cm.Role == CommunityMemberRole.Admin || cm.Role == CommunityMemberRole.Owner) &&
+                      cm.Status == CommunityMemberStatus.Active,
                 cancellationToken);
             if (!isGroupAdmin)
                 throw CreateError("Only group administrators can trigger a sync.", "FORBIDDEN");

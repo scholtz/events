@@ -8305,7 +8305,7 @@ public sealed class GraphQlIntegrationTests
             {
                 GroupId = group.Id,
                 UserId = admin.Id,
-                Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Owner,
                 Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
             };
             adminMembershipId = adminMembership.Id;
@@ -8326,7 +8326,7 @@ public sealed class GraphQlIntegrationTests
         });
 
         var body = await response.Content.ReadAsStringAsync();
-        Assert.Contains("LAST_ADMIN", body);
+        Assert.Contains("LAST_OWNER", body);
     }
 
     [Fact]
@@ -8675,7 +8675,7 @@ public sealed class GraphQlIntegrationTests
             {
                 GroupId = group.Id,
                 UserId = admin.Id,
-                Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Owner,
                 Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
             };
             membershipId = membership.Id;
@@ -8698,7 +8698,7 @@ public sealed class GraphQlIntegrationTests
         response.EnsureSuccessStatusCode();
         using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
         Assert.True(document.RootElement.TryGetProperty("errors", out _),
-            "Expected an error when last admin tries to leave the group.");
+            "Expected an error when last owner tries to leave the group.");
     }
 
     [Fact]
@@ -14015,6 +14015,390 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal(1, pending.GetArrayLength());
         Assert.Equal("PENDING", pending[0].GetProperty("status").GetString());
         Assert.Equal("PendingRequester", pending[0].GetProperty("user").GetProperty("displayName").GetString());
+    }
+
+    // ── Owner role tests ──────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task CreateCommunityGroup_CreatorBecomesOwner()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid userId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("cg-owner-creator@example.com", "OwnerCreator");
+            userId = user.Id;
+            dbContext.Users.Add(user);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation CreateGroup($input: CreateCommunityGroupInput!) {
+              createCommunityGroup(input: $input) { id slug }
+            }
+            """,
+            new { input = new { name = "Owner Creator Group", slug = "owner-creator-group", visibility = "PUBLIC" } });
+
+        var group = document.RootElement.GetProperty("data").GetProperty("createCommunityGroup");
+        var slug = group.GetProperty("slug").GetString();
+
+        // Verify the creator's membership role is Owner
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dbCtx = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var groupEntity = await dbCtx.CommunityGroups.SingleAsync(g => g.Slug == slug);
+        var membership = await dbCtx.CommunityMemberships.SingleAsync(
+            m => m.GroupId == groupEntity.Id && m.UserId == userId);
+        Assert.Equal(CommunityMemberRole.Owner, membership.Role);
+        Assert.Equal(CommunityMemberStatus.Active, membership.Status);
+    }
+
+    [Fact]
+    public async Task AssignMemberRole_AdminCannotPromoteToOwner_ReturnsForbidden()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid memberId = Guid.Empty;
+        Guid memberMembershipId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("cg-admin-owner@example.com", "AdminNotOwner");
+            var member = CreateUser("cg-member-owner@example.com", "MemberTarget");
+            adminId = admin.Id;
+            memberId = member.Id;
+            dbContext.Users.AddRange(admin, member);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Admin Cannot Owner Group",
+                Slug = "admin-cannot-owner-group",
+                CreatedByUserId = admin.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            // Admin role (not Owner) — cannot transfer ownership
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = admin.Id,
+                Role = CommunityMemberRole.Admin,
+                Status = CommunityMemberStatus.Active,
+            });
+
+            var memberMembership = new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = member.Id,
+                Role = CommunityMemberRole.Member,
+                Status = CommunityMemberStatus.Active,
+            };
+            memberMembershipId = memberMembership.Id;
+            dbContext.CommunityMemberships.Add(memberMembership);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation AssignRole($membershipId: UUID!, $role: CommunityMemberRole!) {
+                  assignMemberRole(membershipId: $membershipId, role: $role) { id }
+                }
+                """,
+            variables = new { membershipId = memberMembershipId, role = "OWNER" }
+        });
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("FORBIDDEN", body);
+    }
+
+    [Fact]
+    public async Task AssignMemberRole_OwnerCanTransferOwnership_Succeeds()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid ownerId = Guid.Empty;
+        Guid memberId = Guid.Empty;
+        Guid memberMembershipId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var owner = CreateUser("cg-owner-transfer@example.com", "OriginalOwner");
+            var member = CreateUser("cg-transfer-target@example.com", "TransferTarget");
+            ownerId = owner.Id;
+            memberId = member.Id;
+            dbContext.Users.AddRange(owner, member);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Transfer Ownership Group",
+                Slug = "transfer-ownership-group",
+                CreatedByUserId = owner.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = owner.Id,
+                Role = CommunityMemberRole.Owner,
+                Status = CommunityMemberStatus.Active,
+            });
+
+            var memberMembership = new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = member.Id,
+                Role = CommunityMemberRole.Member,
+                Status = CommunityMemberStatus.Active,
+            };
+            memberMembershipId = memberMembership.Id;
+            dbContext.CommunityMemberships.Add(memberMembership);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, ownerId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation AssignRole($membershipId: UUID!, $role: CommunityMemberRole!) {
+              assignMemberRole(membershipId: $membershipId, role: $role) { id role }
+            }
+            """,
+            new { membershipId = memberMembershipId, role = "OWNER" });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("assignMemberRole");
+        Assert.Equal("OWNER", result.GetProperty("role").GetString());
+    }
+
+    [Fact]
+    public async Task RevokeMembership_ByAdmin_CannotRemoveLastOwner_ReturnsError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid ownerId = Guid.Empty;
+        Guid adminId = Guid.Empty;
+        Guid ownerMembershipId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var owner = CreateUser("cg-last-owner-revoke@example.com", "LastOwnerRevoke");
+            var admin = CreateUser("cg-admin-revoke@example.com", "AdminRevoke");
+            ownerId = owner.Id;
+            adminId = admin.Id;
+            dbContext.Users.AddRange(owner, admin);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Last Owner Revoke Group",
+                Slug = "last-owner-revoke-group",
+                CreatedByUserId = owner.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            var ownerMembership = new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = owner.Id,
+                Role = CommunityMemberRole.Owner,
+                Status = CommunityMemberStatus.Active,
+            };
+            ownerMembershipId = ownerMembership.Id;
+            dbContext.CommunityMemberships.Add(ownerMembership);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = admin.Id,
+                Role = CommunityMemberRole.Admin,
+                Status = CommunityMemberStatus.Active,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        // Admin tries to revoke the last owner — must be blocked
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation Revoke($membershipId: UUID!) {
+                  revokeMembership(membershipId: $membershipId)
+                }
+                """,
+            variables = new { membershipId = ownerMembershipId }
+        });
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("LAST_OWNER", body);
+    }
+
+    [Fact]
+    public async Task JoinCommunityGroup_AlreadyMember_ReturnsAlreadyMemberError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid userId = Guid.Empty;
+        Guid groupId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("cg-dup-join@example.com", "DupJoiner");
+            userId = user.Id;
+            dbContext.Users.Add(user);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Dup Join Group",
+                Slug = "dup-join-group",
+                Visibility = CommunityVisibility.Public,
+                CreatedByUserId = user.Id,
+            };
+            groupId = group.Id;
+            dbContext.CommunityGroups.Add(group);
+
+            // Already a member
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = user.Id,
+                Role = CommunityMemberRole.Member,
+                Status = CommunityMemberStatus.Active,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation JoinGroup($groupId: UUID!) {
+                  joinCommunityGroup(groupId: $groupId) { id }
+                }
+                """,
+            variables = new { groupId }
+        });
+
+        var body = await response.Content.ReadAsStringAsync();
+        // Expect an error indicating already a member
+        Assert.True(body.Contains("ALREADY_MEMBER") || body.Contains("error"),
+            $"Expected already-member error, got: {body}");
+        using var doc = JsonDocument.Parse(body);
+        Assert.True(doc.RootElement.TryGetProperty("errors", out _),
+            "Expected errors array in response.");
+    }
+
+    [Fact]
+    public async Task RequestCommunityMembership_AlreadyPending_ReturnsAlreadyPendingError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid userId = Guid.Empty;
+        Guid groupId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("cg-dup-request@example.com", "DupRequester");
+            userId = user.Id;
+            dbContext.Users.Add(user);
+
+            var creator = CreateUser("cg-dup-request-creator@example.com", "DupReqCreator");
+            dbContext.Users.Add(creator);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Dup Request Group",
+                Slug = "dup-request-group",
+                Visibility = CommunityVisibility.Private,
+                CreatedByUserId = creator.Id,
+            };
+            groupId = group.Id;
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = creator.Id,
+                Role = CommunityMemberRole.Owner,
+                Status = CommunityMemberStatus.Active,
+            });
+
+            // Already has a pending request
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = user.Id,
+                Role = CommunityMemberRole.Member,
+                Status = CommunityMemberStatus.Pending,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation RequestMembership($groupId: UUID!) {
+                  requestCommunityMembership(groupId: $groupId) { id }
+                }
+                """,
+            variables = new { groupId }
+        });
+
+        var body = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(body);
+        Assert.True(doc.RootElement.TryGetProperty("errors", out _),
+            $"Expected error for duplicate request, got: {body}");
+    }
+
+    [Fact]
+    public async Task RequestCommunityMembership_Unauthenticated_ReturnsAuthError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid groupId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var creator = CreateUser("cg-unauth-req@example.com", "UnauthReqCreator");
+            dbContext.Users.Add(creator);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Unauth Request Group",
+                Slug = "unauth-request-group",
+                Visibility = CommunityVisibility.Private,
+                CreatedByUserId = creator.Id,
+            };
+            groupId = group.Id;
+            dbContext.CommunityGroups.Add(group);
+        });
+
+        using var client = factory.CreateClient(); // no auth
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation RequestMembership($groupId: UUID!) {
+                  requestCommunityMembership(groupId: $groupId) { id }
+                }
+                """,
+            variables = new { groupId }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        var errorMsg = errors.ToString();
+        Assert.True(
+            errorMsg.Contains("AUTH_NOT_AUTHORIZED", StringComparison.OrdinalIgnoreCase)
+            || errorMsg.Contains("not authorized", StringComparison.OrdinalIgnoreCase)
+            || errorMsg.Contains("unauthorized", StringComparison.OrdinalIgnoreCase),
+            $"Expected auth error but got: {errorMsg}");
     }
 }
 
