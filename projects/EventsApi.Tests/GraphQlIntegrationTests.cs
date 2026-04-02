@@ -13049,5 +13049,352 @@ public sealed class GraphQlIntegrationTests
         var body = await response.Content.ReadAsStringAsync();
         Assert.Contains("FORBIDDEN", body);
     }
+
+    // ── RevokeMembership tests ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task RevokeMembership_ByAdmin_RemovesMember()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid memberId = Guid.Empty;
+        Guid membershipId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("cg-revoke-admin@example.com", "RevokeAdmin");
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var member = CreateUser("cg-revoke-member@example.com", "RevokeMember");
+            memberId = member.Id;
+            dbContext.Users.Add(member);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Revoke Test Group",
+                Slug = "revoke-test-group",
+                CreatedByUserId = admin.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = admin.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+
+            var membership = new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = member.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Member,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            };
+            membershipId = membership.Id;
+            dbContext.CommunityMemberships.Add(membership);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation Revoke($membershipId: UUID!) {
+              revokeMembership(membershipId: $membershipId)
+            }
+            """,
+            new { membershipId });
+
+        Assert.True(document.RootElement.GetProperty("data").GetProperty("revokeMembership").GetBoolean(),
+            "revokeMembership should return true when admin removes a member.");
+
+        // Verify the membership is deleted in the database.
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dbCtx = scope.ServiceProvider.GetRequiredService<EventsApi.Data.AppDbContext>();
+        var revoked = await dbCtx.CommunityMemberships.FindAsync(membershipId);
+        Assert.Null(revoked);
+    }
+
+    [Fact]
+    public async Task RevokeMembership_NonAdmin_ReturnsForbidden()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid memberId = Guid.Empty;
+        Guid membershipId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("cg-revoke-admin2@example.com", "RevokeAdmin2");
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var member = CreateUser("cg-revoke-member2@example.com", "RevokeMember2");
+            memberId = member.Id;
+            dbContext.Users.Add(member);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Revoke Forbidden Group",
+                Slug = "revoke-forbidden-group",
+                CreatedByUserId = admin.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = admin.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+
+            // The requester is a plain member, not an admin
+            var membership = new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = member.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Member,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            };
+            membershipId = membership.Id;
+            dbContext.CommunityMemberships.Add(membership);
+        });
+
+        using var client = factory.CreateClient();
+        // Authenticate as the plain member, not the admin
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, memberId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation Revoke($membershipId: UUID!) {
+                  revokeMembership(membershipId: $membershipId)
+                }
+                """,
+            variables = new { membershipId }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors),
+            "Expected a FORBIDDEN error when a non-admin tries to revoke a membership.");
+        Assert.Contains("FORBIDDEN", errors.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ── LeaveCommunityGroup happy-path test ───────────────────────────────────
+
+    [Fact]
+    public async Task LeaveCommunityGroup_RegularMember_Succeeds()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid memberId = Guid.Empty;
+        Guid groupId = Guid.Empty;
+        Guid membershipId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("cg-leave-admin@example.com", "LeaveAdmin");
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var member = CreateUser("cg-leave-member@example.com", "LeaveMember");
+            memberId = member.Id;
+            dbContext.Users.Add(member);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Leave Happy Group",
+                Slug = "leave-happy-group",
+                CreatedByUserId = admin.Id,
+            };
+            groupId = group.Id;
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = admin.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+
+            var membership = new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = member.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Member,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            };
+            membershipId = membership.Id;
+            dbContext.CommunityMemberships.Add(membership);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, memberId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation Leave($groupId: UUID!) {
+              leaveCommunityGroup(groupId: $groupId)
+            }
+            """,
+            new { groupId });
+
+        Assert.True(document.RootElement.GetProperty("data").GetProperty("leaveCommunityGroup").GetBoolean(),
+            "leaveCommunityGroup should return true for a regular member leaving.");
+
+        // Verify the membership is deleted.
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dbCtx = scope.ServiceProvider.GetRequiredService<EventsApi.Data.AppDbContext>();
+        var leftMembership = await dbCtx.CommunityMemberships.FindAsync(membershipId);
+        Assert.Null(leftMembership);
+    }
+
+    // ── groupMembers query test ───────────────────────────────────────────────
+
+    [Fact]
+    public async Task GroupMembers_ByAdmin_ReturnsActiveMembers()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid memberId = Guid.Empty;
+        Guid groupId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("cg-members-admin@example.com", "MembersAdmin");
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var member = CreateUser("cg-members-member@example.com", "ActiveMember");
+            memberId = member.Id;
+            dbContext.Users.Add(member);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Members Query Group",
+                Slug = "members-query-group",
+                CreatedByUserId = admin.Id,
+            };
+            groupId = group.Id;
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = admin.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = member.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Member,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query GetMembers($groupId: UUID!) {
+              groupMembers(groupId: $groupId) {
+                id userId role status
+                user { displayName }
+              }
+            }
+            """,
+            new { groupId });
+
+        var members = document.RootElement.GetProperty("data").GetProperty("groupMembers");
+        Assert.Equal(JsonValueKind.Array, members.ValueKind);
+        Assert.Equal(2, members.GetArrayLength());
+
+        var roles = members.EnumerateArray().Select(m => m.GetProperty("role").GetString()).ToList();
+        Assert.Contains("ADMIN", roles);
+        Assert.Contains("MEMBER", roles);
+    }
+
+    // ── pendingMembershipRequests query test ──────────────────────────────────
+
+    [Fact]
+    public async Task PendingMembershipRequests_ByAdmin_ReturnsPendingRequests()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid requesterId = Guid.Empty;
+        Guid groupId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("cg-pending-admin@example.com", "PendingAdmin");
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var requester = CreateUser("cg-pending-requester@example.com", "PendingRequester");
+            requesterId = requester.Id;
+            dbContext.Users.Add(requester);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Pending Requests Group",
+                Slug = "pending-requests-group",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Private,
+                CreatedByUserId = admin.Id,
+            };
+            groupId = group.Id;
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = admin.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+
+            // A pending join request from requester
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = requester.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Member,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Pending,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query GetPending($groupId: UUID!) {
+              pendingMembershipRequests(groupId: $groupId) {
+                id userId role status
+                user { displayName }
+              }
+            }
+            """,
+            new { groupId });
+
+        var pending = document.RootElement.GetProperty("data").GetProperty("pendingMembershipRequests");
+        Assert.Equal(JsonValueKind.Array, pending.ValueKind);
+        Assert.Equal(1, pending.GetArrayLength());
+        Assert.Equal("PENDING", pending[0].GetProperty("status").GetString());
+        Assert.Equal("PendingRequester", pending[0].GetProperty("user").GetProperty("displayName").GetString());
+    }
 }
 
