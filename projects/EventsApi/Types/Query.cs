@@ -526,6 +526,37 @@ public sealed class Query
             .OrderBy(esc => esc.CreatedAtUtc)
             .ToListAsync(cancellationToken);
 
+        var groups = await dbContext.CommunityGroups
+            .AsNoTracking()
+            .OrderBy(cg => cg.Name)
+            .ToListAsync(cancellationToken);
+
+        var membershipCounts = await dbContext.CommunityMemberships
+            .AsNoTracking()
+            .Where(cm => groups.Select(g => g.Id).Contains(cm.GroupId))
+            .GroupBy(cm => new { cm.GroupId, cm.Status })
+            .Select(g => new { g.Key.GroupId, g.Key.Status, Count = g.Count() })
+            .ToListAsync(cancellationToken);
+
+        var communityGroupSummaries = groups.Select(g =>
+        {
+            var activeCount = membershipCounts
+                .Where(m => m.GroupId == g.Id && m.Status == CommunityMemberStatus.Active)
+                .Sum(m => m.Count);
+            var pendingCount = membershipCounts
+                .Where(m => m.GroupId == g.Id && m.Status == CommunityMemberStatus.Pending)
+                .Sum(m => m.Count);
+            return new CommunityGroupAdminSummary(
+                Id: g.Id,
+                Name: g.Name,
+                Slug: g.Slug,
+                Visibility: g.Visibility,
+                IsActive: g.IsActive,
+                ActiveMemberCount: activeCount,
+                PendingRequestCount: pendingCount,
+                CreatedAtUtc: g.CreatedAtUtc);
+        }).ToList();
+
         return new AdminOverview(
             TotalUsers: users.Count,
             TotalDomains: domains.Count,
@@ -534,7 +565,9 @@ public sealed class Query
             Users: users,
             PendingReviewEvents: pendingReviewEvents,
             Domains: domains,
-            PendingExternalSourceClaims: pendingExternalSourceClaims);
+            PendingExternalSourceClaims: pendingExternalSourceClaims,
+            TotalCommunityGroups: groups.Count,
+            CommunityGroups: communityGroupSummaries);
     }
 
     private static IOrderedQueryable<CatalogEvent> ApplySorting(

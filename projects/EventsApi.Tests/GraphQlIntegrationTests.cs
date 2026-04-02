@@ -11691,6 +11691,181 @@ public sealed class GraphQlIntegrationTests
     // ── Domains query includes community links ──────────────────────────────
 
     [Fact]
+    public async Task AdminOverview_IncludesCommunityGroupStats()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("cg-stats-admin@example.com", "CgStatsAdmin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var owner = CreateUser("cg-stats-owner@example.com", "CgStatsOwner");
+            dbContext.Users.Add(owner);
+
+            var member = CreateUser("cg-stats-member@example.com", "CgStatsMember");
+            dbContext.Users.Add(member);
+
+            var requester = CreateUser("cg-stats-requester@example.com", "CgStatsRequester");
+            dbContext.Users.Add(requester);
+
+            var publicGroup = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "CgStats Public Group",
+                Slug = "cgstats-public",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Public,
+                IsActive = true,
+                CreatedByUserId = owner.Id,
+            };
+            dbContext.CommunityGroups.Add(publicGroup);
+
+            // Owner is admin of public group
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = publicGroup.Id, UserId = owner.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+            // One active member
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = publicGroup.Id, UserId = member.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Member,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+
+            var privateGroup = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "CgStats Private Group",
+                Slug = "cgstats-private",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Private,
+                IsActive = true,
+                CreatedByUserId = owner.Id,
+            };
+            dbContext.CommunityGroups.Add(privateGroup);
+
+            // Owner is admin of private group
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = privateGroup.Id, UserId = owner.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+            // One pending join request
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = privateGroup.Id, UserId = requester.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Member,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Pending,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            query {
+              adminOverview {
+                totalCommunityGroups
+                communityGroups {
+                  name slug visibility isActive
+                  activeMemberCount pendingRequestCount
+                }
+              }
+            }
+            """);
+
+        var overview = doc.RootElement.GetProperty("data").GetProperty("adminOverview");
+        Assert.Equal(2, overview.GetProperty("totalCommunityGroups").GetInt32());
+
+        var groups = overview.GetProperty("communityGroups").EnumerateArray().ToList();
+        Assert.Equal(2, groups.Count);
+
+        var publicGrp = groups.First(g => g.GetProperty("slug").GetString() == "cgstats-public");
+        Assert.Equal("PUBLIC", publicGrp.GetProperty("visibility").GetString());
+        Assert.Equal(2, publicGrp.GetProperty("activeMemberCount").GetInt32()); // owner + member
+        Assert.Equal(0, publicGrp.GetProperty("pendingRequestCount").GetInt32());
+
+        var privateGrp = groups.First(g => g.GetProperty("slug").GetString() == "cgstats-private");
+        Assert.Equal("PRIVATE", privateGrp.GetProperty("visibility").GetString());
+        Assert.Equal(1, privateGrp.GetProperty("activeMemberCount").GetInt32()); // owner only
+        Assert.Equal(1, privateGrp.GetProperty("pendingRequestCount").GetInt32()); // one pending request
+    }
+
+    [Fact]
+    public async Task AdminOverview_IncludesCommunityGroupStats_EmptyWhenNoGroups()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("cg-stats-empty-admin@example.com", "CgStatsEmptyAdmin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            query {
+              adminOverview {
+                totalCommunityGroups
+                communityGroups { name }
+              }
+            }
+            """);
+
+        var overview = doc.RootElement.GetProperty("data").GetProperty("adminOverview");
+        Assert.Equal(0, overview.GetProperty("totalCommunityGroups").GetInt32());
+        Assert.Equal(0, overview.GetProperty("communityGroups").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task AdminOverview_CommunityGroupStats_RequiresGlobalAdminRole()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid contributorId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var contributor = CreateUser("cg-stats-contrib@example.com", "CgStatsContrib");
+            contributorId = contributor.Id;
+            dbContext.Users.Add(contributor);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, contributorId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                query {
+                  adminOverview {
+                    totalCommunityGroups
+                    communityGroups { name }
+                  }
+                }
+                """
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out _),
+            "Expected AUTH_NOT_AUTHORIZED error for non-admin user.");
+    }
+
+    [Fact]
     public async Task DomainsQuery_IncludesDomainLinks_InOrder()
     {
         await using var factory = new EventsApiWebApplicationFactory();

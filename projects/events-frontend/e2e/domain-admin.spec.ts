@@ -6,6 +6,9 @@ import {
   makeTechDomain,
   makeApprovedEvent,
   makePublicGroup,
+  makePrivateGroup,
+  makeActiveMembership,
+  makePendingMembership,
   makePendingReviewClaim,
   loginAs,
 } from './helpers/mock-api'
@@ -908,5 +911,149 @@ test.describe('Admin – external source claim review', () => {
     // Error banner should appear with localized (English) error text
     await expect(page.locator('.error-banner[role="alert"]')).toBeVisible()
     await expect(page.locator('.error-banner[role="alert"]')).toContainText(/Failed to review claim/)
+  })
+})
+
+// ── Admin – Communities tab ────────────────────────────────────────────────────
+
+test.describe('Admin – Communities tab', () => {
+  test('admin sees Communities tab with group count', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const state = setupMockApi(page, { users: [admin] })
+    state.communityGroups.push(group)
+
+    await loginAs(page, admin)
+    await page.goto('/admin')
+
+    const commTab = page.getByRole('button', { name: /Communities/ })
+    await expect(commTab).toBeVisible()
+    // Tab badge shows 1 group
+    await expect(commTab.locator('.tab-count')).toHaveText('1')
+  })
+
+  test('admin sees all community groups in Communities tab', async ({ page }) => {
+    const admin = makeAdminUser()
+    const publicGroup = makePublicGroup({ name: 'Prague Crypto Circle' })
+    const privateGroup = makePrivateGroup({ name: 'Members Only' })
+    const state = setupMockApi(page, { users: [admin] })
+    state.communityGroups.push(publicGroup, privateGroup)
+
+    await loginAs(page, admin)
+    await page.goto('/admin')
+
+    await page.getByRole('button', { name: /Communities/ }).click()
+
+    await expect(page.getByRole('heading', { name: 'All Community Groups', exact: true })).toBeVisible()
+    await expect(page.locator('.community-row', { hasText: 'Prague Crypto Circle' })).toBeVisible()
+    await expect(page.locator('.community-row', { hasText: 'Members Only' })).toBeVisible()
+  })
+
+  test('admin sees visibility badges (public and private)', async ({ page }) => {
+    const admin = makeAdminUser()
+    const publicGroup = makePublicGroup({ name: 'Public Group' })
+    const privateGroup = makePrivateGroup({ name: 'Private Group' })
+    const state = setupMockApi(page, { users: [admin] })
+    state.communityGroups.push(publicGroup, privateGroup)
+
+    await loginAs(page, admin)
+    await page.goto('/admin')
+    await page.getByRole('button', { name: /Communities/ }).click()
+
+    const publicRow = page.locator('.community-row', { hasText: 'Public Group' })
+    const privateRow = page.locator('.community-row', { hasText: 'Private Group' })
+
+    await expect(publicRow.locator('.visibility-badge.public')).toBeVisible()
+    await expect(privateRow.locator('.visibility-badge.private')).toBeVisible()
+  })
+
+  test('admin sees active member count and pending request count', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePrivateGroup()
+    const member1 = makeContributorUser({ id: 'member1', email: 'm1@test.com', displayName: 'Member One' })
+    const requester = makeContributorUser({ id: 'req1', email: 'r1@test.com', displayName: 'Requester One' })
+    const state = setupMockApi(page, { users: [admin] })
+    state.communityGroups.push(group)
+    state.users.push(member1, requester)
+    // 2 active members (admin + member1)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+    state.communityMemberships.push(makeActiveMembership(group.id, member1.id, 'MEMBER'))
+    // 1 pending request
+    state.communityMemberships.push(makePendingMembership(group.id, requester.id))
+
+    await loginAs(page, admin)
+    await page.goto('/admin')
+    await page.getByRole('button', { name: /Communities/ }).click()
+
+    const row = page.locator('.community-row')
+    await expect(row).toBeVisible()
+    // The members column should show 2
+    await expect(row.locator('td').nth(2)).toHaveText('2')
+    // The pending column should show 1 with alert styling
+    const pendingCell = row.locator('.pending-badge')
+    await expect(pendingCell).toBeVisible()
+    await expect(pendingCell).toHaveText('1')
+  })
+
+  test('admin can navigate to community from View link', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup({ name: 'Prague Crypto Circle', slug: 'prague-crypto-circle' })
+    const state = setupMockApi(page, { users: [admin] })
+    state.communityGroups.push(group)
+
+    await loginAs(page, admin)
+    await page.goto('/admin')
+    await page.getByRole('button', { name: /Communities/ }).click()
+
+    const viewLink = page.locator('.community-row').getByRole('link', { name: /View/i })
+    await expect(viewLink).toHaveAttribute('href', '/community/prague-crypto-circle')
+  })
+
+  test('admin sees empty state when no community groups exist', async ({ page }) => {
+    const admin = makeAdminUser()
+    setupMockApi(page, { users: [admin] })
+
+    await loginAs(page, admin)
+    await page.goto('/admin')
+    await page.getByRole('button', { name: /Communities/ }).click()
+
+    await expect(page.locator('.empty-table')).toBeVisible()
+    await expect(page.locator('.empty-table')).toContainText(/No community groups/)
+  })
+
+  test('non-admin does not see Communities tab', async ({ page }) => {
+    const contributor = makeContributorUser()
+    setupMockApi(page, { users: [contributor] })
+
+    await loginAs(page, contributor)
+    await page.goto('/admin')
+
+    // Non-admin sees login prompt, not the Communities tab
+    await expect(page.getByRole('button', { name: /Communities/ })).toBeHidden()
+  })
+
+  test('Communities tab count shows 0 when no groups', async ({ page }) => {
+    const admin = makeAdminUser()
+    setupMockApi(page, { users: [admin] })
+
+    await loginAs(page, admin)
+    await page.goto('/admin')
+
+    const commTab = page.getByRole('button', { name: /Communities/ })
+    await expect(commTab.locator('.tab-count')).toHaveText('0')
+  })
+
+  test('Communities tab heading is localised in German', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const state = setupMockApi(page, { users: [admin] })
+    state.communityGroups.push(group)
+
+    await loginAs(page, admin)
+    await page.goto('/admin')
+    await page.locator('#language-select').selectOption('de')
+    await page.getByRole('button', { name: /Communitys/ }).click()
+
+    await expect(page.getByRole('heading', { name: 'Alle Community-Gruppen', exact: true })).toBeVisible()
   })
 })
