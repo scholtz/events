@@ -440,7 +440,7 @@ async function handleReviewExternalSourceClaim(
 ) {
   claimReviewLoading.value = claimId
   claimReviewError.value = null
-  const adminNote = rejectionNoteInputs.value[claimId]?.trim() || undefined
+  const adminNote = newStatus === 'REJECTED' ? rejectionNoteInputs.value[claimId]?.trim() || undefined : undefined
   try {
     await gqlRequest(
       `mutation ReviewExternalSourceClaim($input: ReviewExternalSourceClaimInput!) {

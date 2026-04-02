@@ -1882,8 +1882,17 @@ public sealed class Mutation
                 "CLAIM_NOT_PENDING");
 
         claim.Status = input.NewStatus;
-        if (input.AdminNote is { Length: > 0 })
-            claim.AdminNote = input.AdminNote.Trim();
+        // Only record the admin note on rejection; clear any stale note when verifying
+        // so that verified claims cannot carry rejection-style text.
+        if (input.NewStatus == ExternalSourceClaimStatus.Rejected)
+        {
+            if (input.AdminNote is { Length: > 0 })
+                claim.AdminNote = input.AdminNote.Trim();
+        }
+        else
+        {
+            claim.AdminNote = null;
+        }
         await dbContext.SaveChangesAsync(cancellationToken);
         return claim;
     }

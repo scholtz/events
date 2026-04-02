@@ -11508,6 +11508,69 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task ReviewExternalSourceClaim_Verify_DoesNotStoreAdminNote()
+    {
+        // Even if the admin accidentally submits a note while clicking Verify,
+        // the backend must discard it so verified claims never carry rejection text.
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("verify-note-admin@example.com", "Verify Note Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var owner = CreateUser("verify-note-owner@example.com", "Verify Note Owner");
+            dbContext.Users.AddRange(admin, owner);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Verify Note Group", Slug = "verify-note-group",
+                IsActive = true, CreatedByUserId = owner.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/verify-note-group",
+                SourceIdentifier = "verify-note-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.PendingReview,
+                CreatedByUserId = owner.Id,
+            };
+            claimId = claim.Id;
+            dbContext.ExternalSourceClaims.Add(claim);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        // Submit with adminNote but newStatus = VERIFIED — note must be discarded.
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation ReviewClaim($input: ReviewExternalSourceClaimInput!) {
+              reviewExternalSourceClaim(input: $input) { id status adminNote }
+            }
+            """,
+            new { input = new { claimId, newStatus = "VERIFIED", adminNote = "This should not be stored." } });
+
+        var result = doc.RootElement.GetProperty("data").GetProperty("reviewExternalSourceClaim");
+        Assert.Equal("VERIFIED", result.GetProperty("status").GetString());
+        Assert.True(result.GetProperty("adminNote").ValueKind == System.Text.Json.JsonValueKind.Null,
+            "adminNote must be null on a verified claim");
+
+        // Verify persisted in DB
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<EventsApi.Data.AppDbContext>();
+        var persisted = await db.ExternalSourceClaims.FindAsync(claimId);
+        Assert.NotNull(persisted);
+        Assert.Null(persisted.AdminNote);
+    }
+
+    [Fact]
     public async Task ReviewExternalSourceClaim_NonAdmin_ReturnsForbidden()
     {
         await using var factory = new EventsApiWebApplicationFactory();
