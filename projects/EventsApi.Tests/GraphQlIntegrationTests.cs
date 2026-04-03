@@ -15816,6 +15816,90 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal("sk", existing.Language);
         Assert.Equal(EventsApi.Data.Entities.EventStatus.Published, existing.Status);
     }
+
+    [Fact]
+    public void ExternalSyncEngine_ApplyUpstreamUpdate_StartsAtChangedWithoutEndsAt_PreservesPriorDuration()
+    {
+        // When upstream provides a new start time but omits end time, the prior duration must be
+        // preserved rather than guessing +2 hours. This is critical for workshops, conferences,
+        // and multi-hour meetups whose end time is stored correctly in the database.
+        var existing = new EventsApi.Data.Entities.CatalogEvent
+        {
+            Name = "Workshop Event",
+            Slug = "workshop-event",
+            Description = "A three-hour workshop.",
+            EventUrl = "https://example.com/workshop",
+            VenueName = "Workshop Hall",
+            AddressLine1 = "Main Street 1",
+            City = "Vienna",
+            CountryCode = "AT",
+            StartsAtUtc = new DateTime(2030, 5, 10, 9, 0, 0, DateTimeKind.Utc),
+            EndsAtUtc = new DateTime(2030, 5, 10, 12, 0, 0, DateTimeKind.Utc), // 3-hour duration
+            IsFree = true,
+            CurrencyCode = "EUR",
+            Status = EventsApi.Data.Entities.EventStatus.Published,
+        };
+
+        // Upstream sends a rescheduled start, but doesn't include an explicit end time.
+        var upstream = new EventsApi.Adapters.ExternalEventData(
+            ExternalId: "ext-reschedule-001",
+            Name: "Workshop Event",
+            Description: "", // empty — will not overwrite existing description
+            EventUrl: null,
+            StartsAtUtc: new DateTime(2030, 6, 20, 14, 0, 0, DateTimeKind.Utc), // new start
+            EndsAtUtc: null, // end time not provided by upstream
+            VenueName: null, AddressLine1: null, City: null, CountryCode: null,
+            Latitude: null, Longitude: null, IsFree: null,
+            PriceAmount: null, CurrencyCode: null, Language: null);
+
+        ExternalSyncEngine.ApplyUpstreamUpdate(existing, upstream);
+
+        // Start should update to the upstream value.
+        Assert.Equal(new DateTime(2030, 6, 20, 14, 0, 0, DateTimeKind.Utc), existing.StartsAtUtc);
+
+        // End should be newStart + priorDuration (3 hours), NOT newStart + 2 hours.
+        Assert.Equal(new DateTime(2030, 6, 20, 17, 0, 0, DateTimeKind.Utc), existing.EndsAtUtc);
+    }
+
+    [Fact]
+    public void ExternalSyncEngine_ApplyUpstreamUpdate_OnlyEndsAtProvided_UpdatesEndWithoutTouchingStart()
+    {
+        // If upstream sends only EndsAtUtc (and no StartsAtUtc), only the end time should change.
+        var existing = new EventsApi.Data.Entities.CatalogEvent
+        {
+            Name = "Conference",
+            Slug = "conference",
+            Description = "An all-day conference.",
+            EventUrl = "https://example.com/conference",
+            VenueName = "Convention Centre",
+            AddressLine1 = "Convention Road 5",
+            City = "Berlin",
+            CountryCode = "DE",
+            StartsAtUtc = new DateTime(2030, 9, 1, 9, 0, 0, DateTimeKind.Utc),
+            EndsAtUtc = new DateTime(2030, 9, 1, 18, 0, 0, DateTimeKind.Utc),
+            IsFree = false,
+            CurrencyCode = "EUR",
+            Status = EventsApi.Data.Entities.EventStatus.Published,
+        };
+
+        var upstream = new EventsApi.Adapters.ExternalEventData(
+            ExternalId: "ext-endonly-001",
+            Name: "", // empty — will not overwrite
+            Description: "", // empty — will not overwrite
+            EventUrl: null,
+            StartsAtUtc: null, // not provided
+            EndsAtUtc: new DateTime(2030, 9, 1, 17, 0, 0, DateTimeKind.Utc), // shortened end
+            VenueName: null, AddressLine1: null, City: null, CountryCode: null,
+            Latitude: null, Longitude: null, IsFree: null,
+            PriceAmount: null, CurrencyCode: null, Language: null);
+
+        ExternalSyncEngine.ApplyUpstreamUpdate(existing, upstream);
+
+        // Start is unchanged.
+        Assert.Equal(new DateTime(2030, 9, 1, 9, 0, 0, DateTimeKind.Utc), existing.StartsAtUtc);
+        // End is updated from upstream.
+        Assert.Equal(new DateTime(2030, 9, 1, 17, 0, 0, DateTimeKind.Utc), existing.EndsAtUtc);
+    }
 }
 
 

@@ -279,6 +279,14 @@ public sealed class ExternalSyncEngine(
     /// <para><strong>Source-of-truth fields (updated from upstream):</strong>
     /// Name, Description, EventUrl, VenueName, AddressLine1, City, CountryCode,
     /// Latitude, Longitude, StartsAtUtc, EndsAtUtc, IsFree, PriceAmount, CurrencyCode, Language.</para>
+    /// <para><strong>Date-update rules:</strong>
+    /// If upstream provides both <c>StartsAtUtc</c> and <c>EndsAtUtc</c>, both are applied verbatim.
+    /// If upstream provides only <c>StartsAtUtc</c> (no <c>EndsAtUtc</c>), the existing duration is
+    /// preserved: the new end time is computed as <c>newStart + (oldEnd − oldStart)</c>.
+    /// This prevents a partial upstream update from silently overwriting a legitimate stored duration
+    /// with a 2-hour default that could shorten workshops, conferences, or multi-day events.
+    /// If only <c>EndsAtUtc</c> is provided (without <c>StartsAtUtc</c>), the end time is updated and
+    /// the start time is left unchanged.</para>
     /// <para><strong>Locally curated fields (never overwritten by upstream):</strong>
     /// Status, Slug, AdminNotes, DomainId, SubmittedByUserId.</para>
     /// </remarks>
@@ -304,9 +312,26 @@ public sealed class ExternalSyncEngine(
             catalogEvent.Longitude = ext.Longitude.Value;
         if (ext.StartsAtUtc is not null)
         {
-            catalogEvent.StartsAtUtc = EnsureUtc(ext.StartsAtUtc.Value);
-            var endsAt = ext.EndsAtUtc ?? ext.StartsAtUtc.Value.AddHours(2);
-            catalogEvent.EndsAtUtc = EnsureUtc(endsAt);
+            var newStart = EnsureUtc(ext.StartsAtUtc.Value);
+            if (ext.EndsAtUtc is not null)
+            {
+                // Both start and end provided — apply verbatim.
+                catalogEvent.StartsAtUtc = newStart;
+                catalogEvent.EndsAtUtc = EnsureUtc(ext.EndsAtUtc.Value);
+            }
+            else
+            {
+                // Only start provided — preserve the prior duration to avoid overwriting
+                // a legitimate end time with a guessed 2-hour default.
+                var priorDuration = catalogEvent.EndsAtUtc - catalogEvent.StartsAtUtc;
+                catalogEvent.StartsAtUtc = newStart;
+                catalogEvent.EndsAtUtc = newStart + priorDuration;
+            }
+        }
+        else if (ext.EndsAtUtc is not null)
+        {
+            // Only end time provided — update it without touching start.
+            catalogEvent.EndsAtUtc = EnsureUtc(ext.EndsAtUtc.Value);
         }
         if (ext.IsFree is not null)
             catalogEvent.IsFree = ext.IsFree.Value;
