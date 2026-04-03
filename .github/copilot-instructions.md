@@ -446,6 +446,20 @@ A PR that only adds tests, or only adds UI without tests, or only adds backend c
 ### loginAs helper uses English labels
 - The `loginAs()` E2E helper in `e2e/helpers/mock-api.ts` fills form fields using English labels (`Email`, `Password`, `Sign In`). When testing localized views, either switch the language **after** calling `loginAs()`, or use localStorage seeding to bypass the login UI.
 
+### i18n E2E tests — mock-state requirements for conditional UI
+When writing E2E tests for localized UI, **always check whether the UI element being tested is conditionally rendered**, and populate the mock state accordingly:
+- **Portfolio filter controls** (status, category, language, date-from, date-to, sort) are inside `<template v-else>` that only renders when `overview.managedEvents.length > 0`. Tests that assert on these filter controls MUST include at least one event with `submittedByUserId: user.id` in the mock setup, or the filter section will never appear and the test will time out.
+- **Dashboard analytics cards** only appear when the user has submitted events. Supply `makeApprovedEvent({ submittedByUserId: user.id })` in the mock state.
+- **Hub overview and branding forms** in `DashboardView.vue` and `HubManageView.vue` only appear when the user administers at least one hub. Supply appropriate hub fixtures if testing those sections.
+- General rule: **before writing any assertion, trace the `v-if`/`v-else-if`/`v-else` chain** that wraps the element and ensure the mock state satisfies every guard condition.
+
+### i18n E2E tests — multi-step forms must satisfy validation
+Multi-step forms (e.g. `SubmitEventView.vue`, `EditEventView.vue`) have per-step validation guards. Clicking "Next" on an empty step will NOT advance — it will show validation errors instead. When testing fields on step N > 1:
+- **Do not write a test that clicks "Next" on an empty form** — it will always fail because validation blocks the navigation.
+- Instead, test fields on **step 1** (always visible without navigation) whenever possible. For example, to test a German placeholder, check `eventTitlePlaceholder` on step 1 rather than `timezonePlaceholder` on step 2.
+- If you genuinely need to test step N > 1, fill ALL required fields on every preceding step before clicking "Next". For step 1 of `SubmitEventView.vue`, required fields are: event title, description, and domain (tag select). For step 2, required field is: start date.
+- Use `page.selectOption()` to set select elements, and `page.fill()` for text inputs. Always await each interaction.
+
 ### Adding a new locale
 1. Copy `src/i18n/locales/en.ts` → `src/i18n/locales/<code>.ts`, translate all values
 2. Import in `src/i18n/index.ts`, add to `SUPPORTED_LOCALES` and `messages`

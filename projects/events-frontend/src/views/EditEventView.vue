@@ -410,7 +410,7 @@ onMounted(loadEvent)
                 class="form-input"
                 type="text"
                 maxlength="2"
-                placeholder="CZ"
+                :placeholder="t('submitEvent.countryCodePlaceholder')"
               />
             </div>
           </fieldset>
@@ -453,7 +453,7 @@ onMounted(loadEvent)
                 :class="['form-input', errors.timezone ? 'form-input--error' : '']"
                 type="text"
                 list="common-timezones"
-                placeholder="e.g., Europe/Prague"
+                :placeholder="t('submitEvent.timezonePlaceholder')"
                 autocomplete="off"
               />
               <p v-if="errors.timezone" class="field-error" role="alert">{{ errors.timezone }}</p>
@@ -510,7 +510,7 @@ onMounted(loadEvent)
                   type="number"
                   min="0"
                   step="0.01"
-                  placeholder="49.00"
+                  :placeholder="t('submitEvent.pricePlaceholder')"
                 />
                 <p v-if="errors.priceAmount" class="field-error" role="alert">{{ errors.priceAmount }}</p>
               </div>
@@ -523,7 +523,7 @@ onMounted(loadEvent)
                   class="form-input"
                   type="text"
                   maxlength="8"
-                  placeholder="EUR"
+                  :placeholder="t('submitEvent.currencyPlaceholder')"
                 />
               </div>
             </div>
@@ -605,7 +605,7 @@ onMounted(loadEvent)
                 :class="{ 'form-input--error': errors.eventUrl }"
                 type="url"
                 required
-                placeholder="https://example.com/event"
+                :placeholder="t('submitEvent.urlPlaceholder')"
               />
               <p v-if="errors.eventUrl" class="field-error" role="alert">{{ errors.eventUrl }}</p>
             </div>
