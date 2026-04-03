@@ -68,6 +68,11 @@ export default {
     submitAnEvent: 'Pridať udalosť',
     cachedResultsNotice:
       'Zobrazujú sa výsledky z vašej poslednej online návštevy. Obnovte stránku po pripojení.',
+    cachedResultsMinutes: 'Zobrazujú sa uložené výsledky spred {minutes} min. Obnovte po pripojení.',
+    cachedResultsRecent: 'Zobrazujú sa nedávno uložené výsledky. Obnovte stránku po pripojení.',
+    cachedResultsOnlineMinutes: 'Výsledky spred {minutes} min — môžu byť dostupné nové udalosti.',
+    cachedResultsOnlineRecent: 'Výsledky z vašej nedávnej návštevy — môžu byť dostupné nové udalosti.',
+    refreshingResults: 'Obnovuje sa…',
     mapContext: 'Mapový kontext',
     mapShowing: 'Zobrazuje sa: {label}',
     mapOpenOsm: 'Otvoriť v OpenStreetMap ↗',
@@ -237,6 +242,9 @@ export default {
     addToCalendarPromptBtn: 'Pridať do kalendára',
     offlineStale:
       'Ste offline — tieto informácie sú z vašej poslednej návštevy a nemusia odrážať najnovšie zmeny.',
+    cachedDataMinutes:
+      'Tieto údaje sú spred {minutes} min a nemusia odrážať najnovšie zmeny.',
+    cachedDataRecent: 'Tieto údaje sú z vašej nedávnej návštevy a nemusia odrážať najnovšie zmeny.',
     openInOsm: 'Otvoriť v OpenStreetMap ↗',
     virtualEvent: 'Virtuálna udalosť',
     virtualEventDescription: 'Táto udalosť prebieha online. Žiadne fyzické miesto.',

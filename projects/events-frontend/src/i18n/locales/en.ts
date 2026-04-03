@@ -71,6 +71,11 @@ export default {
     noEventsFound: 'No events found',
     submitAnEvent: 'Submit an Event',
     cachedResultsNotice: 'Showing results from your last online visit. Refresh when back online.',
+    cachedResultsMinutes: 'Showing saved results from {minutes} min ago. Refresh when back online.',
+    cachedResultsRecent: 'Showing recently saved results. Refresh when back online.',
+    cachedResultsOnlineMinutes: 'Results from {minutes} min ago — new events may be available.',
+    cachedResultsOnlineRecent: 'Results from your recent visit — new events may be available.',
+    refreshingResults: 'Refreshing…',
     mapContext: 'Map context',
     mapShowing: 'Showing: {label}',
     mapOpenOsm: 'Open in OpenStreetMap ↗',
@@ -247,6 +252,9 @@ export default {
     addToCalendarPromptBtn: 'Add to calendar',
     offlineStale:
       "You're offline — this event information is from your last online visit and may not reflect the latest changes.",
+    cachedDataMinutes:
+      'This event data is from {minutes} min ago and may not reflect the latest changes.',
+    cachedDataRecent: 'This event data is from your recent visit and may not reflect the latest changes.',
     openInOsm: 'Open in OpenStreetMap ↗',
     virtualEvent: 'Virtual Event',
     virtualEventDescription: 'This event takes place online. No physical venue.',

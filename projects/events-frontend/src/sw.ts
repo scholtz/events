@@ -257,8 +257,12 @@ async function handleGraphQLPost(request: Request): Promise<Response> {
           status: 200,
           headers: {
             'Content-Type': 'application/json',
-            // Custom header so tests and debugging tools can identify cached responses
+            // Custom header so the page's fetch() can detect a cache hit.
+            // Access-Control-Expose-Headers is required so the page's JavaScript
+            // can read this custom header for cross-origin requests.
             'X-PWA-Cache': 'HIT',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Expose-Headers': 'X-PWA-Cache',
           },
         })
       }
