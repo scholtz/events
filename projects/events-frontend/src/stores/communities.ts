@@ -30,6 +30,22 @@ const EXTERNAL_SOURCE_CLAIM_FIELDS = `
   adminNote
 `
 
+/**
+ * Converts a community group display name into a URL-safe slug.
+ * Lowercases, replaces non-alphanumeric runs with hyphens, and trims leading/trailing hyphens.
+ *
+ * @example
+ * generateCommunitySlug('Prague Crypto Circle')  // → 'prague-crypto-circle'
+ * generateCommunitySlug('  AI & ML Enthusiasts!') // → 'ai-ml-enthusiasts'
+ * generateCommunitySlug('----Blockchain----')     // → 'blockchain'
+ */
+export function generateCommunitySlug(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+}
+
 export const useCommunitiesStore = defineStore('communities', () => {
   const groups = ref<CommunityGroup[]>([])
   const loading = ref(false)
