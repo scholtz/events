@@ -1353,12 +1353,13 @@ test.describe('External sources – full admin sync workflow', () => {
     await page.goto('/community/prague-crypto-circle')
 
     // Verify initial "Never synced" status renders
-    await expect(page.locator('.last-sync-text')).toContainText('Never synced')
+    const sourceCard = page.locator('.claim-row').first()
+    await expect(sourceCard.locator('.last-sync-text')).toContainText('Never synced')
 
-    // Trigger sync and verify success result badge appears
-    await page.getByRole('button', { name: /Sync Now/i }).first().click()
-    await expect(page.locator('.sync-result-badge')).toBeVisible()
-    await expect(page.locator('.sync-result-badge')).toContainText('Imported 0 events')
+    // Trigger sync via the button scoped to the same source row
+    await sourceCard.getByRole('button', { name: /Sync Now/i }).click()
+    await expect(sourceCard.locator('.sync-result-badge')).toBeVisible()
+    await expect(sourceCard.locator('.sync-result-badge')).toContainText('Imported 0 events')
   })
 
   test('admin sees error when sync fails and can retry successfully', async ({ page }) => {
@@ -1381,15 +1382,17 @@ test.describe('External sources – full admin sync workflow', () => {
     await loginAs(page, admin)
     await page.goto('/community/prague-crypto-circle')
 
-    // First sync attempt — expect error message to appear
-    await page.getByRole('button', { name: /Sync Now/i }).first().click()
-    await expect(page.locator('.sync-error-text').last()).toBeVisible()
-    await expect(page.locator('.sync-error-text').last()).toContainText('Sync failed')
+    const sourceCard = page.locator('.claim-row').first()
+
+    // First sync attempt — expect error message to appear scoped to this source
+    await sourceCard.getByRole('button', { name: /Sync Now/i }).click()
+    await expect(sourceCard.locator('.sync-error-text')).toBeVisible()
+    await expect(sourceCard.locator('.sync-error-text')).toContainText('Sync failed')
 
     // forceSyncError was auto-reset; second attempt succeeds
-    await page.getByRole('button', { name: /Sync Now/i }).first().click()
-    await expect(page.locator('.sync-result-badge')).toBeVisible()
-    await expect(page.locator('.sync-result-badge')).toContainText('Imported 0 events')
+    await sourceCard.getByRole('button', { name: /Sync Now/i }).click()
+    await expect(sourceCard.locator('.sync-result-badge')).toBeVisible()
+    await expect(sourceCard.locator('.sync-result-badge')).toContainText('Imported 0 events')
   })
 
   test('admin can disable auto-sync and then re-enable it in one session', async ({ page }) => {

@@ -205,23 +205,21 @@ public sealed class ExternalSyncEngine(
         {
             // Only check for orphans when the upstream returned at least one event.
             // An empty feed is more likely a transient outage than a true mass-removal.
-            var previouslyImportedIds = await _dbContext.Events
-                .Where(e => e.ExternalSourceClaimId == claimId && e.ExternalSourceEventId != null)
-                .Select(e => e.ExternalSourceEventId!)
-                .ToListAsync(cancellationToken);
-
-            var orphanedIds = previouslyImportedIds
-                .Where(id => !seenExternalIds.Contains(id))
-                .ToList();
-
-            orphanedCount = orphanedIds.Count;
+            // Use a list for EF Core IN-clause translation; seenExternalIds is bounded by the
+            // adapter's fetch limit so memory overhead is predictable.
+            var seenIdList = seenExternalIds.ToList();
+            orphanedCount = await _dbContext.Events
+                .Where(e => e.ExternalSourceClaimId == claimId &&
+                            e.ExternalSourceEventId != null &&
+                            !seenIdList.Contains(e.ExternalSourceEventId!))
+                .CountAsync(cancellationToken);
 
             if (orphanedCount > 0)
             {
                 _logger.LogInformation(
                     "External sync for claim {ClaimId}: {OrphanedCount} previously imported event(s) " +
-                    "no longer appear in the upstream feed and have been preserved as-is: {OrphanedIds}",
-                    claimId, orphanedCount, string.Join(", ", orphanedIds));
+                    "no longer appear in the upstream feed and have been preserved as-is.",
+                    claimId, orphanedCount);
             }
         }
 
