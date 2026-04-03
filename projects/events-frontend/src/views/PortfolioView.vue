@@ -269,7 +269,7 @@ onMounted(async () => {
                 <select
                   v-model="filterStatus"
                   class="form-select"
-                  aria-label="Filter by status"
+                  :aria-label="t('portfolio.ariaFilterStatus')"
                 >
                   <option value="">{{ t('portfolio.filterStatusAll') }}</option>
                   <option value="PUBLISHED">{{ t('portfolio.filterStatusPublished') }}</option>
@@ -285,7 +285,7 @@ onMounted(async () => {
                 <select
                   v-model="filterDomain"
                   class="form-select"
-                  aria-label="Filter by category"
+                  :aria-label="t('portfolio.ariaFilterDomain')"
                 >
                   <option value="">{{ t('portfolio.filterDomainAll') }}</option>
                   <option
@@ -305,7 +305,7 @@ onMounted(async () => {
                   class="form-input"
                   type="text"
                   :placeholder="t('portfolio.filterLanguagePlaceholder')"
-                  aria-label="Filter by language"
+                  :aria-label="t('portfolio.ariaFilterLanguage')"
                 />
               </label>
 
@@ -315,7 +315,7 @@ onMounted(async () => {
                   v-model="filterDateFrom"
                   class="form-input"
                   type="date"
-                  aria-label="Filter from date"
+                  :aria-label="t('portfolio.ariaFilterDateFrom')"
                 />
               </label>
 
@@ -325,13 +325,13 @@ onMounted(async () => {
                   v-model="filterDateTo"
                   class="form-input"
                   type="date"
-                  aria-label="Filter to date"
+                  :aria-label="t('portfolio.ariaFilterDateTo')"
                 />
               </label>
 
               <label class="filter-field filter-field--sort">
                 <span class="filter-label">{{ t('portfolio.sortBy') }}</span>
-                <select v-model="sortBy" class="form-select" aria-label="Sort events">
+                <select v-model="sortBy" class="form-select" :aria-label="t('portfolio.ariaSortEvents')">
                   <option value="NEWEST">{{ t('portfolio.sortNewest') }}</option>
                   <option value="OLDEST">{{ t('portfolio.sortOldest') }}</option>
                   <option value="MOST_SAVES">{{ t('portfolio.sortMostSaves') }}</option>

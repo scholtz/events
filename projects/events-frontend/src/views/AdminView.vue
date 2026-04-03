@@ -592,42 +592,42 @@ async function handleReviewExternalSourceClaim(
               v-model="newDomain.name"
               class="form-input"
               type="text"
-              placeholder="Name"
+              :placeholder="t('admin.domainName')"
               required
             />
             <input
               v-model="newDomain.slug"
               class="form-input"
               type="text"
-              placeholder="Slug (e.g. crypto)"
+              :placeholder="t('admin.domainSlugPlaceholder')"
               required
             />
             <input
               v-model="newDomain.subdomain"
               class="form-input"
               type="text"
-              placeholder="Subdomain (e.g. crypto)"
+              :placeholder="t('admin.domainSubdomainPlaceholder')"
               required
             />
             <input
               v-model="newDomain.description"
               class="form-input"
               type="text"
-              placeholder="Description (optional)"
+              :placeholder="t('admin.domainDescriptionPlaceholder')"
             />
-            <button type="submit" class="btn btn-primary">Add Domain</button>
+            <button type="submit" class="btn btn-primary">{{ t('admin.addDomain') }}</button>
           </form>
         </div>
         <div class="categories-table card">
           <table>
             <thead>
               <tr>
-                <th>Status</th>
-                <th>Name</th>
-                <th>Slug</th>
-                <th>Subdomain</th>
-                <th>Description</th>
-                <th>Actions</th>
+                <th>{{ t('eventDetail.status') }}</th>
+                <th>{{ t('admin.domainName') }}</th>
+                <th>{{ t('admin.domainSlug') }}</th>
+                <th>{{ t('admin.domainSubdomain') }}</th>
+                <th>{{ t('admin.domainDescription') }}</th>
+                <th>{{ t('admin.actions') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -663,7 +663,7 @@ async function handleReviewExternalSourceClaim(
           </table>
           <div v-if="!domainsStore.domains.length" class="empty-table">
             <div class="empty-icon">🏷️</div>
-            <p>No domains yet. Add one above.</p>
+            <p>{{ t('admin.noDomainsYet') }}</p>
           </div>
         </div>
 
@@ -766,7 +766,7 @@ async function handleReviewExternalSourceClaim(
                     class="form-input form-textarea"
                     rows="3"
                     maxlength="2000"
-                    placeholder="A short editorial overview about this hub…"
+                    :placeholder="t('hubManage.overviewPlaceholder')"
                   ></textarea>
                 </label>
                 <label class="form-field">
@@ -776,7 +776,7 @@ async function handleReviewExternalSourceClaim(
                     class="form-input form-textarea"
                     rows="3"
                     maxlength="1000"
-                    placeholder="Describe what types of events belong in this hub…"
+                    :placeholder="t('hubManage.whatBelongsHerePlaceholder')"
                   ></textarea>
                 </label>
                 <label class="form-field">
@@ -786,7 +786,7 @@ async function handleReviewExternalSourceClaim(
                     class="form-input"
                     type="text"
                     maxlength="300"
-                    placeholder="e.g. Organizing a blockchain event? Submit it here."
+                    :placeholder="t('hubManage.ctaPlaceholder')"
                   />
                 </label>
                 <label class="form-field">
@@ -796,7 +796,7 @@ async function handleReviewExternalSourceClaim(
                     class="form-input"
                     type="text"
                     maxlength="200"
-                    placeholder="e.g. Prague Blockchain Week organizers"
+                    :placeholder="t('hubManage.curatorCreditPlaceholder')"
                   />
                 </label>
               </div>
@@ -806,9 +806,9 @@ async function handleReviewExternalSourceClaim(
                   class="btn btn-primary btn-sm"
                   :disabled="domainOverviewSaving"
                 >
-                  {{ domainOverviewSaving ? 'Saving…' : t('admin.saveOverview') }}
+                  {{ domainOverviewSaving ? t('admin.domainSaving') : t('admin.saveOverview') }}
                 </button>
-                <span v-if="domainOverviewSuccess" class="save-success">✓ Saved</span>
+                <span v-if="domainOverviewSuccess" class="save-success">{{ t('admin.domainOverviewSaved') }}</span>
               </div>
             </form>
           </div>

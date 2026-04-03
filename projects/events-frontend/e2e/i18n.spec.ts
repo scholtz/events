@@ -389,6 +389,63 @@ test.describe('Localized submit event', () => {
     await expect(page.getByLabel('Veranstaltungstitel')).toBeVisible()
     await expect(page.getByLabel('Beschreibung')).toBeVisible()
   })
+
+  test('submit event form country code placeholder is localized in Slovak', async ({ page }) => {
+    const user = makeAdminUser()
+    setupMockApi(page, { users: [user], domains: [makeTechDomain()] })
+
+    await loginAs(page, user)
+    await page.locator('#language-select').selectOption('sk')
+
+    await page.goto('/submit')
+    // Slovak country code placeholder should say "napr. SK" not "CZ"
+    await expect(page.locator('#event-country')).toHaveAttribute('placeholder', 'napr. SK')
+  })
+
+  test('submit event form timezone placeholder is localized in German', async ({ page }) => {
+    const user = makeAdminUser()
+    setupMockApi(page, { users: [user], domains: [makeTechDomain()] })
+
+    await loginAs(page, user)
+    await page.locator('#language-select').selectOption('de')
+
+    await page.goto('/submit')
+    // Advance to step 2 (Date & Time) to see timezone field
+    await page.getByRole('button', { name: 'Weiter' }).click()
+    await expect(page.locator('#event-timezone')).toHaveAttribute('placeholder', 'z.B. Europe/Prague')
+  })
+})
+
+test.describe('Localized portfolio view', () => {
+  test('portfolio filter controls have localized aria-labels in Slovak', async ({ page }) => {
+    const user = makeAdminUser()
+    setupMockApi(page, { users: [user], domains: [makeTechDomain()] })
+
+    await loginAs(page, user)
+    await page.locator('#language-select').selectOption('sk')
+
+    await page.goto('/portfolio')
+
+    // Check aria-labels on filter controls are in Slovak
+    await expect(page.locator('[aria-label="Filtrovať podľa stavu"]')).toBeVisible()
+    await expect(page.locator('[aria-label="Filtrovať podľa kategórie"]')).toBeVisible()
+    await expect(page.locator('[aria-label="Zoradiť udalosti"]')).toBeVisible()
+  })
+
+  test('portfolio filter controls have localized aria-labels in German', async ({ page }) => {
+    const user = makeAdminUser()
+    setupMockApi(page, { users: [user], domains: [makeTechDomain()] })
+
+    await loginAs(page, user)
+    await page.locator('#language-select').selectOption('de')
+
+    await page.goto('/portfolio')
+
+    // Check aria-labels on filter controls are in German
+    await expect(page.locator('[aria-label="Nach Status filtern"]')).toBeVisible()
+    await expect(page.locator('[aria-label="Nach Kategorie filtern"]')).toBeVisible()
+    await expect(page.locator('[aria-label="Veranstaltungen sortieren"]')).toBeVisible()
+  })
 })
 
 test.describe('Localized favorites', () => {

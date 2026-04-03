@@ -834,7 +834,7 @@ function communityRoleLabel(role: string): string {
                     class="form-input form-textarea"
                     rows="3"
                     maxlength="2000"
-                    placeholder="A short editorial overview about this hub…"
+                    :placeholder="t('hubManage.overviewPlaceholder')"
                   ></textarea>
                 </label>
                 <label class="form-field">
@@ -844,7 +844,7 @@ function communityRoleLabel(role: string): string {
                     class="form-input form-textarea"
                     rows="3"
                     maxlength="1000"
-                    placeholder="Describe what types of events belong in this hub…"
+                    :placeholder="t('hubManage.whatBelongsHerePlaceholder')"
                   ></textarea>
                 </label>
                 <label class="form-field">
@@ -854,7 +854,7 @@ function communityRoleLabel(role: string): string {
                     class="form-input"
                     type="text"
                     maxlength="300"
-                    placeholder="e.g. Organizing a blockchain event? Submit it here."
+                    :placeholder="t('hubManage.ctaPlaceholder')"
                   />
                 </label>
                 <label class="form-field">
@@ -864,7 +864,7 @@ function communityRoleLabel(role: string): string {
                     class="form-input"
                     type="text"
                     maxlength="200"
-                    placeholder="e.g. Prague Blockchain Week organizers"
+                    :placeholder="t('hubManage.curatorCreditPlaceholder')"
                   />
                 </label>
               </div>
