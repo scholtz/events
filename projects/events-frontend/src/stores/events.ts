@@ -201,15 +201,20 @@ export const useEventsStore = defineStore('events', () => {
    */
   const discoveryDataSource = ref<'live' | 'cache' | null>(null)
 
-  /** Timestamp (ms since epoch) of the last successful event-detail fetch, or null. */
-  const detailLastFetchedAt = ref<number | null>(null)
   /**
-   * Data source of the last successful event-detail fetch:
-   * - 'live'  – response came from the network
-   * - 'cache' – response was served from the service-worker IDB cache
-   * - null    – no fetch has completed yet
+   * Freshness record for the last successfully-fetched event detail.
+   *
+   * Stored as a single object so the slug, timestamp, and data-source are
+   * always correlated — preventing staleness metadata from Event A leaking
+   * into Event B when the user navigates between events.
+   *
+   * Set to null when no event detail has been successfully fetched yet.
    */
-  const detailDataSource = ref<'live' | 'cache' | null>(null)
+  const detailFreshness = ref<{
+    slug: string
+    fetchedAt: number
+    dataSource: 'live' | 'cache'
+  } | null>(null)
 
   const filters = ref<EventFilters>(createDefaultEventFilters())
 
@@ -291,6 +296,9 @@ export const useEventsStore = defineStore('events', () => {
   async function fetchEventBySlug(slug: string): Promise<CatalogEvent | null> {
     detailLoading.value = true
     detailError.value = ''
+    // Reset freshness so Event A's metadata never leaks into Event B while the
+    // new fetch is in flight or if it fails.
+    detailFreshness.value = null
     try {
       const result = await gqlRequestWithMeta<{ eventBySlug: CatalogEvent | null }>(
         `query EventBySlug($slug: String!) {
@@ -300,13 +308,17 @@ export const useEventsStore = defineStore('events', () => {
       )
       detailEvent.value = result.data.eventBySlug
       if (result.data.eventBySlug) {
-        detailLastFetchedAt.value = Date.now()
-        detailDataSource.value = result.meta.fromCache ? 'cache' : 'live'
+        detailFreshness.value = {
+          slug,
+          fetchedAt: Date.now(),
+          dataSource: result.meta.fromCache ? 'cache' : 'live',
+        }
       }
       return result.data.eventBySlug
     } catch (error) {
       detailError.value = error instanceof Error ? error.message : 'Unable to load event.'
       detailEvent.value = null
+      // detailFreshness stays null — no misleading timestamp shown for the failed fetch.
       return null
     } finally {
       detailLoading.value = false
@@ -413,8 +425,7 @@ export const useEventsStore = defineStore('events', () => {
     discoveryDataSource,
     detailLoading,
     detailError,
-    detailLastFetchedAt,
-    detailDataSource,
+    detailFreshness,
     filters,
     allEvents,
     pendingEvents,

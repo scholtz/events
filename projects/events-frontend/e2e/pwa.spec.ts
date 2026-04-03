@@ -429,3 +429,125 @@ test.describe('Freshness i18n – German locale', () => {
   })
 })
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Cross-event navigation – freshness isolation (the slug-keyed state bug)
+//
+// Freshness metadata (timestamp + data source) must be correlated to the
+// current event slug. Navigating from Event A to Event B must never carry
+// Event A's stale metadata into Event B's freshness display.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('Cross-event navigation – freshness isolation', () => {
+  test('stale notice is absent when Event A was cached and Event B loads with live data', async ({
+    page,
+  }) => {
+    const domain = makeTechDomain()
+    const eventA = makeApprovedEvent({ name: 'Event Alpha', slug: 'event-alpha' })
+    const eventB = makeApprovedEvent({ name: 'Event Beta', slug: 'event-beta' })
+    // Both events in the mock API.
+    setupMockApi(page, { domains: [domain], events: [eventA, eventB] })
+
+    // Make Event A's detail return with a SW cache-hit header so it sets
+    // detailFreshness for slug='event-alpha'.
+    await page.route('**/graphql', async (route, request) => {
+      const body = request.postData() ?? ''
+      if (body.includes('EventBySlug') && body.includes('event-alpha')) {
+        await route.fulfill({
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-PWA-Cache': 'HIT',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Expose-Headers': 'X-PWA-Cache',
+          },
+          body: JSON.stringify({ data: { eventBySlug: eventA } }),
+        })
+        return
+      }
+      await route.fallback()
+    })
+
+    // Visit Event A — it loads from the SW cache; stale notice should appear.
+    await page.goto('/event/event-alpha')
+    await expect(page.getByRole('heading', { name: 'Event Alpha' })).toBeVisible()
+    await expect(page.locator('.stale-data-notice')).toBeVisible()
+
+    // Navigate to Event B — live data, no cache hit.
+    await page.goto('/event/event-beta')
+    await expect(page.getByRole('heading', { name: 'Event Beta' })).toBeVisible()
+
+    // The stale-data notice must NOT appear — Event A's freshness metadata
+    // must not bleed into Event B's page now that Event B has live fresh data.
+    await expect(page.locator('.stale-data-notice')).toBeHidden()
+  })
+
+  test('stale notice appears only for the correct event when navigating between two events', async ({
+    page,
+  }) => {
+    const domain = makeTechDomain()
+    const eventA = makeApprovedEvent({ name: 'Event Gamma', slug: 'event-gamma' })
+    const eventB = makeApprovedEvent({ name: 'Event Delta', slug: 'event-delta' })
+    setupMockApi(page, { domains: [domain], events: [eventA, eventB] })
+
+    let interceptActive = false
+
+    // Only intercept EventBySlug for event-gamma to simulate SW cache hit.
+    await page.route('**/graphql', async (route, request) => {
+      const body = request.postData() ?? ''
+      if (interceptActive && body.includes('EventBySlug') && body.includes('event-gamma')) {
+        await route.fulfill({
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-PWA-Cache': 'HIT',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Expose-Headers': 'X-PWA-Cache',
+          },
+          body: JSON.stringify({ data: { eventBySlug: eventA } }),
+        })
+        return
+      }
+      await route.fallback()
+    })
+
+    // Visit Event Delta (live data) — no stale notice.
+    await page.goto('/event/event-delta')
+    await expect(page.getByRole('heading', { name: 'Event Delta' })).toBeVisible()
+    await expect(page.locator('.stale-data-notice')).toBeHidden()
+
+    // Enable the cache-hit interceptor and navigate to Event Gamma.
+    interceptActive = true
+    await page.goto('/event/event-gamma')
+    await expect(page.getByRole('heading', { name: 'Event Gamma' })).toBeVisible()
+    // Event Gamma's data came from SW cache — stale notice should appear.
+    await expect(page.locator('.stale-data-notice')).toBeVisible()
+
+    // Disable the cache interceptor and navigate back to Event Delta (live).
+    interceptActive = false
+    await page.goto('/event/event-delta')
+    await expect(page.getByRole('heading', { name: 'Event Delta' })).toBeVisible()
+    // Back on Event Delta with live data — stale notice must NOT appear.
+    // This verifies that Event Gamma's freshness didn't leak into Event Delta.
+    await expect(page.locator('.stale-data-notice')).toBeHidden()
+  })
+
+  test('reconnect recovery: stale notice disappears after coming back online', async ({ page }) => {
+    const domain = makeTechDomain()
+    const eventA = makeApprovedEvent({ name: 'Reconnect Event', slug: 'reconnect-event' })
+    setupMockApi(page, { domains: [domain], events: [eventA] })
+
+    // Load the event detail while online.
+    await page.goto('/event/reconnect-event')
+    await expect(page.getByRole('heading', { name: 'Reconnect Event' })).toBeVisible()
+    await expect(page.locator('.stale-data-notice')).toBeHidden()
+
+    // Go offline — stale notice appears.
+    await page.context().setOffline(true)
+    await expect(page.locator('.stale-data-notice')).toBeVisible()
+
+    // Come back online — isOffline becomes false reactively, notice disappears.
+    await page.context().setOffline(false)
+    await expect(page.locator('.stale-data-notice')).toBeHidden()
+  })
+})
+

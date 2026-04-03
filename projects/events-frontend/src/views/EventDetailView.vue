@@ -31,11 +31,22 @@ const loading = computed(() => eventsStore.detailLoading && !cachedEvent.value)
 const detailError = computed(() => eventsStore.detailError)
 
 /**
+ * Freshness record for the currently displayed event slug.
+ * Returns null if no freshness data exists for this slug (e.g. first load
+ * failed, or we just navigated to a new event and the fetch is in flight).
+ * This prevents Event A's stale metadata from showing on Event B's page.
+ */
+const currentDetailFreshness = computed(() => {
+  const f = eventsStore.detailFreshness
+  return f?.slug === slug.value ? f : null
+})
+
+/**
  * Human-readable age of the event detail data.
  * Used in the stale-data notice when data came from cache.
  */
 const detailDataAge = computed<string | null>(() => {
-  const at = eventsStore.detailLastFetchedAt
+  const at = currentDetailFreshness.value?.fetchedAt
   if (!at) return null
   const minutes = Math.floor((Date.now() - at) / 60000)
   if (minutes < 1) return t('eventDetail.cachedDataRecent')
@@ -44,13 +55,13 @@ const detailDataAge = computed<string | null>(() => {
 
 /**
  * Whether to show a stale-data notice above the event detail.
- * True when offline, OR when the SW served the response from IDB cache and we have
- * a valid timestamp confirming the cached fetch actually completed.
+ * True when offline, OR when the SW served THIS event's response from IDB
+ * cache (only when freshness data is correlated with the current slug).
  */
 const showStaleNotice = computed(
   () =>
     isOffline.value ||
-    (eventsStore.detailDataSource === 'cache' && eventsStore.detailLastFetchedAt !== null),
+    (currentDetailFreshness.value?.dataSource === 'cache'),
 )
 
 /** Whether the current user is allowed to edit this event (admin or event owner). */
