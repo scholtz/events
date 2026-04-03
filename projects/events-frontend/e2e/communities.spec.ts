@@ -1352,8 +1352,11 @@ test.describe('External sources – full admin sync workflow', () => {
     await loginAs(page, admin)
     await page.goto('/community/prague-crypto-circle')
 
+    // Wait for the external sources section to load before scoping into the source row
+    await expect(page.locator('.source-row')).toHaveCount(1)
+
     // Verify initial "Never synced" status renders
-    const sourceCard = page.locator('.claim-row').first()
+    const sourceCard = page.locator('.source-row').first()
     await expect(sourceCard.locator('.last-sync-text')).toContainText('Never synced')
 
     // Trigger sync via the button scoped to the same source row
@@ -1382,7 +1385,10 @@ test.describe('External sources – full admin sync workflow', () => {
     await loginAs(page, admin)
     await page.goto('/community/prague-crypto-circle')
 
-    const sourceCard = page.locator('.claim-row').first()
+    // Wait for the external sources section to load before scoping into the source row
+    await expect(page.locator('.source-row')).toHaveCount(1)
+
+    const sourceCard = page.locator('.source-row').first()
 
     // First sync attempt — expect error message to appear scoped to this source
     await sourceCard.getByRole('button', { name: /Sync Now/i }).click()
