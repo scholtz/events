@@ -9624,7 +9624,7 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
-    public async Task TriggerExternalSync_SecondSync_SkipsDuplicatesWithoutCreatingDuplicateRecords()
+    public async Task TriggerExternalSync_SecondSync_UpdatesAlreadyImportedEvents()
     {
         var externalEvents = new List<EventsApi.Adapters.ExternalEventData>
         {
@@ -9696,7 +9696,7 @@ public sealed class GraphQlIntegrationTests
         var syncMutation = """
             mutation Sync($claimId: UUID!) {
               triggerExternalSync(claimId: $claimId) {
-                importedCount skippedCount errorCount
+                importedCount updatedCount skippedCount errorCount
               }
             }
             """;
@@ -9706,17 +9706,145 @@ public sealed class GraphQlIntegrationTests
         var r1 = doc1.RootElement.GetProperty("data").GetProperty("triggerExternalSync");
         Assert.Equal(1, r1.GetProperty("importedCount").GetInt32());
 
-        // Second sync with the same external events: should skip 1, import 0
+        // Second sync with the same external events: should update 1, not create a duplicate
         using var doc2 = await ExecuteGraphQlAsync(client, syncMutation, new { claimId });
         var r2 = doc2.RootElement.GetProperty("data").GetProperty("triggerExternalSync");
         Assert.Equal(0, r2.GetProperty("importedCount").GetInt32());
-        Assert.Equal(1, r2.GetProperty("skippedCount").GetInt32());
+        Assert.Equal(1, r2.GetProperty("updatedCount").GetInt32());
+        Assert.Equal(0, r2.GetProperty("skippedCount").GetInt32());
 
-        // Verify only one record in DB for this external ID
+        // Verify only one record in DB for this external ID — no duplicate created
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<EventsApi.Data.AppDbContext>();
         var count = await db.Events.CountAsync(e => e.ExternalSourceEventId == "meetup-dup-001");
         Assert.Equal(1, count);
+    }
+
+    [Fact]
+    public async Task TriggerExternalSync_SecondSync_UpdatesEventFieldsFromUpstream()
+    {
+        // When an event was previously imported and the upstream source changes the event data
+        // (e.g. name, city, dates), a subsequent sync must refresh those fields while
+        // preserving locally curated fields (Status, Slug).
+        var updatedExternalEvents = new List<EventsApi.Adapters.ExternalEventData>
+        {
+            new(
+                ExternalId: "meetup-update-001",
+                Name: "Updated Event Name",
+                Description: "Updated description from upstream.",
+                EventUrl: "https://www.meetup.com/update-group/events/meetup-update-001",
+                StartsAtUtc: new DateTime(2031, 8, 15, 10, 0, 0, DateTimeKind.Utc),
+                EndsAtUtc: new DateTime(2031, 8, 15, 12, 0, 0, DateTimeKind.Utc),
+                VenueName: "New Venue", AddressLine1: null, City: "Vienna", CountryCode: "AT",
+                Latitude: null, Longitude: null, IsFree: false, PriceAmount: 10m,
+                CurrencyCode: "EUR", Language: null),
+        };
+
+        await using var factory = new EventsApiWebApplicationFactory(services =>
+        {
+            var adapter = new SeededMeetupAdapter(updatedExternalEvents);
+            services.RemoveAll<EventsApi.Adapters.ExternalSourceAdapterFactory>();
+            services.AddSingleton(new EventsApi.Adapters.ExternalSourceAdapterFactory(adapter, adapter));
+        });
+
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("update-test@example.com", "Update Tester");
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var domain = CreateDomain("Update Domain", "update-domain");
+            dbContext.Domains.Add(domain);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Update Group", Slug = "update-group",
+                IsActive = true, CreatedByUserId = admin.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id, UserId = admin.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/update-group",
+                SourceIdentifier = "update-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.Verified,
+                CreatedByUserId = admin.Id,
+            };
+            claimId = claim.Id;
+            dbContext.Set<EventsApi.Data.Entities.ExternalSourceClaim>().Add(claim);
+
+            // Pre-seed the event with stale data (as if imported during a previous sync).
+            dbContext.Events.Add(new EventsApi.Data.Entities.CatalogEvent
+            {
+                Name = "Old Event Name",
+                Slug = "old-event-name",
+                Description = "Old description.",
+                EventUrl = "https://www.meetup.com/update-group/events/meetup-update-001",
+                VenueName = "Old Venue",
+                AddressLine1 = "",
+                City = "Prague",
+                CountryCode = "CZ",
+                StartsAtUtc = new DateTime(2030, 1, 1, 10, 0, 0, DateTimeKind.Utc),
+                EndsAtUtc = new DateTime(2030, 1, 1, 12, 0, 0, DateTimeKind.Utc),
+                IsFree = true,
+                Status = EventsApi.Data.Entities.EventStatus.Published, // simulates admin approval
+                DomainId = domain.Id,
+                SubmittedByUserId = admin.Id,
+                ExternalSourceClaimId = claimId,
+                ExternalSourceEventId = "meetup-update-001",
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation Sync($claimId: UUID!) {
+              triggerExternalSync(claimId: $claimId) {
+                importedCount updatedCount skippedCount errorCount summary
+              }
+            }
+            """,
+            new { claimId });
+
+        var result = doc.RootElement.GetProperty("data").GetProperty("triggerExternalSync");
+        Assert.Equal(0, result.GetProperty("importedCount").GetInt32());
+        Assert.Equal(1, result.GetProperty("updatedCount").GetInt32());
+        Assert.Equal(0, result.GetProperty("skippedCount").GetInt32());
+        Assert.Equal(0, result.GetProperty("errorCount").GetInt32());
+        Assert.Contains("Updated 1 event.", result.GetProperty("summary").GetString());
+
+        // Verify the event fields have been refreshed from upstream.
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<EventsApi.Data.AppDbContext>();
+        var updatedEvent = await db.Events.SingleAsync(e => e.ExternalSourceEventId == "meetup-update-001");
+
+        Assert.Equal("Updated Event Name", updatedEvent.Name);
+        Assert.Equal("Updated description from upstream.", updatedEvent.Description);
+        Assert.Equal("Vienna", updatedEvent.City);
+        Assert.Equal("AT", updatedEvent.CountryCode);
+        Assert.Equal(new DateTime(2031, 8, 15, 10, 0, 0, DateTimeKind.Utc), updatedEvent.StartsAtUtc);
+        Assert.False(updatedEvent.IsFree);
+        Assert.Equal(10m, updatedEvent.PriceAmount);
+
+        // Locally curated fields must NOT be overwritten.
+        Assert.Equal("old-event-name", updatedEvent.Slug); // slug preserved
+        Assert.Equal(EventsApi.Data.Entities.EventStatus.Published, updatedEvent.Status); // moderation preserved
     }
 
     [Fact]
@@ -11784,7 +11912,7 @@ public sealed class GraphQlIntegrationTests
     {
         // Regression test for the DB-level unique index on (ExternalSourceClaimId, ExternalSourceEventId).
         // Pre-seed a CatalogEvent with the same ExternalSourceClaimId + ExternalSourceEventId that
-        // the adapter would produce, then verify that a sync skips it gracefully (no exception, no
+        // the adapter would produce, then verify that a sync updates it gracefully (no exception, no
         // duplicate row created).
         var externalEvents = new List<EventsApi.Adapters.ExternalEventData>
         {
@@ -11871,13 +11999,13 @@ public sealed class GraphQlIntegrationTests
         client.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
 
-        // A sync with the same event pre-seeded must skip gracefully with 0 errors.
+        // A sync with the same event pre-seeded must update gracefully with 0 errors.
         using var doc = await ExecuteGraphQlAsync(
             client,
             """
             mutation Sync($claimId: UUID!) {
               triggerExternalSync(claimId: $claimId) {
-                importedCount skippedCount errorCount
+                importedCount updatedCount skippedCount errorCount
               }
             }
             """,
@@ -11885,7 +12013,8 @@ public sealed class GraphQlIntegrationTests
 
         var result = doc.RootElement.GetProperty("data").GetProperty("triggerExternalSync");
         Assert.Equal(0, result.GetProperty("importedCount").GetInt32());
-        Assert.Equal(1, result.GetProperty("skippedCount").GetInt32());
+        Assert.Equal(1, result.GetProperty("updatedCount").GetInt32());
+        Assert.Equal(0, result.GetProperty("skippedCount").GetInt32());
         Assert.Equal(0, result.GetProperty("errorCount").GetInt32());
 
         // Confirm exactly one DB record for this external ID — no duplicate created.
@@ -15396,5 +15525,156 @@ public sealed class GraphQlIntegrationTests
         Assert.NotNull(updatedClaim.LastSyncSucceededAtUtc);
         Assert.Null(updatedClaim.LastSyncError);
     }
+
+    // ── ExternalSyncEngine unit tests ─────────────────────────────────────────
+
+    [Theory]
+    [InlineData(0, 0, 0, 0, "Imported 0 events.")]
+    [InlineData(1, 0, 0, 0, "Imported 1 event.")]
+    [InlineData(3, 0, 0, 0, "Imported 3 events.")]
+    [InlineData(1, 2, 0, 0, "Imported 1 event. Updated 2 events.")]
+    [InlineData(0, 1, 0, 0, "Imported 0 events. Updated 1 event.")]
+    [InlineData(2, 3, 1, 0, "Imported 2 events. Updated 3 events. Skipped 1 (concurrent duplicate).")]
+    [InlineData(0, 0, 0, 1, "Imported 0 events. 1 event failed validation.")]
+    [InlineData(2, 0, 0, 3, "Imported 2 events. 3 events failed validation.")]
+    [InlineData(1, 1, 0, 1, "Imported 1 event. Updated 1 event. 1 event failed validation.")]
+    public void ExternalSyncEngine_BuildSyncSummary_ProducesCorrectMessage(
+        int imported, int updated, int skipped, int errors, string expected)
+    {
+        var summary = ExternalSyncEngine.BuildSyncSummary(imported, updated, skipped, errors);
+        Assert.Equal(expected, summary);
+    }
+
+    [Fact]
+    public void ExternalSyncEngine_ApplyUpstreamUpdate_RefreshesAllNonNullFields()
+    {
+        var existing = new EventsApi.Data.Entities.CatalogEvent
+        {
+            Name = "Old Name",
+            Slug = "old-slug",
+            Description = "Old desc.",
+            EventUrl = "https://old.example.com/event",
+            VenueName = "Old Venue",
+            AddressLine1 = "Old Street 1",
+            City = "OldCity",
+            CountryCode = "XX",
+            Latitude = 0m,
+            Longitude = 0m,
+            StartsAtUtc = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            EndsAtUtc = new DateTime(2020, 1, 1, 2, 0, 0, DateTimeKind.Utc),
+            IsFree = true,
+            PriceAmount = null,
+            CurrencyCode = "EUR",
+            Language = null,
+            Status = EventsApi.Data.Entities.EventStatus.Published,
+        };
+
+        var upstream = new EventsApi.Adapters.ExternalEventData(
+            ExternalId: "ext-001",
+            Name: "New Name",
+            Description: "New desc.",
+            EventUrl: "https://new.example.com/event",
+            StartsAtUtc: new DateTime(2031, 6, 1, 10, 0, 0, DateTimeKind.Utc),
+            EndsAtUtc: new DateTime(2031, 6, 1, 12, 0, 0, DateTimeKind.Utc),
+            VenueName: "New Venue",
+            AddressLine1: "New Street 2",
+            City: "NewCity",
+            CountryCode: "at",
+            Latitude: 48.2m,
+            Longitude: 16.4m,
+            IsFree: false,
+            PriceAmount: 15m,
+            CurrencyCode: "usd",
+            Language: "de");
+
+        ExternalSyncEngine.ApplyUpstreamUpdate(existing, upstream);
+
+        Assert.Equal("New Name", existing.Name);
+        Assert.Equal("New desc.", existing.Description);
+        Assert.Equal("https://new.example.com/event", existing.EventUrl);
+        Assert.Equal("New Venue", existing.VenueName);
+        Assert.Equal("New Street 2", existing.AddressLine1);
+        Assert.Equal("NewCity", existing.City);
+        Assert.Equal("AT", existing.CountryCode); // normalised to upper
+        Assert.Equal(48.2m, existing.Latitude);
+        Assert.Equal(16.4m, existing.Longitude);
+        Assert.Equal(new DateTime(2031, 6, 1, 10, 0, 0, DateTimeKind.Utc), existing.StartsAtUtc);
+        Assert.Equal(new DateTime(2031, 6, 1, 12, 0, 0, DateTimeKind.Utc), existing.EndsAtUtc);
+        Assert.False(existing.IsFree);
+        Assert.Equal(15m, existing.PriceAmount);
+        Assert.Equal("USD", existing.CurrencyCode); // normalised to upper
+        Assert.Equal("de", existing.Language);
+
+        // Locally curated fields must be preserved.
+        Assert.Equal("old-slug", existing.Slug);
+        Assert.Equal(EventsApi.Data.Entities.EventStatus.Published, existing.Status);
+    }
+
+    [Fact]
+    public void ExternalSyncEngine_ApplyUpstreamUpdate_PreservesExistingFieldsWhenUpstreamIsNull()
+    {
+        var existing = new EventsApi.Data.Entities.CatalogEvent
+        {
+            Name = "Keep This Name",
+            Slug = "keep-slug",
+            Description = "Keep this desc.",
+            EventUrl = "https://keep.example.com/event",
+            VenueName = "Keep Venue",
+            AddressLine1 = "Keep Street",
+            City = "KeepCity",
+            CountryCode = "SK",
+            Latitude = 48.1m,
+            Longitude = 17.1m,
+            StartsAtUtc = new DateTime(2030, 3, 1, 10, 0, 0, DateTimeKind.Utc),
+            EndsAtUtc = new DateTime(2030, 3, 1, 12, 0, 0, DateTimeKind.Utc),
+            IsFree = false,
+            PriceAmount = 20m,
+            CurrencyCode = "EUR",
+            Language = "sk",
+            Status = EventsApi.Data.Entities.EventStatus.Published,
+        };
+
+        // Upstream event has all nullable fields as null — only non-nullable fields update.
+        var upstream = new EventsApi.Adapters.ExternalEventData(
+            ExternalId: "ext-null-001",
+            Name: "Updated Name", // non-null — will update
+            Description: "", // empty string — will not overwrite existing description
+            EventUrl: null,
+            StartsAtUtc: null, // null — dates should not change
+            EndsAtUtc: null,
+            VenueName: null,
+            AddressLine1: null,
+            City: null,
+            CountryCode: null,
+            Latitude: null,
+            Longitude: null,
+            IsFree: null,
+            PriceAmount: null,
+            CurrencyCode: null,
+            Language: null);
+
+        ExternalSyncEngine.ApplyUpstreamUpdate(existing, upstream);
+
+        // Name updated (non-null from upstream).
+        Assert.Equal("Updated Name", existing.Name);
+
+        // All null fields preserve existing values.
+        Assert.Equal("Keep this desc.", existing.Description);
+        Assert.Equal("https://keep.example.com/event", existing.EventUrl);
+        Assert.Equal("Keep Venue", existing.VenueName);
+        Assert.Equal("Keep Street", existing.AddressLine1);
+        Assert.Equal("KeepCity", existing.City);
+        Assert.Equal("SK", existing.CountryCode);
+        Assert.Equal(48.1m, existing.Latitude);
+        Assert.Equal(17.1m, existing.Longitude);
+        Assert.Equal(new DateTime(2030, 3, 1, 10, 0, 0, DateTimeKind.Utc), existing.StartsAtUtc);
+        Assert.Equal(new DateTime(2030, 3, 1, 12, 0, 0, DateTimeKind.Utc), existing.EndsAtUtc);
+        Assert.False(existing.IsFree);
+        Assert.Equal(20m, existing.PriceAmount);
+        Assert.Equal("EUR", existing.CurrencyCode);
+        Assert.Equal("sk", existing.Language);
+        Assert.Equal(EventsApi.Data.Entities.EventStatus.Published, existing.Status);
+    }
 }
+
 

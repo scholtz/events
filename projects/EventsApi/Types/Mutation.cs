@@ -2021,7 +2021,7 @@ public sealed class Mutation
                 "CLAIM_NOT_VERIFIED");
 
         if (input.ExternalIds is null || input.ExternalIds.Count == 0)
-            return new SyncResult(0, 0, 0, "No events selected for import.");
+            return new SyncResult(0, 0, 0, 0, "No events selected for import.");
 
         var selectedIds = input.ExternalIds.ToHashSet();
 
@@ -2150,7 +2150,7 @@ public sealed class Mutation
         claim.LastSyncSkippedCount = skippedCount;
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        return new SyncResult(importedCount, skippedCount, errorCount, summary);
+        return new SyncResult(importedCount, 0, skippedCount, errorCount, summary);
     }
 
     /// Triggers a manual sync from the linked external source.
@@ -2197,7 +2197,7 @@ public sealed class Mutation
         var parts = new List<string>();
         parts.Add(imported == 1 ? "Imported 1 event." : $"Imported {imported} events.");
         if (skipped > 0)
-            parts.Add(skipped == 1 ? "Skipped 1 (already imported)." : $"Skipped {skipped} (already imported).");
+            parts.Add(skipped == 1 ? "Skipped 1 (concurrent duplicate)." : $"Skipped {skipped} (concurrent duplicates).");
         if (errors > 0)
             parts.Add(errors == 1 ? "1 event failed validation." : $"{errors} events failed validation.");
         return string.Join(" ", parts);

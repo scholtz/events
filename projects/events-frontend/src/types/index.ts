@@ -308,6 +308,8 @@ export interface ExternalSourceClaim {
 /** Result of a manual sync operation */
 export interface SyncResult {
   importedCount: number
+  /** Number of already-imported events refreshed with upstream data. */
+  updatedCount: number
   skippedCount: number
   errorCount: number
   summary: string

@@ -104,7 +104,10 @@ public sealed record SyncResult(
     /// <summary>Number of events newly imported during this sync.</summary>
     int ImportedCount,
 
-    /// <summary>Number of events skipped because they already exist in the catalog.</summary>
+    /// <summary>Number of already-imported events that were updated with fresh upstream data.</summary>
+    int UpdatedCount,
+
+    /// <summary>Number of events skipped due to concurrent duplicate inserts.</summary>
     int SkippedCount,
 
     /// <summary>Number of events skipped due to validation failures or missing required fields.</summary>

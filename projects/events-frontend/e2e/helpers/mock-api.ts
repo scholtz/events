@@ -2004,7 +2004,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       claim.lastSyncError = null
       claim.lastSyncImportedCount = 0
       claim.lastSyncSkippedCount = 0
-      const result = { importedCount: 0, skippedCount: 0, errorCount: 0, summary: 'Imported 0 events.' }
+      const result = { importedCount: 0, updatedCount: 0, skippedCount: 0, errorCount: 0, summary: 'Imported 0 events.' }
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -2101,7 +2101,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       claim.lastSyncOutcome = summary
       claim.lastSyncImportedCount = imported
       claim.lastSyncSkippedCount = skipped
-      const result = { importedCount: imported, skippedCount: skipped, errorCount: 0, summary }
+      const result = { importedCount: imported, updatedCount: 0, skippedCount: skipped, errorCount: 0, summary }
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
