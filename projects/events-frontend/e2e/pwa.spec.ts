@@ -267,3 +267,165 @@ test.describe('Event detail freshness – error state', () => {
   })
 })
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Fresh data – normal online experience (no stale notices)
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('Fresh data – normal online experience', () => {
+  test('discovery shows events without any cached notice when online with live data', async ({
+    page,
+  }) => {
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({ name: 'Fresh Live Event', slug: 'fresh-live-event' })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    await page.goto('/')
+    await expect(page.locator('.event-card', { hasText: 'Fresh Live Event' })).toBeVisible()
+
+    // Neither the cached-results notice nor the refreshing notice should be shown.
+    await expect(page.locator('.cached-results-notice')).toBeHidden()
+    await expect(page.locator('.refreshing-notice')).toBeHidden()
+  })
+
+  test('event detail shows event without stale notice when online with live data', async ({
+    page,
+  }) => {
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({ name: 'Fresh Detail Event', slug: 'fresh-detail-event' })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    await page.goto(`/event/${event.slug}`)
+    await expect(page.getByRole('heading', { name: 'Fresh Detail Event' })).toBeVisible()
+
+    // The stale-data notice must NOT appear when data is fresh and live.
+    await expect(page.locator('.stale-data-notice')).toBeHidden()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SW cache-hit – online but served from IDB cache
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('SW cache hit – online but data served from IDB cache', () => {
+  test('discovery shows cached-results notice when response carries X-PWA-Cache: HIT', async ({
+    page,
+  }) => {
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({ name: 'IDB Cached Event', slug: 'idb-cached-event' })
+    // Set up normal mock for non-DiscoveryEvents queries (domains, auth, etc.)
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    // Register the cache-header interceptor BEFORE navigating so the very first
+    // DiscoveryEvents fetch simulates the service worker serving from IDB cache.
+    await page.route('**/graphql', async (route, request) => {
+      const body = request.postData() ?? ''
+      if (body.includes('DiscoveryEvents')) {
+        await route.fulfill({
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            // Match what the SW returns: expose the header so fetch() can read it.
+            'X-PWA-Cache': 'HIT',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Expose-Headers': 'X-PWA-Cache',
+          },
+          body: JSON.stringify({ data: { events: [event] } }),
+        })
+        return
+      }
+      await route.fallback()
+    })
+
+    await page.goto('/')
+
+    // Wait for the event card to confirm events loaded.
+    await expect(page.locator('.event-card', { hasText: 'IDB Cached Event' })).toBeVisible()
+
+    // The app is online but the SW served from IDB cache — notice must be visible.
+    await expect(page.locator('.cached-results-notice')).toBeVisible()
+  })
+
+  test('event detail shows stale notice when response carries X-PWA-Cache: HIT', async ({
+    page,
+  }) => {
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({ name: 'IDB Detail Event', slug: 'idb-detail-event' })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    // Register the cache-header interceptor BEFORE navigating to the detail page.
+    await page.route('**/graphql', async (route, request) => {
+      const body = request.postData() ?? ''
+      if (body.includes('EventBySlug')) {
+        await route.fulfill({
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-PWA-Cache': 'HIT',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Expose-Headers': 'X-PWA-Cache',
+          },
+          body: JSON.stringify({ data: { eventBySlug: event } }),
+        })
+        return
+      }
+      await route.fallback()
+    })
+
+    await page.goto(`/event/${event.slug}`)
+    await expect(page.getByRole('heading', { name: 'IDB Detail Event' })).toBeVisible()
+
+    // Stale-data notice should appear because the SW served from IDB cache.
+    await expect(page.locator('.stale-data-notice')).toBeVisible()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// i18n locale coverage for freshness copy
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('Freshness i18n – Slovak locale', () => {
+  test('shows Slovak cached-results notice when offline', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'sk')
+    })
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({ name: 'Slovak Offline Event', slug: 'slovak-offline-event' })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    await page.goto('/')
+    await expect(page.locator('.event-card', { hasText: 'Slovak Offline Event' })).toBeVisible()
+
+    await page.context().setOffline(true)
+
+    const notice = page.locator('.cached-results-notice')
+    await expect(notice).toBeVisible()
+    // The Slovak copy should contain text from the sk locale (not English).
+    await expect(notice).toContainText(/Zobrazuj|navštev|Obnovte/i)
+
+    await page.context().setOffline(false)
+  })
+})
+
+test.describe('Freshness i18n – German locale', () => {
+  test('shows German cached-results notice when offline', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'de')
+    })
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({ name: 'German Offline Event', slug: 'german-offline-event' })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    await page.goto('/')
+    await expect(page.locator('.event-card', { hasText: 'German Offline Event' })).toBeVisible()
+
+    await page.context().setOffline(true)
+
+    const notice = page.locator('.cached-results-notice')
+    await expect(notice).toBeVisible()
+    // The German copy should contain text from the de locale (not English).
+    await expect(notice).toContainText(/Besuchs|angezeigt|Aktualisieren/i)
+
+    await page.context().setOffline(false)
+  })
+})
+
