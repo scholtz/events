@@ -1391,9 +1391,10 @@ test.describe('External sources – full admin sync workflow', () => {
     const sourceCard = page.locator('.source-row').first()
 
     // First sync attempt — expect error message to appear scoped to this source
+    // The mock returns the realistic error: "Failed to fetch events from Meetup: 503 Service Unavailable"
     await sourceCard.getByRole('button', { name: /Sync Now/i }).click()
     await expect(sourceCard.locator('.sync-error-text')).toBeVisible()
-    await expect(sourceCard.locator('.sync-error-text')).toContainText('Sync failed')
+    await expect(sourceCard.locator('.sync-error-text')).toContainText('503 Service Unavailable')
 
     // forceSyncError was auto-reset; second attempt succeeds
     await sourceCard.getByRole('button', { name: /Sync Now/i }).click()
