@@ -402,7 +402,7 @@ test.describe('Localized submit event', () => {
     await expect(page.locator('#event-country')).toHaveAttribute('placeholder', 'napr. SK')
   })
 
-  test('submit event form timezone placeholder is localized in German', async ({ page }) => {
+  test('submit event form event title placeholder is localized in German', async ({ page }) => {
     const user = makeAdminUser()
     setupMockApi(page, { users: [user], domains: [makeTechDomain()] })
 
@@ -410,23 +410,28 @@ test.describe('Localized submit event', () => {
     await page.locator('#language-select').selectOption('de')
 
     await page.goto('/submit')
-    // Advance to step 2 (Date & Time) to see timezone field
-    await page.getByRole('button', { name: 'Weiter' }).click()
-    await expect(page.locator('#event-timezone')).toHaveAttribute('placeholder', 'z.B. Europe/Prague')
+    // German event title placeholder visible on step 1 without navigation
+    await expect(page.locator('#event-title')).toHaveAttribute(
+      'placeholder',
+      'z.B. Prague Crypto Summit 2026',
+    )
+    // Country code placeholder should also be localized
+    await expect(page.locator('#event-country')).toHaveAttribute('placeholder', 'z.B. DE')
   })
 })
 
 test.describe('Localized portfolio view', () => {
   test('portfolio filter controls have localized aria-labels in Slovak', async ({ page }) => {
     const user = makeAdminUser()
-    setupMockApi(page, { users: [user], domains: [makeTechDomain()] })
+    const event = makeApprovedEvent({ submittedByUserId: user.id })
+    setupMockApi(page, { users: [user], domains: [makeTechDomain()], events: [event] })
 
     await loginAs(page, user)
     await page.locator('#language-select').selectOption('sk')
 
     await page.goto('/portfolio')
 
-    // Check aria-labels on filter controls are in Slovak
+    // Filter controls only appear when the user has events
     await expect(page.locator('[aria-label="Filtrovať podľa stavu"]')).toBeVisible()
     await expect(page.locator('[aria-label="Filtrovať podľa kategórie"]')).toBeVisible()
     await expect(page.locator('[aria-label="Zoradiť udalosti"]')).toBeVisible()
@@ -434,14 +439,15 @@ test.describe('Localized portfolio view', () => {
 
   test('portfolio filter controls have localized aria-labels in German', async ({ page }) => {
     const user = makeAdminUser()
-    setupMockApi(page, { users: [user], domains: [makeTechDomain()] })
+    const event = makeApprovedEvent({ submittedByUserId: user.id })
+    setupMockApi(page, { users: [user], domains: [makeTechDomain()], events: [event] })
 
     await loginAs(page, user)
     await page.locator('#language-select').selectOption('de')
 
     await page.goto('/portfolio')
 
-    // Check aria-labels on filter controls are in German
+    // Filter controls only appear when the user has events
     await expect(page.locator('[aria-label="Nach Status filtern"]')).toBeVisible()
     await expect(page.locator('[aria-label="Nach Kategorie filtern"]')).toBeVisible()
     await expect(page.locator('[aria-label="Veranstaltungen sortieren"]')).toBeVisible()
