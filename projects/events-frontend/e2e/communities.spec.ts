@@ -1327,6 +1327,6 @@ test.describe('External sources – sync health and auto-sync controls', () => {
     await loginAs(page, admin)
     await page.goto('/community/prague-crypto-circle')
 
-    await expect(page.locator('.auto-sync-badge')).not.toBeVisible()
+    await expect(page.locator('.auto-sync-badge')).toBeHidden()
   })
 })

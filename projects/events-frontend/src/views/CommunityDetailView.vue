@@ -769,7 +769,6 @@ function memberCountText(count: number): string {
                       v-if="source.status === 'VERIFIED'"
                       class="btn btn-sm btn-ghost"
                       :disabled="togglingAutoSyncClaimId === source.id"
-                      :aria-label="source.isAutoSyncEnabled ? t('community.disableAutoSyncAriaLabel') : t('community.enableAutoSyncAriaLabel')"
                       @click="handleToggleAutoSync(source.id, !source.isAutoSyncEnabled)"
                     >
                       {{ source.isAutoSyncEnabled ? t('community.disableAutoSync') : t('community.enableAutoSync') }}
