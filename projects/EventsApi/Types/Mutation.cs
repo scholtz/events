@@ -2021,7 +2021,7 @@ public sealed class Mutation
                 "CLAIM_NOT_VERIFIED");
 
         if (input.ExternalIds is null || input.ExternalIds.Count == 0)
-            return new SyncResult(0, 0, 0, 0, "No events selected for import.");
+            return new SyncResult(0, 0, 0, 0, 0, "No events selected for import.");
 
         var selectedIds = input.ExternalIds.ToHashSet();
 
@@ -2150,7 +2150,7 @@ public sealed class Mutation
         claim.LastSyncSkippedCount = skippedCount;
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        return new SyncResult(importedCount, 0, skippedCount, errorCount, summary);
+        return new SyncResult(importedCount, 0, skippedCount, errorCount, 0, summary);
     }
 
     /// Triggers a manual sync from the linked external source.

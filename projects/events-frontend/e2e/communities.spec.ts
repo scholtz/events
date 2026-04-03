@@ -1330,3 +1330,90 @@ test.describe('External sources – sync health and auto-sync controls', () => {
     await expect(page.locator('.auto-sync-badge')).toBeHidden()
   })
 })
+
+
+// ── Sync workflow: realistic admin journey ────────────────────────────────────
+
+test.describe('External sources – full admin sync workflow', () => {
+  test('admin can view a verified claim sync status and trigger manual sync', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makeVerifiedClaim(group.id, {
+      lastSyncAtUtc: null,
+      lastSyncSucceededAtUtc: null,
+      lastSyncError: null,
+    })
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+    state.externalSourceClaims.push(claim)
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+
+    // Verify initial "Never synced" status renders
+    await expect(page.locator('.last-sync-text')).toContainText('Never synced')
+
+    // Trigger sync and verify success result badge appears
+    await page.getByRole('button', { name: /Sync Now/i }).first().click()
+    await expect(page.locator('.sync-result-badge')).toBeVisible()
+    await expect(page.locator('.sync-result-badge')).toContainText('Imported 0 events')
+  })
+
+  test('admin sees error when sync fails and can retry successfully', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makeVerifiedClaim(group.id, {
+      lastSyncAtUtc: null,
+      lastSyncSucceededAtUtc: null,
+      lastSyncError: null,
+    })
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+    state.externalSourceClaims.push(claim)
+
+    // Inject a transient failure for the first sync call
+    state.forceSyncError = true
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+
+    // First sync attempt — expect error message to appear
+    await page.getByRole('button', { name: /Sync Now/i }).first().click()
+    await expect(page.locator('.sync-error-text').last()).toBeVisible()
+    await expect(page.locator('.sync-error-text').last()).toContainText('Sync failed')
+
+    // forceSyncError was auto-reset; second attempt succeeds
+    await page.getByRole('button', { name: /Sync Now/i }).first().click()
+    await expect(page.locator('.sync-result-badge')).toBeVisible()
+    await expect(page.locator('.sync-result-badge')).toContainText('Imported 0 events')
+  })
+
+  test('admin can disable auto-sync and then re-enable it in one session', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makeVerifiedClaim(group.id, { isAutoSyncEnabled: true })
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+    state.externalSourceClaims.push(claim)
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+
+    // Disable auto-sync
+    await expect(page.locator('.auto-sync-badge.auto-sync-on')).toBeVisible()
+    await page.getByRole('button', { name: 'Disable auto-sync' }).click()
+    await expect(page.locator('.auto-sync-badge.auto-sync-off')).toBeVisible()
+    expect(state.externalSourceClaims.find((c) => c.id === claim.id)?.isAutoSyncEnabled).toBe(false)
+
+    // Re-enable auto-sync
+    await page.getByRole('button', { name: 'Enable auto-sync' }).click()
+    await expect(page.locator('.auto-sync-badge.auto-sync-on')).toBeVisible()
+    expect(state.externalSourceClaims.find((c) => c.id === claim.id)?.isAutoSyncEnabled).toBe(true)
+  })
+})

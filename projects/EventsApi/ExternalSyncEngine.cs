@@ -58,7 +58,7 @@ public sealed class ExternalSyncEngine(
             claim.LastSyncAtUtc = now;
             claim.LastSyncError = $"Failed to fetch events from {claim.SourceType}: {ex.Message}";
             await _dbContext.SaveChangesAsync(cancellationToken);
-            return new SyncResult(0, 0, 0, 1, $"Sync failed: {ex.Message}");
+            return new SyncResult(0, 0, 0, 1, 0, $"Sync failed: {ex.Message}");
         }
 
         var defaultDomain = await _dbContext.Domains.FirstOrDefaultAsync(
@@ -72,7 +72,7 @@ public sealed class ExternalSyncEngine(
             claim.LastSyncAtUtc = now;
             claim.LastSyncError = "No active domain found to assign imported events.";
             await _dbContext.SaveChangesAsync(cancellationToken);
-            return new SyncResult(0, 0, 0, 1, "Sync failed: no active domain.");
+            return new SyncResult(0, 0, 0, 1, 0, "Sync failed: no active domain.");
         }
 
         var importedCount = 0;
@@ -80,8 +80,13 @@ public sealed class ExternalSyncEngine(
         var skippedCount = 0;
         var errorCount = 0;
 
+        // Collect all external IDs seen in this sync to detect orphaned events afterward.
+        var seenExternalIds = new HashSet<string>(externalEvents.Count);
+
         foreach (var ext in externalEvents)
         {
+            seenExternalIds.Add(ext.ExternalId);
+
             var existingEvent = await _dbContext.Events.SingleOrDefaultAsync(
                 e => e.ExternalSourceClaimId == claimId && e.ExternalSourceEventId == ext.ExternalId,
                 cancellationToken);
@@ -191,7 +196,36 @@ public sealed class ExternalSyncEngine(
             }
         }
 
-        var summary = BuildSyncSummary(importedCount, updatedCount, skippedCount, errorCount);
+        // Detect events that were previously imported from this claim but no longer appear in
+        // the upstream feed (cancelled, deleted, or unlisted on the source platform).
+        // These events are NOT deleted from Biatec Events — they are preserved as-is to avoid
+        // silent data loss. The count is surfaced in the result so administrators can review.
+        var orphanedCount = 0;
+        if (seenExternalIds.Count > 0)
+        {
+            // Only check for orphans when the upstream returned at least one event.
+            // An empty feed is more likely a transient outage than a true mass-removal.
+            var previouslyImportedIds = await _dbContext.Events
+                .Where(e => e.ExternalSourceClaimId == claimId && e.ExternalSourceEventId != null)
+                .Select(e => e.ExternalSourceEventId!)
+                .ToListAsync(cancellationToken);
+
+            var orphanedIds = previouslyImportedIds
+                .Where(id => !seenExternalIds.Contains(id))
+                .ToList();
+
+            orphanedCount = orphanedIds.Count;
+
+            if (orphanedCount > 0)
+            {
+                _logger.LogInformation(
+                    "External sync for claim {ClaimId}: {OrphanedCount} previously imported event(s) " +
+                    "no longer appear in the upstream feed and have been preserved as-is: {OrphanedIds}",
+                    claimId, orphanedCount, string.Join(", ", orphanedIds));
+            }
+        }
+
+        var summary = BuildSyncSummary(importedCount, updatedCount, skippedCount, errorCount, orphanedCount);
 
         claim.LastSyncAtUtc = now;
         claim.LastSyncOutcome = summary;
@@ -210,7 +244,7 @@ public sealed class ExternalSyncEngine(
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        return new SyncResult(importedCount, updatedCount, skippedCount, errorCount, summary);
+        return new SyncResult(importedCount, updatedCount, skippedCount, errorCount, orphanedCount, summary);
     }
 
     private void DetachAddedEntries()
@@ -223,7 +257,7 @@ public sealed class ExternalSyncEngine(
         }
     }
 
-    internal static string BuildSyncSummary(int imported, int updated, int skipped, int errors)
+    internal static string BuildSyncSummary(int imported, int updated, int skipped, int errors, int orphaned = 0)
     {
         var parts = new List<string>();
         parts.Add(imported == 1 ? "Imported 1 event." : $"Imported {imported} events.");
@@ -233,6 +267,10 @@ public sealed class ExternalSyncEngine(
             parts.Add(skipped == 1 ? "Skipped 1 (concurrent duplicate)." : $"Skipped {skipped} (concurrent duplicates).");
         if (errors > 0)
             parts.Add(errors == 1 ? "1 event failed validation." : $"{errors} events failed validation.");
+        if (orphaned > 0)
+            parts.Add(orphaned == 1
+                ? "1 previously imported event no longer appears upstream (preserved)."
+                : $"{orphaned} previously imported events no longer appear upstream (preserved).");
         return string.Join(" ", parts);
     }
 

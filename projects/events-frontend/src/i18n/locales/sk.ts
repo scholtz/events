@@ -870,6 +870,7 @@ export default {
     errorRemoveSource: 'Nepodarilo sa odstrániť zdroj.',
     errorSync: 'Synchronizácia zlyhala. Skúste to znova.',
     errorToggleAutoSync: 'Nepodarilo sa aktualizovať nastavenie auto-sync.',
+    syncOrphanedNotice: '{count} predtým importovaných podujatí sa viac nenachádza v zdrojovom feedu a bolo zachované. Skontrolujte ich v zozname podujatí.',
     errorPreview: 'Nepodarilo sa načítať náhľad. Skúste to znova.',
     previewImportButton: 'Náhľad a import',
     loadingPreview: 'Načítavam\u2026',

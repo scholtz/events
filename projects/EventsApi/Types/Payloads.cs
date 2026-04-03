@@ -113,6 +113,13 @@ public sealed record SyncResult(
     /// <summary>Number of events skipped due to validation failures or missing required fields.</summary>
     int ErrorCount,
 
+    /// <summary>
+    /// Number of events that were previously imported from this claim but no longer appear
+    /// in the upstream feed. These events are NOT deleted — they are preserved as-is and the
+    /// count is surfaced so administrators can review and take action.
+    /// </summary>
+    int OrphanedCount,
+
     /// <summary>Human-readable summary suitable for display in the admin UI.</summary>
     string Summary);
 public sealed record CommunityGroupDetail(

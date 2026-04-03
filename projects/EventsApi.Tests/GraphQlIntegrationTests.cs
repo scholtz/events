@@ -9848,6 +9848,136 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task TriggerExternalSync_OrphanedEventDetection_ReportsCountWithoutDeleting()
+    {
+        // When an event was previously imported but no longer appears in the upstream feed,
+        // the sync must report it as orphaned and preserve the event record.
+        var currentExternalEvents = new List<EventsApi.Adapters.ExternalEventData>
+        {
+            new(
+                ExternalId: "meetup-active-001",
+                Name: "Still Active Event",
+                Description: "This event is still in the upstream feed.",
+                EventUrl: "https://www.meetup.com/orphan-group/events/meetup-active-001",
+                StartsAtUtc: new DateTime(2031, 9, 1, 10, 0, 0, DateTimeKind.Utc),
+                EndsAtUtc: null,
+                VenueName: "Active Venue", AddressLine1: null, City: "Prague", CountryCode: "CZ",
+                Latitude: null, Longitude: null, IsFree: true,
+                PriceAmount: null, CurrencyCode: null, Language: null),
+        };
+
+        await using var factory = new EventsApiWebApplicationFactory(services =>
+        {
+            var adapter = new SeededMeetupAdapter(currentExternalEvents);
+            services.RemoveAll<EventsApi.Adapters.ExternalSourceAdapterFactory>();
+            services.AddSingleton(new EventsApi.Adapters.ExternalSourceAdapterFactory(adapter, adapter));
+        });
+
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+        Guid domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("orphan-test@example.com", "Orphan Tester");
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var domain = CreateDomain("Orphan Domain", "orphan-domain");
+            domainId = domain.Id;
+            dbContext.Domains.Add(domain);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Orphan Group", Slug = "orphan-group",
+                IsActive = true, CreatedByUserId = admin.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id, UserId = admin.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/orphan-group",
+                SourceIdentifier = "orphan-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.Verified,
+                CreatedByUserId = admin.Id,
+            };
+            claimId = claim.Id;
+            dbContext.Set<EventsApi.Data.Entities.ExternalSourceClaim>().Add(claim);
+
+            // Pre-seed two previously imported events. Only one will be in the upstream feed —
+            // the other will be detected as orphaned (removed/cancelled upstream).
+            dbContext.Events.Add(new EventsApi.Data.Entities.CatalogEvent
+            {
+                Name = "Still Active Event",
+                Slug = "still-active-event",
+                Description = "Still in the upstream feed.",
+                EventUrl = "https://www.meetup.com/orphan-group/events/meetup-active-001",
+                VenueName = "Active Venue", AddressLine1 = "", City = "Prague", CountryCode = "CZ",
+                StartsAtUtc = new DateTime(2031, 9, 1, 10, 0, 0, DateTimeKind.Utc),
+                EndsAtUtc = new DateTime(2031, 9, 1, 12, 0, 0, DateTimeKind.Utc),
+                IsFree = true, Status = EventsApi.Data.Entities.EventStatus.Published,
+                DomainId = domain.Id, SubmittedByUserId = admin.Id,
+                ExternalSourceClaimId = claimId, ExternalSourceEventId = "meetup-active-001",
+            });
+
+            dbContext.Events.Add(new EventsApi.Data.Entities.CatalogEvent
+            {
+                Name = "Cancelled Upstream Event",
+                Slug = "cancelled-upstream-event",
+                Description = "This event was removed from the upstream feed.",
+                EventUrl = "https://www.meetup.com/orphan-group/events/meetup-cancelled-002",
+                VenueName = "Cancelled Venue", AddressLine1 = "", City = "Brno", CountryCode = "CZ",
+                StartsAtUtc = new DateTime(2031, 10, 1, 10, 0, 0, DateTimeKind.Utc),
+                EndsAtUtc = new DateTime(2031, 10, 1, 12, 0, 0, DateTimeKind.Utc),
+                IsFree = true, Status = EventsApi.Data.Entities.EventStatus.Published,
+                DomainId = domain.Id, SubmittedByUserId = admin.Id,
+                ExternalSourceClaimId = claimId, ExternalSourceEventId = "meetup-cancelled-002",
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation Sync($claimId: UUID!) {
+              triggerExternalSync(claimId: $claimId) {
+                importedCount updatedCount skippedCount errorCount orphanedCount summary
+              }
+            }
+            """,
+            new { claimId });
+
+        var result = doc.RootElement.GetProperty("data").GetProperty("triggerExternalSync");
+        Assert.Equal(0, result.GetProperty("importedCount").GetInt32()); // already existed
+        Assert.Equal(1, result.GetProperty("updatedCount").GetInt32());  // active event refreshed
+        Assert.Equal(0, result.GetProperty("skippedCount").GetInt32());
+        Assert.Equal(0, result.GetProperty("errorCount").GetInt32());
+        Assert.Equal(1, result.GetProperty("orphanedCount").GetInt32()); // one no longer in feed
+        Assert.Contains("no longer appears upstream", result.GetProperty("summary").GetString());
+
+        // Orphaned event must NOT be deleted — it should still be in the database.
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<EventsApi.Data.AppDbContext>();
+        var cancelledEvent = await db.Events.SingleOrDefaultAsync(
+            e => e.ExternalSourceEventId == "meetup-cancelled-002");
+        Assert.NotNull(cancelledEvent);
+        Assert.Equal("Cancelled Upstream Event", cancelledEvent.Name); // unchanged
+        Assert.Equal(EventsApi.Data.Entities.EventStatus.Published, cancelledEvent.Status); // preserved
+    }
+
+    [Fact]
     public async Task TriggerExternalSync_ImportedEvents_AreInPendingApprovalNotPublished()
     {
         var externalEvents = new List<EventsApi.Adapters.ExternalEventData>
@@ -15542,6 +15672,17 @@ public sealed class GraphQlIntegrationTests
         int imported, int updated, int skipped, int errors, string expected)
     {
         var summary = ExternalSyncEngine.BuildSyncSummary(imported, updated, skipped, errors);
+        Assert.Equal(expected, summary);
+    }
+
+    [Theory]
+    [InlineData(0, 1, "Imported 0 events. 1 previously imported event no longer appears upstream (preserved).")]
+    [InlineData(2, 3, "Imported 2 events. 3 previously imported events no longer appear upstream (preserved).")]
+    [InlineData(1, 0, "Imported 1 event.")]
+    public void ExternalSyncEngine_BuildSyncSummary_IncludesOrphanedCountWhenNonZero(
+        int imported, int orphaned, string expected)
+    {
+        var summary = ExternalSyncEngine.BuildSyncSummary(imported, 0, 0, 0, orphaned);
         Assert.Equal(expected, summary);
     }
 

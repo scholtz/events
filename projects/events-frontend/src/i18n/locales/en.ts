@@ -895,6 +895,7 @@ export default {
     errorRemoveSource: 'Failed to remove source.',
     errorSync: 'Sync failed. Please try again.',
     errorToggleAutoSync: 'Failed to update auto-sync setting.',
+    syncOrphanedNotice: '{count} previously imported event(s) no longer appear in the upstream feed and have been preserved. Review them in the event list.',
     errorPreview: 'Failed to load preview. Please try again.',
     previewImportButton: 'Preview & Import',
     loadingPreview: 'Loading\u2026',

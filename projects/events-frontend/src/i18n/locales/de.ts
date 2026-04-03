@@ -870,6 +870,7 @@ export default {
     errorRemoveSource: 'Quelle konnte nicht entfernt werden.',
     errorSync: 'Synchronisierung fehlgeschlagen. Bitte erneut versuchen.',
     errorToggleAutoSync: 'Auto-Sync-Einstellung konnte nicht aktualisiert werden.',
+    syncOrphanedNotice: '{count} zuvor importierte Veranstaltung(en) erscheint nicht mehr im Upstream-Feed und wurde beibehalten. Bitte in der Veranstaltungsliste prüfen.',
     errorPreview: 'Vorschau konnte nicht geladen werden. Bitte erneut versuchen.',
     previewImportButton: 'Vorschau & Import',
     loadingPreview: 'Wird geladen\u2026',
