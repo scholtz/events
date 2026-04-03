@@ -1143,3 +1143,190 @@ test.describe('Submit event with community group selection', () => {
     ).toBe(true)
   })
 })
+
+// ── Auto-sync and sync health UI ──────────────────────────────────────────────
+
+test.describe('External sources – sync health and auto-sync controls', () => {
+  test('shows "Never synced" when claim has no sync history', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makeVerifiedClaim(group.id, { lastSyncAtUtc: null, lastSyncSucceededAtUtc: null })
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+    state.externalSourceClaims.push(claim)
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+
+    await expect(page.locator('.last-sync-text')).toContainText('Never synced')
+  })
+
+  test('shows last successful sync date when claim has succeeded', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const successDate = new Date(2025, 2, 15).toISOString()
+    const claim = makeVerifiedClaim(group.id, {
+      lastSyncAtUtc: successDate,
+      lastSyncSucceededAtUtc: successDate,
+      lastSyncError: null,
+    })
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+    state.externalSourceClaims.push(claim)
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+
+    await expect(page.locator('.last-sync-text')).toContainText('Last successful sync')
+  })
+
+  test('shows error text when last sync had errors', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makeVerifiedClaim(group.id, {
+      lastSyncAtUtc: new Date().toISOString(),
+      lastSyncSucceededAtUtc: null,
+      lastSyncError: 'Failed to fetch events from Meetup: 404',
+    })
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+    state.externalSourceClaims.push(claim)
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+
+    await expect(page.locator('.sync-error-text')).toContainText('Failed to fetch events from Meetup')
+  })
+
+  test('shows auto-sync on badge for verified claim with isAutoSyncEnabled=true', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makeVerifiedClaim(group.id, { isAutoSyncEnabled: true })
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+    state.externalSourceClaims.push(claim)
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+
+    await expect(page.locator('.auto-sync-badge.auto-sync-on')).toBeVisible()
+    await expect(page.locator('.auto-sync-badge')).toContainText('Auto-sync on')
+  })
+
+  test('shows auto-sync off badge when isAutoSyncEnabled=false', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makeVerifiedClaim(group.id, { isAutoSyncEnabled: false })
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+    state.externalSourceClaims.push(claim)
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+
+    await expect(page.locator('.auto-sync-badge.auto-sync-off')).toBeVisible()
+    await expect(page.locator('.auto-sync-badge')).toContainText('Auto-sync off')
+  })
+
+  test('admin can toggle auto-sync off via Disable auto-sync button', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makeVerifiedClaim(group.id, { isAutoSyncEnabled: true })
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+    state.externalSourceClaims.push(claim)
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+
+    await expect(page.locator('.auto-sync-badge.auto-sync-on')).toBeVisible()
+    await page.getByRole('button', { name: 'Disable auto-sync' }).click()
+
+    await expect(page.locator('.auto-sync-badge.auto-sync-off')).toBeVisible()
+    expect(state.externalSourceClaims.find((c) => c.id === claim.id)?.isAutoSyncEnabled).toBe(false)
+  })
+
+  test('admin can toggle auto-sync on via Enable auto-sync button', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makeVerifiedClaim(group.id, { isAutoSyncEnabled: false })
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+    state.externalSourceClaims.push(claim)
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+
+    await expect(page.locator('.auto-sync-badge.auto-sync-off')).toBeVisible()
+    await page.getByRole('button', { name: 'Enable auto-sync' }).click()
+
+    await expect(page.locator('.auto-sync-badge.auto-sync-on')).toBeVisible()
+    expect(state.externalSourceClaims.find((c) => c.id === claim.id)?.isAutoSyncEnabled).toBe(true)
+  })
+
+  test('admin can trigger Sync Now and sees result summary', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makeVerifiedClaim(group.id, { lastSyncAtUtc: null })
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+    state.externalSourceClaims.push(claim)
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+
+    await page.getByRole('button', { name: /Sync Now/i }).first().click()
+
+    await expect(page.locator('.sync-result-badge')).toBeVisible()
+    await expect(page.locator('.sync-result-badge')).toContainText('Imported 0 events')
+  })
+
+  test('Sync Now button is disabled for pending-review claim', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makePendingReviewClaim(group.id)
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+    state.externalSourceClaims.push(claim)
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+
+    const syncBtn = page.getByRole('button', { name: /Sync Now/i }).first()
+    await expect(syncBtn).toBeDisabled()
+  })
+
+  test('auto-sync badge not shown for pending-review claim', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup()
+    const claim = makePendingReviewClaim(group.id)
+    const state = setupMockApi(page)
+    state.users.push(admin)
+    state.communityGroups.push(group)
+    state.communityMemberships.push(makeActiveMembership(group.id, admin.id, 'ADMIN'))
+    state.externalSourceClaims.push(claim)
+
+    await loginAs(page, admin)
+    await page.goto('/community/prague-crypto-circle')
+
+    await expect(page.locator('.auto-sync-badge')).not.toBeVisible()
+  })
+})

@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using EventsApi;
 using EventsApi.Data;
 using EventsApi.Data.Entities;
 using EventsApi.Security;
@@ -8,6 +9,7 @@ using EventsApi.Tests.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace EventsApi.Tests;
 
@@ -14871,6 +14873,528 @@ public sealed class GraphQlIntegrationTests
         using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
         Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
         Assert.Contains("FORBIDDEN", errors.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ── SetAutoSyncEnabled tests ──────────────────────────────────────────────
+
+    [Fact]
+    public async Task SetAutoSyncEnabled_ByGroupAdmin_TogglesToFalse()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("autosync-admin@example.com", "AutoSyncAdmin");
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "AutoSync Group",
+                Slug = "autosync-group",
+                CreatedByUserId = admin.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = admin.Id,
+                Role = CommunityMemberRole.Admin,
+                Status = CommunityMemberStatus.Active,
+            });
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/autosync-group",
+                SourceIdentifier = "autosync-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.Verified,
+                CreatedByUserId = admin.Id,
+                IsAutoSyncEnabled = true,
+            };
+            claimId = claim.Id;
+            dbContext.Set<EventsApi.Data.Entities.ExternalSourceClaim>().Add(claim);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation SetAutoSync($claimId: UUID!, $enabled: Boolean!) {
+                  setAutoSyncEnabled(claimId: $claimId, enabled: $enabled) {
+                    id isAutoSyncEnabled
+                  }
+                }
+                """,
+            variables = new { claimId, enabled = false }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.False(document.RootElement.TryGetProperty("errors", out _), document.RootElement.ToString());
+        var result = document.RootElement.GetProperty("data").GetProperty("setAutoSyncEnabled");
+        Assert.Equal(claimId.ToString(), result.GetProperty("id").GetString(), StringComparer.OrdinalIgnoreCase);
+        Assert.False(result.GetProperty("isAutoSyncEnabled").GetBoolean());
+    }
+
+    [Fact]
+    public async Task SetAutoSyncEnabled_NonAdmin_ReturnsForbidden()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid ownerId = Guid.Empty;
+        Guid memberId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var owner = CreateUser("autosync-owner@example.com", "AutoSyncOwner");
+            ownerId = owner.Id;
+            dbContext.Users.Add(owner);
+
+            var member = CreateUser("autosync-member@example.com", "AutoSyncMember");
+            memberId = member.Id;
+            dbContext.Users.Add(member);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "AutoSync Forbidden Group",
+                Slug = "autosync-forbidden-group",
+                CreatedByUserId = owner.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = memberId,
+                Role = CommunityMemberRole.Member,
+                Status = CommunityMemberStatus.Active,
+            });
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Luma,
+                SourceUrl = "https://lu.ma/autosync-forbidden",
+                SourceIdentifier = "autosync-forbidden",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.Verified,
+                CreatedByUserId = owner.Id,
+            };
+            claimId = claim.Id;
+            dbContext.Set<EventsApi.Data.Entities.ExternalSourceClaim>().Add(claim);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, memberId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation SetAutoSync($claimId: UUID!, $enabled: Boolean!) {
+                  setAutoSyncEnabled(claimId: $claimId, enabled: $enabled) { id }
+                }
+                """,
+            variables = new { claimId, enabled = false }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        Assert.Contains("FORBIDDEN", errors.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task SetAutoSyncEnabled_Unauthenticated_ReturnsAuthError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation SetAutoSync($claimId: UUID!, $enabled: Boolean!) {
+                  setAutoSyncEnabled(claimId: $claimId, enabled: $enabled) { id }
+                }
+                """,
+            variables = new { claimId = Guid.NewGuid(), enabled = false }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        var errorMsg = errors.ToString();
+        Assert.True(
+            errorMsg.Contains("AUTH_NOT_AUTHORIZED", StringComparison.OrdinalIgnoreCase)
+            || errorMsg.Contains("not authorized", StringComparison.OrdinalIgnoreCase)
+            || errorMsg.Contains("unauthorized", StringComparison.OrdinalIgnoreCase),
+            $"Expected auth error but got: {errorMsg}");
+    }
+
+    // ── ExternalSourceSyncService tests ──────────────────────────────────────
+
+    [Fact]
+    public async Task ExternalSourceSyncService_SkipsClaimsNotDue()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("svc-skip@example.com", "SvcSkipAdmin");
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var domain = new EventDomain
+            {
+                Name = "Sync Service Domain",
+                Slug = "sync-service-domain",
+                Subdomain = "sync-svc",
+                IsActive = true,
+            };
+            dbContext.Domains.Add(domain);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Sync Service Group",
+                Slug = "sync-service-group",
+                CreatedByUserId = admin.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/sync-service-group",
+                SourceIdentifier = "sync-service-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.Verified,
+                CreatedByUserId = admin.Id,
+                IsAutoSyncEnabled = true,
+                // Set LastSyncAtUtc to 30 minutes ago — within the 1-hour window so should be skipped
+                LastSyncAtUtc = DateTime.UtcNow.AddMinutes(-30),
+            };
+            claimId = claim.Id;
+            dbContext.Set<EventsApi.Data.Entities.ExternalSourceClaim>().Add(claim);
+        });
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var service = new ExternalSourceSyncService(
+            factory.Services.GetRequiredService<IServiceScopeFactory>(),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<ExternalSourceSyncService>.Instance);
+
+        await service.RunSyncCycleAsync(CancellationToken.None);
+
+        // Claim was last synced 30 min ago — should NOT have been re-synced
+        await using var verifyScope = factory.Services.CreateAsyncScope();
+        var db = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var updatedClaim = await db.Set<EventsApi.Data.Entities.ExternalSourceClaim>()
+            .SingleAsync(c => c.Id == claimId);
+        // LastSyncAtUtc should still be ~30 min ago (not reset by a new sync)
+        Assert.NotNull(updatedClaim.LastSyncAtUtc);
+        Assert.True(updatedClaim.LastSyncAtUtc < DateTime.UtcNow.AddMinutes(-15));
+    }
+
+    [Fact]
+    public async Task ExternalSourceSyncService_SkipsAutoSyncDisabledClaims()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("svc-disabled@example.com", "SvcDisabledAdmin");
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var domain = new EventDomain
+            {
+                Name = "Disabled Sync Domain",
+                Slug = "disabled-sync-domain",
+                Subdomain = "disabled-sync",
+                IsActive = true,
+            };
+            dbContext.Domains.Add(domain);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Disabled Sync Group",
+                Slug = "disabled-sync-group",
+                CreatedByUserId = admin.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/disabled-sync-group",
+                SourceIdentifier = "disabled-sync-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.Verified,
+                CreatedByUserId = admin.Id,
+                IsAutoSyncEnabled = false, // explicitly disabled
+                LastSyncAtUtc = null,
+            };
+            claimId = claim.Id;
+            dbContext.Set<EventsApi.Data.Entities.ExternalSourceClaim>().Add(claim);
+        });
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var service = new ExternalSourceSyncService(
+            factory.Services.GetRequiredService<IServiceScopeFactory>(),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<ExternalSourceSyncService>.Instance);
+
+        await service.RunSyncCycleAsync(CancellationToken.None);
+
+        await using var verifyScope = factory.Services.CreateAsyncScope();
+        var db = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var updatedClaim = await db.Set<EventsApi.Data.Entities.ExternalSourceClaim>()
+            .SingleAsync(c => c.Id == claimId);
+        // Should NOT have been synced since auto-sync is disabled
+        Assert.Null(updatedClaim.LastSyncAtUtc);
+    }
+
+    [Fact]
+    public async Task ExternalSourceSyncService_SkipsUnverifiedClaims()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("svc-unverified@example.com", "SvcUnverifiedAdmin");
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Unverified Sync Group",
+                Slug = "unverified-sync-group",
+                CreatedByUserId = admin.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Luma,
+                SourceUrl = "https://lu.ma/unverified-sync",
+                SourceIdentifier = "unverified-sync",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.PendingReview, // not verified
+                CreatedByUserId = admin.Id,
+                IsAutoSyncEnabled = true,
+                LastSyncAtUtc = null,
+            };
+            claimId = claim.Id;
+            dbContext.Set<EventsApi.Data.Entities.ExternalSourceClaim>().Add(claim);
+        });
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var service = new ExternalSourceSyncService(
+            factory.Services.GetRequiredService<IServiceScopeFactory>(),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<ExternalSourceSyncService>.Instance);
+
+        await service.RunSyncCycleAsync(CancellationToken.None);
+
+        await using var verifyScope = factory.Services.CreateAsyncScope();
+        var db = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var updatedClaim = await db.Set<EventsApi.Data.Entities.ExternalSourceClaim>()
+            .SingleAsync(c => c.Id == claimId);
+        // Should NOT have been synced since claim is not verified
+        Assert.Null(updatedClaim.LastSyncAtUtc);
+    }
+
+    [Fact]
+    public async Task ExternalSourceSyncService_SyncsEligibleClaim_WithSeededAdapter()
+    {
+        await using var factory = new EventsApiWebApplicationFactory(services =>
+        {
+            var seededAdapter = new SeededMeetupAdapter(
+            [
+                new EventsApi.Adapters.ExternalEventData(
+                    ExternalId: "ext-bg-sync-1",
+                    Name: "Background Sync Event",
+                    Description: "Created by background sync service",
+                    EventUrl: "https://www.meetup.com/test-bg-sync/events/1",
+                    StartsAtUtc: DateTime.UtcNow.AddDays(14),
+                    EndsAtUtc: DateTime.UtcNow.AddDays(14).AddHours(2),
+                    VenueName: "Tech Hub",
+                    AddressLine1: null,
+                    City: "Bratislava",
+                    CountryCode: "SK",
+                    Latitude: 48.1m,
+                    Longitude: 17.1m,
+                    IsFree: true,
+                    PriceAmount: null,
+                    CurrencyCode: null,
+                    Language: "sk")
+            ]);
+
+            services.RemoveAll<EventsApi.Adapters.ExternalSourceAdapterFactory>();
+            services.AddSingleton(new EventsApi.Adapters.ExternalSourceAdapterFactory(seededAdapter, seededAdapter));
+            services.AddScoped<ExternalSyncEngine>();
+        });
+
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("svc-bg-sync@example.com", "BgSyncAdmin");
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var domain = new EventDomain
+            {
+                Name = "BG Sync Domain",
+                Slug = "bg-sync-domain",
+                Subdomain = "bg-sync",
+                IsActive = true,
+            };
+            dbContext.Domains.Add(domain);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "BG Sync Group",
+                Slug = "bg-sync-group",
+                CreatedByUserId = admin.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/bg-sync-group",
+                SourceIdentifier = "bg-sync-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.Verified,
+                CreatedByUserId = admin.Id,
+                IsAutoSyncEnabled = true,
+                LastSyncAtUtc = null, // never synced — eligible
+            };
+            claimId = claim.Id;
+            dbContext.Set<EventsApi.Data.Entities.ExternalSourceClaim>().Add(claim);
+        });
+
+        var service = new ExternalSourceSyncService(
+            factory.Services.GetRequiredService<IServiceScopeFactory>(),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<ExternalSourceSyncService>.Instance);
+
+        await service.RunSyncCycleAsync(CancellationToken.None);
+
+        await using var verifyScope = factory.Services.CreateAsyncScope();
+        var db = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var updatedClaim = await db.Set<EventsApi.Data.Entities.ExternalSourceClaim>()
+            .SingleAsync(c => c.Id == claimId);
+
+        // Sync metadata should be updated
+        Assert.NotNull(updatedClaim.LastSyncAtUtc);
+        Assert.NotNull(updatedClaim.LastSyncSucceededAtUtc);
+        Assert.Null(updatedClaim.LastSyncError);
+        Assert.Equal(1, updatedClaim.LastSyncImportedCount);
+        Assert.Equal(0, updatedClaim.LastSyncSkippedCount);
+
+        // Imported event should exist and be in PendingApproval
+        var importedEvent = await db.Events
+            .SingleOrDefaultAsync(e => e.ExternalSourceEventId == "ext-bg-sync-1");
+        Assert.NotNull(importedEvent);
+        Assert.Equal(EventStatus.PendingApproval, importedEvent.Status);
+        Assert.Equal("Background Sync Event", importedEvent.Name);
+    }
+
+    [Fact]
+    public async Task TriggerExternalSync_UpdatesLastSyncSucceededAtUtc_OnSuccess()
+    {
+        await using var factory = new EventsApiWebApplicationFactory(services =>
+        {
+            var seededAdapter = new SeededMeetupAdapter([]);
+            services.RemoveAll<EventsApi.Adapters.ExternalSourceAdapterFactory>();
+            services.AddSingleton(new EventsApi.Adapters.ExternalSourceAdapterFactory(seededAdapter, seededAdapter));
+            services.AddScoped<ExternalSyncEngine>();
+        });
+
+        Guid adminId = Guid.Empty;
+        Guid claimId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("sync-success-meta@example.com", "SyncSuccessMeta");
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var domain = new EventDomain
+            {
+                Name = "Sync Meta Domain",
+                Slug = "sync-meta-domain",
+                Subdomain = "sync-meta",
+                IsActive = true,
+            };
+            dbContext.Domains.Add(domain);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Sync Meta Group",
+                Slug = "sync-meta-group",
+                CreatedByUserId = admin.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = admin.Id,
+                Role = CommunityMemberRole.Admin,
+                Status = CommunityMemberStatus.Active,
+            });
+
+            var claim = new EventsApi.Data.Entities.ExternalSourceClaim
+            {
+                GroupId = group.Id,
+                SourceType = EventsApi.Data.Entities.ExternalSourceType.Meetup,
+                SourceUrl = "https://www.meetup.com/sync-meta-group",
+                SourceIdentifier = "sync-meta-group",
+                Status = EventsApi.Data.Entities.ExternalSourceClaimStatus.Verified,
+                CreatedByUserId = admin.Id,
+            };
+            claimId = claim.Id;
+            dbContext.Set<EventsApi.Data.Entities.ExternalSourceClaim>().Add(claim);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation TriggerSync($claimId: UUID!) {
+                  triggerExternalSync(claimId: $claimId) {
+                    importedCount skippedCount errorCount summary
+                  }
+                }
+                """,
+            variables = new { claimId }
+        });
+
+        response.EnsureSuccessStatusCode();
+
+        await using var verifyScope = factory.Services.CreateAsyncScope();
+        var db = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var updatedClaim = await db.Set<EventsApi.Data.Entities.ExternalSourceClaim>()
+            .SingleAsync(c => c.Id == claimId);
+
+        Assert.NotNull(updatedClaim.LastSyncAtUtc);
+        Assert.NotNull(updatedClaim.LastSyncSucceededAtUtc);
+        Assert.Null(updatedClaim.LastSyncError);
     }
 }
 

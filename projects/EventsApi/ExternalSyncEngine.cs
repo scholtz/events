@@ -1,0 +1,232 @@
+using EventsApi.Adapters;
+using EventsApi.Data;
+using EventsApi.Data.Entities;
+using EventsApi.Types;
+using EventsApi.Utilities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+
+namespace EventsApi;
+
+/// <summary>
+/// Core engine that performs an incremental sync for a single verified external source claim.
+/// Used by both the manual <c>triggerExternalSync</c> GraphQL mutation and the automated
+/// <see cref="ExternalSourceSyncService"/> background service.
+/// </summary>
+public sealed class ExternalSyncEngine(
+    AppDbContext dbContext,
+    ExternalSourceAdapterFactory adapterFactory,
+    ILogger<ExternalSyncEngine> logger)
+{
+    private readonly AppDbContext _dbContext = dbContext;
+    private readonly ExternalSourceAdapterFactory _adapterFactory = adapterFactory;
+    private readonly ILogger<ExternalSyncEngine> _logger = logger;
+
+    /// <summary>
+    /// Synchronises events for the given verified claim. Updates sync metadata on the claim
+    /// regardless of success or failure and persists the result.
+    /// </summary>
+    /// <param name="claim">
+    /// The verified claim to sync. Must be in <see cref="ExternalSourceClaimStatus.Verified"/> state.
+    /// </param>
+    /// <param name="submittedByUserId">
+    /// The user ID to record as the event submitter for newly imported events.
+    /// For background syncs this is the claim creator's user ID.
+    /// </param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The sync result summary.</returns>
+    public async Task<SyncResult> SyncClaimAsync(
+        ExternalSourceClaim claim,
+        Guid submittedByUserId,
+        CancellationToken cancellationToken)
+    {
+        var claimId = claim.Id;
+        var now = DateTime.UtcNow;
+
+        IReadOnlyList<ExternalEventData> externalEvents;
+        try
+        {
+            var adapter = _adapterFactory.GetAdapter(claim.SourceType);
+            externalEvents = await adapter.FetchEventsAsync(claim.SourceIdentifier, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "External sync for claim {ClaimId} ({SourceType}/{SourceIdentifier}): adapter fetch failed.",
+                claimId, claim.SourceType, claim.SourceIdentifier);
+
+            claim.LastSyncAtUtc = now;
+            claim.LastSyncError = $"Failed to fetch events from {claim.SourceType}: {ex.Message}";
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            return new SyncResult(0, 0, 1, $"Sync failed: {ex.Message}");
+        }
+
+        var defaultDomain = await _dbContext.Domains.FirstOrDefaultAsync(
+            d => d.IsActive, cancellationToken);
+
+        if (defaultDomain is null)
+        {
+            _logger.LogWarning(
+                "External sync for claim {ClaimId}: no active domain found; aborting sync.", claimId);
+
+            claim.LastSyncAtUtc = now;
+            claim.LastSyncError = "No active domain found to assign imported events.";
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            return new SyncResult(0, 0, 1, "Sync failed: no active domain.");
+        }
+
+        var importedCount = 0;
+        var skippedCount = 0;
+        var errorCount = 0;
+
+        foreach (var ext in externalEvents)
+        {
+            var existingImport = await _dbContext.Events.AnyAsync(
+                e => e.ExternalSourceClaimId == claimId && e.ExternalSourceEventId == ext.ExternalId,
+                cancellationToken);
+
+            if (existingImport)
+            {
+                skippedCount++;
+                continue;
+            }
+
+            if (ext.StartsAtUtc is null)
+            {
+                _logger.LogWarning(
+                    "External sync for claim {ClaimId}: skipping event '{ExternalId}' — missing StartsAtUtc.",
+                    claimId, ext.ExternalId);
+                errorCount++;
+                continue;
+            }
+
+            var endsAt = ext.EndsAtUtc ?? ext.StartsAtUtc.Value.AddHours(2);
+
+            try
+            {
+                var catalogEvent = new CatalogEvent
+                {
+                    Name = (ext.Name ?? "Untitled Event").Trim(),
+                    Slug = await BuildUniqueEventSlugAsync(ext.Name ?? "Untitled Event", cancellationToken),
+                    Description = (ext.Description ?? string.Empty).Trim(),
+                    EventUrl = (ext.EventUrl ?? string.Empty).Trim(),
+                    VenueName = (ext.VenueName ?? string.Empty).Trim(),
+                    AddressLine1 = (ext.AddressLine1 ?? string.Empty).Trim(),
+                    City = (ext.City ?? string.Empty).Trim(),
+                    CountryCode = (ext.CountryCode ?? "XX").Trim().ToUpperInvariant(),
+                    Latitude = ext.Latitude ?? 0,
+                    Longitude = ext.Longitude ?? 0,
+                    StartsAtUtc = EnsureUtc(ext.StartsAtUtc.Value),
+                    EndsAtUtc = EnsureUtc(endsAt),
+                    IsFree = ext.IsFree ?? true,
+                    PriceAmount = ext.PriceAmount,
+                    CurrencyCode = NormalizeCurrencyCode(ext.CurrencyCode),
+                    Language = ext.Language,
+                    AttendanceMode = AttendanceMode.InPerson,
+                    Status = EventStatus.PendingApproval,
+                    DomainId = defaultDomain.Id,
+                    SubmittedByUserId = submittedByUserId,
+                    ExternalSourceClaimId = claimId,
+                    ExternalSourceEventId = ext.ExternalId,
+                };
+
+                _dbContext.Events.Add(catalogEvent);
+
+                _dbContext.CommunityGroupEvents.Add(new CommunityGroupEvent
+                {
+                    GroupId = claim.GroupId,
+                    EventId = catalogEvent.Id,
+                    AddedByUserId = submittedByUserId,
+                });
+
+                await _dbContext.SaveChangesAsync(cancellationToken);
+                importedCount++;
+            }
+            catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+            {
+                _logger.LogInformation(
+                    "External sync for claim {ClaimId}: event '{ExternalId}' already imported (concurrent insert).",
+                    claimId, ext.ExternalId);
+
+                DetachAddedEntries();
+                skippedCount++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "External sync for claim {ClaimId}: failed to import event '{ExternalId}'.",
+                    claimId, ext.ExternalId);
+
+                DetachAddedEntries();
+                errorCount++;
+            }
+        }
+
+        var summary = BuildSyncSummary(importedCount, skippedCount, errorCount);
+
+        claim.LastSyncAtUtc = now;
+        claim.LastSyncOutcome = summary;
+        claim.LastSyncImportedCount = importedCount;
+        claim.LastSyncSkippedCount = skippedCount;
+
+        if (errorCount == 0)
+        {
+            claim.LastSyncSucceededAtUtc = now;
+            claim.LastSyncError = null;
+        }
+        else
+        {
+            claim.LastSyncError = $"{errorCount} event(s) failed during sync.";
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return new SyncResult(importedCount, skippedCount, errorCount, summary);
+    }
+
+    private void DetachAddedEntries()
+    {
+        foreach (var entry in _dbContext.ChangeTracker.Entries()
+                     .Where(e => e.State == EntityState.Added)
+                     .ToList())
+        {
+            entry.State = EntityState.Detached;
+        }
+    }
+
+    internal static string BuildSyncSummary(int imported, int skipped, int errors)
+    {
+        var parts = new List<string>();
+        parts.Add(imported == 1 ? "Imported 1 event." : $"Imported {imported} events.");
+        if (skipped > 0)
+            parts.Add(skipped == 1 ? "Skipped 1 (already imported)." : $"Skipped {skipped} (already imported).");
+        if (errors > 0)
+            parts.Add(errors == 1 ? "1 event failed validation." : $"{errors} events failed validation.");
+        return string.Join(" ", parts);
+    }
+
+    private static DateTime EnsureUtc(DateTime value)
+        => value.Kind == DateTimeKind.Utc ? value : value.ToUniversalTime();
+
+    private static string NormalizeCurrencyCode(string? currencyCode)
+        => string.IsNullOrWhiteSpace(currencyCode) ? "EUR" : currencyCode.Trim().ToUpperInvariant();
+
+    private async Task<string> BuildUniqueEventSlugAsync(string name, CancellationToken cancellationToken)
+    {
+        var baseSlug = SlugGenerator.Generate(name);
+        var slug = baseSlug;
+        var counter = 2;
+
+        while (await _dbContext.Events.AnyAsync(
+                   e => e.Slug == slug,
+                   cancellationToken))
+        {
+            slug = $"{baseSlug}-{counter++}";
+        }
+
+        return slug;
+    }
+
+    private static bool IsUniqueConstraintViolation(DbUpdateException ex) =>
+        ex.InnerException?.Message.Contains("UNIQUE constraint failed", StringComparison.OrdinalIgnoreCase) == true;
+}

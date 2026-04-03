@@ -487,9 +487,12 @@ public sealed class AppDbInitializer(
                     "CreatedByUserId" TEXT NOT NULL,
                     "CreatedAtUtc" TEXT NOT NULL,
                     "LastSyncAtUtc" TEXT NULL,
+                    "LastSyncSucceededAtUtc" TEXT NULL,
                     "LastSyncOutcome" TEXT NULL,
+                    "LastSyncError" TEXT NULL,
                     "LastSyncImportedCount" INTEGER NULL,
                     "LastSyncSkippedCount" INTEGER NULL,
+                    "IsAutoSyncEnabled" INTEGER NOT NULL DEFAULT 1,
                     "AdminNote" TEXT NULL,
                     CONSTRAINT "FK_ExternalSourceClaims_CommunityGroups_GroupId" FOREIGN KEY ("GroupId") REFERENCES "CommunityGroups" ("Id") ON DELETE CASCADE,
                     CONSTRAINT "FK_ExternalSourceClaims_Users_CreatedByUserId" FOREIGN KEY ("CreatedByUserId") REFERENCES "Users" ("Id") ON DELETE RESTRICT
@@ -501,8 +504,11 @@ public sealed class AppDbInitializer(
         }
         else
         {
-            // Migrate existing ExternalSourceClaims tables that predate the AdminNote column.
+            // Migrate existing ExternalSourceClaims tables that predate newer columns.
             await EnsureExternalSourceClaimColumnAsync("AdminNote", cancellationToken);
+            await EnsureExternalSourceClaimColumnAsync("LastSyncSucceededAtUtc", cancellationToken);
+            await EnsureExternalSourceClaimColumnAsync("LastSyncError", cancellationToken);
+            await EnsureExternalSourceClaimColumnAsync("IsAutoSyncEnabled", cancellationToken);
         }
 
         // Add the deduplication index on Events(ExternalSourceClaimId, ExternalSourceEventId)
@@ -630,6 +636,9 @@ public sealed class AppDbInitializer(
         var ddl = columnName switch
         {
             "AdminNote" => """ALTER TABLE "ExternalSourceClaims" ADD COLUMN "AdminNote" TEXT NULL;""",
+            "LastSyncSucceededAtUtc" => """ALTER TABLE "ExternalSourceClaims" ADD COLUMN "LastSyncSucceededAtUtc" TEXT NULL;""",
+            "LastSyncError" => """ALTER TABLE "ExternalSourceClaims" ADD COLUMN "LastSyncError" TEXT NULL;""",
+            "IsAutoSyncEnabled" => """ALTER TABLE "ExternalSourceClaims" ADD COLUMN "IsAutoSyncEnabled" INTEGER NOT NULL DEFAULT 1;""",
             _ => throw new InvalidOperationException($"Unsupported ExternalSourceClaims column '{columnName}'.")
         };
 

@@ -315,6 +315,45 @@ async function handlePreview(claimId: string) {
   }
 }
 
+const syncingClaimId = ref<string | null>(null)
+const syncErrors = ref<Record<string, string>>({})
+
+async function handleSyncNow(claimId: string) {
+  syncingClaimId.value = claimId
+  delete syncErrors.value[claimId]
+  sourceError.value = null
+  try {
+    const result = await communitiesStore.triggerSync(claimId)
+    syncResults.value = { ...syncResults.value, [claimId]: result }
+    // Refresh source cards to show updated sync metadata
+    await loadExternalSources()
+  } catch (err) {
+    syncErrors.value = {
+      ...syncErrors.value,
+      [claimId]: err instanceof Error ? err.message : t('community.errorSync'),
+    }
+  } finally {
+    syncingClaimId.value = null
+  }
+}
+
+const togglingAutoSyncClaimId = ref<string | null>(null)
+
+async function handleToggleAutoSync(claimId: string, enabled: boolean) {
+  togglingAutoSyncClaimId.value = claimId
+  try {
+    const updated = await communitiesStore.setAutoSyncEnabled(claimId, enabled)
+    externalSources.value = externalSources.value.map((s) =>
+      s.id === updated.id ? { ...s, isAutoSyncEnabled: updated.isAutoSyncEnabled } : s,
+    )
+  } catch (err) {
+    sourceError.value =
+      err instanceof Error ? err.message : t('community.errorToggleAutoSync')
+  } finally {
+    togglingAutoSyncClaimId.value = null
+  }
+}
+
 function togglePreviewSelection(externalId: string, checked: boolean) {
   const next = new Set(selectedExternalIds.value)
   if (checked) next.add(externalId)
@@ -661,15 +700,33 @@ function memberCountText(count: number): string {
                     <span v-else role="alert">{{ t('community.claimRejectedNoNote') }}</span>
                   </div>
                   <div class="source-sync-info">
-                    <span class="last-sync-text">
-                      {{
-                        source.lastSyncAtUtc
-                          ? `${t('community.lastSynced')}: ${new Date(source.lastSyncAtUtc).toLocaleDateString()}`
-                          : t('community.neverSynced')
-                      }}
-                    </span>
+                    <div class="sync-status-row">
+                      <span class="last-sync-text">
+                        {{
+                          source.lastSyncSucceededAtUtc
+                            ? `${t('community.lastSyncedSuccessfully')}: ${new Date(source.lastSyncSucceededAtUtc).toLocaleDateString()}`
+                            : source.lastSyncAtUtc
+                              ? t('community.lastSyncNoSuccess')
+                              : t('community.neverSynced')
+                        }}
+                      </span>
+                      <span
+                        v-if="source.status === 'VERIFIED'"
+                        class="auto-sync-badge"
+                        :class="source.isAutoSyncEnabled ? 'auto-sync-on' : 'auto-sync-off'"
+                        :title="source.isAutoSyncEnabled ? t('community.autoSyncEnabled') : t('community.autoSyncDisabled')"
+                      >
+                        {{ source.isAutoSyncEnabled ? t('community.autoSyncOn') : t('community.autoSyncOff') }}
+                      </span>
+                    </div>
+                    <div v-if="source.lastSyncError && !syncResults[source.id]" class="sync-error-text" role="alert">
+                      {{ source.lastSyncError }}
+                    </div>
                     <span v-if="syncResults[source.id]" class="sync-result-badge">
                       {{ syncResults[source.id]!.summary }}
+                    </span>
+                    <span v-if="syncErrors[source.id]" class="sync-error-text" role="alert">
+                      {{ syncErrors[source.id] }}
                     </span>
                   </div>
                   <!-- Inline removal confirmation dialog -->
@@ -692,12 +749,30 @@ function memberCountText(count: number): string {
                   </div>
                   <div v-else class="source-actions">
                     <button
+                      class="btn btn-sm btn-secondary"
+                      :disabled="syncingClaimId === source.id || source.status !== 'VERIFIED'"
+                      :title="source.status !== 'VERIFIED' ? t('community.syncOnlyVerified') : undefined"
+                      :aria-label="t('community.syncNowAriaLabel', { url: source.sourceUrl })"
+                      @click="handleSyncNow(source.id)"
+                    >
+                      {{ syncingClaimId === source.id ? t('community.syncing') : t('community.syncButton') }}
+                    </button>
+                    <button
                       class="btn btn-sm btn-primary"
                       :disabled="previewClaimId === source.id || source.status !== 'VERIFIED'"
                       :title="source.status !== 'VERIFIED' ? t('community.syncOnlyVerified') : undefined"
                       @click="handlePreview(source.id)"
                     >
                       {{ previewClaimId === source.id && previewLoading ? t('community.loadingPreview') : t('community.previewImportButton') }}
+                    </button>
+                    <button
+                      v-if="source.status === 'VERIFIED'"
+                      class="btn btn-sm btn-ghost"
+                      :disabled="togglingAutoSyncClaimId === source.id"
+                      :aria-label="source.isAutoSyncEnabled ? t('community.disableAutoSyncAriaLabel') : t('community.enableAutoSyncAriaLabel')"
+                      @click="handleToggleAutoSync(source.id, !source.isAutoSyncEnabled)"
+                    >
+                      {{ source.isAutoSyncEnabled ? t('community.disableAutoSync') : t('community.enableAutoSync') }}
                     </button>
                     <button
                       class="btn btn-sm btn-danger"
@@ -1240,6 +1315,12 @@ function memberCountText(count: number): string {
 
 .source-sync-info {
   display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.sync-status-row {
+  display: flex;
   align-items: center;
   gap: 0.75rem;
   flex-wrap: wrap;
@@ -1250,12 +1331,34 @@ function memberCountText(count: number): string {
   color: var(--color-text-secondary);
 }
 
+.auto-sync-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+}
+
+.auto-sync-on {
+  color: #047857;
+  background: #ecfdf5;
+}
+
+.auto-sync-off {
+  color: var(--color-text-secondary);
+  background: rgba(148, 163, 184, 0.1);
+}
+
 .sync-result-badge {
   font-size: 0.8125rem;
   color: #047857;
   background: #ecfdf5;
   padding: 0.125rem 0.5rem;
   border-radius: 9999px;
+}
+
+.sync-error-text {
+  font-size: 0.8125rem;
+  color: #b91c1c;
 }
 
 .source-actions {

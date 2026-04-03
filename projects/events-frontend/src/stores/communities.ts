@@ -26,7 +26,8 @@ const MEMBERSHIP_FIELDS = `
 const EXTERNAL_SOURCE_CLAIM_FIELDS = `
   id groupId sourceType sourceUrl sourceIdentifier status
   createdByUserId createdAtUtc
-  lastSyncAtUtc lastSyncOutcome lastSyncImportedCount lastSyncSkippedCount
+  lastSyncAtUtc lastSyncSucceededAtUtc lastSyncOutcome lastSyncError
+  lastSyncImportedCount lastSyncSkippedCount isAutoSyncEnabled
   adminNote
 `
 
@@ -282,6 +283,16 @@ export const useCommunitiesStore = defineStore('communities', () => {
     return data.triggerExternalSync
   }
 
+  async function setAutoSyncEnabled(claimId: string, enabled: boolean): Promise<ExternalSourceClaim> {
+    const data = await gqlRequest<{ setAutoSyncEnabled: ExternalSourceClaim }>(
+      `mutation SetAutoSyncEnabled($claimId: UUID!, $enabled: Boolean!) {
+        setAutoSyncEnabled(claimId: $claimId, enabled: $enabled) { ${EXTERNAL_SOURCE_CLAIM_FIELDS} }
+      }`,
+      { claimId, enabled },
+    )
+    return data.setAutoSyncEnabled
+  }
+
   const EXTERNAL_EVENT_PREVIEW_FIELDS = `
     externalId name description eventUrl
     startsAtUtc endsAtUtc city venueName
@@ -337,6 +348,7 @@ export const useCommunitiesStore = defineStore('communities', () => {
     addExternalSource,
     removeExternalSource,
     triggerSync,
+    setAutoSyncEnabled,
     previewExternalEvents,
     importExternalEvents,
   }

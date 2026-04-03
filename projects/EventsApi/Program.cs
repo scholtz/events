@@ -105,6 +105,8 @@ builder.Services.AddScoped<WebPush.IWebPushClient>(serviceProvider =>
         serviceProvider.GetRequiredService<IHttpClientFactory>().CreateClient("push")));
 builder.Services.AddScoped<IPushNotificationService, VapidPushNotificationService>();
 builder.Services.AddHostedService<ReminderDispatchService>();
+builder.Services.AddScoped<ExternalSyncEngine>();
+builder.Services.AddHostedService<ExternalSourceSyncService>();
 
 // External source adapters
 builder.Services.AddSingleton<MeetupAdapter>();

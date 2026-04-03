@@ -292,9 +292,12 @@ export interface ExternalSourceClaim {
   createdByUserId: string
   createdAtUtc: string
   lastSyncAtUtc: string | null
+  lastSyncSucceededAtUtc: string | null
   lastSyncOutcome: string | null
+  lastSyncError: string | null
   lastSyncImportedCount: number | null
   lastSyncSkippedCount: number | null
+  isAutoSyncEnabled: boolean
   adminNote: string | null
   /** Navigation property — present when the query includes group { ... } */
   group?: { id: string; name: string; slug: string } | null
