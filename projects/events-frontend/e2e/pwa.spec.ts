@@ -121,11 +121,13 @@ test.describe('Discovery freshness – offline with cached events', () => {
 })
 
 test.describe('Discovery freshness – offline with no cached data', () => {
-  test('shows error state with offline message when no cached events exist', async ({ page }) => {
+  test('shows offline error message when API fails and app is offline', async ({ page }) => {
     setupMockApi(page, { domains: [makeTechDomain()], events: [] })
 
-    // Set offline and override the route to abort GraphQL requests so no data can load.
-    await page.context().setOffline(true)
+    // Navigate online first so the app shell loads.
+    await page.goto('/')
+
+    // Register a route override that aborts DiscoveryEvents requests.
     await page.route('**/graphql', async (route, request) => {
       const body = request.postData() ?? ''
       if (body.includes('DiscoveryEvents')) {
@@ -135,12 +137,21 @@ test.describe('Discovery freshness – offline with no cached data', () => {
       await route.fallback()
     })
 
-    await page.goto('/')
+    // Trigger a new fetch by changing a filter while still online (but API now fails).
+    // Vue Router navigation keeps the app shell loaded.
+    await page.evaluate(() => {
+      window.history.pushState({}, '', '/?q=test-offline')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
 
-    // Should show the offline error state (not a blank page or generic error).
+    // The fetch fails – generic error state should appear (online variant).
+    await expect(
+      page.getByRole('heading', { name: "Couldn't load event results" }),
+    ).toBeVisible({ timeout: 5000 })
+
+    // Now go offline – the error heading should show the offline variant.
+    await page.context().setOffline(true)
     await expect(page.getByRole('heading', { name: "You're offline" })).toBeVisible()
-
-    // A retry button must be present.
     await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible()
 
     await page.context().setOffline(false)

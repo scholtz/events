@@ -245,7 +245,7 @@ export const useEventsStore = defineStore('events', () => {
       discoveryError.value = error instanceof Error ? error.message : 'Unable to load events right now.'
       // Keep existing discoveryEvents so the UI can show stale cached data with messaging.
       // Clear them only if there was nothing cached before this failed fetch.
-      if (!discoveryLastFetchedAt.value) {
+      if (discoveryLastFetchedAt.value === null) {
         discoveryEvents.value = []
       }
     } finally {

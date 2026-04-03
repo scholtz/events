@@ -44,10 +44,13 @@ const detailDataAge = computed<string | null>(() => {
 
 /**
  * Whether to show a stale-data notice above the event detail.
- * True when offline OR when the SW served the response from IDB cache.
+ * True when offline, OR when the SW served the response from IDB cache and we have
+ * a valid timestamp confirming the cached fetch actually completed.
  */
 const showStaleNotice = computed(
-  () => isOffline.value || eventsStore.detailDataSource === 'cache',
+  () =>
+    isOffline.value ||
+    (eventsStore.detailDataSource === 'cache' && eventsStore.detailLastFetchedAt !== null),
 )
 
 /** Whether the current user is allowed to edit this event (admin or event owner). */

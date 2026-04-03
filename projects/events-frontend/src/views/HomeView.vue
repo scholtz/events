@@ -556,7 +556,7 @@ watch(
             <!-- Offline or SW-cache notice: shown above results when data may be stale -->
             <div v-if="showCachedNotice" role="status" aria-live="polite" class="cached-results-notice">
               <span aria-hidden="true">📡</span>
-              <span>{{ isOffline ? t('home.cachedResultsNotice') : (discoveryDataAge ?? t('home.cachedResultsNotice')) }}</span>
+              <span>{{ isOffline ? t('home.cachedResultsNotice') : (discoveryDataAge ?? t('home.cachedResultsOnlineRecent')) }}</span>
             </div>
             <!-- Subtle refreshing indicator: shown when reloading results that are already cached -->
             <div
