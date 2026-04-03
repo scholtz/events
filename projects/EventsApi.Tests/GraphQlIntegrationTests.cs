@@ -14400,5 +14400,477 @@ public sealed class GraphQlIntegrationTests
             || errorMsg.Contains("unauthorized", StringComparison.OrdinalIgnoreCase),
             $"Expected auth error but got: {errorMsg}");
     }
+
+    // ── UpdateCommunityGroup tests ────────────────────────────────────────────
+
+    [Fact]
+    public async Task UpdateCommunityGroup_ByAdmin_UpdatesNameAndVisibility()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid groupId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("cg-update-admin@example.com", "UpdateAdmin");
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Original Name",
+                Slug = "original-name-group",
+                Visibility = CommunityVisibility.Public,
+                CreatedByUserId = admin.Id,
+            };
+            groupId = group.Id;
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = admin.Id,
+                Role = CommunityMemberRole.Admin,
+                Status = CommunityMemberStatus.Active,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation UpdateGroup($groupId: UUID!, $input: UpdateCommunityGroupInput!) {
+              updateCommunityGroup(groupId: $groupId, input: $input) {
+                id name visibility summary
+              }
+            }
+            """,
+            new
+            {
+                groupId,
+                input = new { name = "Updated Name", visibility = "PRIVATE", summary = "A short summary." }
+            });
+
+        var group2 = document.RootElement.GetProperty("data").GetProperty("updateCommunityGroup");
+        Assert.Equal("Updated Name", group2.GetProperty("name").GetString());
+        Assert.Equal("PRIVATE", group2.GetProperty("visibility").GetString());
+        Assert.Equal("A short summary.", group2.GetProperty("summary").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateCommunityGroup_ByOwner_Succeeds()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid ownerId = Guid.Empty;
+        Guid groupId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var owner = CreateUser("cg-update-owner@example.com", "UpdateOwner");
+            ownerId = owner.Id;
+            dbContext.Users.Add(owner);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Owner Update Group",
+                Slug = "owner-update-group",
+                Visibility = CommunityVisibility.Public,
+                CreatedByUserId = owner.Id,
+            };
+            groupId = group.Id;
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = owner.Id,
+                Role = CommunityMemberRole.Owner,
+                Status = CommunityMemberStatus.Active,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, ownerId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation UpdateGroup($groupId: UUID!, $input: UpdateCommunityGroupInput!) {
+              updateCommunityGroup(groupId: $groupId, input: $input) {
+                id name
+              }
+            }
+            """,
+            new { groupId, input = new { name = "Owner Renamed Group" } });
+
+        var group2 = document.RootElement.GetProperty("data").GetProperty("updateCommunityGroup");
+        Assert.Equal("Owner Renamed Group", group2.GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateCommunityGroup_NonAdmin_ReturnsForbidden()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid memberId = Guid.Empty;
+        Guid groupId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("cg-update-nonadmin-admin@example.com", "UpdateNonAdminAdmin");
+            adminId = admin.Id;
+            dbContext.Users.Add(admin);
+
+            var member = CreateUser("cg-update-nonadmin-member@example.com", "UpdateNonAdminMember");
+            memberId = member.Id;
+            dbContext.Users.Add(member);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Non Admin Update Group",
+                Slug = "non-admin-update-group",
+                CreatedByUserId = admin.Id,
+            };
+            groupId = group.Id;
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = admin.Id,
+                Role = CommunityMemberRole.Owner,
+                Status = CommunityMemberStatus.Active,
+            });
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = member.Id,
+                Role = CommunityMemberRole.Member,
+                Status = CommunityMemberStatus.Active,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, memberId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation UpdateGroup($groupId: UUID!, $input: UpdateCommunityGroupInput!) {
+                  updateCommunityGroup(groupId: $groupId, input: $input) { id }
+                }
+                """,
+            variables = new { groupId, input = new { name = "Hacked Name" } }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        Assert.Contains("FORBIDDEN", errors.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task UpdateCommunityGroup_Unauthenticated_ReturnsAuthError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid groupId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var creator = CreateUser("cg-update-unauth@example.com", "UpdateUnauthCreator");
+            dbContext.Users.Add(creator);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Unauth Update Group",
+                Slug = "unauth-update-group",
+                CreatedByUserId = creator.Id,
+            };
+            groupId = group.Id;
+            dbContext.CommunityGroups.Add(group);
+        });
+
+        using var client = factory.CreateClient(); // no auth
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation UpdateGroup($groupId: UUID!, $input: UpdateCommunityGroupInput!) {
+                  updateCommunityGroup(groupId: $groupId, input: $input) { id }
+                }
+                """,
+            variables = new { groupId, input = new { name = "Hacked" } }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        var errorMsg = errors.ToString();
+        Assert.True(
+            errorMsg.Contains("AUTH_NOT_AUTHORIZED", StringComparison.OrdinalIgnoreCase)
+            || errorMsg.Contains("not authorized", StringComparison.OrdinalIgnoreCase)
+            || errorMsg.Contains("unauthorized", StringComparison.OrdinalIgnoreCase),
+            $"Expected auth error but got: {errorMsg}");
+    }
+
+    [Fact]
+    public async Task UpdateCommunityGroup_GroupNotFound_ReturnsError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid userId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("cg-update-notfound@example.com", "UpdateNotFound");
+            userId = user.Id;
+            dbContext.Users.Add(user);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        var nonExistentGroupId = Guid.NewGuid();
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation UpdateGroup($groupId: UUID!, $input: UpdateCommunityGroupInput!) {
+                  updateCommunityGroup(groupId: $groupId, input: $input) { id }
+                }
+                """,
+            variables = new { groupId = nonExistentGroupId, input = new { name = "Ghost Group" } }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        Assert.Contains("GROUP_NOT_FOUND", errors.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task UpdateCommunityGroup_GlobalAdmin_CanUpdateAnyGroup()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid globalAdminId = Guid.Empty;
+        Guid groupId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var creator = CreateUser("cg-update-creator-ga@example.com", "CreatorForGA");
+            dbContext.Users.Add(creator);
+
+            var globalAdmin = CreateUser("cg-update-globaladmin@example.com", "GlobalAdmin", ApplicationUserRole.Admin);
+            globalAdminId = globalAdmin.Id;
+            dbContext.Users.Add(globalAdmin);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Global Admin Target Group",
+                Slug = "global-admin-target-group",
+                CreatedByUserId = creator.Id,
+            };
+            groupId = group.Id;
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = creator.Id,
+                Role = CommunityMemberRole.Owner,
+                Status = CommunityMemberStatus.Active,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, globalAdminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation UpdateGroup($groupId: UUID!, $input: UpdateCommunityGroupInput!) {
+              updateCommunityGroup(groupId: $groupId, input: $input) {
+                id name isActive
+              }
+            }
+            """,
+            new { groupId, input = new { isActive = false } });
+
+        var group2 = document.RootElement.GetProperty("data").GetProperty("updateCommunityGroup");
+        Assert.False(group2.GetProperty("isActive").GetBoolean());
+    }
+
+    // ── Additional GroupMembers query tests ───────────────────────────────────
+
+    [Fact]
+    public async Task GroupMembers_NonAdmin_ReturnsForbidden()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid ownerId = Guid.Empty;
+        Guid memberId = Guid.Empty;
+        Guid groupId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var owner = CreateUser("gm-nonadmin-owner@example.com", "MembersOwner");
+            ownerId = owner.Id;
+            dbContext.Users.Add(owner);
+
+            var member = CreateUser("gm-nonadmin-member@example.com", "RegularMember");
+            memberId = member.Id;
+            dbContext.Users.Add(member);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Members Forbidden Group",
+                Slug = "members-forbidden-group",
+                CreatedByUserId = owner.Id,
+            };
+            groupId = group.Id;
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = owner.Id,
+                Role = CommunityMemberRole.Owner,
+                Status = CommunityMemberStatus.Active,
+            });
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = member.Id,
+                Role = CommunityMemberRole.Member,
+                Status = CommunityMemberStatus.Active,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, memberId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                query GetMembers($groupId: UUID!) {
+                  groupMembers(groupId: $groupId) { id userId role }
+                }
+                """,
+            variables = new { groupId }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        Assert.Contains("FORBIDDEN", errors.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task GroupMembers_Unauthenticated_ReturnsAuthError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid groupId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var creator = CreateUser("gm-unauth@example.com", "GmUnauthCreator");
+            dbContext.Users.Add(creator);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Unauthenticated Members Group",
+                Slug = "unauthenticated-members-group",
+                CreatedByUserId = creator.Id,
+            };
+            groupId = group.Id;
+            dbContext.CommunityGroups.Add(group);
+        });
+
+        using var client = factory.CreateClient(); // no auth
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                query GetMembers($groupId: UUID!) {
+                  groupMembers(groupId: $groupId) { id userId role }
+                }
+                """,
+            variables = new { groupId }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        var errorMsg = errors.ToString();
+        Assert.True(
+            errorMsg.Contains("AUTH_NOT_AUTHORIZED", StringComparison.OrdinalIgnoreCase)
+            || errorMsg.Contains("not authorized", StringComparison.OrdinalIgnoreCase)
+            || errorMsg.Contains("unauthorized", StringComparison.OrdinalIgnoreCase),
+            $"Expected auth error but got: {errorMsg}");
+    }
+
+    [Fact]
+    public async Task UpdateCommunityGroup_EventManager_ReturnsForbidden()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid ownerId = Guid.Empty;
+        Guid eventManagerId = Guid.Empty;
+        Guid groupId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var owner = CreateUser("cg-update-em-owner@example.com", "UpdateEmOwner");
+            ownerId = owner.Id;
+            dbContext.Users.Add(owner);
+
+            var em = CreateUser("cg-update-em@example.com", "EventManagerUser");
+            eventManagerId = em.Id;
+            dbContext.Users.Add(em);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Event Manager Update Group",
+                Slug = "event-manager-update-group",
+                CreatedByUserId = owner.Id,
+            };
+            groupId = group.Id;
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = owner.Id,
+                Role = CommunityMemberRole.Owner,
+                Status = CommunityMemberStatus.Active,
+            });
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = eventManagerId,
+                Role = CommunityMemberRole.EventManager,
+                Status = CommunityMemberStatus.Active,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, eventManagerId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation UpdateGroup($groupId: UUID!, $input: UpdateCommunityGroupInput!) {
+                  updateCommunityGroup(groupId: $groupId, input: $input) { id }
+                }
+                """,
+            variables = new { groupId, input = new { name = "EM Cannot Update" } }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        Assert.Contains("FORBIDDEN", errors.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
 }
 

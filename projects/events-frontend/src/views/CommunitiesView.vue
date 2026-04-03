@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
-import { useCommunitiesStore } from '@/stores/communities'
+import { useCommunitiesStore, generateCommunitySlug } from '@/stores/communities'
 import { useAuthStore } from '@/stores/auth'
 
 const { t } = useI18n()
@@ -26,10 +26,7 @@ onMounted(() => {
 
 function autoSlug() {
   if (!createForm.value.slug) {
-    createForm.value.slug = createForm.value.name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '')
+    createForm.value.slug = generateCommunitySlug(createForm.value.name)
   }
 }
 
