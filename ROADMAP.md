@@ -48,8 +48,12 @@ The codebase already implements a meaningful part of the platform. This roadmap 
 - Category landing pages and subdomain hub pages surface domain branding and administrator-managed metadata, with graceful fallbacks when assets are absent
 - Event detail pages show a domain hub context card linking back to the relevant category hub, including logo, description, and curator credit
 - Hub management workflow respects current permission model: domain administrators manage only their own hub identity without requiring global admin access
-- Community groups with full membership lifecycle (join, request, approve/reject), role management (OWNER, ADMIN, EVENT_MANAGER, MEMBER), public/private visibility, community-owned events, and external event-source claim and preview/import workflows
-- Community group administration surface at `/community/:slug` where administrators can manage metadata, visibility, roles, and associated events
+- Community groups with full membership lifecycle: join, request, approve/reject
+- Community group role management: OWNER, ADMIN, EVENT_MANAGER, MEMBER with server-side authorization
+- Public and private group visibility with appropriate access controls for each
+- Community-owned events: event managers can create or associate events on behalf of a community
+- External event-source claims: Meetup and Luma source claims with preview-and-import workflow
+- Community group management page at `/community/:slug` where administrators manage metadata, visibility, roles, and associated events
 - Event submission flow allows event managers to associate a new event with a managed community group
 - Event detail pages surface community group context with navigation back to the community page
 - Platform-wide community group overview in the admin panel for global administrators
