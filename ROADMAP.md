@@ -48,11 +48,16 @@ The codebase already implements a meaningful part of the platform. This roadmap 
 - Category landing pages and subdomain hub pages surface domain branding and administrator-managed metadata, with graceful fallbacks when assets are absent
 - Event detail pages show a domain hub context card linking back to the relevant category hub, including logo, description, and curator credit
 - Hub management workflow respects current permission model: domain administrators manage only their own hub identity without requiring global admin access
+- Community groups with full membership lifecycle (join, request, approve/reject), role management (OWNER, ADMIN, EVENT_MANAGER, MEMBER), public/private visibility, community-owned events, and external event-source claim and preview/import workflows
+- Community group administration surface at `/community/:slug` where administrators can manage metadata, visibility, roles, and associated events
+- Event submission flow allows event managers to associate a new event with a managed community group
+- Event detail pages surface community group context with navigation back to the community page
+- Platform-wide community group overview in the admin panel for global administrators
+- Organizer dashboard shows community memberships and quick navigation to managed community groups
 
 ### What is not implemented yet
 
-- Community groups with membership, role management, and external event-source ownership
-- Sync from external event platforms such as Meetup or Luma
+- Full sync from external event platforms such as Meetup or Luma (external source claims and preview are implemented; automated background sync is not)
 - Comments, discussion forums, or real-time collaboration features
 - Ticketing, subscriptions, or other monetization workflows
 
@@ -188,12 +193,11 @@ Domain communities are frequently international. Better language support expands
 
 ### 7. Community And Ecosystem Expansion
 
-Community groups, external sync, richer collaboration, and ecosystem integrations remain important parts of the vision, but they should be treated as expansion work on top of the current platform foundation, not as features already underway.
+Community groups are now a first-class feature on the platform. The next expansion areas focus on deeper integration, automation, and ecosystem growth.
 
 ### Expansion areas
 
-- Community groups with membership and role management
-- External event-source synchronization from platforms such as Meetup or Luma
+- Automated background sync from Meetup and Luma (external source claim infrastructure is in place; background job scheduling is not)
 - Social and collaborative features such as comments, discussion, or shared curation
 - Partner integrations for ticketing, venues, or distribution
 
