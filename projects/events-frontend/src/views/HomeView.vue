@@ -311,6 +311,32 @@ const rankContext = computed<{ label: string } | null>(() => {
   return { label: t('home.rankContextUpcoming') }
 })
 
+/**
+ * Human-readable age of the last discovery fetch result set.
+ * Returns null when no fetch has completed yet.
+ */
+const discoveryDataAge = computed<string | null>(() => {
+  const at = eventsStore.discoveryLastFetchedAt
+  if (!at) return null
+  const minutes = Math.floor((Date.now() - at) / 60000)
+  if (minutes < 1) {
+    return eventsStore.discoveryDataSource === 'cache'
+      ? t('home.cachedResultsOnlineRecent')
+      : t('home.cachedResultsRecent')
+  }
+  return eventsStore.discoveryDataSource === 'cache'
+    ? t('home.cachedResultsOnlineMinutes', { minutes })
+    : t('home.cachedResultsMinutes', { minutes })
+})
+
+/**
+ * Whether to show a cached-data notice above the results.
+ * True when the app is offline OR when the SW served the response from IDB cache.
+ */
+const showCachedNotice = computed(
+  () => isOffline.value || eventsStore.discoveryDataSource === 'cache',
+)
+
 // ── Subdomain hub SEO meta tags ───────────────────────────────────────────
 
 /** Maximum character length for SEO meta descriptions. */
@@ -490,7 +516,7 @@ watch(
       <div class="catalog-layout">
         <div class="results-column">
           <div
-            v-if="eventsStore.discoveryLoading"
+            v-if="eventsStore.discoveryLoading && !eventsStore.discoveryEvents.length"
             class="results-state card loading-state"
             aria-live="polite"
           >
@@ -502,7 +528,7 @@ watch(
           </div>
 
           <div
-            v-else-if="eventsStore.discoveryError"
+            v-else-if="eventsStore.discoveryError && !eventsStore.discoveryEvents.length"
             class="results-state card error-state"
             role="alert"
           >
@@ -527,9 +553,30 @@ watch(
           </div>
 
           <template v-else-if="eventsStore.discoveryEvents.length">
-            <div v-if="isOffline" role="status" aria-live="polite" class="cached-results-notice">
+            <!-- Offline or SW-cache notice: shown above results when data may be stale -->
+            <div v-if="showCachedNotice" role="status" aria-live="polite" class="cached-results-notice">
               <span aria-hidden="true">📡</span>
-              {{ t('home.cachedResultsNotice') }}
+              <span>{{ isOffline ? t('home.cachedResultsNotice') : (discoveryDataAge ?? t('home.cachedResultsNotice')) }}</span>
+            </div>
+            <!-- Subtle refreshing indicator: shown when reloading results that are already cached -->
+            <div
+              v-else-if="eventsStore.discoveryLoading"
+              role="status"
+              aria-live="polite"
+              class="refreshing-notice"
+            >
+              <span class="refreshing-spinner" aria-hidden="true"></span>
+              <span>{{ t('home.refreshingResults') }}</span>
+            </div>
+            <!-- Partial error notice: network failed but cached events are still shown -->
+            <div
+              v-else-if="eventsStore.discoveryError"
+              role="status"
+              aria-live="polite"
+              class="cached-results-notice"
+            >
+              <span aria-hidden="true">⚠️</span>
+              <span>{{ t('home.cachedResultsNotice') }}</span>
             </div>
             <p class="results-summary" role="status" aria-live="polite">
               {{ resultsSummary }}
@@ -949,6 +996,27 @@ watch(
   border-radius: 0.5rem;
   font-size: 0.8125rem;
   font-weight: 500;
+}
+
+.refreshing-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  margin-bottom: 0.75rem;
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+}
+
+.refreshing-spinner {
+  display: inline-block;
+  width: 0.875rem;
+  height: 0.875rem;
+  border-radius: 999px;
+  border: 2px solid rgba(19, 127, 236, 0.2);
+  border-top-color: var(--color-primary);
+  animation: spin 0.9s linear infinite;
+  flex-shrink: 0;
 }
 
 .results-state {

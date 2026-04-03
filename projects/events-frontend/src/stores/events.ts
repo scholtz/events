@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue'
 import type { LocationQuery, LocationQueryRaw } from 'vue-router'
 import { defineStore } from 'pinia'
-import { gqlRequest } from '@/lib/graphql'
+import { gqlRequest, gqlRequestWithMeta } from '@/lib/graphql'
 import type {
   AttendanceMode,
   CatalogEvent,
@@ -191,17 +191,37 @@ export const useEventsStore = defineStore('events', () => {
   const detailLoading = ref(false)
   const detailError = ref('')
 
+  /** Timestamp (ms since epoch) of the last successful discovery fetch, or null. */
+  const discoveryLastFetchedAt = ref<number | null>(null)
+  /**
+   * Data source of the last successful discovery fetch:
+   * - 'live'  – response came from the network
+   * - 'cache' – response was served from the service-worker IDB cache
+   * - null    – no fetch has completed yet
+   */
+  const discoveryDataSource = ref<'live' | 'cache' | null>(null)
+
+  /** Timestamp (ms since epoch) of the last successful event-detail fetch, or null. */
+  const detailLastFetchedAt = ref<number | null>(null)
+  /**
+   * Data source of the last successful event-detail fetch:
+   * - 'live'  – response came from the network
+   * - 'cache' – response was served from the service-worker IDB cache
+   * - null    – no fetch has completed yet
+   */
+  const detailDataSource = ref<'live' | 'cache' | null>(null)
+
   const filters = ref<EventFilters>(createDefaultEventFilters())
 
   async function fetchEvents() {
     loading.value = true
     try {
-      const data = await gqlRequest<{ events: CatalogEvent[] }>(
+      const result = await gqlRequestWithMeta<{ events: CatalogEvent[] }>(
         `query Events {
           events { ${EVENT_FIELDS} }
         }`,
       )
-      events.value = data.events
+      events.value = result.data.events
     } finally {
       loading.value = false
     }
@@ -212,16 +232,22 @@ export const useEventsStore = defineStore('events', () => {
     discoveryError.value = ''
 
     try {
-      const data = await gqlRequest<{ events: CatalogEvent[] }>(
+      const result = await gqlRequestWithMeta<{ events: CatalogEvent[] }>(
         `query DiscoveryEvents($filter: EventFilterInput) {
           events(filter: $filter) { ${EVENT_FIELDS} }
         }`,
         { filter: buildDiscoveryFilterInput(filters.value) },
       )
-      discoveryEvents.value = data.events
+      discoveryEvents.value = result.data.events
+      discoveryLastFetchedAt.value = Date.now()
+      discoveryDataSource.value = result.meta.fromCache ? 'cache' : 'live'
     } catch (error) {
       discoveryError.value = error instanceof Error ? error.message : 'Unable to load events right now.'
-      discoveryEvents.value = []
+      // Keep existing discoveryEvents so the UI can show stale cached data with messaging.
+      // Clear them only if there was nothing cached before this failed fetch.
+      if (!discoveryLastFetchedAt.value) {
+        discoveryEvents.value = []
+      }
     } finally {
       discoveryLoading.value = false
     }
@@ -266,14 +292,18 @@ export const useEventsStore = defineStore('events', () => {
     detailLoading.value = true
     detailError.value = ''
     try {
-      const data = await gqlRequest<{ eventBySlug: CatalogEvent | null }>(
+      const result = await gqlRequestWithMeta<{ eventBySlug: CatalogEvent | null }>(
         `query EventBySlug($slug: String!) {
           eventBySlug(slug: $slug) { ${DETAIL_EVENT_FIELDS} }
         }`,
         { slug },
       )
-      detailEvent.value = data.eventBySlug
-      return data.eventBySlug
+      detailEvent.value = result.data.eventBySlug
+      if (result.data.eventBySlug) {
+        detailLastFetchedAt.value = Date.now()
+        detailDataSource.value = result.meta.fromCache ? 'cache' : 'live'
+      }
+      return result.data.eventBySlug
     } catch (error) {
       detailError.value = error instanceof Error ? error.message : 'Unable to load event.'
       detailEvent.value = null
@@ -379,8 +409,12 @@ export const useEventsStore = defineStore('events', () => {
     loading,
     discoveryLoading,
     discoveryError,
+    discoveryLastFetchedAt,
+    discoveryDataSource,
     detailLoading,
     detailError,
+    detailLastFetchedAt,
+    detailDataSource,
     filters,
     allEvents,
     pendingEvents,

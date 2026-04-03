@@ -68,6 +68,11 @@ export default {
     submitAnEvent: 'Veranstaltung einreichen',
     cachedResultsNotice:
       'Es werden Ergebnisse Ihres letzten Online-Besuchs angezeigt. Aktualisieren Sie die Seite, wenn Sie wieder online sind.',
+    cachedResultsMinutes: 'Gespeicherte Ergebnisse von vor {minutes} Min. Aktualisieren Sie nach Verbindung.',
+    cachedResultsRecent: 'Kürzlich gespeicherte Ergebnisse werden angezeigt. Aktualisieren Sie nach Verbindung.',
+    cachedResultsOnlineMinutes: 'Ergebnisse von vor {minutes} Min. — neue Veranstaltungen können verfügbar sein.',
+    cachedResultsOnlineRecent: 'Ergebnisse Ihres letzten Besuchs — neue Veranstaltungen können verfügbar sein.',
+    refreshingResults: 'Wird aktualisiert…',
     mapContext: 'Kartenkontext',
     mapShowing: 'Angezeigt: {label}',
     mapOpenOsm: 'In OpenStreetMap öffnen ↗',
@@ -237,6 +242,9 @@ export default {
     addToCalendarPromptBtn: 'Zum Kalender hinzufügen',
     offlineStale:
       'Sie sind offline — diese Veranstaltungsinformationen stammen von Ihrem letzten Online-Besuch und spiegeln möglicherweise nicht die neuesten Änderungen wider.',
+    cachedDataMinutes:
+      'Diese Daten stammen von vor {minutes} Min. und spiegeln möglicherweise nicht die neuesten Änderungen wider.',
+    cachedDataRecent: 'Diese Daten stammen von Ihrem letzten Besuch und spiegeln möglicherweise nicht die neuesten Änderungen wider.',
     openInOsm: 'In OpenStreetMap öffnen ↗',
     virtualEvent: 'Virtuelle Veranstaltung',
     virtualEventDescription: 'Diese Veranstaltung findet online statt. Kein physischer Veranstaltungsort.',

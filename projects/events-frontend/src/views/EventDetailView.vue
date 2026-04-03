@@ -30,6 +30,26 @@ const event = computed(() => eventsStore.detailEvent ?? cachedEvent.value ?? nul
 const loading = computed(() => eventsStore.detailLoading && !cachedEvent.value)
 const detailError = computed(() => eventsStore.detailError)
 
+/**
+ * Human-readable age of the event detail data.
+ * Used in the stale-data notice when data came from cache.
+ */
+const detailDataAge = computed<string | null>(() => {
+  const at = eventsStore.detailLastFetchedAt
+  if (!at) return null
+  const minutes = Math.floor((Date.now() - at) / 60000)
+  if (minutes < 1) return t('eventDetail.cachedDataRecent')
+  return t('eventDetail.cachedDataMinutes', { minutes })
+})
+
+/**
+ * Whether to show a stale-data notice above the event detail.
+ * True when offline OR when the SW served the response from IDB cache.
+ */
+const showStaleNotice = computed(
+  () => isOffline.value || eventsStore.detailDataSource === 'cache',
+)
+
 /** Whether the current user is allowed to edit this event (admin or event owner). */
 const canEdit = computed(() => {
   if (!authStore.isAuthenticated || !event.value) return false
@@ -371,10 +391,10 @@ function domainHostDisplay(event: {
 
     <template v-else-if="event">
       <RouterLink to="/" class="back-link">{{ t('eventDetail.backToEvents') }}</RouterLink>
-      <!-- Offline stale-data notice: shown when viewing event detail without network -->
-      <div v-if="isOffline" role="status" aria-live="polite" class="stale-data-notice">
-        <span aria-hidden="true">📡</span>
-        {{ t('eventDetail.offlineStale') }}
+      <!-- Stale-data notice: shown when offline or when event data was served from SW cache -->
+      <div v-if="showStaleNotice" role="status" aria-live="polite" class="stale-data-notice">
+        <span aria-hidden="true">{{ isOffline ? '📡' : '🕐' }}</span>
+        <span>{{ isOffline ? t('eventDetail.offlineStale') : (detailDataAge ?? t('eventDetail.cachedDataRecent')) }}</span>
       </div>
       <div class="event-detail card">
         <div class="event-detail-header">

@@ -33,6 +33,7 @@
 
 import { expect, test } from '@playwright/test'
 import {
+  makeApprovedEvent,
   makeTechDomain,
   setupMockApi,
 } from './helpers/mock-api'
@@ -52,5 +53,206 @@ test.describe('PWA manifest', () => {
     expect(typeof href).toBe('string')
     expect(href).toMatch(/manifest\.webmanifest/)
   })
-
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Offline / stale-data freshness model – discovery
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('Discovery freshness – offline with cached events', () => {
+  test('shows cached-results notice when offline and events are in the store', async ({ page }) => {
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({ name: 'Cached Conf', slug: 'cached-conf' })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    // Navigate online so events load into the store.
+    await page.goto('/')
+    await expect(page.locator('.event-card', { hasText: 'Cached Conf' })).toBeVisible()
+
+    // The cached-results notice must NOT be visible while online.
+    await expect(page.locator('.cached-results-notice')).toBeHidden()
+
+    // Simulate going offline.
+    await page.context().setOffline(true)
+
+    // The offline/cached-results notice should appear reactively.
+    await expect(page.locator('.cached-results-notice')).toBeVisible()
+
+    // The event list must still be visible (cached data is preserved).
+    await expect(page.locator('.event-card', { hasText: 'Cached Conf' })).toBeVisible()
+
+    // Restore online state.
+    await page.context().setOffline(false)
+  })
+
+  test('cached-results notice disappears when connectivity is restored', async ({ page }) => {
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({ name: 'Reconnect Event', slug: 'reconnect-event' })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    await page.goto('/')
+    await expect(page.locator('.event-card', { hasText: 'Reconnect Event' })).toBeVisible()
+
+    // Go offline → notice appears.
+    await page.context().setOffline(true)
+    await expect(page.locator('.cached-results-notice')).toBeVisible()
+
+    // Come back online → notice disappears.
+    await page.context().setOffline(false)
+    await expect(page.locator('.cached-results-notice')).toBeHidden()
+  })
+
+  test('cached-results notice is accessible via ARIA', async ({ page }) => {
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({ name: 'Aria Test Event', slug: 'aria-test-event' })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    await page.goto('/')
+    await expect(page.locator('.event-card', { hasText: 'Aria Test Event' })).toBeVisible()
+
+    await page.context().setOffline(true)
+    const notice = page.locator('.cached-results-notice')
+    await expect(notice).toBeVisible()
+    await expect(notice).toHaveAttribute('role', 'status')
+    await expect(notice).toHaveAttribute('aria-live', 'polite')
+
+    await page.context().setOffline(false)
+  })
+})
+
+test.describe('Discovery freshness – offline with no cached data', () => {
+  test('shows error state with offline message when no cached events exist', async ({ page }) => {
+    setupMockApi(page, { domains: [makeTechDomain()], events: [] })
+
+    // Set offline and override the route to abort GraphQL requests so no data can load.
+    await page.context().setOffline(true)
+    await page.route('**/graphql', async (route, request) => {
+      const body = request.postData() ?? ''
+      if (body.includes('DiscoveryEvents')) {
+        await route.abort('failed')
+        return
+      }
+      await route.fallback()
+    })
+
+    await page.goto('/')
+
+    // Should show the offline error state (not a blank page or generic error).
+    await expect(page.getByRole('heading', { name: "You're offline" })).toBeVisible()
+
+    // A retry button must be present.
+    await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible()
+
+    await page.context().setOffline(false)
+  })
+})
+
+test.describe('Discovery freshness – mobile viewport', () => {
+  test('cached-results notice is visible on mobile when offline', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({ name: 'Mobile Offline Event', slug: 'mobile-offline-event' })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    await page.goto('/')
+    await expect(page.locator('.event-card', { hasText: 'Mobile Offline Event' })).toBeVisible()
+
+    await page.context().setOffline(true)
+    await expect(page.locator('.cached-results-notice')).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Mobile Offline Event' })).toBeVisible()
+
+    await page.context().setOffline(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Offline / stale-data freshness model – event detail
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('Event detail freshness – offline with cached event', () => {
+  test('shows stale-data notice when offline after loading event detail', async ({ page }) => {
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      name: 'Stale Detail Event',
+      slug: 'stale-detail-event',
+    })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    // Navigate to the event detail while online.
+    await page.goto(`/event/${event.slug}`)
+    await expect(page.getByRole('heading', { name: 'Stale Detail Event' })).toBeVisible()
+
+    // Stale-data notice must NOT appear while online with live data.
+    await expect(page.locator('.stale-data-notice')).toBeHidden()
+
+    // Go offline → stale notice should appear.
+    await page.context().setOffline(true)
+    await expect(page.locator('.stale-data-notice')).toBeVisible()
+
+    // The event detail must still be fully readable.
+    await expect(page.getByRole('heading', { name: 'Stale Detail Event' })).toBeVisible()
+
+    await page.context().setOffline(false)
+  })
+
+  test('stale-data notice is accessible via ARIA', async ({ page }) => {
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      name: 'Aria Detail Event',
+      slug: 'aria-detail-event',
+    })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    await page.goto(`/event/${event.slug}`)
+    await expect(page.getByRole('heading', { name: 'Aria Detail Event' })).toBeVisible()
+
+    await page.context().setOffline(true)
+    const notice = page.locator('.stale-data-notice')
+    await expect(notice).toBeVisible()
+    await expect(notice).toHaveAttribute('role', 'status')
+    await expect(notice).toHaveAttribute('aria-live', 'polite')
+
+    await page.context().setOffline(false)
+  })
+
+  test('stale-data notice disappears when connectivity is restored', async ({ page }) => {
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      name: 'Reconnect Detail Event',
+      slug: 'reconnect-detail-event',
+    })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    await page.goto(`/event/${event.slug}`)
+    await expect(page.getByRole('heading', { name: 'Reconnect Detail Event' })).toBeVisible()
+
+    await page.context().setOffline(true)
+    await expect(page.locator('.stale-data-notice')).toBeVisible()
+
+    await page.context().setOffline(false)
+    await expect(page.locator('.stale-data-notice')).toBeHidden()
+  })
+})
+
+test.describe('Event detail freshness – error state', () => {
+  test('shows error state with retry button when API fails', async ({ page }) => {
+    setupMockApi(page)
+    await page.route('**/graphql', async (route, request) => {
+      const body = request.postData() ?? ''
+      if (body.includes('EventBySlug')) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Service temporarily unavailable' }] }),
+        })
+        return
+      }
+      await route.fallback()
+    })
+
+    await page.goto('/event/missing-event')
+    await expect(page.getByRole('heading', { name: 'Unable to load event' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible()
+  })
+})
+
