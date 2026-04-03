@@ -39,17 +39,29 @@ public sealed class ExternalSourceClaim
     /// <summary>UTC timestamp of the most recent sync attempt (null if never synced).</summary>
     public DateTime? LastSyncAtUtc { get; set; }
 
+    /// <summary>UTC timestamp of the last sync that completed without errors (null if never succeeded).</summary>
+    public DateTime? LastSyncSucceededAtUtc { get; set; }
+
     /// <summary>
     /// Human-readable outcome of the last sync attempt, e.g.
     /// "Imported 3, skipped 1 (duplicate), 0 errors."
     /// </summary>
     public string? LastSyncOutcome { get; set; }
 
+    /// <summary>Error message from the most recent failed sync attempt, or null on success.</summary>
+    public string? LastSyncError { get; set; }
+
     /// <summary>Number of events successfully imported in the last sync.</summary>
     public int? LastSyncImportedCount { get; set; }
 
     /// <summary>Number of events skipped (duplicate) in the last sync.</summary>
     public int? LastSyncSkippedCount { get; set; }
+
+    /// <summary>
+    /// When true, the background sync service will automatically refresh events from this claim
+    /// on the configured schedule. Defaults to true for verified claims.
+    /// </summary>
+    public bool IsAutoSyncEnabled { get; set; } = true;
 
     /// <summary>
     /// Optional note recorded by the platform admin when reviewing this claim.

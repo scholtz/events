@@ -1891,6 +1891,40 @@ public sealed class Mutation
     }
 
     /// <summary>
+    /// Enables or disables automated background synchronisation for a specific external source claim.
+    /// When enabled, the background sync service will periodically import new events from the source.
+    /// Only group admins (or global admins) may call this.
+    /// </summary>
+    [Authorize]
+    public async Task<ExternalSourceClaim> SetAutoSyncEnabledAsync(
+        Guid claimId,
+        bool enabled,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var claim = await dbContext.ExternalSourceClaims.SingleOrDefaultAsync(
+            esc => esc.Id == claimId, cancellationToken)
+            ?? throw CreateError("External source claim not found.", "CLAIM_NOT_FOUND");
+
+        var userId = claimsPrincipal.GetRequiredUserId();
+        if (!claimsPrincipal.IsAdmin())
+        {
+            var isGroupAdmin = await dbContext.CommunityMemberships.AnyAsync(
+                cm => cm.GroupId == claim.GroupId && cm.UserId == userId &&
+                      (cm.Role == CommunityMemberRole.Admin || cm.Role == CommunityMemberRole.Owner) &&
+                      cm.Status == CommunityMemberStatus.Active,
+                cancellationToken);
+            if (!isGroupAdmin)
+                throw CreateError("Only group administrators can manage sync settings.", "FORBIDDEN");
+        }
+
+        claim.IsAutoSyncEnabled = enabled;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return claim;
+    }
+
+    /// <summary>
     /// Allows a global admin to approve (Verified) or reject a pending external-source
     /// ownership claim. Only global admins may call this mutation.
     /// </summary>
@@ -2130,8 +2164,7 @@ public sealed class Mutation
         Guid claimId,
         ClaimsPrincipal claimsPrincipal,
         [Service] AppDbContext dbContext,
-        [Service] ExternalSourceAdapterFactory adapterFactory,
-        [Service] ILogger<Mutation> logger,
+        [Service] ExternalSyncEngine syncEngine,
         CancellationToken cancellationToken)
     {
         var claim = await dbContext.ExternalSourceClaims
@@ -2156,129 +2189,7 @@ public sealed class Mutation
                 "Only verified claims can be synced. Please wait for a platform admin to verify this claim.",
                 "CLAIM_NOT_VERIFIED");
 
-        var adapter = adapterFactory.GetAdapter(claim.SourceType);
-        var externalEvents = await adapter.FetchEventsAsync(claim.SourceIdentifier, cancellationToken);
-
-        // Use first available domain as the default for imported events.
-        var defaultDomain = await dbContext.Domains.FirstOrDefaultAsync(
-            d => d.IsActive, cancellationToken)
-            ?? throw CreateError("No active domain found to assign imported events.", "NO_DOMAIN");
-
-        var importedCount = 0;
-        var skippedCount = 0;
-        var errorCount = 0;
-
-        foreach (var ext in externalEvents)
-        {
-            // Duplicate check: if an event was already imported from this claim with the same external ID
-            var existingImport = await dbContext.Events.AnyAsync(
-                e => e.ExternalSourceClaimId == claimId && e.ExternalSourceEventId == ext.ExternalId,
-                cancellationToken);
-
-            if (existingImport)
-            {
-                skippedCount++;
-                continue;
-            }
-
-            // Validate required fields
-            if (ext.StartsAtUtc is null)
-            {
-                logger.LogWarning(
-                    "Sync for claim {ClaimId}: skipping external event '{ExternalId}' — missing StartsAtUtc.",
-                    claimId, ext.ExternalId);
-                errorCount++;
-                continue;
-            }
-
-            var endsAt = ext.EndsAtUtc ?? ext.StartsAtUtc.Value.AddHours(2);
-
-            try
-            {
-                var catalogEvent = new CatalogEvent
-                {
-                    Name = (ext.Name ?? "Untitled Event").Trim(),
-                    Slug = await BuildUniqueEventSlugAsync(dbContext, ext.Name ?? "Untitled Event", cancellationToken),
-                    Description = (ext.Description ?? string.Empty).Trim(),
-                    EventUrl = (ext.EventUrl ?? string.Empty).Trim(),
-                    VenueName = (ext.VenueName ?? string.Empty).Trim(),
-                    AddressLine1 = (ext.AddressLine1 ?? string.Empty).Trim(),
-                    City = (ext.City ?? string.Empty).Trim(),
-                    CountryCode = (ext.CountryCode ?? "XX").Trim().ToUpperInvariant(),
-                    Latitude = ext.Latitude ?? 0,
-                    Longitude = ext.Longitude ?? 0,
-                    StartsAtUtc = EnsureUtc(ext.StartsAtUtc.Value),
-                    EndsAtUtc = EnsureUtc(endsAt),
-                    IsFree = ext.IsFree ?? true,
-                    PriceAmount = ext.PriceAmount,
-                    CurrencyCode = NormalizeCurrencyCode(ext.CurrencyCode),
-                    Language = ext.Language,
-                    AttendanceMode = AttendanceMode.InPerson,
-                    Status = EventStatus.PendingApproval,
-                    DomainId = defaultDomain.Id,
-                    SubmittedByUserId = userId,
-                    ExternalSourceClaimId = claimId,
-                    ExternalSourceEventId = ext.ExternalId,
-                };
-
-                dbContext.Events.Add(catalogEvent);
-
-                // Link the event to the community group
-                dbContext.CommunityGroupEvents.Add(new CommunityGroupEvent
-                {
-                    GroupId = claim.GroupId,
-                    EventId = catalogEvent.Id,
-                    AddedByUserId = userId,
-                });
-
-                await dbContext.SaveChangesAsync(cancellationToken);
-                importedCount++;
-            }
-            catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
-            {
-                // Concurrent sync inserted this event between our AnyAsync check and SaveChangesAsync.
-                // Treat as already-imported (skip) to keep the operation idempotent.
-                logger.LogInformation(
-                    "Sync for claim {ClaimId}: event '{ExternalId}' already imported (concurrent insert).",
-                    claimId, ext.ExternalId);
-
-                foreach (var entry in dbContext.ChangeTracker.Entries()
-                             .Where(e => e.State == EntityState.Added)
-                             .ToList())
-                {
-                    entry.State = EntityState.Detached;
-                }
-
-                skippedCount++;
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex,
-                    "Sync for claim {ClaimId}: failed to import external event '{ExternalId}'. Rolling back pending changes.",
-                    claimId, ext.ExternalId);
-
-                // Detach all pending entries added in this iteration to prevent them from
-                // being accidentally committed in the final SaveChangesAsync below.
-                foreach (var entry in dbContext.ChangeTracker.Entries()
-                             .Where(e => e.State == EntityState.Added)
-                             .ToList())
-                {
-                    entry.State = EntityState.Detached;
-                }
-
-                errorCount++;
-            }
-        }
-
-        var summary = BuildSyncSummary(importedCount, skippedCount, errorCount);
-
-        claim.LastSyncAtUtc = DateTime.UtcNow;
-        claim.LastSyncOutcome = summary;
-        claim.LastSyncImportedCount = importedCount;
-        claim.LastSyncSkippedCount = skippedCount;
-        await dbContext.SaveChangesAsync(cancellationToken);
-
-        return new SyncResult(importedCount, skippedCount, errorCount, summary);
+        return await syncEngine.SyncClaimAsync(claim, userId, cancellationToken);
     }
 
     private static string BuildSyncSummary(int imported, int skipped, int errors)

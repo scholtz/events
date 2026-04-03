@@ -202,9 +202,12 @@ export type MockExternalSourceClaim = {
   createdByUserId: string
   createdAtUtc: string
   lastSyncAtUtc: string | null
+  lastSyncSucceededAtUtc: string | null
   lastSyncOutcome: string | null
+  lastSyncError: string | null
   lastSyncImportedCount: number | null
   lastSyncSkippedCount: number | null
+  isAutoSyncEnabled: boolean
   adminNote: string | null
 }
 
@@ -1937,9 +1940,12 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         createdByUserId: userId,
         createdAtUtc: new Date().toISOString(),
         lastSyncAtUtc: null,
+        lastSyncSucceededAtUtc: null,
         lastSyncOutcome: null,
+        lastSyncError: null,
         lastSyncImportedCount: null,
         lastSyncSkippedCount: null,
+        isAutoSyncEnabled: true,
         adminNote: null,
       }
       state.externalSourceClaims.push(claim)
@@ -1991,8 +1997,11 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         return
       }
       // Stub sync — no events from adapter
-      claim.lastSyncAtUtc = new Date().toISOString()
+      const now = new Date().toISOString()
+      claim.lastSyncAtUtc = now
+      claim.lastSyncSucceededAtUtc = now
       claim.lastSyncOutcome = 'Imported 0 events.'
+      claim.lastSyncError = null
       claim.lastSyncImportedCount = 0
       claim.lastSyncSkippedCount = 0
       const result = { importedCount: 0, skippedCount: 0, errorCount: 0, summary: 'Imported 0 events.' }
@@ -2000,6 +2009,27 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({ data: { triggerExternalSync: result } }),
+      })
+      return
+    }
+
+    if (query.includes('mutation') && query.includes('SetAutoSyncEnabled')) {
+      const claimId = variables.claimId as string
+      const enabled = variables.enabled as boolean
+      const claim = state.externalSourceClaims.find((c) => c.id === claimId)
+      if (!claim) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Claim not found', extensions: { code: 'CLAIM_NOT_FOUND' } }] }),
+        })
+        return
+      }
+      claim.isAutoSyncEnabled = enabled
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { setAutoSyncEnabled: claim } }),
       })
       return
     }
@@ -2444,9 +2474,12 @@ export function makePendingReviewClaim(
     createdByUserId: 'admin-1',
     createdAtUtc: new Date().toISOString(),
     lastSyncAtUtc: null,
+    lastSyncSucceededAtUtc: null,
     lastSyncOutcome: null,
+    lastSyncError: null,
     lastSyncImportedCount: null,
     lastSyncSkippedCount: null,
+    isAutoSyncEnabled: true,
     adminNote: null,
     ...overrides,
   }
@@ -2467,9 +2500,12 @@ export function makeVerifiedClaim(
     createdByUserId: 'admin-1',
     createdAtUtc: new Date().toISOString(),
     lastSyncAtUtc: null,
+    lastSyncSucceededAtUtc: null,
     lastSyncOutcome: null,
+    lastSyncError: null,
     lastSyncImportedCount: null,
     lastSyncSkippedCount: null,
+    isAutoSyncEnabled: true,
     adminNote: null,
     ...overrides,
   }
