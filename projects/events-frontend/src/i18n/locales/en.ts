@@ -120,6 +120,7 @@ export default {
     recoveryTryInPerson: 'Try in-person events',
     recoveryClearDates: 'Clear date range',
     recoveryShowAllPrices: 'Show all prices',
+    recoveryClearDomainTag: 'Remove tag filter',
   },
 
   // ── Event Filters ──────────────────────────────────────────────────────────

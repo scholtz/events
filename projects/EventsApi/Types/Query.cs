@@ -586,12 +586,20 @@ public sealed class Query
                 .OrderByDescending(catalogEvent => catalogEvent.Name.ToLower().StartsWith(normalizedSearchText))
                 .ThenByDescending(catalogEvent => catalogEvent.Name.ToLower().Contains(normalizedSearchText))
                 .ThenByDescending(catalogEvent => catalogEvent.Description.ToLower().Contains(normalizedSearchText))
+                // Within the same match tier: upcoming events appear before past events
+                .ThenBy(catalogEvent => catalogEvent.StartsAtUtc < now ? 1 : 0)
                 .ThenBy(catalogEvent => catalogEvent.StartsAtUtc),
             _ => query
                 // Upcoming events (starts today or later) before past events
                 .OrderBy(catalogEvent => catalogEvent.StartsAtUtc < now ? 1 : 0)
                 // Within each group: ascending by start date (nearest upcoming first; oldest past first)
                 .ThenBy(catalogEvent => catalogEvent.StartsAtUtc)
+                // Tiebreaker: prefer events with more complete schedule data (venue, city, event URL)
+                // Each present field contributes 1 point (max 3); higher completeness ranks first.
+                .ThenByDescending(catalogEvent =>
+                    (string.IsNullOrEmpty(catalogEvent.City) ? 0 : 1) +
+                    (string.IsNullOrEmpty(catalogEvent.VenueName) ? 0 : 1) +
+                    (string.IsNullOrEmpty(catalogEvent.EventUrl) ? 0 : 1))
                 .ThenBy(catalogEvent => catalogEvent.Name)
         };
     }

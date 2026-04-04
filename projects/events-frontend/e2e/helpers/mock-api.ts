@@ -2373,6 +2373,11 @@ function sortDiscoveryEvents(
     const leftScore = relevanceScore(left, normalizedSearch)
     const rightScore = relevanceScore(right, normalizedSearch)
     if (leftScore !== rightScore) return rightScore - leftScore
+    // Within the same match tier: upcoming events appear before past events
+    const now = new Date().toISOString()
+    const leftIsPast = left.startsAtUtc < now
+    const rightIsPast = right.startsAtUtc < now
+    if (leftIsPast !== rightIsPast) return leftIsPast ? 1 : -1
   }
 
   // Default UPCOMING sort: upcoming events (>= now) before past events

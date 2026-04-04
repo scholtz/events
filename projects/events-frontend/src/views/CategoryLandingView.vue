@@ -382,7 +382,12 @@ onMounted(async () => {
           <div class="empty-icon">📅</div>
           <h2>{{ t('category.noEvents') }}</h2>
           <p>{{ t('category.noEventsHubDescription', { name: domain?.name ?? '' }) }}</p>
-          <RouterLink to="/" class="btn btn-outline">{{ t('category.browseAll') }}</RouterLink>
+          <div class="empty-state-actions">
+            <RouterLink :to="`/?domain=${slug}`" class="btn btn-outline">
+              {{ t('category.filterAndExplore') }}
+            </RouterLink>
+            <RouterLink to="/" class="btn btn-ghost">{{ t('category.browseAll') }}</RouterLink>
+          </div>
         </div>
 
         <!-- Organizer submission CTA -->
@@ -581,6 +586,13 @@ onMounted(async () => {
 .empty-state {
   text-align: center;
   justify-items: center;
+}
+
+.empty-state-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 .empty-icon {

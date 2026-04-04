@@ -460,6 +460,105 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task EventsQuery_RelevanceSort_PrioritizesUpcomingOverPastWithinSameTier()
+    {
+        // Within the same keyword-match tier, upcoming events should appear before past events.
+        // Previously the final tiebreaker was purely ascending StartsAtUtc, which meant a past
+        // event with a date far in the past could sort before an upcoming event. The fix adds an
+        // explicit upcoming-before-past step before the date sort.
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("relevance-order@example.com", "Relevance Tester");
+            var tech = CreateDomain("Tech", "tech");
+            var now = DateTime.UtcNow;
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(tech);
+            dbContext.Events.AddRange(
+                // Both events start with "blockchain" → same highest relevance tier
+                CreateEvent(
+                    "Blockchain Summit Past",
+                    "blockchain-summit-past",
+                    "Past blockchain event.",
+                    "Old Venue",
+                    "Prague",
+                    now.AddDays(-14),
+                    tech,
+                    user),
+                CreateEvent(
+                    "Blockchain Summit Upcoming",
+                    "blockchain-summit-upcoming",
+                    "Upcoming blockchain event.",
+                    "New Venue",
+                    "Prague",
+                    now.AddDays(14),
+                    tech,
+                    user));
+        });
+
+        using var client = factory.CreateClient();
+
+        var names = await QueryEventNamesAsync(
+            client,
+            new { searchText = "blockchain", sortBy = "RELEVANCE" });
+
+        // Within the same name-prefix match tier, upcoming event must appear before past event
+        Assert.Equal(["Blockchain Summit Upcoming", "Blockchain Summit Past"], names);
+    }
+
+    [Fact]
+    public async Task EventsQuery_UpcomingSort_ScheduleCompletenessBreaksTiesAtSameStartDate()
+    {
+        // When two events start at the same time, the event with more complete schedule data
+        // (city, venue, end date, event URL) should rank higher than an incomplete event.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var sameStartTime = DateTime.UtcNow.AddDays(7);
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("completeness@example.com", "Completeness Tester");
+            var tech = CreateDomain("Tech", "tech");
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(tech);
+
+            // Complete event: city, venueName, endsAtUtc, eventUrl all set (via CreateEvent defaults)
+            var complete = CreateEvent(
+                "Complete Event",
+                "complete-event",
+                "This event has all location and schedule fields filled in.",
+                "Full Venue",
+                "Prague",
+                sameStartTime,
+                tech,
+                user);
+
+            // Incomplete event: explicitly clear city, venueName, and eventUrl
+            var incomplete = CreateEvent(
+                "Incomplete Event",
+                "incomplete-event",
+                "Minimal event with no location detail.",
+                "Full Venue", // will be cleared below
+                "Prague",     // will be cleared below
+                sameStartTime,
+                tech,
+                user);
+            incomplete.City = string.Empty;
+            incomplete.VenueName = string.Empty;
+            incomplete.EventUrl = string.Empty;
+
+            dbContext.Events.AddRange(complete, incomplete);
+        });
+
+        using var client = factory.CreateClient();
+
+        var names = await QueryEventNamesAsync(client, new { sortBy = "UPCOMING" });
+
+        // Complete event must appear before incomplete event when start times are identical
+        Assert.Equal(["Complete Event", "Incomplete Event"], names);
+    }
+
+    [Fact]
     public async Task EventsQuery_TreatsBlankFiltersAsUnsetAndKeepsPendingEventsPrivate()
     {
         await using var factory = new EventsApiWebApplicationFactory();

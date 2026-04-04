@@ -2692,3 +2692,80 @@ test.describe('Low-signal notice recovery action', () => {
     ).toBeVisible()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Domain filter empty-state recovery
+// ---------------------------------------------------------------------------
+
+test.describe('Domain filter empty-state recovery', () => {
+  test('single domain filter empty state shows "Remove tag filter" recovery button', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      // Only events in 'technology' domain; querying 'crypto' will yield 0 results
+      events: [makeApprovedEvent({ id: 'e-1', name: 'Tech Meetup', slug: 'tech-meetup' })],
+    })
+    await page.goto('/?domain=crypto')
+
+    await expect(page.locator('.empty-state')).toBeVisible()
+    await expect(
+      page.locator('.empty-state .recovery-action', { hasText: 'Remove tag filter' }),
+    ).toBeVisible()
+  })
+
+  test('clicking "Remove tag filter" from domain empty state clears the domain filter', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-1', name: 'Tech Meetup', slug: 'tech-meetup' })],
+    })
+    await page.goto('/?domain=crypto')
+
+    await page.locator('.empty-state .recovery-action', { hasText: 'Remove tag filter' }).click()
+
+    await expect(page.locator('.event-card', { hasText: 'Tech Meetup' })).toBeVisible()
+    await expect(page.locator('.empty-state')).toBeHidden()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// RELEVANCE sort — upcoming events ranked above past events within same tier
+// ---------------------------------------------------------------------------
+
+test.describe('RELEVANCE sort — upcoming before past within same tier', () => {
+  test('RELEVANCE sort shows upcoming event before past event when both match equally', async ({
+    page,
+  }) => {
+    const now = new Date()
+    const futureDateIso = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString()
+    const pastDateIso = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000).toISOString()
+
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-past',
+          name: 'Blockchain Summit Past',
+          slug: 'blockchain-summit-past',
+          startsAtUtc: pastDateIso,
+          endsAtUtc: pastDateIso,
+        }),
+        makeApprovedEvent({
+          id: 'e-future',
+          name: 'Blockchain Summit Upcoming',
+          slug: 'blockchain-summit-upcoming',
+          startsAtUtc: futureDateIso,
+          endsAtUtc: futureDateIso,
+        }),
+      ],
+    })
+    await page.goto('/?search=blockchain&sort=relevance')
+
+    const cards = page.locator('.event-card')
+    // Upcoming event must appear first within the same keyword-prefix tier
+    await expect(cards.first()).toContainText('Blockchain Summit Upcoming')
+    await expect(cards.nth(1)).toContainText('Blockchain Summit Past')
+  })
+})

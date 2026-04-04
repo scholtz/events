@@ -113,6 +113,7 @@ export default {
     recoveryTryInPerson: 'Vyskúšať osobné udalosti',
     recoveryClearDates: 'Vymazať rozsah dátumov',
     recoveryShowAllPrices: 'Zobraziť všetky ceny',
+    recoveryClearDomainTag: 'Odstrániť filter tagu',
   },
 
   filters: {
