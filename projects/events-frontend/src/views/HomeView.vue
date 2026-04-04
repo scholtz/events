@@ -294,6 +294,13 @@ const emptyStateRecoveryAction = computed<{ label: string; action: () => void } 
     }
   }
 
+  if (chip.key === 'domain') {
+    return {
+      label: t('home.recoveryClearDomainTag'),
+      action: () => eventsStore.setFilters({ domain: '' }),
+    }
+  }
+
   return null
 })
 

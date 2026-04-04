@@ -113,6 +113,7 @@ export default {
     recoveryTryInPerson: 'Präsenzveranstaltungen versuchen',
     recoveryClearDates: 'Datumsbereich löschen',
     recoveryShowAllPrices: 'Alle Preise anzeigen',
+    recoveryClearDomainTag: 'Tag-Filter entfernen',
   },
 
   filters: {
