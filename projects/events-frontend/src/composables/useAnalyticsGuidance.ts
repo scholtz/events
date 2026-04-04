@@ -69,6 +69,8 @@ export type RecommendationType =
   | 'publishedApproachingSoon'
   | 'publishedNoSaves'
   | 'publishedMissingLanguage'
+  | 'publishedMissingTimezone'
+  | 'publishedMissingDomain'
   | null
 
 /**
@@ -94,7 +96,9 @@ export function daysUntilStart(startsAtUtc: string, now: Date = new Date()): num
  * 4. PUBLISHED + zero saves + starting within 7 days → urgent share prompt
  * 5. PUBLISHED + zero saves → standard share prompt
  * 6. PUBLISHED + has saves + no language set → language-tag improvement hint
- * 7. Otherwise → no recommendation
+ * 7. PUBLISHED + has saves + has language + no timezone → timezone improvement hint
+ * 8. PUBLISHED + has saves + has language + has timezone + no domain → category assignment hint
+ * 9. Otherwise → no recommendation
  *
  * @param item Analytics item for the event
  * @param now  Reference instant (defaults to `new Date()` for testability)
@@ -102,7 +106,7 @@ export function daysUntilStart(startsAtUtc: string, now: Date = new Date()): num
 export function eventRecommendationType(
   item: Pick<
     EventAnalyticsItem,
-    'status' | 'totalInterestedCount' | 'startsAtUtc' | 'language'
+    'status' | 'totalInterestedCount' | 'startsAtUtc' | 'language' | 'timezone' | 'domainSlug'
   >,
   now: Date = new Date(),
 ): RecommendationType {
@@ -116,6 +120,8 @@ export function eventRecommendationType(
       return 'publishedNoSaves'
     }
     if (!item.language) return 'publishedMissingLanguage'
+    if (!item.timezone) return 'publishedMissingTimezone'
+    if (!item.domainSlug) return 'publishedMissingDomain'
   }
   return null
 }
@@ -131,7 +137,7 @@ export function eventRecommendationType(
 export function eventRecommendationVariant(
   item: Pick<
     EventAnalyticsItem,
-    'status' | 'totalInterestedCount' | 'startsAtUtc' | 'language'
+    'status' | 'totalInterestedCount' | 'startsAtUtc' | 'language' | 'timezone' | 'domainSlug'
   >,
   now: Date = new Date(),
 ): RecommendationVariant {

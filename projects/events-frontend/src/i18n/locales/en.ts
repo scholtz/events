@@ -445,6 +445,10 @@ export default {
       'This event starts in less than a week and has no saves yet. Share the link now in community channels, social media, or domain-specific groups to reach attendees before it begins.',
     recommendationPublishedMissingLanguage:
       "Your event doesn't have a language set. Adding a language tag helps attendees in your community discover this event in their preferred language. Edit the event to add it.",
+    recommendationPublishedMissingTimezone:
+      "Your event doesn't have a timezone set. Adding a timezone helps attendees know exactly when the event takes place in their local time. Edit the event to add it.",
+    recommendationPublishedMissingDomain:
+      "Your event isn't assigned to a category yet. Assigning it to a relevant category helps attendees browsing community hubs discover it. Edit the event to choose a category.",
     adminNotesFeedback: 'Moderator feedback:',
     metricTimeframeAllTime: 'All-time total',
     hubManagementTitle: 'Hub Management',

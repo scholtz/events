@@ -433,6 +433,10 @@ export default {
       'Táto udalosť začína za menej ako týždeň a zatiaľ nemá žiadne uloženia. Zdieľajte odkaz teraz v komunitných kanáloch, na sociálnych médiách alebo v tematických skupinách, aby ste oslovili účastníkov pred začiatkom.',
     recommendationPublishedMissingLanguage:
       'Vaša udalosť nemá nastavený jazyk. Pridanie jazykového tagu pomáha účastníkom vo vašej komunite objaviť túto udalosť v ich preferovanom jazyku. Upravte udalosť a pridajte ho.',
+    recommendationPublishedMissingTimezone:
+      'Vaša udalosť nemá nastavenú časovú zónu. Pridanie časovej zóny pomáha účastníkom vedieť presne, kedy sa udalosť koná v ich miestnom čase. Upravte udalosť a pridajte ju.',
+    recommendationPublishedMissingDomain:
+      'Vaša udalosť zatiaľ nie je priradená ku kategórii. Priradenie ku vhodnej kategórii pomáha účastníkom prehliadajúcim komunitné huby ju objaviť. Upravte udalosť a vyberte kategóriu.',
     adminNotesFeedback: 'Spätná väzba moderátora:',
     metricTimeframeAllTime: 'Celkový počet za všetky časy',
     hubManagementTitle: 'Správa hubu',
