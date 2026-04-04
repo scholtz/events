@@ -80,6 +80,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasIndex(sfe => new { sfe.DomainId, sfe.StartsAtUtc });
             entity.HasIndex(sfe => sfe.EndsAtUtc);
 
+            entity.Property(sfe => sfe.DisplayLabel).HasMaxLength(200);
+
             entity.HasOne(sfe => sfe.Domain)
                 .WithMany()
                 .HasForeignKey(sfe => sfe.DomainId)

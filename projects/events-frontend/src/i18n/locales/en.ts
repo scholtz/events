@@ -750,6 +750,10 @@ export default {
       errorSelectEvent: 'Please select an event.',
       errorDatesRequired: 'Start and end dates are required.',
       errorStartBeforeEnd: 'Start must be before end.',
+      enableEntry: 'Enabled (show on public hub page)',
+      disabled: 'Disabled',
+      displayLabel: 'Curator label (optional)',
+      displayLabelPlaceholder: 'e.g. Campaign A, Keynote highlight…',
     },
   },
 

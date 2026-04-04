@@ -728,6 +728,10 @@ export default {
       errorSelectEvent: 'Prosím vyberte podujatie.',
       errorDatesRequired: 'Dátum začiatku a konca sú povinné.',
       errorStartBeforeEnd: 'Začiatok musí byť pred koncom.',
+      enableEntry: 'Povolené (zobrazí sa na verejnej stránke hubu)',
+      disabled: 'Zakázané',
+      displayLabel: 'Štítok kurátora (voliteľný)',
+      displayLabelPlaceholder: 'napr. Kampaň A, Hlavná prednáška…',
     },
   },
 

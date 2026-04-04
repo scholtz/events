@@ -10,6 +10,7 @@ namespace EventsApi.Data.Entities;
 ///   1. Priority ascending (lower value = higher importance)
 ///   2. Nearest EndsAtUtc first (promote event with shortest remaining window)
 ///   3. Event PublishedAtUtc descending (newest publish date wins tie-break)
+/// Only entries with IsEnabled = true are considered for public hub rendering.
 /// </summary>
 public sealed class ScheduledFeaturedEvent
 {
@@ -36,6 +37,18 @@ public sealed class ScheduledFeaturedEvent
     /// Lower value = displayed first (default 0).
     /// </summary>
     public int Priority { get; set; } = 0;
+
+    /// <summary>
+    /// When false the entry is kept for reference but excluded from public hub rendering.
+    /// Defaults to true so newly created schedules are immediately active within their window.
+    /// </summary>
+    public bool IsEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Optional curator label shown in the management UI alongside the event title.
+    /// Not displayed publicly. Maximum 200 characters.
+    /// </summary>
+    public string? DisplayLabel { get; set; }
 
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 

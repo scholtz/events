@@ -544,6 +544,25 @@ Every featured events mutation/query must have tests covering:
 - **`category.spec.ts`**: Featured section appears when events configured; section hidden when none configured; featured badge visible on featured event cards; featured event NOT duplicated in main events grid; mobile viewport shows both sections
 
 
+## Process quality standards
+
+### Before opening a new issue or PR
+1. **Always check `main` first**: Run `git fetch origin main && git diff origin/main -- <path>` to verify the feature is not already implemented on `main`. If merged PR numbers suggest the feature is done (e.g. PR #186 introduces `ScheduledFeaturedEvent`), inspect the code before creating a new PR.
+2. **Confirm real file changes exist**: Run `git --no-pager diff HEAD~1 --stat` before calling `report_progress`. If the only commit is a plan commit with no changed files, the PR will be rejected as a duplicate.
+3. **Cross-reference the ROADMAP**: Read `ROADMAP.md` (in the repo root) to understand what is already implemented vs. genuinely pending. Do not write a PR description claiming to implement something already shown as delivered in the roadmap.
+4. **Incremental delta principle**: Every PR must document the **exact delta** vs. `main` — which acceptance criteria were unmet, which files were changed, and which tests prove the new behavior.
+
+### E2E test fixture quality rules
+1. **Always use unique IDs for multiple events in the same test**: `makeApprovedEvent()` defaults to `id: 'event-1'`. When creating two or more events in the same test, always provide distinct IDs:
+   ```typescript
+   const event1 = makeApprovedEvent({ id: 'ev-first', name: 'First Event', domainId: domain.id })
+   const event2 = makeApprovedEvent({ id: 'ev-second', name: 'Second Event', domainId: domain.id })
+   ```
+   If you do not assign unique IDs, `state.events.find((e) => e.id === ...)` will always return the first event with that ID, silently producing wrong results in mock API responses.
+2. **Separate concerns across tests**: Do not combine two unrelated user flows (e.g., "admin sees disabled badge in management UI" AND "category page shows static fallback") into a single test. Each concern should be its own test. This prevents auth-state side effects from causing intermittent failures.
+3. **Seed IDs to `featuredEvents`, `scheduledFeaturedEvents` consistently**: Every `eventId` in these arrays must exactly match the `id` of an event in the `events` array. Always verify cross-references when creating multi-event fixtures.
+
+
 ## Domain hub implementation completeness standard
 
 When delivering a domain hub feature, the PR must contain actual code changes — not just an "Initial plan" commit. Always verify `git diff HEAD~1 --stat` shows real file additions/modifications before calling `report_progress`. An empty commit that only describes the plan is not acceptable as the sole deliverable.
@@ -637,3 +656,17 @@ After a user saves (favorites) a published event, a `.calendar-prompt` div appea
 - A button (`eventDetail.addToCalendarPromptBtn`) that calls `toggleCalendarMenu()` to open the existing add-to-calendar dropdown
 - Only rendered when `event.status === 'PUBLISHED' && calendarInputValid`
 - E2E tests covering: hidden before save, visible after save, prompt button opens menu, hidden for non-published events — in `e2e/events.spec.ts` under the `Post-save calendar prompt` describe block
+
+## Scheduled featured-event curation quality standards
+
+`ScheduledFeaturedEvent` entity has `IsEnabled` (bool, default `true`) and `DisplayLabel` (nullable string, max 200 chars). Key facts:
+- **`featuredEventsForDomain` only returns enabled schedules** (`.Where(sfe => sfe.IsEnabled)`) — this is the public query; disabled entries are never surfaced.
+- **Priority ordering**: lower `Priority` value (numerically) appears first; tiebreaker is nearest `EndsAtUtc` then newest event `PublishedAtUtc`.
+- **Fallback**: when no active enabled schedules exist, the query falls back to static `DomainFeaturedEvents`.
+- **Max 20 per domain** — `TOO_MANY_SCHEDULED_FEATURES` error returned when this is exceeded.
+- All scheduling mutations require `isEnabled` and `displayLabel` in the input (HotChocolate v15 requires all non-nullable fields to be present in mutation variables).
+
+### E2E mock API for scheduling
+- `MockScheduledFeaturedEvent` requires `isEnabled: boolean` and `displayLabel: string | null` fields.
+- The `FeaturedEventsForDomain` mock handler filters by `sfe.isEnabled !== false` before building the active scheduled list.
+- Always assign unique `id` values to every `MockScheduledFeaturedEvent` created in the same test.

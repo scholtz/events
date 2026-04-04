@@ -13056,7 +13056,8 @@ public sealed class GraphQlIntegrationTests
                     eventId,
                     startsAtUtc = starts,
                     endsAtUtc = ends,
-                    priority = 0
+                    priority = 0,
+                    isEnabled = true
                 }
             });
 
@@ -13102,7 +13103,7 @@ public sealed class GraphQlIntegrationTests
               scheduleFeaturedEvent(input: $input) { id startsAtUtc endsAtUtc }
             }
             """,
-            new { input = new { domainId, eventId, startsAtUtc = starts, endsAtUtc = ends, priority = 0 } });
+            new { input = new { domainId, eventId, startsAtUtc = starts, endsAtUtc = ends, priority = 0, isEnabled = true } });
 
         var id = document.RootElement.GetProperty("data").GetProperty("scheduleFeaturedEvent").GetProperty("id").GetString();
         Assert.False(string.IsNullOrEmpty(id));
@@ -13124,7 +13125,7 @@ public sealed class GraphQlIntegrationTests
                   scheduleFeaturedEvent(input: $input) { id }
                 }
                 """,
-            variables = new { input = new { domainId, eventId, startsAtUtc = DateTime.UtcNow, endsAtUtc = DateTime.UtcNow.AddDays(1), priority = 0 } }
+            variables = new { input = new { domainId, eventId, startsAtUtc = DateTime.UtcNow, endsAtUtc = DateTime.UtcNow.AddDays(1), priority = 0, isEnabled = true } }
         });
 
         var response = await JsonDocument.ParseAsync(await body.Content.ReadAsStreamAsync());
@@ -13172,7 +13173,8 @@ public sealed class GraphQlIntegrationTests
                     eventId,
                     startsAtUtc = DateTime.UtcNow.AddDays(1),
                     endsAtUtc = DateTime.UtcNow.AddDays(2),
-                    priority = 0
+                    priority = 0,
+                    isEnabled = true
                 }
             }
         });
@@ -13223,7 +13225,8 @@ public sealed class GraphQlIntegrationTests
                     // endsAtUtc is BEFORE startsAtUtc — invalid
                     startsAtUtc = DateTime.UtcNow.AddDays(5),
                     endsAtUtc = DateTime.UtcNow.AddDays(1),
-                    priority = 0
+                    priority = 0,
+                    isEnabled = true
                 }
             }
         });
@@ -13276,7 +13279,8 @@ public sealed class GraphQlIntegrationTests
                     eventId = otherEventId,
                     startsAtUtc = DateTime.UtcNow.AddDays(1),
                     endsAtUtc = DateTime.UtcNow.AddDays(2),
-                    priority = 0
+                    priority = 0,
+                    isEnabled = true
                 }
             }
         });
@@ -13328,7 +13332,8 @@ public sealed class GraphQlIntegrationTests
                     eventId = draftEventId,
                     startsAtUtc = DateTime.UtcNow.AddDays(1),
                     endsAtUtc = DateTime.UtcNow.AddDays(2),
-                    priority = 0
+                    priority = 0,
+                    isEnabled = true
                 }
             }
         });
@@ -13394,7 +13399,8 @@ public sealed class GraphQlIntegrationTests
                     scheduleId,
                     startsAtUtc = newStarts,
                     endsAtUtc = newEnds,
-                    priority = 1
+                    priority = 1,
+                    isEnabled = true
                 }
             });
 
@@ -13797,7 +13803,362 @@ public sealed class GraphQlIntegrationTests
         Assert.True(document.RootElement.TryGetProperty("errors", out _));
     }
 
-    // ── SubmitEvent with communityGroupId ─────────────────────────────────────
+    // ── ScheduledFeaturedEvent IsEnabled and DisplayLabel ─────────────────────
+
+    [Fact]
+    public async Task ScheduleFeaturedEvent_WithIsEnabledFalse_CreatesDisabledEntry()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid domainId = Guid.Empty;
+        Guid eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("sfe-disabled@example.com", "Admin", role: ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var domain = CreateDomain("Disabled Hub", "disabled-hub");
+            domainId = domain.Id;
+            var ev = CreateEvent("Disabled Schedule Event", "disabled-sched-ev", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(3), domain, admin);
+            eventId = ev.Id;
+            dbContext.Users.Add(admin);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+            "Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation ScheduleDisabled($input: ScheduleFeaturedEventInput!) {
+              scheduleFeaturedEvent(input: $input) { id isEnabled displayLabel }
+            }
+            """,
+            new
+            {
+                input = new
+                {
+                    domainId,
+                    eventId,
+                    startsAtUtc = DateTime.UtcNow.AddDays(1),
+                    endsAtUtc = DateTime.UtcNow.AddDays(5),
+                    priority = 0,
+                    isEnabled = false,
+                    displayLabel = "Campaign A"
+                }
+            });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("scheduleFeaturedEvent");
+        Assert.False(result.GetProperty("isEnabled").GetBoolean());
+        Assert.Equal("Campaign A", result.GetProperty("displayLabel").GetString());
+    }
+
+    [Fact]
+    public async Task FeaturedEventsForDomain_DisabledSchedule_ExcludedFromPublicResults()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("sfe-disabled-pub@example.com", "Disabled Pub User");
+            var domain = CreateDomain("Disabled Pub Hub", "disabled-pub-hub");
+
+            var disabledEvent = CreateEvent("Disabled Featured", "disabled-featured-ev", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(3), domain, user);
+            var staticEvent = CreateEvent("Static Fallback", "static-fallback-ev", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(5), domain, user);
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.AddRange(disabledEvent, staticEvent);
+
+            // Static fallback
+            dbContext.DomainFeaturedEvents.Add(new DomainFeaturedEvent
+            {
+                DomainId = domain.Id, EventId = staticEvent.Id, DisplayOrder = 0
+            });
+
+            // Disabled schedule — should be excluded from public results
+            dbContext.Set<ScheduledFeaturedEvent>().Add(new ScheduledFeaturedEvent
+            {
+                DomainId = domain.Id,
+                EventId = disabledEvent.Id,
+                StartsAtUtc = DateTime.UtcNow.AddMinutes(-1),
+                EndsAtUtc = DateTime.UtcNow.AddDays(7),
+                Priority = 0,
+                IsEnabled = false,
+            });
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query FeaturedEventsForDomain($domainSlug: String!) {
+              featuredEventsForDomain(domainSlug: $domainSlug) { name }
+            }
+            """,
+            new { domainSlug = "disabled-pub-hub" });
+
+        // Disabled schedule is excluded; falls back to static featured
+        var events = document.RootElement.GetProperty("data").GetProperty("featuredEventsForDomain");
+        Assert.Equal(1, events.GetArrayLength());
+        Assert.Equal("Static Fallback", events[0].GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateScheduledFeaturedEvent_CanToggleIsEnabledAndUpdateDisplayLabel()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid scheduleId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("sfe-update-toggle@example.com", "Toggle Admin", role: ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var domain = CreateDomain("Toggle Hub", "toggle-hub");
+            var ev = CreateEvent("Toggle Event", "toggle-sched-ev", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(3), domain, admin);
+
+            var sfe = new ScheduledFeaturedEvent
+            {
+                DomainId = domain.Id,
+                EventId = ev.Id,
+                StartsAtUtc = DateTime.UtcNow.AddDays(1),
+                EndsAtUtc = DateTime.UtcNow.AddDays(5),
+                Priority = 0,
+                IsEnabled = true,
+                DisplayLabel = "Original Label",
+            };
+            scheduleId = sfe.Id;
+
+            dbContext.Users.Add(admin);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.Add(ev);
+            dbContext.Set<ScheduledFeaturedEvent>().Add(sfe);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+            "Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation UpdateToggle($input: UpdateScheduledFeaturedEventInput!) {
+              updateScheduledFeaturedEvent(input: $input) { isEnabled displayLabel }
+            }
+            """,
+            new
+            {
+                input = new
+                {
+                    scheduleId,
+                    startsAtUtc = DateTime.UtcNow.AddDays(1),
+                    endsAtUtc = DateTime.UtcNow.AddDays(5),
+                    priority = 0,
+                    isEnabled = false,
+                    displayLabel = "Updated Label"
+                }
+            });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("updateScheduledFeaturedEvent");
+        Assert.False(result.GetProperty("isEnabled").GetBoolean());
+        Assert.Equal("Updated Label", result.GetProperty("displayLabel").GetString());
+    }
+
+    [Fact]
+    public async Task ScheduleFeaturedEvent_DisplayLabelTooLong_ReturnsError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid domainId = Guid.Empty;
+        Guid eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("sfe-label-long@example.com", "Label Long Admin", role: ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var domain = CreateDomain("Label Long Hub", "label-long-hub");
+            domainId = domain.Id;
+            var ev = CreateEvent("Label Long Event", "label-long-ev", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(3), domain, admin);
+            eventId = ev.Id;
+            dbContext.Users.Add(admin);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+            "Bearer", await CreateTokenAsync(factory, adminId));
+
+        var tooLongLabel = new string('X', 201);
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation ScheduleLongLabel($input: ScheduleFeaturedEventInput!) {
+                  scheduleFeaturedEvent(input: $input) { id }
+                }
+                """,
+            variables = new
+            {
+                input = new
+                {
+                    domainId,
+                    eventId,
+                    startsAtUtc = DateTime.UtcNow.AddDays(1),
+                    endsAtUtc = DateTime.UtcNow.AddDays(5),
+                    priority = 0,
+                    isEnabled = true,
+                    displayLabel = tooLongLabel
+                }
+            }
+        });
+
+        var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        var code = errors[0].GetProperty("extensions").GetProperty("code").GetString();
+        Assert.Equal("DISPLAY_LABEL_TOO_LONG", code);
+    }
+
+    [Fact]
+    public async Task UpdateScheduledFeaturedEvent_DisplayLabelTooLong_ReturnsError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid scheduleId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("sfe-update-label@example.com", "Update Label Admin", role: ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var domain = CreateDomain("Update Label Hub", "update-label-hub");
+            var ev = CreateEvent("Update Label Event", "update-label-ev", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(3), domain, admin);
+            var schedule = new ScheduledFeaturedEvent
+            {
+                DomainId = domain.Id,
+                EventId = ev.Id,
+                StartsAtUtc = DateTime.UtcNow.AddDays(1),
+                EndsAtUtc = DateTime.UtcNow.AddDays(5),
+                Priority = 0,
+                IsEnabled = true,
+                DisplayLabel = "Original Label",
+            };
+            scheduleId = schedule.Id;
+            dbContext.Users.Add(admin);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.Add(ev);
+            dbContext.Set<ScheduledFeaturedEvent>().Add(schedule);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+            "Bearer", await CreateTokenAsync(factory, adminId));
+
+        var tooLongLabel = new string('Y', 201);
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation UpdateLongLabel($input: UpdateScheduledFeaturedEventInput!) {
+                  updateScheduledFeaturedEvent(input: $input) { id displayLabel }
+                }
+                """,
+            variables = new
+            {
+                input = new
+                {
+                    scheduleId,
+                    startsAtUtc = DateTime.UtcNow.AddDays(1),
+                    endsAtUtc = DateTime.UtcNow.AddDays(5),
+                    priority = 0,
+                    isEnabled = true,
+                    displayLabel = tooLongLabel
+                }
+            }
+        });
+
+        var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        var code = errors[0].GetProperty("extensions").GetProperty("code").GetString();
+        Assert.Equal("DISPLAY_LABEL_TOO_LONG", code);
+    }
+
+    [Fact]
+    public async Task ScheduleFeaturedEvent_ExceedsDomainLimit_ReturnsError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid domainId = Guid.Empty;
+        Guid eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("sfe-limit@example.com", "Limit Admin", role: ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var domain = CreateDomain("Limit Hub", "limit-hub");
+            domainId = domain.Id;
+            var ev = CreateEvent("Limit Event", "limit-ev", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(5), domain, admin);
+            eventId = ev.Id;
+            dbContext.Users.Add(admin);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.Add(ev);
+
+            // Seed 20 existing scheduled entries to hit the cap
+            for (var i = 0; i < 20; i++)
+            {
+                dbContext.Set<ScheduledFeaturedEvent>().Add(new ScheduledFeaturedEvent
+                {
+                    DomainId = domain.Id,
+                    EventId = ev.Id,
+                    StartsAtUtc = DateTime.UtcNow.AddDays(i + 1),
+                    EndsAtUtc = DateTime.UtcNow.AddDays(i + 2),
+                    Priority = i,
+                    IsEnabled = true,
+                });
+            }
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+            "Bearer", await CreateTokenAsync(factory, adminId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation ScheduleOver($input: ScheduleFeaturedEventInput!) {
+                  scheduleFeaturedEvent(input: $input) { id }
+                }
+                """,
+            variables = new
+            {
+                input = new
+                {
+                    domainId,
+                    eventId,
+                    startsAtUtc = DateTime.UtcNow.AddDays(25),
+                    endsAtUtc = DateTime.UtcNow.AddDays(30),
+                    priority = 0,
+                    isEnabled = true
+                }
+            }
+        });
+
+        var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        var code = errors[0].GetProperty("extensions").GetProperty("code").GetString();
+        Assert.Equal("TOO_MANY_SCHEDULED_FEATURES", code);
+    }
 
     [Fact]
     public async Task SubmitEvent_WithCommunityGroupId_EventManagerRole_CreatesGroupEventLink()

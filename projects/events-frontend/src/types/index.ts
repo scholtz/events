@@ -361,6 +361,16 @@ export interface ScheduledFeaturedEvent {
   endsAtUtc: string
   /** Priority for conflict resolution — lower value = displayed first (default 0). */
   priority: number
+  /**
+   * When false the entry is kept for reference but excluded from public hub rendering.
+   * Defaults to true.
+   */
+  isEnabled: boolean
+  /**
+   * Optional curator label shown in the management UI alongside the event title.
+   * Not displayed publicly. Maximum 200 characters.
+   */
+  displayLabel: string | null
   createdAtUtc: string
   createdByUserId: string | null
 }
@@ -372,6 +382,8 @@ export interface ScheduleFeaturedEventInput {
   startsAtUtc: string
   endsAtUtc: string
   priority: number
+  isEnabled: boolean
+  displayLabel?: string | null
 }
 
 /** Input for updating an existing scheduled featured-event entry. */
@@ -380,4 +392,6 @@ export interface UpdateScheduledFeaturedEventInput {
   startsAtUtc: string
   endsAtUtc: string
   priority: number
+  isEnabled: boolean
+  displayLabel?: string | null
 }
