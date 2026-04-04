@@ -191,7 +191,7 @@ export const useDomainsStore = defineStore('domains', () => {
   }
 
   const SCHEDULED_FEATURED_EVENT_FIELDS = `
-    id domainId eventId startsAtUtc endsAtUtc priority createdAtUtc createdByUserId
+    id domainId eventId startsAtUtc endsAtUtc priority isEnabled displayLabel createdAtUtc createdByUserId
     event { id name slug status startsAtUtc domain { id name slug } }
   `
 
@@ -211,12 +211,14 @@ export const useDomainsStore = defineStore('domains', () => {
     startsAtUtc: string,
     endsAtUtc: string,
     priority: number,
+    isEnabled: boolean = true,
+    displayLabel: string | null = null,
   ): Promise<ScheduledFeaturedEvent> {
     const data = await gqlRequest<{ scheduleFeaturedEvent: ScheduledFeaturedEvent }>(
       `mutation ScheduleFeaturedEvent($input: ScheduleFeaturedEventInput!) {
         scheduleFeaturedEvent(input: $input) { ${SCHEDULED_FEATURED_EVENT_FIELDS} }
       }`,
-      { input: { domainId, eventId, startsAtUtc, endsAtUtc, priority } },
+      { input: { domainId, eventId, startsAtUtc, endsAtUtc, priority, isEnabled, displayLabel } },
     )
     return data.scheduleFeaturedEvent
   }
@@ -226,12 +228,14 @@ export const useDomainsStore = defineStore('domains', () => {
     startsAtUtc: string,
     endsAtUtc: string,
     priority: number,
+    isEnabled: boolean = true,
+    displayLabel: string | null = null,
   ): Promise<ScheduledFeaturedEvent> {
     const data = await gqlRequest<{ updateScheduledFeaturedEvent: ScheduledFeaturedEvent }>(
       `mutation UpdateScheduledFeaturedEvent($input: UpdateScheduledFeaturedEventInput!) {
         updateScheduledFeaturedEvent(input: $input) { ${SCHEDULED_FEATURED_EVENT_FIELDS} }
       }`,
-      { input: { scheduleId, startsAtUtc, endsAtUtc, priority } },
+      { input: { scheduleId, startsAtUtc, endsAtUtc, priority, isEnabled, displayLabel } },
     )
     return data.updateScheduledFeaturedEvent
   }

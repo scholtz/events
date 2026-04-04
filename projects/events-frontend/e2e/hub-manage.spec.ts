@@ -408,6 +408,8 @@ test.describe('Hub Manage page (/hub/:slug/manage)', () => {
       startsAtUtc: new Date(now.getTime() - 3600_000).toISOString(),
       endsAtUtc: new Date(now.getTime() + 86400_000).toISOString(),
       priority: 0,
+      isEnabled: true,
+      displayLabel: null,
       createdAtUtc: now.toISOString(),
       createdByUserId: admin.id,
     }
@@ -438,6 +440,8 @@ test.describe('Hub Manage page (/hub/:slug/manage)', () => {
       startsAtUtc: new Date(now.getTime() + 86400_000).toISOString(),
       endsAtUtc: new Date(now.getTime() + 2 * 86400_000).toISOString(),
       priority: 0,
+      isEnabled: true,
+      displayLabel: null,
       createdAtUtc: now.toISOString(),
       createdByUserId: admin.id,
     }
@@ -467,6 +471,8 @@ test.describe('Hub Manage page (/hub/:slug/manage)', () => {
       startsAtUtc: new Date(now.getTime() - 10 * 86400_000).toISOString(),
       endsAtUtc: new Date(now.getTime() - 86400_000).toISOString(),
       priority: 0,
+      isEnabled: true,
+      displayLabel: null,
       createdAtUtc: now.toISOString(),
       createdByUserId: admin.id,
     }
@@ -574,6 +580,8 @@ test.describe('Hub Manage page (/hub/:slug/manage)', () => {
       startsAtUtc: new Date(now.getTime() + 86400_000).toISOString(),
       endsAtUtc: new Date(now.getTime() + 2 * 86400_000).toISOString(),
       priority: 0,
+      isEnabled: true,
+      displayLabel: null,
       createdAtUtc: now.toISOString(),
       createdByUserId: admin.id,
     }
@@ -606,6 +614,8 @@ test.describe('Hub Manage page (/hub/:slug/manage)', () => {
       startsAtUtc: new Date(now.getTime() + 86400_000).toISOString(),
       endsAtUtc: new Date(now.getTime() + 3 * 86400_000).toISOString(),
       priority: 0,
+      isEnabled: true,
+      displayLabel: null,
       createdAtUtc: now.toISOString(),
       createdByUserId: admin.id,
     }
@@ -650,6 +660,8 @@ test.describe('Hub Manage page (/hub/:slug/manage)', () => {
           startsAtUtc: new Date(now.getTime() - 3600_000).toISOString(),
           endsAtUtc: new Date(now.getTime() + 86400_000).toISOString(),
           priority: 0,
+          isEnabled: true,
+          displayLabel: null,
           createdAtUtc: now.toISOString(),
           createdByUserId: null,
         },
@@ -682,6 +694,8 @@ test.describe('Hub Manage page (/hub/:slug/manage)', () => {
           startsAtUtc: new Date(now.getTime() - 10 * 86400_000).toISOString(),
           endsAtUtc: new Date(now.getTime() - 86400_000).toISOString(), // expired
           priority: 0,
+          isEnabled: true,
+          displayLabel: null,
           createdAtUtc: now.toISOString(),
           createdByUserId: null,
         },
@@ -694,5 +708,123 @@ test.describe('Hub Manage page (/hub/:slug/manage)', () => {
     const featuredSection = page.locator('.featured-section')
     await expect(featuredSection).toBeVisible()
     await expect(featuredSection.locator('.event-card', { hasText: 'Static Featured Event' })).toBeVisible()
+  })
+
+  test('disabled schedule shows Disabled badge and does not appear on category page', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    const disabledEvent = makeApprovedEvent({ name: 'Disabled Schedule Event', domainId: domain.id })
+    const staticEvent = makeApprovedEvent({ name: 'Static Fallback Event', domainId: domain.id })
+    const now = new Date()
+    const sfe: MockScheduledFeaturedEvent = {
+      id: 'sfe-disabled-1',
+      domainId: domain.id,
+      eventId: disabledEvent.id,
+      startsAtUtc: new Date(now.getTime() - 3600_000).toISOString(),
+      endsAtUtc: new Date(now.getTime() + 86400_000).toISOString(),
+      priority: 0,
+      isEnabled: false,
+      displayLabel: null,
+      createdAtUtc: now.toISOString(),
+      createdByUserId: admin.id,
+    }
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      events: [disabledEvent, staticEvent],
+      featuredEvents: [{ domainSlug: domain.slug, eventId: staticEvent.id, displayOrder: 0 }],
+      scheduledFeaturedEvents: [sfe],
+    })
+    await loginAs(page, admin)
+
+    await page.goto('/hub/technology/manage')
+
+    // Management UI shows the entry with Disabled badge
+    await expect(page.locator('.hub-schedule-event-name', { hasText: 'Disabled Schedule Event' })).toBeVisible()
+    await expect(page.locator('.hub-schedule-disabled-badge')).toBeVisible()
+
+    // Category page falls back to static — disabled schedule is ignored
+    await page.goto('/category/technology')
+    const featuredSection = page.locator('.featured-section')
+    await expect(featuredSection).toBeVisible()
+    await expect(featuredSection.locator('.event-card', { hasText: 'Static Fallback Event' })).toBeVisible()
+    await expect(featuredSection.locator('.event-card', { hasText: 'Disabled Schedule Event' })).toBeHidden()
+  })
+
+  test('schedule with display label shows label in management list', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({ name: 'Labelled Event', domainId: domain.id })
+    const now = new Date()
+    const sfe: MockScheduledFeaturedEvent = {
+      id: 'sfe-label-1',
+      domainId: domain.id,
+      eventId: event.id,
+      startsAtUtc: new Date(now.getTime() + 86400_000).toISOString(),
+      endsAtUtc: new Date(now.getTime() + 5 * 86400_000).toISOString(),
+      priority: 0,
+      isEnabled: true,
+      displayLabel: 'Campaign A launch',
+      createdAtUtc: now.toISOString(),
+      createdByUserId: admin.id,
+    }
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      events: [event],
+      scheduledFeaturedEvents: [sfe],
+    })
+    await loginAs(page, admin)
+
+    await page.goto('/hub/technology/manage')
+
+    await expect(page.locator('.hub-schedule-event-name', { hasText: 'Labelled Event' })).toBeVisible()
+    await expect(page.locator('.hub-schedule-label', { hasText: 'Campaign A launch' })).toBeVisible()
+  })
+
+  test('domain admin can enable/disable a scheduled entry via edit form', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({ name: 'Toggle Enable Event', domainId: domain.id })
+    const now = new Date()
+    const sfe: MockScheduledFeaturedEvent = {
+      id: 'sfe-toggle-1',
+      domainId: domain.id,
+      eventId: event.id,
+      startsAtUtc: new Date(now.getTime() + 86400_000).toISOString(),
+      endsAtUtc: new Date(now.getTime() + 5 * 86400_000).toISOString(),
+      priority: 0,
+      isEnabled: true,
+      displayLabel: null,
+      createdAtUtc: now.toISOString(),
+      createdByUserId: admin.id,
+    }
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      events: [event],
+      scheduledFeaturedEvents: [sfe],
+    })
+    await loginAs(page, admin)
+
+    await page.goto('/hub/technology/manage')
+    await expect(page.locator('.hub-schedule-event-name', { hasText: 'Toggle Enable Event' })).toBeVisible()
+
+    // No disabled badge initially (entry is enabled)
+    await expect(page.locator('.hub-schedule-disabled-badge')).toBeHidden()
+
+    // Open edit form and uncheck the Enabled checkbox
+    await page.locator('.hub-schedule-item').first().getByRole('button', { name: 'Edit' }).click()
+    await expect(page.locator('.hub-schedule-edit-form')).toBeVisible()
+
+    const enableCheckbox = page.locator('.hub-schedule-edit-form .hub-schedule-toggle-input')
+    await expect(enableCheckbox).toBeChecked()
+    await enableCheckbox.uncheck()
+
+    await page.locator('.hub-schedule-edit-form').getByRole('button', { name: 'Save changes' }).click()
+
+    // Edit form closes and disabled badge appears
+    await expect(page.locator('.hub-schedule-edit-form')).toBeHidden()
+    await expect(page.locator('.hub-schedule-disabled-badge')).toBeVisible()
   })
 })

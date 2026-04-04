@@ -228,6 +228,7 @@ public sealed class Query
         var scheduled = await dbContext.ScheduledFeaturedEvents
             .AsNoTracking()
             .Where(sfe => sfe.Domain.Slug == normalizedSlug && sfe.Domain.IsActive)
+            .Where(sfe => sfe.IsEnabled)
             .Where(sfe => sfe.StartsAtUtc <= now && sfe.EndsAtUtc > now)
             .Where(sfe => sfe.Event.Status == EventStatus.Published)
             // Deterministic conflict-resolution order (documented on ScheduledFeaturedEvent):

@@ -637,6 +637,11 @@ public sealed class Mutation
                 "TOO_MANY_SCHEDULED_FEATURES");
         }
 
+        if (input.DisplayLabel is { Length: > 200 })
+        {
+            throw CreateError("DisplayLabel must not exceed 200 characters.", "DISPLAY_LABEL_TOO_LONG");
+        }
+
         var userId = claimsPrincipal.GetRequiredUserId();
 
         var schedule = new ScheduledFeaturedEvent
@@ -646,6 +651,8 @@ public sealed class Mutation
             StartsAtUtc = startsAtUtc,
             EndsAtUtc = endsAtUtc,
             Priority = input.Priority,
+            IsEnabled = input.IsEnabled,
+            DisplayLabel = input.DisplayLabel?.Trim().Length > 0 ? input.DisplayLabel.Trim() : null,
             CreatedByUserId = userId,
         };
 
@@ -694,6 +701,8 @@ public sealed class Mutation
         schedule.StartsAtUtc = startsAtUtc;
         schedule.EndsAtUtc = endsAtUtc;
         schedule.Priority = input.Priority;
+        schedule.IsEnabled = input.IsEnabled;
+        schedule.DisplayLabel = input.DisplayLabel?.Trim().Length > 0 ? input.DisplayLabel.Trim() : null;
 
         await dbContext.SaveChangesAsync(cancellationToken);
         return schedule;

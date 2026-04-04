@@ -156,6 +156,8 @@ export type MockScheduledFeaturedEvent = {
   startsAtUtc: string
   endsAtUtc: string
   priority: number
+  isEnabled: boolean
+  displayLabel: string | null
   createdAtUtc: string
   createdByUserId: string | null
 }
@@ -1390,6 +1392,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       const activeScheduled = domain
         ? state.scheduledFeaturedEvents
             .filter((sfe) => sfe.domainId === domain.id)
+            .filter((sfe) => sfe.isEnabled !== false)
             .filter((sfe) => new Date(sfe.startsAtUtc).getTime() <= now && new Date(sfe.endsAtUtc).getTime() > now)
             .sort((a, b) => {
               // Mirror backend deterministic order:
@@ -1474,6 +1477,8 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         startsAtUtc: input.startsAtUtc,
         endsAtUtc: input.endsAtUtc,
         priority: input.priority ?? 0,
+        isEnabled: input.isEnabled !== false,
+        displayLabel: input.displayLabel ?? null,
         createdAtUtc: new Date().toISOString(),
         createdByUserId: state.currentUserId,
       }
@@ -1515,6 +1520,8 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       sfe.startsAtUtc = input.startsAtUtc
       sfe.endsAtUtc = input.endsAtUtc
       sfe.priority = input.priority ?? 0
+      sfe.isEnabled = input.isEnabled !== false
+      sfe.displayLabel = input.displayLabel ?? null
       const ev = state.events.find((e) => e.id === sfe.eventId)
       await route.fulfill({
         status: 200,

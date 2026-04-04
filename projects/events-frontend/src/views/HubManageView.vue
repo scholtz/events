@@ -69,6 +69,8 @@ const newScheduleForm = ref({
   startsAtUtc: '',
   endsAtUtc: '',
   priority: 0,
+  isEnabled: true,
+  displayLabel: '',
 })
 const newScheduleError = ref('')
 const newScheduleSuccess = ref(false)
@@ -79,6 +81,8 @@ const editScheduleForm = ref({
   startsAtUtc: '',
   endsAtUtc: '',
   priority: 0,
+  isEnabled: true,
+  displayLabel: '',
 })
 const editScheduleError = ref('')
 
@@ -245,11 +249,20 @@ async function handleCreateSchedule() {
       fromDatetimeLocalValue(newScheduleForm.value.startsAtUtc),
       fromDatetimeLocalValue(newScheduleForm.value.endsAtUtc),
       newScheduleForm.value.priority,
+      newScheduleForm.value.isEnabled,
+      newScheduleForm.value.displayLabel.trim() || null,
     )
     schedules.value = [...schedules.value, created].sort(
       (a, b) => new Date(a.startsAtUtc).getTime() - new Date(b.startsAtUtc).getTime(),
     )
-    newScheduleForm.value = { eventId: '', startsAtUtc: '', endsAtUtc: '', priority: 0 }
+    newScheduleForm.value = {
+      eventId: '',
+      startsAtUtc: '',
+      endsAtUtc: '',
+      priority: 0,
+      isEnabled: true,
+      displayLabel: '',
+    }
     newScheduleSuccess.value = true
   } catch (err) {
     newScheduleError.value =
@@ -265,6 +278,8 @@ function startEditSchedule(s: ScheduledFeaturedEvent) {
     startsAtUtc: toDatetimeLocalValue(s.startsAtUtc),
     endsAtUtc: toDatetimeLocalValue(s.endsAtUtc),
     priority: s.priority,
+    isEnabled: s.isEnabled,
+    displayLabel: s.displayLabel ?? '',
   }
   editScheduleError.value = ''
 }
@@ -293,6 +308,8 @@ async function handleUpdateSchedule(scheduleId: string) {
       starts,
       ends,
       editScheduleForm.value.priority,
+      editScheduleForm.value.isEnabled,
+      editScheduleForm.value.displayLabel.trim() || null,
     )
     schedules.value = schedules.value
       .map((s) => (s.id === scheduleId ? updated : s))
@@ -805,7 +822,25 @@ const pickableEvents = computed(() =>
                           min="0"
                         />
                       </label>
+                      <label class="form-field">
+                        <span>{{ t('hubManage.schedules.displayLabel') }}</span>
+                        <input
+                          v-model="editScheduleForm.displayLabel"
+                          class="form-input"
+                          type="text"
+                          maxlength="200"
+                          :placeholder="t('hubManage.schedules.displayLabelPlaceholder')"
+                        />
+                      </label>
                     </div>
+                    <label class="hub-schedule-toggle form-field">
+                      <input
+                        v-model="editScheduleForm.isEnabled"
+                        class="hub-schedule-toggle-input"
+                        type="checkbox"
+                      />
+                      <span>{{ t('hubManage.schedules.enableEntry') }}</span>
+                    </label>
                     <p v-if="editScheduleError" class="field-error" role="alert">
                       {{ editScheduleError }}
                     </p>
@@ -831,6 +866,9 @@ const pickableEvents = computed(() =>
                 <template v-else>
                   <div class="hub-schedule-info">
                     <span class="hub-schedule-event-name">{{ s.event?.name ?? s.eventId }}</span>
+                    <span v-if="s.displayLabel" class="hub-schedule-label text-secondary">
+                      {{ s.displayLabel }}
+                    </span>
                     <span class="hub-schedule-meta text-secondary">
                       {{ formatDateTime(s.startsAtUtc) }} → {{ formatDateTime(s.endsAtUtc) }}
                     </span>
@@ -839,6 +877,9 @@ const pickableEvents = computed(() =>
                       :class="`hub-schedule-status-badge--${scheduleStatus(s)}`"
                     >
                       {{ t(`hubManage.schedules.status.${scheduleStatus(s)}`) }}
+                    </span>
+                    <span v-if="!s.isEnabled" class="hub-schedule-disabled-badge">
+                      {{ t('hubManage.schedules.disabled') }}
                     </span>
                     <span v-if="s.priority > 0" class="hub-schedule-priority text-secondary">
                       {{ t('hubManage.schedules.priorityLabel', { n: s.priority }) }}
@@ -913,7 +954,25 @@ const pickableEvents = computed(() =>
                       min="0"
                     />
                   </label>
+                  <label class="form-field">
+                    <span>{{ t('hubManage.schedules.displayLabel') }}</span>
+                    <input
+                      v-model="newScheduleForm.displayLabel"
+                      class="form-input"
+                      type="text"
+                      maxlength="200"
+                      :placeholder="t('hubManage.schedules.displayLabelPlaceholder')"
+                    />
+                  </label>
                 </div>
+                <label class="hub-schedule-toggle form-field">
+                  <input
+                    v-model="newScheduleForm.isEnabled"
+                    class="hub-schedule-toggle-input"
+                    type="checkbox"
+                  />
+                  <span>{{ t('hubManage.schedules.enableEntry') }}</span>
+                </label>
                 <p v-if="newScheduleError" class="field-error" role="alert">
                   {{ newScheduleError }}
                 </p>
@@ -1393,6 +1452,39 @@ const pickableEvents = computed(() =>
 .hub-schedule-status-badge--expired {
   background: rgba(148, 163, 184, 0.12);
   color: var(--color-text-secondary);
+}
+
+.hub-schedule-disabled-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.125rem 0.4rem;
+  border-radius: 999px;
+  background: rgba(248, 113, 113, 0.12);
+  color: var(--color-danger, #f87171);
+  width: fit-content;
+}
+
+.hub-schedule-label {
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+.hub-schedule-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.hub-schedule-toggle-input {
+  width: 1rem;
+  height: 1rem;
+  cursor: pointer;
 }
 
 .hub-schedule-actions {

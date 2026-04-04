@@ -400,6 +400,18 @@ public sealed class ScheduleFeaturedEventInput
     /// Defaults to 0 when omitted.
     /// </summary>
     public int Priority { get; init; } = 0;
+
+    /// <summary>
+    /// Whether this schedule entry is enabled for public hub rendering.
+    /// Defaults to true. Disabled entries are kept for reference but not shown publicly.
+    /// </summary>
+    public bool IsEnabled { get; init; } = true;
+
+    /// <summary>
+    /// Optional curator label shown in the management UI alongside the event title.
+    /// Not displayed publicly. Maximum 200 characters.
+    /// </summary>
+    public string? DisplayLabel { get; init; }
 }
 
 /// <summary>
@@ -417,4 +429,16 @@ public sealed class UpdateScheduledFeaturedEventInput
 
     /// <summary>Updated priority for conflict resolution.</summary>
     public int Priority { get; init; } = 0;
+
+    /// <summary>
+    /// Whether this schedule entry is enabled for public hub rendering.
+    /// Disabled entries are kept for reference but not shown publicly.
+    /// </summary>
+    public bool IsEnabled { get; init; } = true;
+
+    /// <summary>
+    /// Updated optional curator label. Pass null to clear the label.
+    /// Maximum 200 characters.
+    /// </summary>
+    public string? DisplayLabel { get; init; }
 }

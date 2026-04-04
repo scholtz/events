@@ -728,6 +728,10 @@ export default {
       errorSelectEvent: 'Bitte wählen Sie ein Event aus.',
       errorDatesRequired: 'Start- und Enddatum sind erforderlich.',
       errorStartBeforeEnd: 'Der Start muss vor dem Ende liegen.',
+      enableEntry: 'Aktiviert (auf öffentlicher Hub-Seite anzeigen)',
+      disabled: 'Deaktiviert',
+      displayLabel: 'Kurator-Beschriftung (optional)',
+      displayLabelPlaceholder: 'z.B. Kampagne A, Hauptvortrag…',
     },
   },
 
