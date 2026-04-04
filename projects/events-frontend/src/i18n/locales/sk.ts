@@ -114,6 +114,12 @@ export default {
     recoveryClearDates: 'Vymazať rozsah dátumov',
     recoveryShowAllPrices: 'Zobraziť všetky ceny',
     recoveryClearDomainTag: 'Odstrániť filter tagu',
+    recoveryBrowseHub: 'Preskúmať hub {name}',
+    fallbackSuggestionsTitle: 'Mohlo by vás zaujímať',
+    fallbackSuggestionsDesc: 'Preskúmajte hub tejto kategórie — môžu tam byť ďalšie nadchádzajúce udalosti, kurátorský obsah alebo súvisiace komunity.',
+    fallbackCategoriesTitle: 'Prehľadávať kategórie udalostí',
+    fallbackCategoriesDesc: 'Objavujte udalosti podľa komunity alebo témy. Tieto huby kurátorujú najlepšie nadchádzajúce udalosti vo svojej oblasti.',
+    fallbackHubCta: 'Preskúmať {name} →',
   },
 
   filters: {

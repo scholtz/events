@@ -2769,3 +2769,140 @@ test.describe('RELEVANCE sort — upcoming before past within same tier', () => 
     await expect(cards.nth(1)).toContainText('Blockchain Summit Past')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Curated fallback suggestions — domain hub shown in empty state
+// ---------------------------------------------------------------------------
+
+test.describe('Curated fallback suggestions', () => {
+  test('domain filter empty state shows "Explore hub" third action button', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [], // no events for any domain
+    })
+    await page.goto('/?domain=technology')
+
+    await expect(page.locator('.empty-state')).toBeVisible()
+    await expect(
+      page.locator('.empty-state .browse-hub-action', { hasText: /Technology/i }),
+    ).toBeVisible()
+  })
+
+  test('clicking "Explore hub" third action navigates to the category hub page', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [],
+    })
+    await page.goto('/?domain=technology')
+
+    await page.locator('.empty-state .browse-hub-action').click()
+
+    await expect(page).toHaveURL(/\/category\/technology/)
+  })
+
+  test('domain filter empty state shows fallback suggestions section with hub card', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [],
+    })
+    await page.goto('/?domain=technology')
+
+    await expect(page.locator('.fallback-suggestions')).toBeVisible()
+    await expect(page.locator('.fallback-hub-card')).toBeVisible()
+    await expect(page.locator('.fallback-hub-name')).toContainText('Technology')
+  })
+
+  test('fallback suggestions hub card links to the category page', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [],
+    })
+    await page.goto('/?domain=technology')
+
+    const hubCard = page.locator('.fallback-hub-card')
+    await expect(hubCard).toBeVisible()
+    await hubCard.click()
+    await expect(page).toHaveURL(/\/category\/technology/)
+  })
+
+  test('fallback suggestions section is not shown when there are exact matches', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-1', name: 'Tech Summit', slug: 'tech-summit' })],
+    })
+    await page.goto('/?domain=technology')
+
+    // Results are present — no fallback suggestions
+    await expect(page.locator('.event-card', { hasText: 'Tech Summit' })).toBeVisible()
+    await expect(page.locator('.fallback-suggestions')).toBeHidden()
+  })
+
+  test('generic domain hubs shown when no domain filter is active and catalog is empty', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain(), makeCryptoDomain()],
+      events: [],
+    })
+    await page.goto('/')
+
+    await expect(page.locator('.fallback-suggestions')).toBeVisible()
+    // Should show at least one hub card from the available domains
+    await expect(page.locator('.fallback-hub-card').first()).toBeVisible()
+  })
+
+  test('fallback suggestions section is labeled as suggestions, not exact results', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [],
+    })
+    await page.goto('/?domain=technology')
+
+    // The fallback section must have its own heading separate from the empty-state card
+    await expect(page.locator('.fallback-suggestions .fallback-suggestions-title')).toBeVisible()
+    // The exact-match heading should say "No events found"
+    await expect(page.getByRole('heading', { name: 'No events found' })).toBeVisible()
+  })
+
+  test('empty state with domain filter shows at least three recovery controls', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [],
+    })
+    await page.goto('/?domain=technology')
+
+    await expect(page.locator('.empty-state')).toBeVisible()
+    // Control 1: Clear filters (primary reset)
+    await expect(
+      page.locator('.empty-state').getByRole('button', { name: 'Clear filters' }),
+    ).toBeVisible()
+    // Control 2: Remove tag filter (targeted widening)
+    await expect(
+      page.locator('.empty-state .recovery-action', { hasText: 'Remove tag filter' }),
+    ).toBeVisible()
+    // Control 3: Browse hub (domain-aware hub navigation)
+    await expect(page.locator('.empty-state .browse-hub-action')).toBeVisible()
+  })
+
+  test('mobile viewport: fallback hub cards are visible and tappable', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [],
+    })
+    await page.goto('/?domain=technology')
+
+    await expect(page.locator('.fallback-suggestions')).toBeVisible()
+    await expect(page.locator('.fallback-hub-card')).toBeVisible()
+  })
+})

@@ -121,6 +121,13 @@ export default {
     recoveryClearDates: 'Clear date range',
     recoveryShowAllPrices: 'Show all prices',
     recoveryClearDomainTag: 'Remove tag filter',
+    recoveryBrowseHub: 'Explore {name} hub',
+    // Fallback suggestions section (shown below empty state)
+    fallbackSuggestionsTitle: 'You might also like',
+    fallbackSuggestionsDesc: 'Explore the hub for this category — there may be other upcoming events, curated content, or related communities.',
+    fallbackCategoriesTitle: 'Browse event categories',
+    fallbackCategoriesDesc: 'Discover events by community or topic area. These hubs curate the best upcoming events in their space.',
+    fallbackHubCta: 'Explore {name} →',
   },
 
   // ── Event Filters ──────────────────────────────────────────────────────────
