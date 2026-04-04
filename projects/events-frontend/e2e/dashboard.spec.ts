@@ -1468,6 +1468,7 @@ test.describe('Per-event recommendations and guidance', () => {
     const user = makeAdminUser()
     const domain = makeTechDomain()
     // Use a far-future start date (>7 days) so the standard guidance shows instead of urgent
+    // Default publishedAtUtc is 30 days ago, so it shows "No saves yet" (not newly-published)
     const event = makeApprovedEvent({
       id: 'ev-pub-nosaves-1',
       slug: 'pub-nosaves-event',
@@ -1485,6 +1486,34 @@ test.describe('Per-event recommendations and guidance', () => {
     // Per-event guidance recommendation for published event with zero saves
     await expect(page.locator('.event-recommendation-row.rec--guidance')).toBeVisible()
     await expect(page.locator('.rec-text')).toContainText(/No saves yet/)
+  })
+
+  test('shows newly-published guidance for organizer with recently published event and no saves', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    // Event published 2 days ago with a start date > 7 days from now → newly-published guidance
+    const event = makeApprovedEvent({
+      id: 'ev-newly-pub-1',
+      slug: 'newly-pub-event',
+      name: 'Newly Published Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+      startsAtUtc: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+      endsAtUtc: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString(),
+      publishedAtUtc: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), // published 2 days ago
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Newly-published guidance should appear (not "No saves yet")
+    await expect(page.locator('.event-recommendation-row.rec--guidance')).toBeVisible()
+    await expect(page.locator('.rec-text')).toContainText(/just published/)
+    // The standard "No saves yet" message should NOT appear
+    await expect(page.locator('.rec-text')).not.toContainText(/No saves yet/)
   })
 
   test('does not show per-event recommendation for published event that already has saves', async ({

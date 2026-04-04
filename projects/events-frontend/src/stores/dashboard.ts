@@ -21,7 +21,7 @@ const DASHBOARD_QUERY = `
         totalInterestedCount interestedLast7Days interestedLast30Days
         totalCalendarActions calendarActionsLast7Days calendarActionsLast30Days
         calendarActionsByProvider { provider count }
-        startsAtUtc adminNotes domainSlug language timezone
+        startsAtUtc adminNotes domainSlug language timezone publishedAtUtc
       }
       availableDomains { id name slug subdomain description isActive createdAtUtc }
     }

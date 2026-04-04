@@ -435,6 +435,8 @@ export default {
       'Vaša udalosť čaká na kontrolu moderátora. Momentálne nie je potrebná žiadna akcia — budete upozornení, keď bude schválená alebo vrátená so spätnou väzbou.',
     recommendationPublishedNoSaves:
       'Pre túto udalosť zatiaľ nie sú žiadne uloženia. Skúste zdieľať odkaz, vylepšiť prehľadnosť názvu alebo posilniť popis a údaje o mieste.',
+    recommendationPublishedNewlyPublished:
+      'Vaša udalosť bola práve zverejnená. Môže trvať niekoľko dní, kým sa objavia prvé uloženia — zdieľajte odkaz v komunitných kanáloch a získajte prvotný záujem.',
     recommendationPublishedApproachingSoon:
       'Táto udalosť začína za menej ako týždeň a zatiaľ nemá žiadne uloženia. Zdieľajte odkaz teraz v komunitných kanáloch, na sociálnych médiách alebo v tematických skupinách, aby ste oslovili účastníkov pred začiatkom.',
     recommendationPublishedMissingLanguage:

@@ -435,6 +435,8 @@ export default {
       'Ihre Veranstaltung wartet auf die Moderatorenprüfung. Es ist gerade keine Aktion erforderlich — Sie werden benachrichtigt, sobald sie genehmigt oder mit Feedback zurückgegeben wird.',
     recommendationPublishedNoSaves:
       'Noch keine Speicherungen für diese Veranstaltung. Versuchen Sie den Link zu teilen, den Titel zu verbessern oder Beschreibung und Veranstaltungsort zu stärken.',
+    recommendationPublishedNewlyPublished:
+      'Ihre Veranstaltung wurde gerade veröffentlicht. Es kann einige Tage dauern, bis erste Speicherungen eingehen — teilen Sie den Link in Ihren Community-Kanälen, um frühe Aufmerksamkeit zu gewinnen.',
     recommendationPublishedApproachingSoon:
       'Diese Veranstaltung beginnt in weniger als einer Woche und hat noch keine Speicherungen. Teilen Sie den Link jetzt in Community-Kanälen, sozialen Medien oder thematischen Gruppen, um Teilnehmer vor dem Start zu erreichen.',
     recommendationPublishedMissingLanguage:

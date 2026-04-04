@@ -2758,6 +2758,71 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal(1, laterAnalytics.GetProperty("interestedLast7Days").GetInt32());
     }
 
+    [Fact]
+    public async Task MyDashboard_EventAnalytics_PublishedAtUtc_IsReturnedForPublishedEvents()
+    {
+        // Arrange: one published event (has publishedAtUtc) and one draft event (null publishedAtUtc)
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var publishedEventId = Guid.Empty;
+        var draftEventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("published-at@example.com", "Published At User");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "tech-pub-at");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+
+            var publishedEv = CreateEvent("Published Event", "pub-at-event", "Description.",
+                "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, user, status: EventStatus.Published);
+            publishedEventId = publishedEv.Id;
+
+            var draftEv = CreateEvent("Draft Event", "draft-at-event", "Description.",
+                "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, user, status: EventStatus.Draft);
+            draftEventId = draftEv.Id;
+
+            dbContext.Events.AddRange(publishedEv, draftEv);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyDashboard {
+              myDashboard {
+                eventAnalytics {
+                  eventId eventName status publishedAtUtc
+                }
+              }
+            }
+            """);
+
+        var analytics = document.RootElement
+            .GetProperty("data").GetProperty("myDashboard")
+            .GetProperty("eventAnalytics").EnumerateArray().ToList();
+
+        Assert.Equal(2, analytics.Count);
+
+        var publishedItem = analytics.Single(a => a.GetProperty("eventName").GetString() == "Published Event");
+        Assert.Equal("PUBLISHED", publishedItem.GetProperty("status").GetString());
+        // publishedAtUtc must be a non-null, parseable UTC timestamp
+        var publishedAtStr = publishedItem.GetProperty("publishedAtUtc").GetString();
+        Assert.NotNull(publishedAtStr);
+        Assert.True(DateTime.TryParse(publishedAtStr, out _), "publishedAtUtc should be a valid date-time string");
+
+        var draftItem = analytics.Single(a => a.GetProperty("eventName").GetString() == "Draft Event");
+        Assert.Equal("DRAFT", draftItem.GetProperty("status").GetString());
+        // Draft events have no publishedAtUtc
+        Assert.True(
+            draftItem.GetProperty("publishedAtUtc").ValueKind == System.Text.Json.JsonValueKind.Null,
+            "publishedAtUtc should be null for draft events");
+    }
+
     // ── Event detail: location, map, and attendee context ──────────────────
 
     [Fact]

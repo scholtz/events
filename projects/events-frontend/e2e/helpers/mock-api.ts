@@ -1211,6 +1211,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
           domainSlug: e.domain?.slug ?? null,
           language: e.language,
           timezone: e.timezone,
+          publishedAtUtc: e.publishedAtUtc,
         }
       })
 
@@ -2249,7 +2250,7 @@ export function makeApprovedEvent(overrides: Partial<MockEvent> = {}): MockEvent
     endsAtUtc: '2026-04-01T18:00:00Z',
     submittedAtUtc: new Date().toISOString(),
     updatedAtUtc: new Date().toISOString(),
-    publishedAtUtc: new Date().toISOString(),
+    publishedAtUtc: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
     adminNotes: null,
     status: 'PUBLISHED',
     isFree: true,

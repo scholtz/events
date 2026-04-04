@@ -67,6 +67,7 @@ export type RecommendationType =
   | 'draft'
   | 'pending'
   | 'publishedApproachingSoon'
+  | 'publishedNewlyPublished'
   | 'publishedNoSaves'
   | 'publishedMissingLanguage'
   | 'publishedMissingTimezone'
@@ -87,6 +88,19 @@ export function daysUntilStart(startsAtUtc: string, now: Date = new Date()): num
 }
 
 /**
+ * Number of whole days that have elapsed since an event was published, rounded down.
+ * Returns 0 for events published today, and a negative number if publishedAtUtc is in the future
+ * (which should not happen in practice).
+ *
+ * @param publishedAtUtc ISO-8601 UTC date-time string, or null if not yet published
+ * @param now            Reference instant (defaults to `new Date()` for testability)
+ */
+export function daysSincePublished(publishedAtUtc: string | null, now: Date = new Date()): number {
+  if (!publishedAtUtc) return Number.MAX_SAFE_INTEGER
+  return Math.floor((now.getTime() - new Date(publishedAtUtc).getTime()) / (1000 * 60 * 60 * 24))
+}
+
+/**
  * Determines which recommendation type (if any) applies to the given event analytics item.
  *
  * Decision rules (in priority order):
@@ -94,11 +108,12 @@ export function daysUntilStart(startsAtUtc: string, now: Date = new Date()): num
  * 2. DRAFT     → prompt to submit for review
  * 3. PENDING_APPROVAL → reassure organizer no action needed yet
  * 4. PUBLISHED + zero saves + starting within 7 days → urgent share prompt
- * 5. PUBLISHED + zero saves → standard share prompt
- * 6. PUBLISHED + has saves + no language set → language-tag improvement hint
- * 7. PUBLISHED + has saves + has language + no timezone → timezone improvement hint
- * 8. PUBLISHED + has saves + has language + has timezone + no domain → category assignment hint
- * 9. Otherwise → no recommendation
+ * 5. PUBLISHED + zero saves + published within last 7 days → newly-published patience message
+ * 6. PUBLISHED + zero saves → standard share prompt
+ * 7. PUBLISHED + has saves + no language set → language-tag improvement hint
+ * 8. PUBLISHED + has saves + has language + no timezone → timezone improvement hint
+ * 9. PUBLISHED + has saves + has language + has timezone + no domain → category assignment hint
+ * 10. Otherwise → no recommendation
  *
  * @param item Analytics item for the event
  * @param now  Reference instant (defaults to `new Date()` for testability)
@@ -106,7 +121,7 @@ export function daysUntilStart(startsAtUtc: string, now: Date = new Date()): num
 export function eventRecommendationType(
   item: Pick<
     EventAnalyticsItem,
-    'status' | 'totalInterestedCount' | 'startsAtUtc' | 'language' | 'timezone' | 'domainSlug'
+    'status' | 'totalInterestedCount' | 'startsAtUtc' | 'language' | 'timezone' | 'domainSlug' | 'publishedAtUtc'
   >,
   now: Date = new Date(),
 ): RecommendationType {
@@ -117,6 +132,8 @@ export function eventRecommendationType(
     if (item.totalInterestedCount === 0) {
       const days = daysUntilStart(item.startsAtUtc, now)
       if (days > 0 && days <= 7) return 'publishedApproachingSoon'
+      const daysSince = daysSincePublished(item.publishedAtUtc, now)
+      if (daysSince <= 7) return 'publishedNewlyPublished'
       return 'publishedNoSaves'
     }
     if (!item.language) return 'publishedMissingLanguage'
@@ -137,7 +154,7 @@ export function eventRecommendationType(
 export function eventRecommendationVariant(
   item: Pick<
     EventAnalyticsItem,
-    'status' | 'totalInterestedCount' | 'startsAtUtc' | 'language' | 'timezone' | 'domainSlug'
+    'status' | 'totalInterestedCount' | 'startsAtUtc' | 'language' | 'timezone' | 'domainSlug' | 'publishedAtUtc'
   >,
   now: Date = new Date(),
 ): RecommendationVariant {

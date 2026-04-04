@@ -353,6 +353,7 @@ function eventRecommendation(item: EventAnalyticsItem): string | null {
     case 'draft': return t('dashboard.recommendationDraft')
     case 'pending': return t('dashboard.recommendationPending')
     case 'publishedApproachingSoon': return t('dashboard.recommendationPublishedApproachingSoon')
+    case 'publishedNewlyPublished': return t('dashboard.recommendationPublishedNewlyPublished')
     case 'publishedNoSaves': return t('dashboard.recommendationPublishedNoSaves')
     case 'publishedMissingLanguage': return t('dashboard.recommendationPublishedMissingLanguage')
     case 'publishedMissingTimezone': return t('dashboard.recommendationPublishedMissingTimezone')
