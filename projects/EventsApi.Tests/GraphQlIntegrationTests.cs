@@ -559,6 +559,61 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task EventsQuery_UpcomingSort_EngagementSignalRanksPopularEventsFirst()
+    {
+        // When two upcoming events have the same start date and equal completeness,
+        // the event saved by more attendees (higher interestedCount) should rank first.
+        // This verifies the engagement-signal tiebreaker added to BuildUpcomingSort.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var sameStartTime = DateTime.UtcNow.AddDays(7);
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("engagement@example.com", "Engagement Tester");
+            var attendee1 = CreateUser("attendee1@example.com", "Attendee One");
+            var attendee2 = CreateUser("attendee2@example.com", "Attendee Two");
+            var tech = CreateDomain("Tech", "tech");
+
+            dbContext.Users.AddRange(user, attendee1, attendee2);
+            dbContext.Domains.Add(tech);
+
+            // Both events start at the same time with identical completeness (3/3 fields set)
+            var popular = CreateEvent(
+                "Popular Summit",
+                "popular-summit",
+                "A well-attended upcoming event.",
+                "Venue A",
+                "Prague",
+                sameStartTime,
+                tech,
+                user);
+
+            var lessPopular = CreateEvent(
+                "Less Popular Summit",
+                "less-popular-summit",
+                "An upcoming event with fewer saves.",
+                "Venue B",
+                "Prague",
+                sameStartTime,
+                tech,
+                user);
+
+            dbContext.Events.AddRange(popular, lessPopular);
+
+            // Seed two saves for the popular event and zero for the less popular one
+            dbContext.FavoriteEvents.AddRange(
+                new FavoriteEvent { UserId = attendee1.Id, EventId = popular.Id, CreatedAtUtc = DateTime.UtcNow.AddDays(-5) },
+                new FavoriteEvent { UserId = attendee2.Id, EventId = popular.Id, CreatedAtUtc = DateTime.UtcNow.AddDays(-3) });
+        });
+
+        using var client = factory.CreateClient();
+
+        var names = await QueryEventNamesAsync(client, new { sortBy = "UPCOMING" });
+
+        // Popular event must appear before less-popular event when completeness is equal
+        Assert.Equal(["Popular Summit", "Less Popular Summit"], names);
+    }
+
+    [Fact]
     public async Task EventsQuery_TreatsBlankFiltersAsUnsetAndKeepsPendingEventsPrivate()
     {
         await using var factory = new EventsApiWebApplicationFactory();

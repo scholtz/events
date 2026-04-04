@@ -193,6 +193,8 @@ export default {
     location: 'Ort',
     locationTbd: 'Ort wird bekannt gegeben',
     priceLbl: 'Preis',
+    language: 'Sprache',
+    timezone: 'Zeitzone',
     viewDetails: 'Details anzeigen',
     eventLink: 'Veranstaltungslink ↗',
     map: 'Karte ↗',

@@ -203,6 +203,8 @@ export default {
     location: 'Location',
     locationTbd: 'Location TBD',
     priceLbl: 'Price',
+    language: 'Language',
+    timezone: 'Timezone',
     viewDetails: 'View details',
     eventLink: 'Event link ↗',
     map: 'Map ↗',
