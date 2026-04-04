@@ -431,6 +431,101 @@ test.describe('Organizer analytics dashboard', () => {
     // Event row should be visible (table horizontally scrollable)
     await expect(page.locator('.events-table')).toBeVisible()
   })
+
+  test('shows missing-timezone recommendation for published event with saves but no timezone', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-tz-1',
+      slug: 'tz-event-1',
+      name: 'Timezone Missing Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+      language: 'en',
+      timezone: null,
+    })
+
+    const state = setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    state.favoriteEvents.push({
+      id: 'fav-tz-1',
+      userId: 'attendee-tz',
+      eventId: event.id,
+      createdAtUtc: new Date().toISOString(),
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // The recommendation row should mention timezone
+    const recRows = page.locator('.event-recommendation-row')
+    await expect(recRows).toBeVisible()
+    await expect(recRows).toContainText("doesn't have a timezone set")
+  })
+
+  test('shows missing-domain recommendation for published event with saves, language, timezone but no domain', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-domain-1',
+      slug: 'domain-event-1',
+      name: 'No Domain Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+      language: 'en',
+      timezone: 'Europe/Bratislava',
+      domain: null,
+    })
+
+    const state = setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    state.favoriteEvents.push({
+      id: 'fav-dom-1',
+      userId: 'attendee-dom',
+      eventId: event.id,
+      createdAtUtc: new Date().toISOString(),
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // The recommendation row should mention category
+    const recRows = page.locator('.event-recommendation-row')
+    await expect(recRows).toBeVisible()
+    await expect(recRows).toContainText("isn't assigned to a category")
+  })
+
+  test('no metadata recommendation shown when event has saves, language, timezone, and domain', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-complete-1',
+      slug: 'complete-event-1',
+      name: 'Complete Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+      language: 'en',
+      timezone: 'Europe/Bratislava',
+    })
+
+    const state = setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    state.favoriteEvents.push({
+      id: 'fav-complete-1',
+      userId: 'attendee-complete',
+      eventId: event.id,
+      createdAtUtc: new Date().toISOString(),
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // No recommendation row should be visible (event is fully complete)
+    await expect(page.locator('.event-recommendation-row')).toHaveCount(0)
+  })
 })
 
 // ── Calendar Analytics dashboard tests ───────────────────────────────────────

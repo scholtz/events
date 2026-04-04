@@ -433,6 +433,10 @@ export default {
       'Diese Veranstaltung beginnt in weniger als einer Woche und hat noch keine Speicherungen. Teilen Sie den Link jetzt in Community-Kanälen, sozialen Medien oder thematischen Gruppen, um Teilnehmer vor dem Start zu erreichen.',
     recommendationPublishedMissingLanguage:
       'Für Ihre Veranstaltung ist keine Sprache festgelegt. Das Hinzufügen eines Sprach-Tags hilft Teilnehmern in Ihrer Community, diese Veranstaltung in ihrer bevorzugten Sprache zu entdecken. Bearbeiten Sie die Veranstaltung, um sie hinzuzufügen.',
+    recommendationPublishedMissingTimezone:
+      'Für Ihre Veranstaltung ist keine Zeitzone festgelegt. Das Hinzufügen einer Zeitzone hilft Teilnehmern zu verstehen, wann die Veranstaltung in ihrer Ortszeit stattfindet. Bearbeiten Sie die Veranstaltung, um sie hinzuzufügen.',
+    recommendationPublishedMissingDomain:
+      'Ihre Veranstaltung ist noch keiner Kategorie zugeordnet. Die Zuweisung zu einer passenden Kategorie hilft Teilnehmern, die Community-Hubs durchsuchen, diese Veranstaltung zu entdecken. Bearbeiten Sie die Veranstaltung, um eine Kategorie auszuwählen.',
     adminNotesFeedback: 'Moderatorenfeedback:',
     metricTimeframeAllTime: 'Gesamtzahl aller Zeiten',
     hubManagementTitle: 'Hub-Verwaltung',

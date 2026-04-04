@@ -355,6 +355,8 @@ function eventRecommendation(item: EventAnalyticsItem): string | null {
     case 'publishedApproachingSoon': return t('dashboard.recommendationPublishedApproachingSoon')
     case 'publishedNoSaves': return t('dashboard.recommendationPublishedNoSaves')
     case 'publishedMissingLanguage': return t('dashboard.recommendationPublishedMissingLanguage')
+    case 'publishedMissingTimezone': return t('dashboard.recommendationPublishedMissingTimezone')
+    case 'publishedMissingDomain': return t('dashboard.recommendationPublishedMissingDomain')
     default: return null
   }
 }

@@ -21,7 +21,12 @@ import type { EventAnalyticsItem } from '@/types'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Returns a minimal EventAnalyticsItem stub with sensible defaults. */
+/** Returns a minimal EventAnalyticsItem stub with sensible defaults.
+ *
+ * Defaults represent a "healthy" event with all optional metadata filled in
+ * so that `eventRecommendationType` returns null by default when the event
+ * has saves.  Override individual fields to test specific recommendation cases.
+ */
 function makeItem(overrides: Partial<EventAnalyticsItem> = {}): EventAnalyticsItem {
   return {
     eventId: 'evt-unit-1',
@@ -37,9 +42,9 @@ function makeItem(overrides: Partial<EventAnalyticsItem> = {}): EventAnalyticsIt
     calendarActionsLast30Days: 0,
     calendarActionsByProvider: [],
     adminNotes: null,
-    domainSlug: null,
+    domainSlug: 'tech',
     language: 'en',
-    timezone: null,
+    timezone: 'Europe/London',
     ...overrides,
   }
 }
@@ -197,10 +202,37 @@ describe('eventRecommendationType', () => {
       ).toBe('publishedMissingLanguage')
     })
 
-    it('returns null when event has saves and language is set (no recommendation needed)', () => {
+    it('returns "publishedMissingTimezone" when event has saves and language but no timezone', () => {
       expect(
         eventRecommendationType(
-          makeItem({ status: 'PUBLISHED', totalInterestedCount: 2, language: 'en' }),
+          makeItem({ status: 'PUBLISHED', totalInterestedCount: 3, language: 'en', timezone: null }),
+          now,
+        ),
+      ).toBe('publishedMissingTimezone')
+    })
+
+    it('returns "publishedMissingTimezone" even when domainSlug is set if timezone is missing', () => {
+      expect(
+        eventRecommendationType(
+          makeItem({ status: 'PUBLISHED', totalInterestedCount: 1, language: 'sk', timezone: null, domainSlug: 'tech' }),
+          now,
+        ),
+      ).toBe('publishedMissingTimezone')
+    })
+
+    it('returns "publishedMissingDomain" when event has saves, language, and timezone but no domain', () => {
+      expect(
+        eventRecommendationType(
+          makeItem({ status: 'PUBLISHED', totalInterestedCount: 2, language: 'de', timezone: 'Europe/Berlin', domainSlug: null }),
+          now,
+        ),
+      ).toBe('publishedMissingDomain')
+    })
+
+    it('returns null when event has saves, language, timezone, and domain (no recommendation needed)', () => {
+      expect(
+        eventRecommendationType(
+          makeItem({ status: 'PUBLISHED', totalInterestedCount: 2, language: 'en', timezone: 'Europe/London', domainSlug: 'tech' }),
           now,
         ),
       ).toBeNull()
@@ -283,6 +315,24 @@ describe('eventRecommendationVariant', () => {
     expect(
       eventRecommendationVariant(
         makeItem({ status: 'PUBLISHED', totalInterestedCount: 3, language: 'en' }),
+        now,
+      ),
+    ).toBe('rec--guidance')
+  })
+
+  it('returns rec--guidance for PUBLISHED event with saves but missing timezone', () => {
+    expect(
+      eventRecommendationVariant(
+        makeItem({ status: 'PUBLISHED', totalInterestedCount: 5, language: 'en', timezone: null }),
+        now,
+      ),
+    ).toBe('rec--guidance')
+  })
+
+  it('returns rec--guidance for PUBLISHED event with saves, language, timezone but missing domain', () => {
+    expect(
+      eventRecommendationVariant(
+        makeItem({ status: 'PUBLISHED', totalInterestedCount: 3, language: 'de', timezone: 'Europe/Berlin', domainSlug: null }),
         now,
       ),
     ).toBe('rec--guidance')
