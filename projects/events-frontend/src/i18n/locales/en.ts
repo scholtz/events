@@ -96,6 +96,8 @@ export default {
     emptyDomain: 'No events in this category. Remove the tag filter to see all categories.',
     emptyTimezone:
       'No events found in timezone "{timezone}". Try a different timezone or remove the timezone filter.',
+    emptyLanguage:
+      'No events found in language "{language}". Try a different language or remove the language filter.',
     emptyMultiple:
       'No events match all {count} active filters. Try removing your most specific filter first, or clear all to start over.',
     resultsAvailableOne: '1 event available',

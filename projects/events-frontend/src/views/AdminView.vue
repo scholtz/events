@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useEventsStore } from '@/stores/events'
 import { useAuthStore } from '@/stores/auth'
@@ -362,9 +362,13 @@ async function updateUserRole(userId: string, role: 'ADMIN' | 'CONTRIBUTOR') {
   }
 }
 
-onMounted(() => {
-  fetchAdminOverview()
-})
+watch(
+  () => auth.isAdmin,
+  (isAdmin) => {
+    if (isAdmin) fetchAdminOverview()
+  },
+  { immediate: true },
+)
 
 function allAdminEvents() {
   // Prefer events from adminOverview which includes pending; fall back to events store

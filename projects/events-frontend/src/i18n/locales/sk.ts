@@ -92,6 +92,8 @@ export default {
     emptyDomain: 'V tejto kategórii nie sú žiadne udalosti. Odstráňte filter tagu.',
     emptyTimezone:
       'V časovom pásme „{timezone}" sa nenašli žiadne udalosti. Skúste iné časové pásmo alebo odstráňte filter.',
+    emptyLanguage:
+      'V jazyku „{language}" sa nenašli žiadne udalosti. Skúste iný jazyk alebo odstráňte filter.',
     emptyMultiple:
       'Žiadne udalosti nezodpovedajú všetkým {count} aktívnym filtrom. Skúste odstrániť najšpecifickejší filter.',
     resultsAvailableOne: 'K dispozícii je 1 udalosť',
