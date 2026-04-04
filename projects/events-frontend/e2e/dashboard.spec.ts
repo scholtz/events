@@ -477,7 +477,6 @@ test.describe('Organizer analytics dashboard', () => {
       submittedBy: { displayName: user.displayName },
       language: 'en',
       timezone: 'Europe/Bratislava',
-      domainId: null,
       domain: null,
     })
 

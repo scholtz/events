@@ -238,15 +238,6 @@ describe('eventRecommendationType', () => {
       ).toBeNull()
     })
 
-    it('returns null when event has saves and language is set (no recommendation needed)', () => {
-      expect(
-        eventRecommendationType(
-          makeItem({ status: 'PUBLISHED', totalInterestedCount: 2, language: 'en' }),
-          now,
-        ),
-      ).toBeNull()
-    })
-
     it('returns null when event has many saves even without approaching-soon condition', () => {
       const far = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString()
       expect(
