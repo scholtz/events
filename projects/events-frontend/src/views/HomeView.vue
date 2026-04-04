@@ -305,6 +305,35 @@ const emptyStateRecoveryAction = computed<{ label: string; action: () => void } 
 })
 
 /**
+ * Domain hub that corresponds to the currently active domain filter.
+ * Used to provide a third recovery action and fallback suggestions in the
+ * empty state when the domain filter produced no results.
+ */
+const emptyStateDomainHub = computed(() => {
+  if (eventsStore.discoveryEvents.length > 0) return null
+  if (eventsStore.discoveryLoading) return null
+  if (eventsStore.discoveryError) return null
+  const slug = eventsStore.filters.domain
+  if (!slug) return null
+  return domainsStore.getDomainBySlug(slug) ?? null
+})
+
+/**
+ * Fallback domain hubs to surface as curated suggestions when the result set
+ * is empty and no single domain filter is active. Surfaces up to 3 domains
+ * so users can pivot to a relevant category hub.
+ */
+const fallbackDomainHubs = computed(() => {
+  if (eventsStore.discoveryEvents.length > 0) return []
+  if (eventsStore.discoveryLoading) return []
+  if (eventsStore.discoveryError) return []
+  // Only surface generic domain suggestions when no specific domain is already filtered
+  if (eventsStore.filters.domain) return []
+  // Show up to 3 domains as curated hub suggestions
+  return domainsStore.domains.slice(0, 3)
+})
+
+/**
  * Subtle label explaining the current result ordering to help users understand
  * why events appear in this order. Not shown when there are no results.
  */
@@ -634,9 +663,61 @@ watch(
               >
                 {{ emptyStateRecoveryAction.label }}
               </button>
+              <RouterLink
+                v-if="emptyStateDomainHub"
+                :to="`/category/${emptyStateDomainHub.slug}`"
+                class="btn btn-outline browse-hub-action"
+              >
+                {{ t('home.recoveryBrowseHub', { name: emptyStateDomainHub.name }) }}
+              </RouterLink>
               <RouterLink v-if="!eventsStore.hasActiveFilters" to="/submit" class="btn btn-primary">{{
                 t('home.submitAnEvent')
               }}</RouterLink>
+            </div>
+          </div>
+
+          <!-- Curated fallback suggestions: shown below the empty-state card when a domain hub is relevant -->
+          <div v-if="emptyStateDomainHub" class="fallback-suggestions">
+            <h3 class="fallback-suggestions-title">{{ t('home.fallbackSuggestionsTitle') }}</h3>
+            <p class="fallback-suggestions-desc">{{ t('home.fallbackSuggestionsDesc') }}</p>
+            <div class="fallback-hub-cards">
+              <RouterLink
+                :to="`/category/${emptyStateDomainHub.slug}`"
+                class="fallback-hub-card"
+              >
+                <div class="fallback-hub-icon" aria-hidden="true">🏷️</div>
+                <div class="fallback-hub-info">
+                  <strong class="fallback-hub-name">{{ emptyStateDomainHub.name }}</strong>
+                  <span v-if="emptyStateDomainHub.description" class="fallback-hub-desc">{{
+                    emptyStateDomainHub.description
+                  }}</span>
+                  <span class="fallback-hub-cta">{{ t('home.fallbackHubCta', { name: emptyStateDomainHub.name }) }}</span>
+                </div>
+              </RouterLink>
+            </div>
+          </div>
+
+          <!-- Generic category hubs: shown when no domain filter is active and result set is empty -->
+          <div
+            v-else-if="fallbackDomainHubs.length > 0"
+            class="fallback-suggestions"
+          >
+            <h3 class="fallback-suggestions-title">{{ t('home.fallbackCategoriesTitle') }}</h3>
+            <p class="fallback-suggestions-desc">{{ t('home.fallbackCategoriesDesc') }}</p>
+            <div class="fallback-hub-cards">
+              <RouterLink
+                v-for="hub in fallbackDomainHubs"
+                :key="hub.id"
+                :to="`/category/${hub.slug}`"
+                class="fallback-hub-card"
+              >
+                <div class="fallback-hub-icon" aria-hidden="true">🏷️</div>
+                <div class="fallback-hub-info">
+                  <strong class="fallback-hub-name">{{ hub.name }}</strong>
+                  <span v-if="hub.description" class="fallback-hub-desc">{{ hub.description }}</span>
+                  <span class="fallback-hub-cta">{{ t('home.fallbackHubCta', { name: hub.name }) }}</span>
+                </div>
+              </RouterLink>
             </div>
           </div>
         </div>
@@ -1187,5 +1268,91 @@ watch(
   height: 100%;
   background-color: rgba(52, 55, 220, 0.2);
   z-index: -1;
+}
+
+/* ── Fallback suggestions ──────────────────────────────────────────────────── */
+.fallback-suggestions {
+  margin-top: 1.5rem;
+  padding: 1.25rem;
+  background: var(--color-surface, #1a1d26);
+  border: 1px solid var(--color-border, #2a2d3a);
+  border-radius: 0.75rem;
+}
+
+.fallback-suggestions-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text, #e5e7eb);
+  margin-bottom: 0.25rem;
+}
+
+.fallback-suggestions-desc {
+  font-size: 0.875rem;
+  color: var(--color-text-muted, #9ca3af);
+  margin-bottom: 1rem;
+}
+
+.fallback-hub-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.fallback-hub-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  background: var(--color-surface-raised, #1e2130);
+  border: 1px solid var(--color-border, #2a2d3a);
+  border-radius: 0.5rem;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.fallback-hub-card:hover {
+  border-color: var(--color-primary, #137fec);
+  background: rgba(19, 127, 236, 0.05);
+}
+
+.fallback-hub-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+}
+
+.fallback-hub-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.fallback-hub-name {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-text, #e5e7eb);
+}
+
+.fallback-hub-desc {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted, #9ca3af);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.fallback-hub-cta {
+  font-size: 0.8125rem;
+  color: var(--color-primary, #137fec);
+  font-weight: 500;
+}
+
+@media (max-width: 640px) {
+  .fallback-hub-card {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
 }
 </style>

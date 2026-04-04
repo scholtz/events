@@ -114,6 +114,12 @@ export default {
     recoveryClearDates: 'Datumsbereich löschen',
     recoveryShowAllPrices: 'Alle Preise anzeigen',
     recoveryClearDomainTag: 'Tag-Filter entfernen',
+    recoveryBrowseHub: '{name}-Hub erkunden',
+    fallbackSuggestionsTitle: 'Das könnte Sie auch interessieren',
+    fallbackSuggestionsDesc: 'Erkunden Sie den Hub dieser Kategorie — dort können weitere bevorstehende Veranstaltungen, kuratierte Inhalte oder verwandte Communitys zu finden sein.',
+    fallbackCategoriesTitle: 'Veranstaltungskategorien durchsuchen',
+    fallbackCategoriesDesc: 'Entdecken Sie Veranstaltungen nach Community oder Themenbereich. Diese Hubs kuratieren die besten bevorstehenden Veranstaltungen in ihrem Bereich.',
+    fallbackHubCta: '{name} erkunden →',
   },
 
   filters: {
