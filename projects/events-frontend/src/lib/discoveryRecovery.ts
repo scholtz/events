@@ -82,17 +82,63 @@ export function computeEmptyStateMessage(
 // ---------------------------------------------------------------------------
 
 /**
- * Returns the label for the secondary recovery action button shown in the
- * empty state alongside the primary "Clear filters" button.
+ * Returns the label and the logical action key for the secondary recovery
+ * button shown in the empty state alongside the primary "Clear filters" button.
  *
- * Returns `null` when:
- * - No filters are active (no recovery button needed).
- * - Multiple non-date filters are active (too many combinations to suggest
- *   a single targeted action — just clear all).
- * - The active chip does not have a known targeted suggestion.
+ * The action key allows the component to map the suggestion back to a concrete
+ * side-effect without re-running the chip-filtering logic a second time.
  *
- * When ALL active chips are date chips, "Clear date range" is returned even
- * though more than one chip is present (dateFrom + dateTo = one logical constraint).
+ * Returns `null` when no targeted suggestion is applicable (no filters active,
+ * multiple conflicting filters, or chip type with no obvious single next step).
+ */
+export function computeRecoverySuggestion(
+  filters: EventFilters,
+  chips: FilterChip[],
+  hasActiveFilters: boolean,
+  t: TranslateFn,
+): { label: string; actionKey: string } | null {
+  if (!hasActiveFilters) return null
+
+  const activeChips = chips.filter((c) => c.key !== 'sortBy')
+  if (activeChips.length === 0) return null
+
+  // All chips are date chips → "Clear date range"
+  const dateKeys = new Set(['dateFrom', 'dateTo'])
+  if (activeChips.every((c) => dateKeys.has(c.key))) {
+    return { label: t('home.recoveryClearDates'), actionKey: 'clearDates' }
+  }
+
+  if (activeChips.length !== 1) return null
+  const chip = activeChips[0]
+  if (!chip) return null
+
+  if (chip.key === 'attendanceMode') {
+    if (filters.attendanceMode === 'IN_PERSON') {
+      return { label: t('home.recoveryTryOnline'), actionKey: 'tryOnline' }
+    }
+    if (filters.attendanceMode === 'ONLINE') {
+      return { label: t('home.recoveryTryInPerson'), actionKey: 'tryInPerson' }
+    }
+  }
+
+  if (chip.key === 'location') {
+    return { label: t('home.recoveryTryOnline'), actionKey: 'tryOnlineFromLocation' }
+  }
+
+  if (chip.key === 'priceType') {
+    return { label: t('home.recoveryShowAllPrices'), actionKey: 'clearPrice' }
+  }
+
+  if (chip.key === 'domain') {
+    return { label: t('home.recoveryClearDomainTag'), actionKey: 'clearDomain' }
+  }
+
+  return null
+}
+
+/**
+ * Convenience wrapper that returns only the suggestion label.
+ * Useful for tests and callers that don't need the action key.
  */
 export function computeRecoverySuggestionLabel(
   filters: EventFilters,
@@ -100,40 +146,7 @@ export function computeRecoverySuggestionLabel(
   hasActiveFilters: boolean,
   t: TranslateFn,
 ): string | null {
-  if (!hasActiveFilters) return null
-
-  const activeChips = chips.filter((c) => c.key !== 'sortBy')
-  if (activeChips.length === 0) return null
-
-  // If ALL active chips are date chips, offer "Clear date range"
-  const dateKeys = new Set(['dateFrom', 'dateTo'])
-  if (activeChips.every((c) => dateKeys.has(c.key))) {
-    return t('home.recoveryClearDates')
-  }
-
-  // Only one non-date chip: offer a targeted suggestion
-  if (activeChips.length !== 1) return null
-  const chip = activeChips[0]
-  if (!chip) return null
-
-  if (chip.key === 'attendanceMode') {
-    if (filters.attendanceMode === 'IN_PERSON') return t('home.recoveryTryOnline')
-    if (filters.attendanceMode === 'ONLINE') return t('home.recoveryTryInPerson')
-  }
-
-  if (chip.key === 'location') {
-    return t('home.recoveryTryOnline')
-  }
-
-  if (chip.key === 'priceType') {
-    return t('home.recoveryShowAllPrices')
-  }
-
-  if (chip.key === 'domain') {
-    return t('home.recoveryClearDomainTag')
-  }
-
-  return null
+  return computeRecoverySuggestion(filters, chips, hasActiveFilters, t)?.label ?? null
 }
 
 // ---------------------------------------------------------------------------

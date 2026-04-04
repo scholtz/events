@@ -12,6 +12,7 @@ import type { EventFilters } from '@/types'
 import {
   computeEmptyStateMessage,
   computeLowSignalMessage,
+  computeRecoverySuggestion,
   computeRecoverySuggestionLabel,
 } from '@/lib/discoveryRecovery'
 
@@ -20,7 +21,7 @@ import {
 // ---------------------------------------------------------------------------
 
 /** Minimal translate stub: returns "{key}" or "{key}:{params}" for assertions. */
-function t(key: string, params?: Record<string, unknown>): string {
+function stubT(key: string, params?: Record<string, unknown>): string {
   if (!params) return key
   const pairs = Object.entries(params)
     .map(([k, v]) => `${k}=${v}`)
@@ -54,12 +55,12 @@ function defaultFilters(overrides: Partial<EventFilters> = {}): EventFilters {
 
 describe('computeEmptyStateMessage', () => {
   it('returns emptyNoEvents when no filters are active', () => {
-    const result = computeEmptyStateMessage(defaultFilters(), [], false, t)
+    const result = computeEmptyStateMessage(defaultFilters(), [], false, stubT)
     expect(result).toBe('home.emptyNoEvents')
   })
 
   it('returns emptyGeneric when hasActiveFilters is true but no chips (edge case)', () => {
-    const result = computeEmptyStateMessage(defaultFilters(), [], true, t)
+    const result = computeEmptyStateMessage(defaultFilters(), [], true, stubT)
     expect(result).toBe('home.emptyGeneric')
   })
 
@@ -69,7 +70,7 @@ describe('computeEmptyStateMessage', () => {
       defaultFilters({ location: 'Berlin' }),
       chips,
       true,
-      t,
+      stubT,
     )
     expect(result).toContain('home.emptyLocation')
     expect(result).toContain('Berlin')
@@ -81,7 +82,7 @@ describe('computeEmptyStateMessage', () => {
       defaultFilters({ search: 'nonexistent-xyz' }),
       chips,
       true,
-      t,
+      stubT,
     )
     expect(result).toContain('home.emptySearch')
     expect(result).toContain('nonexistent-xyz')
@@ -93,7 +94,7 @@ describe('computeEmptyStateMessage', () => {
       defaultFilters({ attendanceMode: 'IN_PERSON' }),
       chips,
       true,
-      t,
+      stubT,
     )
     expect(result).toBe('home.emptyModeInPerson')
   })
@@ -104,7 +105,7 @@ describe('computeEmptyStateMessage', () => {
       defaultFilters({ attendanceMode: 'ONLINE' }),
       chips,
       true,
-      t,
+      stubT,
     )
     expect(result).toBe('home.emptyModeOnline')
   })
@@ -115,7 +116,7 @@ describe('computeEmptyStateMessage', () => {
       defaultFilters({ attendanceMode: 'HYBRID' }),
       chips,
       true,
-      t,
+      stubT,
     )
     expect(result).toBe('home.emptyModeHybrid')
   })
@@ -126,7 +127,7 @@ describe('computeEmptyStateMessage', () => {
       defaultFilters({ priceType: 'FREE' }),
       chips,
       true,
-      t,
+      stubT,
     )
     expect(result).toBe('home.emptyPriceFree')
   })
@@ -137,7 +138,7 @@ describe('computeEmptyStateMessage', () => {
       defaultFilters({ priceType: 'PAID' }),
       chips,
       true,
-      t,
+      stubT,
     )
     expect(result).toBe('home.emptyPricePaid')
   })
@@ -148,7 +149,7 @@ describe('computeEmptyStateMessage', () => {
       defaultFilters({ dateFrom: '2026-01-01' }),
       chips,
       true,
-      t,
+      stubT,
     )
     expect(result).toBe('home.emptyDate')
   })
@@ -159,7 +160,7 @@ describe('computeEmptyStateMessage', () => {
       defaultFilters({ dateTo: '2026-12-31' }),
       chips,
       true,
-      t,
+      stubT,
     )
     expect(result).toBe('home.emptyDate')
   })
@@ -170,7 +171,7 @@ describe('computeEmptyStateMessage', () => {
       defaultFilters({ domain: 'technology' }),
       chips,
       true,
-      t,
+      stubT,
     )
     expect(result).toBe('home.emptyDomain')
   })
@@ -181,7 +182,7 @@ describe('computeEmptyStateMessage', () => {
       defaultFilters({ timezone: 'America/New_York' }),
       chips,
       true,
-      t,
+      stubT,
     )
     expect(result).toContain('home.emptyTimezone')
     expect(result).toContain('America/New_York')
@@ -193,7 +194,7 @@ describe('computeEmptyStateMessage', () => {
       defaultFilters({ language: 'de' }),
       chips,
       true,
-      t,
+      stubT,
     )
     expect(result).toContain('home.emptyLanguage')
     expect(result).toContain('de')
@@ -205,7 +206,7 @@ describe('computeEmptyStateMessage', () => {
       defaultFilters({ location: 'Berlin', attendanceMode: 'ONLINE' }),
       chips,
       true,
-      t,
+      stubT,
     )
     expect(result).toContain('home.emptyMultiple')
     expect(result).toContain('2')
@@ -217,7 +218,7 @@ describe('computeEmptyStateMessage', () => {
       defaultFilters({ location: 'Berlin', sortBy: 'NEWEST' }),
       chips,
       true,
-      t,
+      stubT,
     )
     // Only 1 real filter (location) → location-specific message, not multi
     expect(result).toContain('home.emptyLocation')
@@ -230,11 +231,11 @@ describe('computeEmptyStateMessage', () => {
 
 describe('computeRecoverySuggestionLabel', () => {
   it('returns null when no filters are active', () => {
-    expect(computeRecoverySuggestionLabel(defaultFilters(), [], false, t)).toBeNull()
+    expect(computeRecoverySuggestionLabel(defaultFilters(), [], false, stubT)).toBeNull()
   })
 
   it('returns null when active chips array is empty', () => {
-    expect(computeRecoverySuggestionLabel(defaultFilters(), [], true, t)).toBeNull()
+    expect(computeRecoverySuggestionLabel(defaultFilters(), [], true, stubT)).toBeNull()
   })
 
   it('returns recoveryClearDates when only dateFrom chip is active', () => {
@@ -243,7 +244,7 @@ describe('computeRecoverySuggestionLabel', () => {
       defaultFilters({ dateFrom: '2026-01-01' }),
       chips,
       true,
-      t,
+      stubT,
     )
     expect(result).toBe('home.recoveryClearDates')
   })
@@ -254,7 +255,7 @@ describe('computeRecoverySuggestionLabel', () => {
       defaultFilters({ dateFrom: '2026-01-01', dateTo: '2026-12-31' }),
       chips,
       true,
-      t,
+      stubT,
     )
     expect(result).toBe('home.recoveryClearDates')
   })
@@ -265,7 +266,7 @@ describe('computeRecoverySuggestionLabel', () => {
       defaultFilters({ attendanceMode: 'IN_PERSON' }),
       chips,
       true,
-      t,
+      stubT,
     )
     expect(result).toBe('home.recoveryTryOnline')
   })
@@ -276,7 +277,7 @@ describe('computeRecoverySuggestionLabel', () => {
       defaultFilters({ attendanceMode: 'ONLINE' }),
       chips,
       true,
-      t,
+      stubT,
     )
     expect(result).toBe('home.recoveryTryInPerson')
   })
@@ -287,7 +288,7 @@ describe('computeRecoverySuggestionLabel', () => {
       defaultFilters({ attendanceMode: 'HYBRID' }),
       chips,
       true,
-      t,
+      stubT,
     )
     expect(result).toBeNull()
   })
@@ -298,7 +299,7 @@ describe('computeRecoverySuggestionLabel', () => {
       defaultFilters({ location: 'Berlin' }),
       chips,
       true,
-      t,
+      stubT,
     )
     expect(result).toBe('home.recoveryTryOnline')
   })
@@ -309,7 +310,7 @@ describe('computeRecoverySuggestionLabel', () => {
       defaultFilters({ priceType: 'FREE' }),
       chips,
       true,
-      t,
+      stubT,
     )
     expect(result).toBe('home.recoveryShowAllPrices')
   })
@@ -320,7 +321,7 @@ describe('computeRecoverySuggestionLabel', () => {
       defaultFilters({ domain: 'technology' }),
       chips,
       true,
-      t,
+      stubT,
     )
     expect(result).toBe('home.recoveryClearDomainTag')
   })
@@ -331,7 +332,7 @@ describe('computeRecoverySuggestionLabel', () => {
       defaultFilters({ location: 'Berlin', attendanceMode: 'IN_PERSON' }),
       chips,
       true,
-      t,
+      stubT,
     )
     expect(result).toBeNull()
   })
@@ -342,7 +343,7 @@ describe('computeRecoverySuggestionLabel', () => {
       defaultFilters({ search: 'something' }),
       chips,
       true,
-      t,
+      stubT,
     )
     expect(result).toBeNull()
   })
@@ -353,7 +354,7 @@ describe('computeRecoverySuggestionLabel', () => {
       defaultFilters({ attendanceMode: 'IN_PERSON', sortBy: 'NEWEST' }),
       chips,
       true,
-      t,
+      stubT,
     )
     // Only 1 real filter (attendanceMode) → suggestion based on attendanceMode
     expect(result).toBe('home.recoveryTryOnline')
@@ -366,31 +367,108 @@ describe('computeRecoverySuggestionLabel', () => {
 
 describe('computeLowSignalMessage', () => {
   it('returns null for zero events', () => {
-    expect(computeLowSignalMessage(0, t)).toBeNull()
+    expect(computeLowSignalMessage(0, stubT)).toBeNull()
   })
 
   it('returns singular message for exactly 1 event', () => {
-    const result = computeLowSignalMessage(1, t)
+    const result = computeLowSignalMessage(1, stubT)
     expect(result).toBe('home.fewResultsOne')
   })
 
   it('returns plural message for 2 events', () => {
-    const result = computeLowSignalMessage(2, t)
+    const result = computeLowSignalMessage(2, stubT)
     expect(result).toContain('home.fewResultsMany')
     expect(result).toContain('2')
   })
 
   it('returns plural message for 3 events (threshold boundary)', () => {
-    const result = computeLowSignalMessage(3, t)
+    const result = computeLowSignalMessage(3, stubT)
     expect(result).toContain('home.fewResultsMany')
     expect(result).toContain('3')
   })
 
   it('returns null for 4 events (above threshold)', () => {
-    expect(computeLowSignalMessage(4, t)).toBeNull()
+    expect(computeLowSignalMessage(4, stubT)).toBeNull()
   })
 
   it('returns null for large event counts', () => {
-    expect(computeLowSignalMessage(100, t)).toBeNull()
+    expect(computeLowSignalMessage(100, stubT)).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// computeRecoverySuggestion (structured form with actionKey)
+// ---------------------------------------------------------------------------
+
+describe('computeRecoverySuggestion', () => {
+  it('returns null when no filters are active', () => {
+    expect(computeRecoverySuggestion(defaultFilters(), [], false, stubT)).toBeNull()
+  })
+
+  it('returns actionKey clearDates for date-only chips', () => {
+    const chips: Chip[] = [{ key: 'dateFrom' }, { key: 'dateTo' }]
+    const result = computeRecoverySuggestion(
+      defaultFilters({ dateFrom: '2026-01-01', dateTo: '2026-12-31' }),
+      chips,
+      true,
+      stubT,
+    )
+    expect(result?.actionKey).toBe('clearDates')
+    expect(result?.label).toBe('home.recoveryClearDates')
+  })
+
+  it('returns actionKey tryOnline for IN_PERSON mode', () => {
+    const chips: Chip[] = [{ key: 'attendanceMode' }]
+    const result = computeRecoverySuggestion(
+      defaultFilters({ attendanceMode: 'IN_PERSON' }),
+      chips,
+      true,
+      stubT,
+    )
+    expect(result?.actionKey).toBe('tryOnline')
+  })
+
+  it('returns actionKey tryInPerson for ONLINE mode', () => {
+    const chips: Chip[] = [{ key: 'attendanceMode' }]
+    const result = computeRecoverySuggestion(
+      defaultFilters({ attendanceMode: 'ONLINE' }),
+      chips,
+      true,
+      stubT,
+    )
+    expect(result?.actionKey).toBe('tryInPerson')
+  })
+
+  it('returns actionKey tryOnlineFromLocation for location chip', () => {
+    const chips: Chip[] = [{ key: 'location' }]
+    const result = computeRecoverySuggestion(
+      defaultFilters({ location: 'Berlin' }),
+      chips,
+      true,
+      stubT,
+    )
+    expect(result?.actionKey).toBe('tryOnlineFromLocation')
+  })
+
+  it('returns actionKey clearPrice for priceType chip', () => {
+    const chips: Chip[] = [{ key: 'priceType' }]
+    const result = computeRecoverySuggestion(
+      defaultFilters({ priceType: 'FREE' }),
+      chips,
+      true,
+      stubT,
+    )
+    expect(result?.actionKey).toBe('clearPrice')
+  })
+
+  it('returns actionKey clearDomain for domain chip', () => {
+    const chips: Chip[] = [{ key: 'domain' }]
+    const result = computeRecoverySuggestion(
+      defaultFilters({ domain: 'technology' }),
+      chips,
+      true,
+      stubT,
+    )
+    expect(result?.actionKey).toBe('clearDomain')
   })
 })

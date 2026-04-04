@@ -7,7 +7,7 @@ import { formatDiscoveryChipLabel } from '@/lib/discoveryLabels'
 import {
   computeEmptyStateMessage,
   computeLowSignalMessage,
-  computeRecoverySuggestionLabel,
+  computeRecoverySuggestion,
 } from '@/lib/discoveryRecovery'
 import {
   areEventFiltersEqual,
@@ -208,55 +208,47 @@ const emptyStateMessage = computed(() =>
  * Shown alongside the primary "Clear filters" button to give users a targeted
  * next step based on which single filter produced zero results.
  *
- * The label is derived from the pure `computeRecoverySuggestionLabel` helper;
- * the side-effect action is resolved here in the component.
+ * The label and action key come from `computeRecoverySuggestion`; the concrete
+ * side-effect is resolved here in the component via the action key.
  */
 const emptyStateRecoveryAction = computed<{ label: string; action: () => void } | null>(() => {
-  const label = computeRecoverySuggestionLabel(
+  const suggestion = computeRecoverySuggestion(
     eventsStore.filters,
     eventsStore.activeFilterChips,
     eventsStore.hasActiveFilters,
     t,
   )
-  if (!label) return null
+  if (!suggestion) return null
 
+  const { label, actionKey } = suggestion
   const filters = eventsStore.filters
-  const chips = eventsStore.activeFilterChips.filter((c) => c.key !== 'sortBy')
 
-  // Date-only combination → clear the date range
-  const dateKeys = new Set(['dateFrom', 'dateTo'])
-  if (chips.every((c) => dateKeys.has(c.key))) {
-    return { label, action: () => eventsStore.setFilters({ dateFrom: '', dateTo: '' }) }
-  }
-
-  if (chips.length === 1) {
-    const chip = chips[0]
-    if (chip?.key === 'attendanceMode') {
-      if (filters.attendanceMode === 'IN_PERSON') {
-        return { label, action: () => eventsStore.setFilters({ attendanceMode: 'ONLINE' }) }
-      }
-      if (filters.attendanceMode === 'ONLINE') {
-        return { label, action: () => eventsStore.setFilters({ attendanceMode: 'IN_PERSON' }) }
-      }
-    }
-    if (chip?.key === 'location') {
+  switch (actionKey) {
+    case 'clearDates':
+      return { label, action: () => eventsStore.setFilters({ dateFrom: '', dateTo: '' }) }
+    case 'tryOnline':
+      return { label, action: () => eventsStore.setFilters({ attendanceMode: 'ONLINE' }) }
+    case 'tryInPerson':
+      return { label, action: () => eventsStore.setFilters({ attendanceMode: 'IN_PERSON' }) }
+    case 'tryOnlineFromLocation':
       return {
         label,
         action: () => eventsStore.setFilters({ location: '', attendanceMode: 'ONLINE' }),
       }
-    }
-    if (chip?.key === 'priceType') {
+    case 'clearPrice':
       return {
         label,
-        action: () => eventsStore.setFilters({ priceType: 'ALL', priceMin: '', priceMax: '' }),
+        action: () =>
+          eventsStore.setFilters({ priceType: 'ALL', priceMin: '', priceMax: '' }),
       }
-    }
-    if (chip?.key === 'domain') {
+    case 'clearDomain':
       return { label, action: () => eventsStore.setFilters({ domain: '' }) }
-    }
+    default:
+      // Satisfy TypeScript exhaustiveness — filters value is read above to
+      // prevent a "declared but never read" lint warning.
+      void filters
+      return null
   }
-
-  return null
 })
 
 /**
