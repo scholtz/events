@@ -461,7 +461,8 @@ public sealed class Query
                     AdminNotes: e.AdminNotes,
                     DomainSlug: e.Domain?.Slug,
                     Language: e.Language,
-                    Timezone: e.Timezone);
+                    Timezone: e.Timezone,
+                    PublishedAtUtc: e.PublishedAtUtc);
             })
             .ToList();
 

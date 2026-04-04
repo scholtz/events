@@ -158,6 +158,13 @@ export interface EventAnalyticsItem {
   language: string | null
   /** IANA timezone identifier for the event. */
   timezone: string | null
+  /**
+   * UTC timestamp when the event was published.
+   * Null for events that have never been published or were imported before this field was tracked.
+   * Used to distinguish newly-published events (not yet enough time to accumulate saves) from
+   * events that have been live for a while with no engagement.
+   */
+  publishedAtUtc: string | null
 }
 
 /** Lightweight community group summary for global admin oversight */

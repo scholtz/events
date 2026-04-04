@@ -11,6 +11,7 @@ import {
   saveTrendVariant,
   calendarTrendVariant,
   daysUntilStart,
+  daysSincePublished,
   eventRecommendationType,
   eventRecommendationVariant,
   type TrendVariant,
@@ -45,6 +46,7 @@ function makeItem(overrides: Partial<EventAnalyticsItem> = {}): EventAnalyticsIt
     domainSlug: 'tech',
     language: 'en',
     timezone: 'Europe/London',
+    publishedAtUtc: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), // published 30 days ago
     ...overrides,
   }
 }
@@ -130,6 +132,33 @@ describe('daysUntilStart', () => {
   })
 })
 
+// ── daysSincePublished ───────────────────────────────────────────────────────
+
+describe('daysSincePublished', () => {
+  it('returns 0 when published today', () => {
+    const now = new Date('2026-01-10T12:00:00Z')
+    const published = '2026-01-10T08:00:00Z' // same day
+    expect(daysSincePublished(published, now)).toBe(0)
+  })
+
+  it('returns 7 when published exactly 7 days ago', () => {
+    const now = new Date('2026-01-10T00:00:00Z')
+    const published = '2026-01-03T00:00:00Z'
+    expect(daysSincePublished(published, now)).toBe(7)
+  })
+
+  it('returns 30 when published 30 days ago', () => {
+    const now = new Date('2026-01-31T00:00:00Z')
+    const published = '2026-01-01T00:00:00Z'
+    expect(daysSincePublished(published, now)).toBe(30)
+  })
+
+  it('returns MAX_SAFE_INTEGER when publishedAtUtc is null', () => {
+    const now = new Date('2026-01-10T00:00:00Z')
+    expect(daysSincePublished(null, now)).toBe(Number.MAX_SAFE_INTEGER)
+  })
+})
+
 // ── eventRecommendationType ──────────────────────────────────────────────────
 
 describe('eventRecommendationType', () => {
@@ -175,12 +204,67 @@ describe('eventRecommendationType', () => {
 
     it('returns "publishedNoSaves" when event starts in more than 7 days and has no saves', () => {
       const far = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString()
+      // Published 30 days ago (default from makeItem), so NOT newly published → publishedNoSaves
       expect(
         eventRecommendationType(
           makeItem({ status: 'PUBLISHED', totalInterestedCount: 0, startsAtUtc: far }),
           now,
         ),
       ).toBe('publishedNoSaves')
+    })
+
+    it('returns "publishedNewlyPublished" when event was published within 7 days, has no saves, and starts in more than 7 days', () => {
+      const far = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString()
+      const recentlyPublished = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString() // 2 days ago
+      expect(
+        eventRecommendationType(
+          makeItem({ status: 'PUBLISHED', totalInterestedCount: 0, startsAtUtc: far, publishedAtUtc: recentlyPublished }),
+          now,
+        ),
+      ).toBe('publishedNewlyPublished')
+    })
+
+    it('returns "publishedNewlyPublished" when published exactly 7 days ago', () => {
+      const far = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString()
+      const exactly7DaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
+      expect(
+        eventRecommendationType(
+          makeItem({ status: 'PUBLISHED', totalInterestedCount: 0, startsAtUtc: far, publishedAtUtc: exactly7DaysAgo }),
+          now,
+        ),
+      ).toBe('publishedNewlyPublished')
+    })
+
+    it('returns "publishedNoSaves" when published more than 7 days ago and has no saves', () => {
+      const far = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString()
+      const olderPublished = new Date(now.getTime() - 8 * 24 * 60 * 60 * 1000).toISOString() // 8 days ago
+      expect(
+        eventRecommendationType(
+          makeItem({ status: 'PUBLISHED', totalInterestedCount: 0, startsAtUtc: far, publishedAtUtc: olderPublished }),
+          now,
+        ),
+      ).toBe('publishedNoSaves')
+    })
+
+    it('returns "publishedNoSaves" when publishedAtUtc is null and has no saves', () => {
+      const far = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString()
+      expect(
+        eventRecommendationType(
+          makeItem({ status: 'PUBLISHED', totalInterestedCount: 0, startsAtUtc: far, publishedAtUtc: null }),
+          now,
+        ),
+      ).toBe('publishedNoSaves')
+    })
+
+    it('publishedApproachingSoon takes priority over publishedNewlyPublished when starting within 7 days', () => {
+      const soon = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString()
+      const recentlyPublished = new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000).toISOString()
+      expect(
+        eventRecommendationType(
+          makeItem({ status: 'PUBLISHED', totalInterestedCount: 0, startsAtUtc: soon, publishedAtUtc: recentlyPublished }),
+          now,
+        ),
+      ).toBe('publishedApproachingSoon')
     })
 
     it('returns "publishedNoSaves" for a past event that still has no saves', () => {

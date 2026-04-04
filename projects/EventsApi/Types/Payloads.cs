@@ -33,7 +33,14 @@ public sealed record EventAnalyticsItem(
     /// <summary>BCP 47 language tag for the primary language of the event.</summary>
     string? Language,
     /// <summary>IANA timezone identifier for the event.</summary>
-    string? Timezone);
+    string? Timezone,
+    /// <summary>
+    /// UTC timestamp when the event was published (status changed to PUBLISHED).
+    /// Null for events that have never been published or were imported before this field was tracked.
+    /// Used by the frontend to distinguish newly-published events (not yet enough time to accumulate
+    /// saves) from events that have been live for a while with no engagement.
+    /// </summary>
+    DateTime? PublishedAtUtc);
 
 public sealed record DashboardOverview(
     int TotalSubmittedEvents,

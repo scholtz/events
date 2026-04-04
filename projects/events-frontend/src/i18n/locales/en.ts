@@ -448,6 +448,8 @@ export default {
       'Your event is awaiting moderator review. No action is needed right now — you will be notified once it is approved or returned with feedback.',
     recommendationPublishedNoSaves:
       'No saves yet for this event. Try sharing the link, improving the title clarity, or strengthening the description and venue details.',
+    recommendationPublishedNewlyPublished:
+      'Your event was just published. It may take a few days for saves to come in — share the link in your community channels to get early momentum.',
     recommendationPublishedApproachingSoon:
       'This event starts in less than a week and has no saves yet. Share the link now in community channels, social media, or domain-specific groups to reach attendees before it begins.',
     recommendationPublishedMissingLanguage:
