@@ -14030,6 +14030,70 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task UpdateScheduledFeaturedEvent_DisplayLabelTooLong_ReturnsError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid scheduleId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("sfe-update-label@example.com", "Update Label Admin", role: ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var domain = CreateDomain("Update Label Hub", "update-label-hub");
+            var ev = CreateEvent("Update Label Event", "update-label-ev", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(3), domain, admin);
+            var schedule = new ScheduledFeaturedEvent
+            {
+                DomainId = domain.Id,
+                EventId = ev.Id,
+                StartsAtUtc = DateTime.UtcNow.AddDays(1),
+                EndsAtUtc = DateTime.UtcNow.AddDays(5),
+                Priority = 0,
+                IsEnabled = true,
+                DisplayLabel = "Original Label",
+            };
+            scheduleId = schedule.Id;
+            dbContext.Users.Add(admin);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.Add(ev);
+            dbContext.Set<ScheduledFeaturedEvent>().Add(schedule);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+            "Bearer", await CreateTokenAsync(factory, adminId));
+
+        var tooLongLabel = new string('Y', 201);
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation UpdateLongLabel($input: UpdateScheduledFeaturedEventInput!) {
+                  updateScheduledFeaturedEvent(input: $input) { id displayLabel }
+                }
+                """,
+            variables = new
+            {
+                input = new
+                {
+                    scheduleId,
+                    startsAtUtc = DateTime.UtcNow.AddDays(1),
+                    endsAtUtc = DateTime.UtcNow.AddDays(5),
+                    priority = 0,
+                    isEnabled = true,
+                    displayLabel = tooLongLabel
+                }
+            }
+        });
+
+        var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        var code = errors[0].GetProperty("extensions").GetProperty("code").GetString();
+        Assert.Equal("DISPLAY_LABEL_TOO_LONG", code);
+    }
+
+    [Fact]
     public async Task ScheduleFeaturedEvent_ExceedsDomainLimit_ReturnsError()
     {
         await using var factory = new EventsApiWebApplicationFactory();

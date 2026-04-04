@@ -698,6 +698,11 @@ public sealed class Mutation
                 "INVALID_TIME_RANGE");
         }
 
+        if (input.DisplayLabel is { Length: > 200 })
+        {
+            throw CreateError("DisplayLabel must not exceed 200 characters.", "DISPLAY_LABEL_TOO_LONG");
+        }
+
         schedule.StartsAtUtc = startsAtUtc;
         schedule.EndsAtUtc = endsAtUtc;
         schedule.Priority = input.Priority;
