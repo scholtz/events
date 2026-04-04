@@ -221,7 +221,6 @@ const emptyStateRecoveryAction = computed<{ label: string; action: () => void } 
   if (!suggestion) return null
 
   const { label, actionKey } = suggestion
-  const filters = eventsStore.filters
 
   switch (actionKey) {
     case 'clearDates':
@@ -244,9 +243,6 @@ const emptyStateRecoveryAction = computed<{ label: string; action: () => void } 
     case 'clearDomain':
       return { label, action: () => eventsStore.setFilters({ domain: '' }) }
     default:
-      // Satisfy TypeScript exhaustiveness — filters value is read above to
-      // prevent a "declared but never read" lint warning.
-      void filters
       return null
   }
 })

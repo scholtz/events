@@ -362,6 +362,10 @@ async function updateUserRole(userId: string, role: 'ADMIN' | 'CONTRIBUTOR') {
   }
 }
 
+// Use `watch` with `{ immediate: true }` instead of `onMounted` so that the
+// initial fetch is deferred until `auth.isAdmin` is actually true.  `onMounted`
+// fires before `checkAuth()` resolves, causing `fetchAdminOverview` to return
+// early on its `if (!auth.isAdmin) return` guard and never load the data.
 watch(
   () => auth.isAdmin,
   (isAdmin) => {
