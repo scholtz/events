@@ -645,8 +645,8 @@ test.describe('Hub Manage page (/hub/:slug/manage)', () => {
 
   test('active scheduled event appears featured on category landing page', async ({ page }) => {
     const domain = makeTechDomain()
-    const scheduledEvent = makeApprovedEvent({ name: 'Scheduled Hub Event', domainId: domain.id })
-    const staticEvent = makeApprovedEvent({ name: 'Static Hub Event', domainId: domain.id })
+    const scheduledEvent = makeApprovedEvent({ id: 'ev-scheduled', name: 'Scheduled Hub Event', domainId: domain.id })
+    const staticEvent = makeApprovedEvent({ id: 'ev-static', name: 'Static Hub Event', domainId: domain.id })
     const now = new Date()
     setupMockApi(page, {
       domains: [domain],
@@ -679,8 +679,8 @@ test.describe('Hub Manage page (/hub/:slug/manage)', () => {
 
   test('fallback to static featured events when no active schedule', async ({ page }) => {
     const domain = makeTechDomain()
-    const staticEvent = makeApprovedEvent({ name: 'Static Featured Event', domainId: domain.id })
-    const expiredEvent = makeApprovedEvent({ name: 'Expired Scheduled Event', domainId: domain.id })
+    const staticEvent = makeApprovedEvent({ id: 'ev-static', name: 'Static Featured Event', domainId: domain.id })
+    const expiredEvent = makeApprovedEvent({ id: 'ev-expired', name: 'Expired Scheduled Event', domainId: domain.id })
     const now = new Date()
     setupMockApi(page, {
       domains: [domain],
@@ -713,8 +713,8 @@ test.describe('Hub Manage page (/hub/:slug/manage)', () => {
   test('disabled schedule shows Disabled badge and does not appear on category page', async ({ page }) => {
     const admin = makeAdminUser()
     const domain = makeTechDomain()
-    const disabledEvent = makeApprovedEvent({ name: 'Disabled Schedule Event', domainId: domain.id })
-    const staticEvent = makeApprovedEvent({ name: 'Static Fallback Event', domainId: domain.id })
+    const disabledEvent = makeApprovedEvent({ id: 'ev-disabled', name: 'Disabled Schedule Event', domainId: domain.id })
+    const staticEvent = makeApprovedEvent({ id: 'ev-static', name: 'Static Fallback Event', domainId: domain.id })
     const now = new Date()
     const sfe: MockScheduledFeaturedEvent = {
       id: 'sfe-disabled-1',
@@ -742,9 +742,36 @@ test.describe('Hub Manage page (/hub/:slug/manage)', () => {
     // Management UI shows the entry with Disabled badge
     await expect(page.locator('.hub-schedule-event-name', { hasText: 'Disabled Schedule Event' })).toBeVisible()
     await expect(page.locator('.hub-schedule-disabled-badge')).toBeVisible()
+  })
+
+  test('disabled schedule does not appear as featured on category page (falls back to static)', async ({ page }) => {
+    const domain = makeTechDomain()
+    const disabledEvent = makeApprovedEvent({ id: 'ev-disabled', name: 'Disabled Schedule Event', domainId: domain.id })
+    const staticEvent = makeApprovedEvent({ id: 'ev-static', name: 'Static Fallback Event', domainId: domain.id })
+    const now = new Date()
+    setupMockApi(page, {
+      domains: [domain],
+      events: [disabledEvent, staticEvent],
+      featuredEvents: [{ domainSlug: domain.slug, eventId: staticEvent.id, displayOrder: 0 }],
+      scheduledFeaturedEvents: [
+        {
+          id: 'sfe-disabled-cat',
+          domainId: domain.id,
+          eventId: disabledEvent.id,
+          startsAtUtc: new Date(now.getTime() - 3600_000).toISOString(),
+          endsAtUtc: new Date(now.getTime() + 86400_000).toISOString(),
+          priority: 0,
+          isEnabled: false,
+          displayLabel: null,
+          createdAtUtc: now.toISOString(),
+          createdByUserId: null,
+        },
+      ],
+    })
+
+    await page.goto('/category/technology')
 
     // Category page falls back to static — disabled schedule is ignored
-    await page.goto('/category/technology')
     const featuredSection = page.locator('.featured-section')
     await expect(featuredSection).toBeVisible()
     await expect(featuredSection.locator('.event-card', { hasText: 'Static Fallback Event' })).toBeVisible()
@@ -826,5 +853,52 @@ test.describe('Hub Manage page (/hub/:slug/manage)', () => {
     // Edit form closes and disabled badge appears
     await expect(page.locator('.hub-schedule-edit-form')).toBeHidden()
     await expect(page.locator('.hub-schedule-disabled-badge')).toBeVisible()
+  })
+
+  test('lower-priority schedule takes precedence over higher-priority on category page', async ({ page }) => {
+    const domain = makeTechDomain()
+    const highPriorityEvent = makeApprovedEvent({ id: 'ev-high', name: 'High Priority Event', domainId: domain.id })
+    const lowPriorityEvent = makeApprovedEvent({ id: 'ev-low', name: 'Low Priority Event', domainId: domain.id })
+    const now = new Date()
+    setupMockApi(page, {
+      domains: [domain],
+      events: [highPriorityEvent, lowPriorityEvent],
+      scheduledFeaturedEvents: [
+        {
+          id: 'sfe-prio-high',
+          domainId: domain.id,
+          eventId: highPriorityEvent.id,
+          startsAtUtc: new Date(now.getTime() - 3600_000).toISOString(),
+          endsAtUtc: new Date(now.getTime() + 86400_000).toISOString(),
+          priority: 5,
+          isEnabled: true,
+          displayLabel: null,
+          createdAtUtc: now.toISOString(),
+          createdByUserId: null,
+        },
+        {
+          id: 'sfe-prio-low',
+          domainId: domain.id,
+          eventId: lowPriorityEvent.id,
+          startsAtUtc: new Date(now.getTime() - 3600_000).toISOString(),
+          endsAtUtc: new Date(now.getTime() + 86400_000).toISOString(),
+          priority: 0,
+          isEnabled: true,
+          displayLabel: null,
+          createdAtUtc: now.toISOString(),
+          createdByUserId: null,
+        },
+      ],
+    })
+
+    await page.goto('/category/technology')
+
+    // The lower-priority value (0) should appear first in the featured section
+    const featuredSection = page.locator('.featured-section')
+    await expect(featuredSection).toBeVisible()
+    const cards = featuredSection.locator('.event-card')
+    await expect(cards).toHaveCount(2)
+    await expect(cards.first()).toContainText('Low Priority Event')
+    await expect(cards.nth(1)).toContainText('High Priority Event')
   })
 })
