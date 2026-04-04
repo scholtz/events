@@ -625,6 +625,15 @@ public sealed class Query
 
         // Engagement signal: events saved by more attendees surface above zero-save events
         // with identical completeness. Privacy-safe: only aggregate counts are used.
+        //
+        // Implementation note: EF Core translates the Count() subquery below into a single
+        // SQL statement with a correlated COUNT subquery in the ORDER BY clause — not N+1
+        // round-trips. The generated SQL is equivalent to:
+        //   ORDER BY (SELECT COUNT(*) FROM FavoriteEvents WHERE EventId = Events.Id) DESC
+        // For catalogs with a large number of events (thousands+), a pre-grouped LEFT JOIN
+        // (GROUP BY EventId then JOIN) would generate a more efficient execution plan.
+        // The current approach is correct and avoids extra round-trips for the catalog sizes
+        // this application targets.
         if (favoriteEventsSource != null)
         {
             return sorted
