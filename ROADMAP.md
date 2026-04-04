@@ -61,7 +61,7 @@ The codebase already implements a meaningful part of the platform. This roadmap 
 
 ### What is not implemented yet
 
-- Full sync from external event platforms such as Meetup or Luma (external source claims and preview are implemented; automated background sync is not)
+- Full sync from external event platforms such as Meetup or Luma (external source claims, preview-and-import, automated background sync, and incremental update on re-sync are all implemented)
 - Comments, discussion forums, or real-time collaboration features
 - Ticketing, subscriptions, or other monetization workflows
 
@@ -201,7 +201,7 @@ Community groups are now a first-class feature on the platform. The next expansi
 
 ### Expansion areas
 
-- Automated background sync from Meetup and Luma (external source claim infrastructure is in place; background job scheduling is not)
+- Automated background sync from Meetup and Luma (implemented: hourly background sync, idempotent reconciliation with update-on-re-sync, per-claim sync health status, manual retry, and auto-sync toggle)
 - Social and collaborative features such as comments, discussion, or shared curation
 - Partner integrations for ticketing, venues, or distribution
 

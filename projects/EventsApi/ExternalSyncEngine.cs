@@ -58,7 +58,7 @@ public sealed class ExternalSyncEngine(
             claim.LastSyncAtUtc = now;
             claim.LastSyncError = $"Failed to fetch events from {claim.SourceType}: {ex.Message}";
             await _dbContext.SaveChangesAsync(cancellationToken);
-            return new SyncResult(0, 0, 1, $"Sync failed: {ex.Message}");
+            return new SyncResult(0, 0, 0, 1, 0, $"Sync failed: {ex.Message}");
         }
 
         var defaultDomain = await _dbContext.Domains.FirstOrDefaultAsync(
@@ -72,22 +72,56 @@ public sealed class ExternalSyncEngine(
             claim.LastSyncAtUtc = now;
             claim.LastSyncError = "No active domain found to assign imported events.";
             await _dbContext.SaveChangesAsync(cancellationToken);
-            return new SyncResult(0, 0, 1, "Sync failed: no active domain.");
+            return new SyncResult(0, 0, 0, 1, 0, "Sync failed: no active domain.");
         }
 
         var importedCount = 0;
+        var updatedCount = 0;
         var skippedCount = 0;
         var errorCount = 0;
 
+        // Collect all external IDs seen in this sync to detect orphaned events afterward.
+        var seenExternalIds = new HashSet<string>(externalEvents.Count);
+
         foreach (var ext in externalEvents)
         {
-            var existingImport = await _dbContext.Events.AnyAsync(
+            seenExternalIds.Add(ext.ExternalId);
+
+            var existingEvent = await _dbContext.Events.SingleOrDefaultAsync(
                 e => e.ExternalSourceClaimId == claimId && e.ExternalSourceEventId == ext.ExternalId,
                 cancellationToken);
 
-            if (existingImport)
+            if (existingEvent is not null)
             {
-                skippedCount++;
+                // Update the existing event with the latest upstream data.
+                // Moderation fields (Status, Slug, DomainId) are intentionally preserved.
+                try
+                {
+                    ApplyUpstreamUpdate(existingEvent, ext);
+                    await _dbContext.SaveChangesAsync(cancellationToken);
+                    updatedCount++;
+
+                    _logger.LogDebug(
+                        "External sync for claim {ClaimId}: updated event '{ExternalId}'.",
+                        claimId, ext.ExternalId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex,
+                        "External sync for claim {ClaimId}: failed to update event '{ExternalId}'.",
+                        claimId, ext.ExternalId);
+
+                    _dbContext.ChangeTracker.DetectChanges();
+                    foreach (var entry in _dbContext.ChangeTracker.Entries()
+                                 .Where(e => e.State == EntityState.Modified)
+                                 .ToList())
+                    {
+                        entry.State = EntityState.Unchanged;
+                    }
+
+                    errorCount++;
+                }
+
                 continue;
             }
 
@@ -162,7 +196,34 @@ public sealed class ExternalSyncEngine(
             }
         }
 
-        var summary = BuildSyncSummary(importedCount, skippedCount, errorCount);
+        // Detect events that were previously imported from this claim but no longer appear in
+        // the upstream feed (cancelled, deleted, or unlisted on the source platform).
+        // These events are NOT deleted from Biatec Events — they are preserved as-is to avoid
+        // silent data loss. The count is surfaced in the result so administrators can review.
+        var orphanedCount = 0;
+        if (seenExternalIds.Count > 0)
+        {
+            // Only check for orphans when the upstream returned at least one event.
+            // An empty feed is more likely a transient outage than a true mass-removal.
+            // Use a list for EF Core IN-clause translation; seenExternalIds is bounded by the
+            // adapter's fetch limit so memory overhead is predictable.
+            var seenIdList = seenExternalIds.ToList();
+            orphanedCount = await _dbContext.Events
+                .Where(e => e.ExternalSourceClaimId == claimId &&
+                            e.ExternalSourceEventId != null &&
+                            !seenIdList.Contains(e.ExternalSourceEventId!))
+                .CountAsync(cancellationToken);
+
+            if (orphanedCount > 0)
+            {
+                _logger.LogInformation(
+                    "External sync for claim {ClaimId}: {OrphanedCount} previously imported event(s) " +
+                    "no longer appear in the upstream feed and have been preserved as-is.",
+                    claimId, orphanedCount);
+            }
+        }
+
+        var summary = BuildSyncSummary(importedCount, updatedCount, skippedCount, errorCount, orphanedCount);
 
         claim.LastSyncAtUtc = now;
         claim.LastSyncOutcome = summary;
@@ -181,7 +242,7 @@ public sealed class ExternalSyncEngine(
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        return new SyncResult(importedCount, skippedCount, errorCount, summary);
+        return new SyncResult(importedCount, updatedCount, skippedCount, errorCount, orphanedCount, summary);
     }
 
     private void DetachAddedEntries()
@@ -194,15 +255,93 @@ public sealed class ExternalSyncEngine(
         }
     }
 
-    internal static string BuildSyncSummary(int imported, int skipped, int errors)
+    internal static string BuildSyncSummary(int imported, int updated, int skipped, int errors, int orphaned = 0)
     {
         var parts = new List<string>();
         parts.Add(imported == 1 ? "Imported 1 event." : $"Imported {imported} events.");
+        if (updated > 0)
+            parts.Add(updated == 1 ? "Updated 1 event." : $"Updated {updated} events.");
         if (skipped > 0)
-            parts.Add(skipped == 1 ? "Skipped 1 (already imported)." : $"Skipped {skipped} (already imported).");
+            parts.Add(skipped == 1 ? "Skipped 1 (concurrent duplicate)." : $"Skipped {skipped} (concurrent duplicates).");
         if (errors > 0)
             parts.Add(errors == 1 ? "1 event failed validation." : $"{errors} events failed validation.");
+        if (orphaned > 0)
+            parts.Add(orphaned == 1
+                ? "1 previously imported event no longer appears upstream (preserved)."
+                : $"{orphaned} previously imported events no longer appear upstream (preserved).");
         return string.Join(" ", parts);
+    }
+
+    /// <summary>
+    /// Applies upstream event data to an existing imported event, preserving moderation fields.
+    /// </summary>
+    /// <remarks>
+    /// <para><strong>Source-of-truth fields (updated from upstream):</strong>
+    /// Name, Description, EventUrl, VenueName, AddressLine1, City, CountryCode,
+    /// Latitude, Longitude, StartsAtUtc, EndsAtUtc, IsFree, PriceAmount, CurrencyCode, Language.</para>
+    /// <para><strong>Date-update rules:</strong>
+    /// If upstream provides both <c>StartsAtUtc</c> and <c>EndsAtUtc</c>, both are applied verbatim.
+    /// If upstream provides only <c>StartsAtUtc</c> (no <c>EndsAtUtc</c>), the existing duration is
+    /// preserved: the new end time is computed as <c>newStart + (oldEnd − oldStart)</c>.
+    /// This prevents a partial upstream update from silently overwriting a legitimate stored duration
+    /// with a 2-hour default that could shorten workshops, conferences, or multi-day events.
+    /// If only <c>EndsAtUtc</c> is provided (without <c>StartsAtUtc</c>), the end time is updated and
+    /// the start time is left unchanged.</para>
+    /// <para><strong>Locally curated fields (never overwritten by upstream):</strong>
+    /// Status, Slug, AdminNotes, DomainId, SubmittedByUserId.</para>
+    /// </remarks>
+    internal static void ApplyUpstreamUpdate(CatalogEvent catalogEvent, ExternalEventData ext)
+    {
+        if (!string.IsNullOrWhiteSpace(ext.Name))
+            catalogEvent.Name = ext.Name.Trim();
+        if (!string.IsNullOrWhiteSpace(ext.Description))
+            catalogEvent.Description = ext.Description.Trim();
+        if (ext.EventUrl is not null)
+            catalogEvent.EventUrl = ext.EventUrl.Trim();
+        if (ext.VenueName is not null)
+            catalogEvent.VenueName = ext.VenueName.Trim();
+        if (ext.AddressLine1 is not null)
+            catalogEvent.AddressLine1 = ext.AddressLine1.Trim();
+        if (ext.City is not null)
+            catalogEvent.City = ext.City.Trim();
+        if (!string.IsNullOrWhiteSpace(ext.CountryCode))
+            catalogEvent.CountryCode = ext.CountryCode.Trim().ToUpperInvariant();
+        if (ext.Latitude is not null)
+            catalogEvent.Latitude = ext.Latitude.Value;
+        if (ext.Longitude is not null)
+            catalogEvent.Longitude = ext.Longitude.Value;
+        if (ext.StartsAtUtc is not null)
+        {
+            var newStart = EnsureUtc(ext.StartsAtUtc.Value);
+            if (ext.EndsAtUtc is not null)
+            {
+                // Both start and end provided — apply verbatim.
+                catalogEvent.StartsAtUtc = newStart;
+                catalogEvent.EndsAtUtc = EnsureUtc(ext.EndsAtUtc.Value);
+            }
+            else
+            {
+                // Only start provided — preserve the prior duration to avoid overwriting
+                // a legitimate end time with a guessed 2-hour default.
+                var priorDuration = catalogEvent.EndsAtUtc - catalogEvent.StartsAtUtc;
+                catalogEvent.StartsAtUtc = newStart;
+                catalogEvent.EndsAtUtc = newStart + priorDuration;
+            }
+        }
+        else if (ext.EndsAtUtc is not null)
+        {
+            // Only end time provided — update it without touching start.
+            catalogEvent.EndsAtUtc = EnsureUtc(ext.EndsAtUtc.Value);
+        }
+        if (ext.IsFree is not null)
+            catalogEvent.IsFree = ext.IsFree.Value;
+        if (ext.PriceAmount is not null)
+            catalogEvent.PriceAmount = ext.PriceAmount;
+        if (!string.IsNullOrWhiteSpace(ext.CurrencyCode))
+            catalogEvent.CurrencyCode = NormalizeCurrencyCode(ext.CurrencyCode);
+        if (ext.Language is not null)
+            catalogEvent.Language = ext.Language;
+        catalogEvent.UpdatedAtUtc = DateTime.UtcNow;
     }
 
     private static DateTime EnsureUtc(DateTime value)

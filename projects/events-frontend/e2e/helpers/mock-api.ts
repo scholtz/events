@@ -247,6 +247,11 @@ export type MockState = {
   externalSourceClaims: MockExternalSourceClaim[]
   /** Keyed by claimId: the preview candidates returned by previewExternalEvents. */
   externalEventPreviews: Record<string, MockExternalEventPreview[]>
+  /**
+   * When true the next TriggerExternalSync call will return a network/adapter error
+   * instead of a success result. Automatically reset to false after one use.
+   */
+  forceSyncError: boolean
   vapidPublicKey: string
   currentUserId: string | null
   currentToken: string | null
@@ -276,6 +281,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
     communityGroupEvents: initial?.communityGroupEvents ?? [],
     externalSourceClaims: initial?.externalSourceClaims ?? [],
     externalEventPreviews: initial?.externalEventPreviews ?? {},
+    forceSyncError: initial?.forceSyncError ?? false,
     vapidPublicKey: initial?.vapidPublicKey ?? 'SGVsbG9QbGF5d3JpZ2h0S2V5',
     currentUserId: initial?.currentUserId ?? null,
     currentToken: initial?.currentToken ?? null,
@@ -1996,6 +2002,19 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         })
         return
       }
+      // Allow tests to inject a recoverable failure on the next sync call.
+      if (state.forceSyncError) {
+        state.forceSyncError = false // reset after one use
+        const errNow = new Date().toISOString()
+        claim.lastSyncAtUtc = errNow
+        claim.lastSyncError = 'Failed to fetch events from Meetup: 503 Service Unavailable'
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Failed to fetch events from Meetup: 503 Service Unavailable', extensions: { code: 'SYNC_FAILED' } }] }),
+        })
+        return
+      }
       // Stub sync — no events from adapter
       const now = new Date().toISOString()
       claim.lastSyncAtUtc = now
@@ -2004,7 +2023,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       claim.lastSyncError = null
       claim.lastSyncImportedCount = 0
       claim.lastSyncSkippedCount = 0
-      const result = { importedCount: 0, skippedCount: 0, errorCount: 0, summary: 'Imported 0 events.' }
+      const result = { importedCount: 0, updatedCount: 0, skippedCount: 0, errorCount: 0, orphanedCount: 0, summary: 'Imported 0 events.' }
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -2101,7 +2120,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       claim.lastSyncOutcome = summary
       claim.lastSyncImportedCount = imported
       claim.lastSyncSkippedCount = skipped
-      const result = { importedCount: imported, skippedCount: skipped, errorCount: 0, summary }
+      const result = { importedCount: imported, updatedCount: 0, skippedCount: skipped, errorCount: 0, orphanedCount: 0, summary }
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

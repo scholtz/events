@@ -275,7 +275,7 @@ export const useCommunitiesStore = defineStore('communities', () => {
     const data = await gqlRequest<{ triggerExternalSync: SyncResult }>(
       `mutation TriggerExternalSync($claimId: UUID!) {
         triggerExternalSync(claimId: $claimId) {
-          importedCount skippedCount errorCount summary
+          importedCount updatedCount skippedCount errorCount orphanedCount summary
         }
       }`,
       { claimId },
@@ -317,7 +317,7 @@ export const useCommunitiesStore = defineStore('communities', () => {
     const data = await gqlRequest<{ importExternalEvents: SyncResult }>(
       `mutation ImportExternalEvents($claimId: UUID!, $input: ImportExternalEventsInput!) {
         importExternalEvents(claimId: $claimId, input: $input) {
-          importedCount skippedCount errorCount summary
+          importedCount updatedCount skippedCount errorCount orphanedCount summary
         }
       }`,
       { claimId, input: { externalIds } },

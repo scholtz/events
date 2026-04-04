@@ -725,6 +725,13 @@ function memberCountText(count: number): string {
                     <span v-if="syncResults[source.id]" class="sync-result-badge">
                       {{ syncResults[source.id]!.summary }}
                     </span>
+                    <span
+                      v-if="syncResults[source.id] && syncResults[source.id]!.orphanedCount > 0"
+                      class="sync-orphaned-notice"
+                      role="note"
+                    >
+                      {{ t('community.syncOrphanedNotice', { count: syncResults[source.id]!.orphanedCount }) }}
+                    </span>
                     <span v-if="syncErrors[source.id]" class="sync-error-text" role="alert">
                       {{ syncErrors[source.id] }}
                     </span>
@@ -1358,6 +1365,17 @@ function memberCountText(count: number): string {
 .sync-error-text {
   font-size: 0.8125rem;
   color: #b91c1c;
+}
+
+.sync-orphaned-notice {
+  display: block;
+  font-size: 0.8125rem;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  margin-top: 0.25rem;
 }
 
 .source-actions {
