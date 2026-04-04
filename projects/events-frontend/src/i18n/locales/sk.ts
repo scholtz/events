@@ -193,6 +193,8 @@ export default {
     location: 'Miesto',
     locationTbd: 'Miesto bude upresnené',
     priceLbl: 'Cena',
+    language: 'Jazyk',
+    timezone: 'Časová zóna',
     viewDetails: 'Zobraziť detaily',
     eventLink: 'Odkaz na udalosť ↗',
     map: 'Mapa ↗',

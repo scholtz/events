@@ -124,7 +124,7 @@ public sealed class Query
             query = query.Where(catalogEvent => catalogEvent.Timezone != null && catalogEvent.Timezone.ToLower() == timezone);
         }
 
-        return await ApplySorting(query, filter?.SortBy, normalizedSearchText).ToListAsync(cancellationToken);
+        return await ApplySorting(query, filter?.SortBy, normalizedSearchText, dbContext.FavoriteEvents).ToListAsync(cancellationToken);
     }
 
     public async Task<CatalogEvent?> GetEventBySlugAsync(
@@ -576,6 +576,7 @@ public sealed class Query
         IQueryable<CatalogEvent> query,
         EventSortOption? sortBy,
         string? normalizedSearchText,
+        IQueryable<FavoriteEvent>? favoriteEventsSource = null,
         DateTime? utcNow = null)
     {
         var now = utcNow ?? DateTime.UtcNow;
@@ -591,19 +592,48 @@ public sealed class Query
                 // Within the same match tier: upcoming events appear before past events
                 .ThenBy(catalogEvent => catalogEvent.StartsAtUtc < now ? 1 : 0)
                 .ThenBy(catalogEvent => catalogEvent.StartsAtUtc),
-            _ => query
-                // Upcoming events (starts today or later) before past events
-                .OrderBy(catalogEvent => catalogEvent.StartsAtUtc < now ? 1 : 0)
-                // Within each group: ascending by start date (nearest upcoming first; oldest past first)
-                .ThenBy(catalogEvent => catalogEvent.StartsAtUtc)
-                // Tiebreaker: prefer events with more complete schedule data (venue, city, event URL)
-                // Each present field contributes 1 point (max 3); higher completeness ranks first.
-                .ThenByDescending(catalogEvent =>
-                    (string.IsNullOrEmpty(catalogEvent.City) ? 0 : 1) +
-                    (string.IsNullOrEmpty(catalogEvent.VenueName) ? 0 : 1) +
-                    (string.IsNullOrEmpty(catalogEvent.EventUrl) ? 0 : 1))
-                .ThenBy(catalogEvent => catalogEvent.Name)
+            _ => BuildUpcomingSort(query, now, favoriteEventsSource),
         };
+    }
+
+    /// <summary>
+    /// Constructs the default UPCOMING sort with deterministic, documented heuristics:
+    /// 1. Upcoming events (starts at or after now) before past events.
+    /// 2. Within each bucket: ascending by start date (nearest upcoming first).
+    /// 3. Schedule/venue completeness tiebreaker — events with more filled-in fields
+    ///    (city, venue name, event URL) rank higher than sparse listings.
+    /// 4. Engagement signal — events saved by more attendees surface above zero-save
+    ///    events with identical completeness, rewarding well-prepared submissions.
+    /// 5. Alphabetical name as a final deterministic tiebreaker.
+    /// </summary>
+    private static IOrderedQueryable<CatalogEvent> BuildUpcomingSort(
+        IQueryable<CatalogEvent> query,
+        DateTime now,
+        IQueryable<FavoriteEvent>? favoriteEventsSource)
+    {
+        var sorted = query
+            // Upcoming events (starts today or later) before past events
+            .OrderBy(catalogEvent => catalogEvent.StartsAtUtc < now ? 1 : 0)
+            // Within each group: ascending by start date (nearest upcoming first; oldest past first)
+            .ThenBy(catalogEvent => catalogEvent.StartsAtUtc)
+            // Tiebreaker: prefer events with more complete schedule data (venue, city, event URL)
+            // Each present field contributes 1 point (max 3); higher completeness ranks first.
+            .ThenByDescending(catalogEvent =>
+                (string.IsNullOrEmpty(catalogEvent.City) ? 0 : 1) +
+                (string.IsNullOrEmpty(catalogEvent.VenueName) ? 0 : 1) +
+                (string.IsNullOrEmpty(catalogEvent.EventUrl) ? 0 : 1));
+
+        // Engagement signal: events saved by more attendees surface above zero-save events
+        // with identical completeness. Privacy-safe: only aggregate counts are used.
+        if (favoriteEventsSource != null)
+        {
+            return sorted
+                .ThenByDescending(catalogEvent =>
+                    favoriteEventsSource.Count(f => f.EventId == catalogEvent.Id))
+                .ThenBy(catalogEvent => catalogEvent.Name);
+        }
+
+        return sorted.ThenBy(catalogEvent => catalogEvent.Name);
     }
 
     private static string? NormalizeFilterValue(string? value)

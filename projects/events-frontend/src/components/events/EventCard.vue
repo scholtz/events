@@ -53,6 +53,22 @@ const attendanceModeLabel = computed(() => {
   return t(`attendanceMode.${props.event.attendanceMode}`)
 })
 
+/**
+ * Show language badge when the event has an explicit language set.
+ * Helps multilingual users immediately recognise events in their language.
+ */
+const eventLanguage = computed(() => props.event.language ?? null)
+
+/**
+ * Show timezone for online and hybrid events when the timezone is specified.
+ * In-person events don't need this — venue location implies timezone well enough.
+ */
+const eventTimezone = computed(() => {
+  const mode = props.event.attendanceMode
+  if (mode !== 'ONLINE' && mode !== 'HYBRID') return null
+  return props.event.timezone ?? null
+})
+
 const isFavorited = computed(() => favoritesStore.isFavorited(props.event.id))
 
 function handleResultClick() {
@@ -124,6 +140,14 @@ async function handleFavoriteToggle() {
         <div class="event-detail-item">
           <dt>{{ t('eventCard.priceLbl') }}</dt>
           <dd>{{ priceSummary }}</dd>
+        </div>
+        <div v-if="eventLanguage" class="event-detail-item event-detail-language">
+          <dt>{{ t('eventCard.language') }}</dt>
+          <dd>{{ eventLanguage }}</dd>
+        </div>
+        <div v-if="eventTimezone" class="event-detail-item event-detail-timezone">
+          <dt>{{ t('eventCard.timezone') }}</dt>
+          <dd>{{ eventTimezone }}</dd>
         </div>
       </dl>
 

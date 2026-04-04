@@ -2906,3 +2906,136 @@ test.describe('Curated fallback suggestions', () => {
     await expect(page.locator('.fallback-hub-card')).toBeVisible()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Language and timezone context on event cards
+// ---------------------------------------------------------------------------
+
+test.describe('Event card language and timezone context', () => {
+  test('event card shows language row when language is set', async ({ page }) => {
+    setupMockApi(page, {
+      events: [
+        makeApprovedEvent({ id: 'e-lang', name: 'Czech Talk', slug: 'czech-talk', language: 'cs' }),
+      ],
+    })
+    await page.goto('/')
+
+    const card = page.locator('.event-card', { hasText: 'Czech Talk' })
+    await expect(card).toBeVisible()
+    await expect(card.locator('.event-detail-language')).toBeVisible()
+    await expect(card.locator('.event-detail-language')).toContainText('cs')
+  })
+
+  test('event card does not show language row when language is null', async ({ page }) => {
+    setupMockApi(page, {
+      events: [makeApprovedEvent({ id: 'e-nolang', name: 'No Language Event', slug: 'no-language', language: null })],
+    })
+    await page.goto('/')
+
+    const card = page.locator('.event-card', { hasText: 'No Language Event' })
+    await expect(card).toBeVisible()
+    await expect(card.locator('.event-detail-language')).toBeHidden()
+  })
+
+  test('online event card shows timezone row when timezone is set', async ({ page }) => {
+    setupMockApi(page, {
+      events: [
+        makeApprovedEvent({
+          id: 'e-tz',
+          name: 'Online Prague Event',
+          slug: 'online-prague-event',
+          attendanceMode: 'ONLINE',
+          timezone: 'Europe/Prague',
+        }),
+      ],
+    })
+    await page.goto('/')
+
+    const card = page.locator('.event-card', { hasText: 'Online Prague Event' })
+    await expect(card).toBeVisible()
+    await expect(card.locator('.event-detail-timezone')).toBeVisible()
+    await expect(card.locator('.event-detail-timezone')).toContainText('Europe/Prague')
+  })
+
+  test('hybrid event card shows timezone row when timezone is set', async ({ page }) => {
+    setupMockApi(page, {
+      events: [
+        makeApprovedEvent({
+          id: 'e-hybrid-tz',
+          name: 'Hybrid Berlin Event',
+          slug: 'hybrid-berlin-event',
+          attendanceMode: 'HYBRID',
+          timezone: 'Europe/Berlin',
+        }),
+      ],
+    })
+    await page.goto('/')
+
+    const card = page.locator('.event-card', { hasText: 'Hybrid Berlin Event' })
+    await expect(card).toBeVisible()
+    await expect(card.locator('.event-detail-timezone')).toBeVisible()
+    await expect(card.locator('.event-detail-timezone')).toContainText('Europe/Berlin')
+  })
+
+  test('in-person event card does not show timezone row even when timezone is set', async ({ page }) => {
+    setupMockApi(page, {
+      events: [
+        makeApprovedEvent({
+          id: 'e-inperson-tz',
+          name: 'In Person Event',
+          slug: 'in-person-event',
+          attendanceMode: 'IN_PERSON',
+          timezone: 'Europe/Prague',
+        }),
+      ],
+    })
+    await page.goto('/')
+
+    const card = page.locator('.event-card', { hasText: 'In Person Event' })
+    await expect(card).toBeVisible()
+    await expect(card.locator('.event-detail-timezone')).toBeHidden()
+  })
+
+  test('event card with both language and timezone shows both rows', async ({ page }) => {
+    setupMockApi(page, {
+      events: [
+        makeApprovedEvent({
+          id: 'e-both',
+          name: 'German Online Talk',
+          slug: 'german-online-talk',
+          attendanceMode: 'ONLINE',
+          language: 'de',
+          timezone: 'Europe/Berlin',
+        }),
+      ],
+    })
+    await page.goto('/')
+
+    const card = page.locator('.event-card', { hasText: 'German Online Talk' })
+    await expect(card).toBeVisible()
+    await expect(card.locator('.event-detail-language')).toContainText('de')
+    await expect(card.locator('.event-detail-timezone')).toContainText('Europe/Berlin')
+  })
+
+  test('language and timezone context is visible on mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    setupMockApi(page, {
+      events: [
+        makeApprovedEvent({
+          id: 'e-mobile',
+          name: 'Mobile Online Event',
+          slug: 'mobile-online-event',
+          attendanceMode: 'ONLINE',
+          language: 'sk',
+          timezone: 'Europe/Bratislava',
+        }),
+      ],
+    })
+    await page.goto('/')
+
+    const card = page.locator('.event-card', { hasText: 'Mobile Online Event' })
+    await expect(card).toBeVisible()
+    await expect(card.locator('.event-detail-language')).toBeVisible()
+    await expect(card.locator('.event-detail-timezone')).toBeVisible()
+  })
+})
