@@ -479,7 +479,7 @@ test.describe('Localized category landing page', () => {
     })
     await page.goto('/category/technology')
 
-    await expect(page.getByRole('link', { name: 'All Events' })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'All Events', exact: true })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Technology Events' })).toBeVisible()
   })
 
@@ -494,7 +494,7 @@ test.describe('Localized category landing page', () => {
     // Switch to Slovak
     await page.getByRole('combobox', { name: 'Language' }).selectOption('sk')
 
-    await expect(page.getByRole('link', { name: 'Všetky udalosti' })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Všetky udalosti', exact: true })).toBeVisible()
     await expect(page.getByRole('heading', { name: /Udalosti/ })).toBeVisible()
   })
 
@@ -509,7 +509,7 @@ test.describe('Localized category landing page', () => {
     // Switch to German
     await page.getByRole('combobox', { name: 'Language' }).selectOption('de')
 
-    await expect(page.getByRole('link', { name: 'Alle Veranstaltungen' })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Alle Veranstaltungen', exact: true })).toBeVisible()
     await expect(page.getByRole('heading', { name: /Veranstaltungen/ })).toBeVisible()
   })
 
@@ -686,6 +686,140 @@ test.describe('Calendar action localization', () => {
       page.locator('.stat-helper', {
         hasText: 'Alle bisherigen Kalenderexporte Ihrer veröffentlichten Veranstaltungen',
       }),
+    ).toBeVisible()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Localized discovery empty-state and recovery actions
+// ---------------------------------------------------------------------------
+
+test.describe('Localized discovery empty states and recovery', () => {
+  test('empty-state over-filtered message is localized in German', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      // Only an ONLINE event, so IN_PERSON filter yields empty state
+      events: [makeApprovedEvent({ id: 'e-online-de', attendanceMode: 'ONLINE' })],
+    })
+    // Set German locale before navigating so all labels load in German
+    await page.addInitScript(() => { localStorage.setItem('app_locale', 'de') })
+
+    // Navigate directly to the IN_PERSON filtered URL — no UI interaction needed
+    await page.goto('/?mode=in-person')
+
+    // German empty-state heading
+    await expect(page.getByRole('heading', { name: 'Keine Veranstaltungen gefunden' })).toBeVisible()
+    // German recovery action for mode filter
+    await expect(page.locator('.recovery-action', { hasText: 'Online-Veranstaltungen versuchen' })).toBeVisible()
+  })
+
+  test('empty-state recovery action is localized in Slovak', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-online-sk', attendanceMode: 'ONLINE' })],
+    })
+    await page.addInitScript(() => { localStorage.setItem('app_locale', 'sk') })
+
+    await page.goto('/?mode=in-person')
+
+    // Slovak recovery action for mode filter
+    await expect(page.locator('.recovery-action', { hasText: 'Vyskúšať online udalosti' })).toBeVisible()
+  })
+
+  test('low-signal notice is localized in German', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-solo-de', name: 'Solo German Event', slug: 'solo-german-event' })],
+    })
+    await page.goto('/')
+
+    await page.getByRole('combobox', { name: 'Language' }).selectOption('de')
+
+    await expect(page.locator('.low-signal-notice')).toBeVisible()
+    await expect(page.locator('.low-signal-notice')).toContainText('Bisher nur 1 Veranstaltung')
+    await expect(
+      page.locator('.low-signal-notice .low-signal-action', { hasText: 'Alle Veranstaltungen anzeigen' }),
+    ).toBeVisible()
+  })
+
+  test('low-signal notice is localized in Slovak', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-solo-sk', name: 'Solo Slovak Event', slug: 'solo-slovak-event' })],
+    })
+    await page.goto('/')
+
+    await page.getByRole('combobox', { name: 'Language' }).selectOption('sk')
+
+    await expect(page.locator('.low-signal-notice')).toBeVisible()
+    await expect(page.locator('.low-signal-notice')).toContainText('Zatiaľ len 1 udalosť')
+    await expect(
+      page.locator('.low-signal-notice .low-signal-action', { hasText: 'Zobraziť všetky udalosti' }),
+    ).toBeVisible()
+  })
+
+  test('fallback category suggestions title is localized in German', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [], // empty catalog with no filters → shows generic hub suggestions
+    })
+    await page.goto('/')
+
+    await page.getByRole('combobox', { name: 'Language' }).selectOption('de')
+
+    await expect(page.locator('.fallback-suggestions-title', { hasText: 'Veranstaltungskategorien durchsuchen' })).toBeVisible()
+  })
+
+  test('fallback category suggestions title is localized in Slovak', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [],
+    })
+    await page.goto('/')
+
+    await page.getByRole('combobox', { name: 'Language' }).selectOption('sk')
+
+    await expect(page.locator('.fallback-suggestions-title', { hasText: 'Prehľadávať kategórie udalostí' })).toBeVisible()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Localized category hub quiet state
+// ---------------------------------------------------------------------------
+
+test.describe('Localized category hub quiet state', () => {
+  test('category hub empty state heading is localized in German', async ({ page }) => {
+    setupMockApi(page, { domains: [makeTechDomain()], events: [] })
+    await page.goto('/category/technology')
+
+    await page.getByRole('combobox', { name: 'Language' }).selectOption('de')
+
+    await expect(page.getByRole('heading', { name: 'Keine bevorstehenden Veranstaltungen' })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Alle Veranstaltungen durchsuchen', exact: true })).toBeVisible()
+  })
+
+  test('category hub empty state heading is localized in Slovak', async ({ page }) => {
+    setupMockApi(page, { domains: [makeTechDomain()], events: [] })
+    await page.goto('/category/technology')
+
+    await page.getByRole('combobox', { name: 'Language' }).selectOption('sk')
+
+    await expect(page.getByRole('heading', { name: 'Žiadne nadchádzajúce udalosti' })).toBeVisible()
+  })
+
+  test('category hub low-signal notice is localized in German', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-hub-de', name: 'Hub German Event', slug: 'hub-german-event' })],
+    })
+    await page.goto('/category/technology')
+
+    await page.getByRole('combobox', { name: 'Language' }).selectOption('de')
+
+    await expect(page.locator('.low-signal-notice')).toBeVisible()
+    await expect(page.locator('.low-signal-notice')).toContainText('Bisher nur 1 Veranstaltung')
+    await expect(
+      page.locator('.low-signal-notice .low-signal-action', { hasText: 'Alle Veranstaltungen anzeigen' }),
     ).toBeVisible()
   })
 })
