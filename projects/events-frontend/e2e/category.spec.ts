@@ -830,4 +830,22 @@ test.describe('Hub navigation journey', () => {
     await page.locator('.low-signal-notice .low-signal-action').click()
     await expect(page).toHaveURL('/')
   })
+
+  test('i18n: hub page low-signal browse-all action is localized in Slovak', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-only', name: 'Solo Event', slug: 'solo-event' })],
+    })
+
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'sk')
+    })
+
+    await page.goto('/category/technology')
+
+    // Slovak translation of home.lowSignalBrowseAll
+    await expect(
+      page.locator('.low-signal-notice .low-signal-action', { hasText: 'Zobraziť všetky udalosti' }),
+    ).toBeVisible()
+  })
 })
