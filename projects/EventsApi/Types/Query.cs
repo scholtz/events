@@ -466,13 +466,15 @@ public sealed class Query
             })
             .ToList();
 
-        var totalInterestedCount = eventAnalytics
-            .Where(a => a.Status == EventStatus.Published)
-            .Sum(a => a.TotalInterestedCount);
+        var publishedAnalytics = eventAnalytics.Where(a => a.Status == EventStatus.Published).ToList();
 
-        var totalCalendarActions = eventAnalytics
-            .Where(a => a.Status == EventStatus.Published)
-            .Sum(a => a.TotalCalendarActions);
+        var totalInterestedCount = publishedAnalytics.Sum(a => a.TotalInterestedCount);
+        var totalInterestedLast7Days = publishedAnalytics.Sum(a => a.InterestedLast7Days);
+        var totalInterestedLast30Days = publishedAnalytics.Sum(a => a.InterestedLast30Days);
+
+        var totalCalendarActions = publishedAnalytics.Sum(a => a.TotalCalendarActions);
+        var totalCalendarActionsLast7Days = publishedAnalytics.Sum(a => a.CalendarActionsLast7Days);
+        var totalCalendarActionsLast30Days = publishedAnalytics.Sum(a => a.CalendarActionsLast30Days);
 
         var availableDomains = await dbContext.Domains
             .AsNoTracking()
@@ -487,7 +489,11 @@ public sealed class Query
             RejectedEvents: managedEvents.Count(catalogEvent => catalogEvent.Status == EventStatus.Rejected),
             DraftEvents: managedEvents.Count(catalogEvent => catalogEvent.Status == EventStatus.Draft),
             TotalInterestedCount: totalInterestedCount,
+            TotalInterestedLast7Days: totalInterestedLast7Days,
+            TotalInterestedLast30Days: totalInterestedLast30Days,
             TotalCalendarActions: totalCalendarActions,
+            TotalCalendarActionsLast7Days: totalCalendarActionsLast7Days,
+            TotalCalendarActionsLast30Days: totalCalendarActionsLast30Days,
             ManagedEvents: managedEvents,
             EventAnalytics: eventAnalytics,
             AvailableDomains: availableDomains);

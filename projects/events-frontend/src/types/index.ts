@@ -123,8 +123,18 @@ export interface DashboardOverview {
   rejectedEvents: number
   /** Count of events currently in DRAFT status. */
   draftEvents: number
+  /** All-time save count across published events. */
   totalInterestedCount: number
+  /** Save count across published events in the last 7 days. */
+  totalInterestedLast7Days: number
+  /** Save count across published events in the last 30 days. */
+  totalInterestedLast30Days: number
+  /** All-time add-to-calendar count across published events. */
   totalCalendarActions: number
+  /** Add-to-calendar count across published events in the last 7 days. */
+  totalCalendarActionsLast7Days: number
+  /** Add-to-calendar count across published events in the last 30 days. */
+  totalCalendarActionsLast30Days: number
   managedEvents: CatalogEvent[]
   eventAnalytics: EventAnalyticsItem[]
   availableDomains: EventDomain[]

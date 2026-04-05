@@ -12,7 +12,11 @@ const DASHBOARD_QUERY = `
       rejectedEvents
       draftEvents
       totalInterestedCount
+      totalInterestedLast7Days
+      totalInterestedLast30Days
       totalCalendarActions
+      totalCalendarActionsLast7Days
+      totalCalendarActionsLast30Days
       managedEvents {
         id name slug status startsAtUtc domain { id name slug }
       }

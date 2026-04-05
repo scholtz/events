@@ -3021,6 +3021,194 @@ public sealed class GraphQlIntegrationTests
             "publishedAtUtc should be null for draft events");
     }
 
+    [Fact]
+    public async Task MyDashboard_AggregateTrendFields_ReturnCorrectWeeklyAndMonthlyTotals()
+    {
+        // Verify that the dashboard overview includes aggregate 7-day and 30-day save/calendar counts
+        // across published events, with correct server-side cutoff computation.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var organizerUserId = Guid.Empty;
+        var attendeeUserId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer = CreateUser("trend-agg@example.com", "Trend Aggregation User");
+            var attendee = CreateUser("attendee-trend@example.com", "Trend Attendee");
+            organizerUserId = organizer.Id;
+            attendeeUserId = attendee.Id;
+
+            var domain = CreateDomain("Tech", "tech-trend-agg");
+            dbContext.Users.AddRange(organizer, attendee);
+            dbContext.Domains.Add(domain);
+
+            var ev = CreateEvent("Trend Agg Event", "trend-agg-event", "Test.",
+                "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, organizer, status: EventStatus.Published);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+
+            // One save within 7 days, one between 7 and 30 days, one older than 30 days
+            dbContext.FavoriteEvents.AddRange(
+                new FavoriteEvent { UserId = attendee.Id, EventId = ev.Id, CreatedAtUtc = DateTime.UtcNow.AddDays(-2) },
+                new FavoriteEvent { UserId = organizer.Id, EventId = ev.Id, CreatedAtUtc = DateTime.UtcNow.AddDays(-15) },
+                new FavoriteEvent { UserId = CreateUser("u3@ex.com", "User3").Id, EventId = ev.Id, CreatedAtUtc = DateTime.UtcNow.AddDays(-45) });
+
+            // One calendar action within 7 days, one within 30 days (but not 7)
+            dbContext.CalendarAnalyticsActions.AddRange(
+                new CalendarAnalyticsAction { EventId = ev.Id, Provider = "google", TriggeredAtUtc = DateTime.UtcNow.AddDays(-3) },
+                new CalendarAnalyticsAction { EventId = ev.Id, Provider = "ical", TriggeredAtUtc = DateTime.UtcNow.AddDays(-20) });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, organizerUserId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyDashboard {
+              myDashboard {
+                totalInterestedCount
+                totalInterestedLast7Days
+                totalInterestedLast30Days
+                totalCalendarActions
+                totalCalendarActionsLast7Days
+                totalCalendarActionsLast30Days
+              }
+            }
+            """);
+
+        var dashboard = document.RootElement.GetProperty("data").GetProperty("myDashboard");
+
+        // All-time: 3 saves, 2 calendar actions
+        Assert.Equal(3, dashboard.GetProperty("totalInterestedCount").GetInt32());
+        Assert.Equal(2, dashboard.GetProperty("totalCalendarActions").GetInt32());
+
+        // 7-day window: 1 save within 2 days, 1 calendar action within 3 days
+        Assert.Equal(1, dashboard.GetProperty("totalInterestedLast7Days").GetInt32());
+        Assert.Equal(1, dashboard.GetProperty("totalCalendarActionsLast7Days").GetInt32());
+
+        // 30-day window: 2 saves within 15 days and 2 days (the 45-day one is excluded)
+        Assert.Equal(2, dashboard.GetProperty("totalInterestedLast30Days").GetInt32());
+        // 30-day calendar: both actions (3 days and 20 days)
+        Assert.Equal(2, dashboard.GetProperty("totalCalendarActionsLast30Days").GetInt32());
+    }
+
+    [Fact]
+    public async Task MyDashboard_AggregateTrendFields_ZeroStateReturnsZeroNotNull()
+    {
+        // A new published event with no saves or calendar actions must return 0 for all trend fields.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("trend-zero@example.com", "Trend Zero User");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "tech-trend-zero");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent("Zero Trend Event", "zero-trend-event", "Test.",
+                "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, user, status: EventStatus.Published);
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyDashboard {
+              myDashboard {
+                totalInterestedCount
+                totalInterestedLast7Days
+                totalInterestedLast30Days
+                totalCalendarActions
+                totalCalendarActionsLast7Days
+                totalCalendarActionsLast30Days
+              }
+            }
+            """);
+
+        var dashboard = document.RootElement.GetProperty("data").GetProperty("myDashboard");
+
+        Assert.Equal(0, dashboard.GetProperty("totalInterestedCount").GetInt32());
+        Assert.Equal(0, dashboard.GetProperty("totalInterestedLast7Days").GetInt32());
+        Assert.Equal(0, dashboard.GetProperty("totalInterestedLast30Days").GetInt32());
+        Assert.Equal(0, dashboard.GetProperty("totalCalendarActions").GetInt32());
+        Assert.Equal(0, dashboard.GetProperty("totalCalendarActionsLast7Days").GetInt32());
+        Assert.Equal(0, dashboard.GetProperty("totalCalendarActionsLast30Days").GetInt32());
+    }
+
+    [Fact]
+    public async Task MyDashboard_AggregateTrendFields_OnlyCountPublishedEvents()
+    {
+        // Trend totals must exclude saves/calendar actions on non-published events.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var organizerUserId = Guid.Empty;
+        var attendeeUserId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer = CreateUser("trend-pub-only@example.com", "Trend Pub Only");
+            var attendee = CreateUser("att-pub-only@example.com", "Attendee Pub");
+            organizerUserId = organizer.Id;
+            attendeeUserId = attendee.Id;
+
+            var domain = CreateDomain("Tech", "tech-pub-only-trend");
+            dbContext.Users.AddRange(organizer, attendee);
+            dbContext.Domains.Add(domain);
+
+            var published = CreateEvent("Published Trend Event", "pub-trend", "Published.",
+                "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, organizer, status: EventStatus.Published);
+            var pending = CreateEvent("Pending Trend Event", "pending-trend", "Pending.",
+                "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, organizer, status: EventStatus.PendingApproval);
+
+            dbContext.Events.AddRange(published, pending);
+
+            // Attendee saves BOTH events this week
+            dbContext.FavoriteEvents.AddRange(
+                new FavoriteEvent { UserId = attendee.Id, EventId = published.Id, CreatedAtUtc = DateTime.UtcNow.AddDays(-1) },
+                new FavoriteEvent { UserId = attendee.Id, EventId = pending.Id, CreatedAtUtc = DateTime.UtcNow.AddDays(-1) });
+
+            // Calendar action on both events this week
+            dbContext.CalendarAnalyticsActions.AddRange(
+                new CalendarAnalyticsAction { EventId = published.Id, Provider = "google", TriggeredAtUtc = DateTime.UtcNow.AddDays(-1) },
+                new CalendarAnalyticsAction { EventId = pending.Id, Provider = "ical", TriggeredAtUtc = DateTime.UtcNow.AddDays(-1) });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, organizerUserId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyDashboard {
+              myDashboard {
+                totalInterestedCount
+                totalInterestedLast7Days
+                totalInterestedLast30Days
+                totalCalendarActions
+                totalCalendarActionsLast7Days
+                totalCalendarActionsLast30Days
+              }
+            }
+            """);
+
+        var dashboard = document.RootElement.GetProperty("data").GetProperty("myDashboard");
+
+        // Only the published event's save and calendar action should count
+        Assert.Equal(1, dashboard.GetProperty("totalInterestedCount").GetInt32());
+        Assert.Equal(1, dashboard.GetProperty("totalInterestedLast7Days").GetInt32());
+        Assert.Equal(1, dashboard.GetProperty("totalInterestedLast30Days").GetInt32());
+        Assert.Equal(1, dashboard.GetProperty("totalCalendarActions").GetInt32());
+        Assert.Equal(1, dashboard.GetProperty("totalCalendarActionsLast7Days").GetInt32());
+        Assert.Equal(1, dashboard.GetProperty("totalCalendarActionsLast30Days").GetInt32());
+    }
+
     // ── Event detail: location, map, and attendee context ──────────────────
 
     [Fact]
