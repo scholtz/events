@@ -2078,6 +2078,11 @@ test.describe('Dashboard freshness indicator', () => {
     await loginAs(page, user)
     await page.waitForURL(/\/dashboard$/)
 
+    // Wait for the dashboard data to finish loading before advancing the clock.
+    // fetchDashboard() sets lastFetchedAt.value = new Date() only after the response arrives;
+    // if we fastForward before that, lastFetchedAt is still null and isDataStale stays false.
+    await expect(page.locator('.stats-grid')).toBeVisible()
+
     // Freshness indicator should be absent immediately after load
     await expect(page.locator('.freshness-indicator')).toHaveCount(0)
 
@@ -2107,6 +2112,9 @@ test.describe('Dashboard freshness indicator', () => {
     setupMockApi(page, { users: [user], domains: [domain], events: [event] })
     await loginAs(page, user)
     await page.waitForURL(/\/dashboard$/)
+
+    // Wait for the dashboard data to be loaded (lastFetchedAt is set only after the response).
+    await expect(page.locator('.stats-grid')).toBeVisible()
 
     // Advance time past staleness threshold
     await page.clock.fastForward('06:00')

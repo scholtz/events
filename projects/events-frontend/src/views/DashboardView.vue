@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useAuthStore } from '@/stores/auth'
@@ -306,20 +306,29 @@ async function loadMyCommunities() {
   }
 }
 
-onMounted(async () => {
+onMounted(() => {
   // Start the freshness timer so isDataStale recomputes automatically each minute.
   freshnessTimer = setInterval(() => {
     now.value = Date.now()
   }, 60_000)
+})
 
-  if (auth.isAuthenticated) {
+// Use `watch` with `{ immediate: true }` instead of checking `auth.isAuthenticated` inside
+// `onMounted`. This handles the auth race where `checkAuth()` in App.vue completes
+// asynchronously AFTER `onMounted` fires (e.g. on a page reload or direct navigation with
+// a token in localStorage). The watch fires again once `isAuthenticated` becomes true.
+watch(
+  () => auth.isAuthenticated,
+  async (isAuthenticated) => {
+    if (!isAuthenticated) return
     await dashboardStore.fetchDashboard()
     await domainsStore.fetchMyManagedDomains()
     initHubForms(domainsStore.myManagedDomains)
     await Promise.all(domainsStore.myManagedDomains.map((d) => loadHubFeaturedEvents(d.id)))
     await loadMyCommunities()
-  }
-})
+  },
+  { immediate: true },
+)
 
 onUnmounted(() => {
   if (freshnessTimer !== null) {
