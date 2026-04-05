@@ -1002,6 +1002,72 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task EventsQuery_LocationText_PreservesUpcomingSortOrderWithinMatchingCity()
+    {
+        // Verifies that when filtering by locationText, the UPCOMING sort still correctly
+        // orders results: future events before past events, nearest upcoming first.
+        // This ensures city-based discovery produces trustworthy, chronologically relevant results.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var now = DateTime.UtcNow;
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("city-sort@example.com", "City Sort Tester");
+            var tech = CreateDomain("Tech", "tech");
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(tech);
+            dbContext.Events.AddRange(
+                // Prague events at different times
+                CreateEvent(
+                    "Prague Near Future",
+                    "prague-near-future",
+                    "Upcoming event in Prague in 3 days.",
+                    "Main Hall",
+                    "Prague",
+                    now.AddDays(3),
+                    tech,
+                    user),
+                CreateEvent(
+                    "Prague Far Future",
+                    "prague-far-future",
+                    "Upcoming event in Prague in 30 days.",
+                    "Conference Center",
+                    "Prague",
+                    now.AddDays(30),
+                    tech,
+                    user),
+                CreateEvent(
+                    "Prague Past",
+                    "prague-past",
+                    "Concluded event in Prague.",
+                    "Old Hall",
+                    "Prague",
+                    now.AddDays(-7),
+                    tech,
+                    user),
+                // Berlin event should not appear in Prague results
+                CreateEvent(
+                    "Berlin Summit",
+                    "berlin-summit",
+                    "Event in Berlin.",
+                    "Berlin Venue",
+                    "Berlin",
+                    now.AddDays(1),
+                    tech,
+                    user));
+        });
+
+        using var client = factory.CreateClient();
+
+        var names = await QueryEventNamesAsync(
+            client,
+            new { locationText = "Prague", sortBy = "UPCOMING" });
+
+        // Berlin event excluded; Prague events: nearest upcoming first, past events last
+        Assert.Equal(["Prague Near Future", "Prague Far Future", "Prague Past"], names);
+    }
+
+    [Fact]
     public async Task EventsQuery_DomainSlugFilter_IsolatesEventsByDomain()
     {
         await using var factory = new EventsApiWebApplicationFactory();
