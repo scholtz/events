@@ -12,6 +12,7 @@ import {
   makePrivateGroup,
   makeActiveMembership,
   loginAs,
+  seedAuthAndLocale,
   type MockFavoriteEvent,
   type MockCalendarAction,
   type MockDomainLink,
@@ -2127,15 +2128,9 @@ test.describe('Dashboard i18n – Slovak locale', () => {
   test('shows dashboard KPI labels in Slovak', async ({ page }) => {
     const user = makeAdminUser()
     const domain = makeTechDomain()
-    // Set both auth token and locale via addInitScript to bypass the translated login form
-    await page.addInitScript(
-      ({ token, locale }: { token: string; locale: string }) => {
-        localStorage.setItem('auth_token', token)
-        localStorage.setItem('auth_expires', new Date(Date.now() + 60 * 60 * 1000).toISOString())
-        localStorage.setItem('app_locale', locale)
-      },
-      { token: `token-${user.id}`, locale: 'sk' },
-    )
+    // seedAuthAndLocale bypasses the login form (which renders in the chosen locale, breaking
+    // loginAs() which uses the English labels 'Email' and 'Password')
+    await seedAuthAndLocale(page, user, 'sk')
     setupMockApi(page, { users: [user], domains: [domain] })
     await page.goto('/dashboard')
     await page.waitForURL(/\/dashboard$/)
@@ -2156,20 +2151,13 @@ test.describe('Dashboard i18n – Slovak locale', () => {
       submittedBy: { displayName: user.displayName },
     })
 
-    await page.addInitScript(
-      ({ token, locale }: { token: string; locale: string }) => {
-        localStorage.setItem('auth_token', token)
-        localStorage.setItem('auth_expires', new Date(Date.now() + 60 * 60 * 1000).toISOString())
-        localStorage.setItem('app_locale', locale)
-      },
-      { token: `token-${user.id}`, locale: 'sk' },
-    )
+    await seedAuthAndLocale(page, user, 'sk')
     setupMockApi(page, { users: [user], domains: [domain], events: [event] })
     await page.goto('/dashboard')
     await page.waitForURL(/\/dashboard$/)
 
-    // Slovak recommendation text for an event with no saves
-    // 'Pro túto udalosť zatiaľ nie sú žiadne uloženia. Skúste zdieľať odkaz...'
+    // Slovak recommendation text for an event with no saves:
+    // 'Pre túto udalosť zatiaľ nie sú žiadne uloženia. Skúste zdieľať odkaz...'
     await expect(page.locator('.rec-text')).toContainText(/zdieľ/)
   })
 
@@ -2187,14 +2175,7 @@ test.describe('Dashboard i18n – Slovak locale', () => {
       submittedBy: { displayName: user.displayName },
     })
 
-    await page.addInitScript(
-      ({ token, locale }: { token: string; locale: string }) => {
-        localStorage.setItem('auth_token', token)
-        localStorage.setItem('auth_expires', new Date(Date.now() + 60 * 60 * 1000).toISOString())
-        localStorage.setItem('app_locale', locale)
-      },
-      { token: `token-${user.id}`, locale: 'sk' },
-    )
+    await seedAuthAndLocale(page, user, 'sk')
     setupMockApi(page, { users: [user], domains: [domain], events: [event] })
     await page.goto('/dashboard')
     await page.waitForURL(/\/dashboard$/)
@@ -2210,14 +2191,7 @@ test.describe('Dashboard i18n – German locale', () => {
   test('shows dashboard KPI labels in German', async ({ page }) => {
     const user = makeAdminUser()
     const domain = makeTechDomain()
-    await page.addInitScript(
-      ({ token, locale }: { token: string; locale: string }) => {
-        localStorage.setItem('auth_token', token)
-        localStorage.setItem('auth_expires', new Date(Date.now() + 60 * 60 * 1000).toISOString())
-        localStorage.setItem('app_locale', locale)
-      },
-      { token: `token-${user.id}`, locale: 'de' },
-    )
+    await seedAuthAndLocale(page, user, 'de')
     setupMockApi(page, { users: [user], domains: [domain] })
     await page.goto('/dashboard')
     await page.waitForURL(/\/dashboard$/)
@@ -2238,14 +2212,7 @@ test.describe('Dashboard i18n – German locale', () => {
       submittedBy: { displayName: user.displayName },
     })
 
-    await page.addInitScript(
-      ({ token, locale }: { token: string; locale: string }) => {
-        localStorage.setItem('auth_token', token)
-        localStorage.setItem('auth_expires', new Date(Date.now() + 60 * 60 * 1000).toISOString())
-        localStorage.setItem('app_locale', locale)
-      },
-      { token: `token-${user.id}`, locale: 'de' },
-    )
+    await seedAuthAndLocale(page, user, 'de')
     setupMockApi(page, { users: [user], domains: [domain], events: [event] })
     await page.goto('/dashboard')
     await page.waitForURL(/\/dashboard$/)
@@ -2266,14 +2233,7 @@ test.describe('Dashboard i18n – German locale', () => {
       publishedAtUtc: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
     })
 
-    await page.addInitScript(
-      ({ token, locale }: { token: string; locale: string }) => {
-        localStorage.setItem('auth_token', token)
-        localStorage.setItem('auth_expires', new Date(Date.now() + 60 * 60 * 1000).toISOString())
-        localStorage.setItem('app_locale', locale)
-      },
-      { token: `token-${user.id}`, locale: 'de' },
-    )
+    await seedAuthAndLocale(page, user, 'de')
     setupMockApi(page, { users: [user], domains: [domain], events: [event] })
     await page.goto('/dashboard')
     await page.waitForURL(/\/dashboard$/)

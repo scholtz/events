@@ -460,7 +460,7 @@ A PR that only adds tests, or only adds UI without tests, or only adds backend c
   await page.waitForURL(/\/dashboard$/)
   ```
 - The mock API recognizes any `token-${userId}` bearer token and resolves `currentUserId` automatically — no login GraphQL mutation needed.
-- **Never call `loginAs()` followed by `page.addInitScript` for locale** — by the time `addInitScript` runs on the next navigation the app has already initialized with the default locale.
+- **Never call `loginAs()` followed by `page.addInitScript` for locale** — `addInitScript` only affects the *next* navigation after it is registered; the login form has already rendered with the default locale during the `loginAs()` flow, so the locale setting arrives too late.
 
 ### i18n E2E tests — mock-state requirements for conditional UI
 When writing E2E tests for localized UI, **always check whether the UI element being tested is conditionally rendered**, and populate the mock state accordingly:

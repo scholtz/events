@@ -2606,3 +2606,32 @@ export function makeExternalEventPreview(
     ...overrides,
   }
 }
+
+/**
+ * Seeds both the auth token and the UI locale via addInitScript, bypassing the login form.
+ *
+ * Use this instead of `loginAs()` in locale-specific tests. The login form renders with
+ * translated labels (e.g. 'E-mail'/'Heslo' in Slovak) so `loginAs()` — which fills
+ * 'Email'/'Password' — will time out in non-English locales.
+ *
+ * Call this BEFORE `setupMockApi()` and before any `page.goto()`.
+ *
+ * @example
+ * await seedAuthAndLocale(page, user, 'sk')
+ * setupMockApi(page, { users: [user], ... })
+ * await page.goto('/dashboard')
+ */
+export async function seedAuthAndLocale(
+  page: Page,
+  user: MockUser,
+  locale: 'en' | 'sk' | 'de',
+): Promise<void> {
+  await page.addInitScript(
+    ({ token, loc }: { token: string; loc: string }) => {
+      localStorage.setItem('auth_token', token)
+      localStorage.setItem('auth_expires', new Date(Date.now() + 60 * 60 * 1000).toISOString())
+      localStorage.setItem('app_locale', loc)
+    },
+    { token: `token-${user.id}`, loc: locale },
+  )
+}
