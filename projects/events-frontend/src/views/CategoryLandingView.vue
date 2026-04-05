@@ -363,7 +363,10 @@ onMounted(async () => {
 
         <div v-if="lowSignalMessage" class="low-signal-notice" role="status" aria-live="polite">
           <span class="low-signal-icon" aria-hidden="true">🌱</span>
-          {{ lowSignalMessage }}
+          <span class="low-signal-text">{{ lowSignalMessage }}</span>
+          <RouterLink to="/" class="btn btn-sm low-signal-action">
+            {{ t('home.lowSignalBrowseAll') }}
+          </RouterLink>
         </div>
 
         <div v-if="events.length" class="events-grid">

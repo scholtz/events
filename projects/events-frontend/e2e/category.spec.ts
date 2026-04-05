@@ -786,4 +786,48 @@ test.describe('Hub navigation journey', () => {
     // Event list is still shown
     await expect(page.locator('.event-card', { hasText: 'Unbranded Event' })).toBeVisible()
   })
+
+  test('hub page low-signal notice appears when only 1 event is available', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-only', name: 'Solo Tech Meetup', slug: 'solo-tech-meetup' })],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.low-signal-notice')).toBeVisible()
+    await expect(page.locator('.low-signal-notice')).toHaveAttribute('role', 'status')
+    // The notice includes a browse-all recovery link
+    await expect(
+      page.locator('.low-signal-notice .low-signal-action', { hasText: 'Browse all events' }),
+    ).toBeVisible()
+  })
+
+  test('hub page low-signal notice is not shown when 4 or more events exist', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-1', name: 'Event A', slug: 'event-a' }),
+        makeApprovedEvent({ id: 'e-2', name: 'Event B', slug: 'event-b' }),
+        makeApprovedEvent({ id: 'e-3', name: 'Event C', slug: 'event-c' }),
+        makeApprovedEvent({ id: 'e-4', name: 'Event D', slug: 'event-d' }),
+      ],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.low-signal-notice')).toBeHidden()
+  })
+
+  test('hub page low-signal notice browse-all link navigates to home', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-only', name: 'Only Event', slug: 'only-event' })],
+    })
+
+    await page.goto('/category/technology')
+
+    await page.locator('.low-signal-notice .low-signal-action').click()
+    await expect(page).toHaveURL('/')
+  })
 })
