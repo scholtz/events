@@ -92,6 +92,8 @@ export default {
     emptyDomain: 'Keine Veranstaltungen in dieser Kategorie. Entfernen Sie den Tag-Filter.',
     emptyTimezone:
       'Keine Veranstaltungen in der Zeitzone „{timezone}" gefunden. Versuchen Sie eine andere Zeitzone oder entfernen Sie den Zeitzonenfilter.',
+    emptyLanguage:
+      'Keine Veranstaltungen in der Sprache „{language}" gefunden. Versuchen Sie eine andere Sprache oder entfernen Sie den Sprachfilter.',
     emptyMultiple:
       'Keine Veranstaltungen entsprechen allen {count} aktiven Filtern. Entfernen Sie den spezifischsten Filter zuerst.',
     resultsAvailableOne: '1 Veranstaltung verfügbar',

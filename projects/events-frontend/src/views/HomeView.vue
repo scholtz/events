@@ -5,6 +5,11 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { formatDiscoveryChipLabel } from '@/lib/discoveryLabels'
 import {
+  computeEmptyStateMessage,
+  computeLowSignalMessage,
+  computeRecoverySuggestion,
+} from '@/lib/discoveryRecovery'
+import {
   areEventFiltersEqual,
   createDefaultEventFilters,
   eventFiltersFromQuery,
@@ -185,123 +190,61 @@ const resultsSummary = computed(() => {
     : t('home.resultsMatchingMany', { count, filters: filterLabels.join(', ') })
 })
 
-const LOW_SIGNAL_THRESHOLD = 3
+const lowSignalMessage = computed(() =>
+  computeLowSignalMessage(eventsStore.discoveryEvents.length, t),
+)
 
-const lowSignalMessage = computed(() => {
-  const count = eventsStore.discoveryEvents.length
-  if (count === 0 || count > LOW_SIGNAL_THRESHOLD) return null
-  return count === 1
-    ? t('home.fewResultsOne')
-    : t('home.fewResultsMany', { count })
-})
-
-const emptyStateMessage = computed(() => {
-  if (!eventsStore.hasActiveFilters) {
-    return t('home.emptyNoEvents')
-  }
-
-  const filters = eventsStore.filters
-  const chips = eventsStore.activeFilterChips.filter((c) => c.key !== 'sortBy')
-  const filterCount = chips.length
-
-  if (filterCount === 1) {
-    const chip = chips[0]
-    if (!chip) {
-      return t('home.emptyGeneric')
-    }
-    if (chip.key === 'location') {
-      return t('home.emptyLocation', { location: filters.location })
-    }
-    if (chip.key === 'search') {
-      return t('home.emptySearch', { search: filters.search })
-    }
-    if (chip.key === 'attendanceMode') {
-      if (filters.attendanceMode === 'IN_PERSON') return t('home.emptyModeInPerson')
-      if (filters.attendanceMode === 'ONLINE') return t('home.emptyModeOnline')
-      return t('home.emptyModeHybrid')
-    }
-    if (chip.key === 'priceType') {
-      return filters.priceType === 'FREE' ? t('home.emptyPriceFree') : t('home.emptyPricePaid')
-    }
-    if (chip.key === 'dateFrom' || chip.key === 'dateTo') {
-      return t('home.emptyDate')
-    }
-    if (chip.key === 'domain') {
-      return t('home.emptyDomain')
-    }
-    if (chip.key === 'timezone') {
-      return t('home.emptyTimezone', { timezone: filters.timezone })
-    }
-  }
-
-  if (filterCount > 1) {
-    return t('home.emptyMultiple', { count: filterCount })
-  }
-
-  return t('home.emptyGeneric')
-})
+const emptyStateMessage = computed(() =>
+  computeEmptyStateMessage(
+    eventsStore.filters,
+    eventsStore.activeFilterChips,
+    eventsStore.hasActiveFilters,
+    t,
+  ),
+)
 
 /**
  * Context-aware secondary recovery action for the empty state.
  * Shown alongside the primary "Clear filters" button to give users a targeted
  * next step based on which single filter produced zero results.
+ *
+ * The label and action key come from `computeRecoverySuggestion`; the concrete
+ * side-effect is resolved here in the component via the action key.
  */
 const emptyStateRecoveryAction = computed<{ label: string; action: () => void } | null>(() => {
-  if (!eventsStore.hasActiveFilters) return null
-  const filters = eventsStore.filters
-  const chips = eventsStore.activeFilterChips.filter((c) => c.key !== 'sortBy')
-  if (chips.length === 0) return null
+  const suggestion = computeRecoverySuggestion(
+    eventsStore.filters,
+    eventsStore.activeFilterChips,
+    eventsStore.hasActiveFilters,
+    t,
+  )
+  if (!suggestion) return null
 
-  // If ALL active chips are date chips, offer to clear the date range
-  const dateKeys = new Set(['dateFrom', 'dateTo'])
-  if (chips.every((c) => dateKeys.has(c.key))) {
-    return {
-      label: t('home.recoveryClearDates'),
-      action: () => eventsStore.setFilters({ dateFrom: '', dateTo: '' }),
-    }
-  }
+  const { label, actionKey } = suggestion
 
-  if (chips.length !== 1) return null
-  const chip = chips[0]
-  if (!chip) return null
-
-  if (chip.key === 'attendanceMode') {
-    if (filters.attendanceMode === 'IN_PERSON') {
+  switch (actionKey) {
+    case 'clearDates':
+      return { label, action: () => eventsStore.setFilters({ dateFrom: '', dateTo: '' }) }
+    case 'tryOnline':
+      return { label, action: () => eventsStore.setFilters({ attendanceMode: 'ONLINE' }) }
+    case 'tryInPerson':
+      return { label, action: () => eventsStore.setFilters({ attendanceMode: 'IN_PERSON' }) }
+    case 'tryOnlineFromLocation':
       return {
-        label: t('home.recoveryTryOnline'),
-        action: () => eventsStore.setFilters({ attendanceMode: 'ONLINE' }),
+        label,
+        action: () => eventsStore.setFilters({ location: '', attendanceMode: 'ONLINE' }),
       }
-    }
-    if (filters.attendanceMode === 'ONLINE') {
+    case 'clearPrice':
       return {
-        label: t('home.recoveryTryInPerson'),
-        action: () => eventsStore.setFilters({ attendanceMode: 'IN_PERSON' }),
+        label,
+        action: () =>
+          eventsStore.setFilters({ priceType: 'ALL', priceMin: '', priceMax: '' }),
       }
-    }
+    case 'clearDomain':
+      return { label, action: () => eventsStore.setFilters({ domain: '' }) }
+    default:
+      return null
   }
-
-  if (chip.key === 'location') {
-    return {
-      label: t('home.recoveryTryOnline'),
-      action: () => eventsStore.setFilters({ location: '', attendanceMode: 'ONLINE' }),
-    }
-  }
-
-  if (chip.key === 'priceType') {
-    return {
-      label: t('home.recoveryShowAllPrices'),
-      action: () => eventsStore.setFilters({ priceType: 'ALL', priceMin: '', priceMax: '' }),
-    }
-  }
-
-  if (chip.key === 'domain') {
-    return {
-      label: t('home.recoveryClearDomainTag'),
-      action: () => eventsStore.setFilters({ domain: '' }),
-    }
-  }
-
-  return null
 })
 
 /**

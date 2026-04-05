@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useEventsStore } from '@/stores/events'
 import { useAuthStore } from '@/stores/auth'
@@ -362,9 +362,17 @@ async function updateUserRole(userId: string, role: 'ADMIN' | 'CONTRIBUTOR') {
   }
 }
 
-onMounted(() => {
-  fetchAdminOverview()
-})
+// Use `watch` with `{ immediate: true }` instead of `onMounted` so that the
+// initial fetch is deferred until `auth.isAdmin` is actually true.  `onMounted`
+// fires before `checkAuth()` resolves, causing `fetchAdminOverview` to return
+// early on its `if (!auth.isAdmin) return` guard and never load the data.
+watch(
+  () => auth.isAdmin,
+  (isAdmin) => {
+    if (isAdmin) fetchAdminOverview()
+  },
+  { immediate: true },
+)
 
 function allAdminEvents() {
   // Prefer events from adminOverview which includes pending; fall back to events store
