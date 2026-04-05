@@ -82,6 +82,47 @@ public sealed record CommunityGroupAdminSummary(
     DateTime CreatedAtUtc);
 
 /// <summary>
+/// A single issue found during event submission-readiness evaluation.
+/// Blocking issues prevent submission; non-blocking issues are recommendations.
+/// </summary>
+public sealed record EventReadinessIssue(
+    /// <summary>
+    /// Stable i18n key (e.g. "missingTitle"). Callers map this to locale-specific text
+    /// via their own translation tables, keeping the backend free of UI copy.
+    /// </summary>
+    string Key,
+
+    /// <summary>
+    /// True when this issue must be resolved before the event can be submitted.
+    /// False when this is a quality recommendation that improves discoverability
+    /// but does not block submission.
+    /// </summary>
+    bool IsBlocking,
+
+    /// <summary>
+    /// Short English description of the issue — useful for API consumers that do not
+    /// use the frontend i18n system.
+    /// </summary>
+    string Message);
+
+/// <summary>
+/// Aggregated submission-readiness assessment for a single event draft.
+/// Computed server-side so the logic is authoritative, centralised, and testable.
+/// </summary>
+public sealed record EventReadinessResult(
+    /// <summary>True when there are no blocking issues and the event may be submitted.</summary>
+    bool CanSubmit,
+
+    /// <summary>Issues that must be resolved before the event can be submitted.</summary>
+    IReadOnlyList<EventReadinessIssue> BlockingIssues,
+
+    /// <summary>
+    /// Non-blocking recommendations that improve event quality and discoverability
+    /// but do not prevent submission.
+    /// </summary>
+    IReadOnlyList<EventReadinessIssue> Recommendations);
+
+/// <summary>
 /// Represents the user's current push notification subscription status.
 /// </summary>
 public sealed record PushSubscriptionStatus(
