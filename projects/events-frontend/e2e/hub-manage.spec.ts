@@ -6,6 +6,7 @@ import {
   makeTechDomain,
   makeApprovedEvent,
   loginAs,
+  seedAuthAndLocale,
 } from './helpers/mock-api'
 import type { MockDomainAdministrator, MockScheduledFeaturedEvent } from './helpers/mock-api'
 
@@ -900,5 +901,107 @@ test.describe('Hub Manage page (/hub/:slug/manage)', () => {
     await expect(cards).toHaveCount(2)
     await expect(cards.first()).toContainText('Low Priority Event')
     await expect(cards.nth(1)).toContainText('High Priority Event')
+  })
+
+  // ── Localization: Slovak ──────────────────────────────────────────────────
+  test('Scheduled Featured Events section headings are localized in Slovak', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    await seedAuthAndLocale(page, admin, 'sk')
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      scheduledFeaturedEvents: [],
+    })
+
+    await page.goto('/hub/technology/manage')
+
+    // The section heading and hint should be in Slovak
+    await expect(
+      page.getByRole('heading', { name: 'Naplánované featured podujatia' }),
+    ).toBeVisible()
+    await expect(
+      page.getByText('Propagujte vybrané podujatia počas definovaného časového okna.', { exact: false }),
+    ).toBeVisible()
+    // Empty state message should be in Slovak
+    await expect(
+      page.locator('.hub-schedule-list').getByText('Žiadne naplánované zvýraznenia.'),
+    ).toBeVisible()
+    // "Add scheduled highlight" summary label should be in Slovak
+    await expect(page.locator('.hub-schedule-create-summary')).toContainText(
+      '+ Pridať naplánované zvýraznenie',
+    )
+  })
+
+  // ── Localization: German ──────────────────────────────────────────────────
+  test('Scheduled Featured Events section headings are localized in German', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    await seedAuthAndLocale(page, admin, 'de')
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      scheduledFeaturedEvents: [],
+    })
+
+    await page.goto('/hub/technology/manage')
+
+    // The section heading and hint should be in German
+    await expect(page.getByRole('heading', { name: 'Geplante Featured-Events' })).toBeVisible()
+    await expect(
+      page.getByText('Fördern Sie bestimmte Events in einem definierten Zeitfenster.', {
+        exact: false,
+      }),
+    ).toBeVisible()
+    // Empty state message should be in German
+    await expect(
+      page.locator('.hub-schedule-list').getByText('Noch keine geplanten Highlights.'),
+    ).toBeVisible()
+    // "Add scheduled highlight" summary label should be in German
+    await expect(page.locator('.hub-schedule-create-summary')).toContainText(
+      '+ Geplantes Highlight hinzufügen',
+    )
+  })
+
+  // ── Localization: Slovak status badges ───────────────────────────────────
+  test('schedule status badges are localized in Slovak', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({ name: 'Lokalizovaná Udalosť', domainId: domain.id })
+    const now = new Date()
+    const sfe: MockScheduledFeaturedEvent = {
+      id: 'sfe-sk-1',
+      domainId: domain.id,
+      eventId: event.id,
+      startsAtUtc: new Date(now.getTime() - 3_600_000).toISOString(),
+      endsAtUtc: new Date(now.getTime() + 86_400_000).toISOString(),
+      priority: 0,
+      isEnabled: true,
+      displayLabel: null,
+      createdAtUtc: now.toISOString(),
+      createdByUserId: admin.id,
+    }
+    await seedAuthAndLocale(page, admin, 'sk')
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      events: [event],
+      scheduledFeaturedEvents: [sfe],
+    })
+
+    await page.goto('/hub/technology/manage')
+
+    await expect(
+      page.locator('.hub-schedule-event-name', { hasText: 'Lokalizovaná Udalosť' }),
+    ).toBeVisible()
+    // Active badge should be in Slovak: "Aktívne"
+    await expect(page.locator('.hub-schedule-status-badge--active')).toContainText('Aktívne')
+    // Edit/Remove buttons should be in Slovak
+    await expect(
+      page.locator('.hub-schedule-item').first().getByRole('button', { name: 'Upraviť' }),
+    ).toBeVisible()
+    await expect(
+      page.locator('.hub-schedule-item').first().getByRole('button', { name: 'Odstrániť' }),
+    ).toBeVisible()
   })
 })

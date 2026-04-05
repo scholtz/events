@@ -6,6 +6,11 @@ import { useAuthStore } from '@/stores/auth'
 import { useDomainsStore } from '@/stores/domains'
 import { gqlRequest } from '@/lib/graphql'
 import { isValidHexColor } from '@/lib/colorUtils'
+import {
+  fromDatetimeLocalValue,
+  scheduleStatus,
+  toDatetimeLocalValue,
+} from '@/lib/scheduleUtils'
 import type { CatalogEvent, EventDomain, ScheduledFeaturedEvent } from '@/types'
 
 const { t, locale } = useI18n()
@@ -187,15 +192,6 @@ async function loadScheduledFeaturedEvents() {
   }
 }
 
-function scheduleStatus(s: ScheduledFeaturedEvent): 'upcoming' | 'active' | 'expired' {
-  const now = Date.now()
-  const starts = new Date(s.startsAtUtc).getTime()
-  const ends = new Date(s.endsAtUtc).getTime()
-  if (now < starts) return 'upcoming'
-  if (now >= ends) return 'expired'
-  return 'active'
-}
-
 function formatDateTime(dateStr: string): string {
   return new Date(dateStr).toLocaleString(locale.value, {
     month: 'short',
@@ -205,26 +201,6 @@ function formatDateTime(dateStr: string): string {
     minute: '2-digit',
     timeZoneName: 'short',
   })
-}
-
-function toDatetimeLocalValue(utcIso: string): string {
-  // Truncate UTC ISO to "YYYY-MM-DDTHH:mm" — datetime-local input format.
-  // No timezone conversion is performed here; fromDatetimeLocalValue() is
-  // responsible for re-attaching the UTC indicator ('Z') before sending to the API.
-  if (!utcIso) return ''
-  return utcIso.slice(0, 16)
-}
-
-function fromDatetimeLocalValue(value: string): string {
-  // datetime-local returns "YYYY-MM-DDTHH:mm" (no seconds). Append ':00.000Z'
-  // to produce a valid UTC ISO string. If the value already contains seconds
-  // (two or more colons after 'T'), only append '.000Z'.
-  if (!value) return ''
-  if (value.endsWith('Z')) return value
-  // Count colons after the 'T' separator to detect HH:mm vs HH:mm:ss format
-  const timePart = value.split('T')[1] ?? ''
-  const hasSeconds = (timePart.match(/:/g) ?? []).length >= 2
-  return hasSeconds ? `${value}.000Z` : `${value}:00.000Z`
 }
 
 function newScheduleFormError(): string {
