@@ -1144,7 +1144,8 @@ public sealed class Query
         {
             blocking.Add(new EventReadinessIssue("missingEventUrl", true, "Add a website or registration URL."));
         }
-        else if (!Uri.TryCreate(ev.EventUrl, UriKind.Absolute, out _))
+        else if (!Uri.TryCreate(ev.EventUrl, UriKind.Absolute, out var parsedUrl)
+                 || (parsedUrl.Scheme != Uri.UriSchemeHttps && parsedUrl.Scheme != Uri.UriSchemeHttp))
         {
             blocking.Add(new EventReadinessIssue("invalidEventUrl", true, "Enter a valid URL (e.g. https://example.com/event)."));
         }

@@ -16756,7 +16756,6 @@ public sealed class GraphQlIntegrationTests
                 domain,
                 organizerB,
                 status: EventStatus.Draft);
-            ev.SubmittedByUserId = organizerB.Id;
             eventId = ev.Id;
             dbContext.Events.Add(ev);
         });
