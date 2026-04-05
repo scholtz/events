@@ -372,6 +372,47 @@ export default {
     saveError: 'We could not save the changes right now.',
     notFound: 'This event could not be found.',
     loadError: 'Failed to load event details.',
+    resubmitButton: 'Resubmit for Review',
+    resubmitting: 'Resubmitting…',
+  },
+
+  // ── Event readiness model ──────────────────────────────────────────────────
+  readiness: {
+    panelTitle: 'Submission Readiness',
+    canSubmit: 'Ready to submit',
+    cannotSubmit: 'Fix the issues below before submitting',
+    blockingHeading: 'Required before submitting',
+    recommendationsHeading: 'Recommended improvements',
+    // Blocking items
+    missingTitle: 'Add an event title',
+    missingDescription: 'Add a description',
+    missingDomain: 'Choose a category (tag)',
+    missingStartDate: 'Set a start date and time',
+    missingEventUrl: 'Add a website or registration URL',
+    invalidEventUrl: 'Enter a valid URL (e.g. https://example.com/event)',
+    invalidPrice: 'Enter a valid price for this paid event',
+    // Recommendations
+    missingTimezone: 'Add a timezone so attendees know the exact local time',
+    missingVenue: 'Add a venue name for this in-person event',
+    missingCity: 'Add a city to help attendees find the event',
+    shortDescription: 'Expand the description — a longer description helps attendees decide whether to attend',
+  },
+
+  // ── Event lifecycle ────────────────────────────────────────────────────────
+  lifecycle: {
+    panelTitle: 'Event Status',
+    draft: 'Draft',
+    draftExplanation: 'This event is saved locally and is not yet visible to the public. Submit it for review when it is ready.',
+    draftAction: 'Submit for review once all required fields are complete.',
+    pending: 'Under Review',
+    pendingExplanation: 'Your event is awaiting moderator approval. No further action is needed right now.',
+    pendingAction: 'We will notify you once the event is approved or returned with feedback.',
+    published: 'Published',
+    publishedExplanation: 'This event is live and publicly visible to all visitors.',
+    publishedAction: 'Edits you save will be reviewed before going live.',
+    rejected: 'Returned for Changes',
+    rejectedExplanation: 'This event was returned by a moderator. Review the feedback below, update the listing, and resubmit.',
+    rejectedAction: 'Fix the noted issues and resubmit when ready.',
   },
 
   // ── Favorites ──────────────────────────────────────────────────────────────

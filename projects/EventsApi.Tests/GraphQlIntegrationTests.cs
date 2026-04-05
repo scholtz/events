@@ -3774,6 +3774,249 @@ public sealed class GraphQlIntegrationTests
         Assert.Contains("INVALID_TIMEZONE", errors.ToString());
     }
 
+    // ── URL scheme enforcement tests ──────────────────────────────────────────
+
+    [Fact]
+    public async Task SubmitEvent_RejectsNonHttpsUrl_FtpScheme()
+    {
+        // The readiness model requires HTTP/HTTPS event URLs. The mutation must enforce
+        // the same rule so that direct API calls cannot bypass the product constraint.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("url-ftp-submit@example.com", "FTP Submit User");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "url-ftp-submit-tech");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        var nextMonth = FirstDayOfNextMonthUtc();
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation SubmitEvent($input: EventSubmissionInput!) {
+                  submitEvent(input: $input) { name }
+                }
+                """,
+            variables = new
+            {
+                input = new
+                {
+                    domainSlug = "url-ftp-submit-tech",
+                    name = "FTP URL Event",
+                    description = "An event with an ftp:// URL.",
+                    eventUrl = "ftp://events.example.com/ftp-event",
+                    venueName = "Venue",
+                    addressLine1 = "Address 1",
+                    city = "Prague",
+                    countryCode = "CZ",
+                    isFree = true,
+                    currencyCode = "EUR",
+                    latitude = 50.075m,
+                    longitude = 14.437m,
+                    startsAtUtc = nextMonth,
+                    endsAtUtc = nextMonth.AddHours(4),
+                    attendanceMode = "IN_PERSON"
+                }
+            }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        Assert.Contains("INVALID_EVENT_URL", errors.ToString());
+    }
+
+    [Fact]
+    public async Task SubmitEvent_RejectsNonHttpsUrl_FileScheme()
+    {
+        // file:// URIs are absolute but are not valid event page URLs.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("url-file-submit@example.com", "File Submit User");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "url-file-submit-tech");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        var nextMonth = FirstDayOfNextMonthUtc();
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation SubmitEvent($input: EventSubmissionInput!) {
+                  submitEvent(input: $input) { name }
+                }
+                """,
+            variables = new
+            {
+                input = new
+                {
+                    domainSlug = "url-file-submit-tech",
+                    name = "File URL Event",
+                    description = "An event with a file:// URL.",
+                    eventUrl = "file:///tmp/event.html",
+                    venueName = "Venue",
+                    addressLine1 = "Address 1",
+                    city = "Prague",
+                    countryCode = "CZ",
+                    isFree = true,
+                    currencyCode = "EUR",
+                    latitude = 50.075m,
+                    longitude = 14.437m,
+                    startsAtUtc = nextMonth,
+                    endsAtUtc = nextMonth.AddHours(4),
+                    attendanceMode = "IN_PERSON"
+                }
+            }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        Assert.Contains("INVALID_EVENT_URL", errors.ToString());
+    }
+
+    [Fact]
+    public async Task SubmitEvent_AcceptsHttpUrl()
+    {
+        // Plain http:// URLs are allowed (not just https://) — some event pages
+        // may not have TLS. The rule is HTTP/HTTPS, not HTTPS-only.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("url-http-submit@example.com", "HTTP Submit User");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "url-http-submit-tech");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        var nextMonth = FirstDayOfNextMonthUtc();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation SubmitEvent($input: EventSubmissionInput!) {
+              submitEvent(input: $input) { name }
+            }
+            """,
+            new
+            {
+                input = new
+                {
+                    domainSlug = "url-http-submit-tech",
+                    name = "HTTP URL Event",
+                    description = "An event with an http:// URL.",
+                    eventUrl = "http://events.example.com/http-event",
+                    venueName = "Venue",
+                    addressLine1 = "Address 1",
+                    city = "Prague",
+                    countryCode = "CZ",
+                    isFree = true,
+                    currencyCode = "EUR",
+                    latitude = 50.075m,
+                    longitude = 14.437m,
+                    startsAtUtc = nextMonth,
+                    endsAtUtc = nextMonth.AddHours(4),
+                    attendanceMode = "IN_PERSON"
+                }
+            });
+
+        // Should succeed — http:// is valid
+        var result = document.RootElement.GetProperty("data").GetProperty("submitEvent");
+        Assert.Equal("HTTP URL Event", result.GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateMyEvent_RejectsNonHttpsUrl()
+    {
+        // The HTTP/HTTPS URL requirement must also be enforced on the update mutation
+        // so that resubmitting a previously-approved event cannot smuggle in an ftp:// URL.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("url-update-invalid@example.com", "URL Update Invalid User");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "url-update-invalid-tech");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Valid Event", "url-update-valid",
+                "A valid event that will have its URL changed to an invalid scheme.",
+                "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, user);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        var nextMonth = FirstDayOfNextMonthUtc();
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation UpdateMyEvent($eventId: UUID!, $input: EventSubmissionInput!) {
+                  updateMyEvent(eventId: $eventId, input: $input) { name }
+                }
+                """,
+            variables = new
+            {
+                eventId,
+                input = new
+                {
+                    domainSlug = "url-update-invalid-tech",
+                    name = "Valid Event",
+                    description = "Description with bad URL.",
+                    eventUrl = "ftp://events.example.com/bad-url",
+                    venueName = "Venue",
+                    addressLine1 = "Address 1",
+                    city = "Prague",
+                    countryCode = "CZ",
+                    isFree = true,
+                    currencyCode = "EUR",
+                    latitude = 50.075m,
+                    longitude = 14.437m,
+                    startsAtUtc = nextMonth,
+                    endsAtUtc = nextMonth.AddHours(4),
+                    attendanceMode = "IN_PERSON"
+                }
+            }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        Assert.Contains("INVALID_EVENT_URL", errors.ToString());
+    }
+
     [Fact]
     public async Task TrackDiscoveryAction_RecordsSearchAndFilterActions()
     {
@@ -16479,6 +16722,639 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal(new DateTime(2030, 9, 1, 9, 0, 0, DateTimeKind.Utc), existing.StartsAtUtc);
         // End is updated from upstream.
         Assert.Equal(new DateTime(2030, 9, 1, 17, 0, 0, DateTimeKind.Utc), existing.EndsAtUtc);
+    }
+
+    // ── CheckEventReadiness query tests ──────────────────────────────────────────
+
+    [Fact]
+    public async Task CheckEventReadiness_CompleteEvent_ReturnsCanSubmitTrue()
+    {
+        // A fully-populated event with all required fields should have no blocking issues.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("readiness-complete@example.com", "Complete Organizer");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "cr-complete-tech");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Complete Crypto Summit",
+                "complete-crypto-summit",
+                "A thorough description of this technology event in Prague for all crypto enthusiasts.",
+                "Prague Congress Centre",
+                "Prague",
+                FirstDayOfNextMonthUtc(),
+                domain,
+                user,
+                status: EventStatus.Draft,
+                timezone: "Europe/Prague");
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query CheckReadiness($eventId: UUID!) {
+              checkEventReadiness(eventId: $eventId) {
+                canSubmit
+                blockingIssues { key isBlocking message }
+                recommendations { key isBlocking message }
+              }
+            }
+            """,
+            new { eventId });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("checkEventReadiness");
+        Assert.True(result.GetProperty("canSubmit").GetBoolean());
+        Assert.Empty(result.GetProperty("blockingIssues").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task CheckEventReadiness_MissingEventUrl_ReturnsBlockingIssue()
+    {
+        // An event with a blank EventUrl must report a blocking missingEventUrl issue.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("readiness-url@example.com", "URL Organizer");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "cr-url-tech");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "No URL Event",
+                "no-url-event",
+                "A description for an event with no URL.",
+                "Venue",
+                "Prague",
+                FirstDayOfNextMonthUtc(),
+                domain,
+                user,
+                status: EventStatus.Draft);
+            // Clear the EventUrl that CreateEvent sets by default
+            ev.EventUrl = "";
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query CheckReadiness($eventId: UUID!) {
+              checkEventReadiness(eventId: $eventId) {
+                canSubmit
+                blockingIssues { key isBlocking }
+              }
+            }
+            """,
+            new { eventId });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("checkEventReadiness");
+        Assert.False(result.GetProperty("canSubmit").GetBoolean());
+        var blocking = result.GetProperty("blockingIssues").EnumerateArray().Select(i => i.GetProperty("key").GetString()).ToArray();
+        Assert.Contains("missingEventUrl", blocking);
+    }
+
+    [Fact]
+    public async Task CheckEventReadiness_MissingTimezone_ReturnsRecommendation()
+    {
+        // An event with no timezone is valid (can submit) but should produce a recommendation.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("readiness-tz@example.com", "TZ Organizer");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "cr-tz-tech");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "No Timezone Event",
+                "no-timezone-event",
+                "An event without an explicit timezone.",
+                "Venue",
+                "Prague",
+                FirstDayOfNextMonthUtc(),
+                domain,
+                user,
+                status: EventStatus.Draft);
+            // timezone is null by default in CreateEvent
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query CheckReadiness($eventId: UUID!) {
+              checkEventReadiness(eventId: $eventId) {
+                canSubmit
+                blockingIssues { key }
+                recommendations { key }
+              }
+            }
+            """,
+            new { eventId });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("checkEventReadiness");
+        // No timezone is a recommendation, not blocking — canSubmit should be true
+        Assert.True(result.GetProperty("canSubmit").GetBoolean());
+        Assert.Empty(result.GetProperty("blockingIssues").EnumerateArray());
+        var recs = result.GetProperty("recommendations").EnumerateArray().Select(i => i.GetProperty("key").GetString()).ToArray();
+        Assert.Contains("missingTimezone", recs);
+    }
+
+    [Fact]
+    public async Task CheckEventReadiness_InPersonEventMissingVenue_ReturnsVenueRecommendation()
+    {
+        // An IN_PERSON event without a venue name should get a missingVenue recommendation.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("readiness-venue@example.com", "Venue Organizer");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "cr-venue-tech");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "No Venue Event",
+                "no-venue-event",
+                "An in-person event without a venue name.",
+                "",  // empty venue
+                "Prague",
+                FirstDayOfNextMonthUtc(),
+                domain,
+                user,
+                attendanceMode: AttendanceMode.InPerson,
+                status: EventStatus.Draft);
+            ev.VenueName = "";
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query CheckReadiness($eventId: UUID!) {
+              checkEventReadiness(eventId: $eventId) {
+                canSubmit
+                recommendations { key }
+              }
+            }
+            """,
+            new { eventId });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("checkEventReadiness");
+        Assert.True(result.GetProperty("canSubmit").GetBoolean());
+        var recs = result.GetProperty("recommendations").EnumerateArray().Select(i => i.GetProperty("key").GetString()).ToArray();
+        Assert.Contains("missingVenue", recs);
+    }
+
+    [Fact]
+    public async Task CheckEventReadiness_Unauthenticated_ReturnsAuthError()
+    {
+        // The checkEventReadiness query must require authentication.
+        // Unauthenticated callers must receive AUTH_NOT_AUTHORIZED, not event data.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var eventId = Guid.NewGuid();
+
+        using var client = factory.CreateClient();
+        // No Authorization header
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                query CheckReadiness($eventId: UUID!) {
+                  checkEventReadiness(eventId: $eventId) {
+                    canSubmit
+                  }
+                }
+                """,
+            variables = new { eventId }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        var errorMessage = errors.ToString();
+        Assert.True(
+            errorMessage.Contains("AUTH_NOT_AUTHORIZED", StringComparison.OrdinalIgnoreCase)
+            || errorMessage.Contains("not authorized", StringComparison.OrdinalIgnoreCase)
+            || errorMessage.Contains("unauthorized", StringComparison.OrdinalIgnoreCase),
+            $"Expected auth error but got: {errorMessage}");
+    }
+
+    [Fact]
+    public async Task CheckEventReadiness_OtherUsersEvent_ReturnsForbidden()
+    {
+        // Organizer A cannot check the readiness of Organizer B's event.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var organizerAId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizerA = CreateUser("readiness-orgA@example.com", "Organizer A");
+            var organizerB = CreateUser("readiness-orgB@example.com", "Organizer B");
+            organizerAId = organizerA.Id;
+            var domain = CreateDomain("Tech", "cr-isolation-tech");
+            dbContext.Users.AddRange(organizerA, organizerB);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Organizer B Event",
+                "organizer-b-event",
+                "An event that belongs to organizer B.",
+                "Venue",
+                "Prague",
+                FirstDayOfNextMonthUtc(),
+                domain,
+                organizerB,
+                status: EventStatus.Draft);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        // Authenticated as Organizer A
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, organizerAId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                query CheckReadiness($eventId: UUID!) {
+                  checkEventReadiness(eventId: $eventId) {
+                    canSubmit
+                  }
+                }
+                """,
+            variables = new { eventId }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        var errorMessage = errors.ToString();
+        Assert.True(
+            errorMessage.Contains("FORBIDDEN", StringComparison.OrdinalIgnoreCase)
+            || errorMessage.Contains("own events", StringComparison.OrdinalIgnoreCase),
+            $"Expected FORBIDDEN error but got: {errorMessage}");
+    }
+
+    // ── Event lifecycle / state-transition tests ─────────────────────────────────
+
+    [Fact]
+    public async Task SubmitEvent_ByContributor_CreatesAsPendingApproval()
+    {
+        // A contributor (non-admin) submitting an event should result in PENDING_APPROVAL.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("lifecycle-contributor@example.com", "Contributor");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "lc-contrib-tech");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        var nextMonth = FirstDayOfNextMonthUtc();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation SubmitEvent($input: EventSubmissionInput!) {
+              submitEvent(input: $input) {
+                name
+                status
+              }
+            }
+            """,
+            new
+            {
+                input = new
+                {
+                    domainSlug = "lc-contrib-tech",
+                    name = "Contributor Event",
+                    description = "An event submitted by a regular contributor.",
+                    eventUrl = "https://events.example.com/contributor-event",
+                    venueName = "Venue",
+                    addressLine1 = "Address 1",
+                    city = "Prague",
+                    countryCode = "CZ",
+                    isFree = true,
+                    currencyCode = "EUR",
+                    latitude = 50.075m,
+                    longitude = 14.437m,
+                    startsAtUtc = nextMonth,
+                    endsAtUtc = nextMonth.AddHours(4),
+                    attendanceMode = "IN_PERSON"
+                }
+            });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("submitEvent");
+        Assert.Equal("Contributor Event", result.GetProperty("name").GetString());
+        // Contributors must go through moderation
+        Assert.Equal("PENDING_APPROVAL", result.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task ReviewEvent_Approve_ChangesStatusToPublished()
+    {
+        // When an admin approves a pending event, its status must change to PUBLISHED.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var adminId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("lifecycle-admin@example.com", "Admin User", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var organizer = CreateUser("lifecycle-org@example.com", "Organizer");
+            var domain = CreateDomain("Tech", "lc-review-tech");
+            dbContext.Users.AddRange(admin, organizer);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Pending Review Event",
+                "pending-review-event",
+                "An event awaiting moderator approval.",
+                "Venue",
+                "Prague",
+                FirstDayOfNextMonthUtc(),
+                domain,
+                organizer,
+                status: EventStatus.PendingApproval);
+            ev.PublishedAtUtc = null;
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation ReviewEvent($eventId: UUID!, $input: ReviewEventInput!) {
+              reviewEvent(eventId: $eventId, input: $input) {
+                name
+                status
+                adminNotes
+              }
+            }
+            """,
+            new
+            {
+                eventId,
+                input = new { status = "PUBLISHED", adminNotes = (string?)null }
+            });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("reviewEvent");
+        Assert.Equal("Pending Review Event", result.GetProperty("name").GetString());
+        Assert.Equal("PUBLISHED", result.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task ReviewEvent_Reject_StoresAdminNotes_AndChangesStatusToRejected()
+    {
+        // When an admin rejects an event, the status changes to REJECTED and the
+        // adminNotes (moderator feedback) are stored and surfaced to the organizer.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var adminId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("lc-reject-admin@example.com", "Reject Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var organizer = CreateUser("lc-reject-org@example.com", "Reject Organizer");
+            var domain = CreateDomain("Tech", "lc-reject-tech");
+            dbContext.Users.AddRange(admin, organizer);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Rejected Event",
+                "rejected-event-lifecycle",
+                "An event that will be rejected by the moderator.",
+                "Venue",
+                "Prague",
+                FirstDayOfNextMonthUtc(),
+                domain,
+                organizer,
+                status: EventStatus.PendingApproval);
+            ev.PublishedAtUtc = null;
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        const string feedback = "Please add a proper venue name and a longer event description before resubmitting.";
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation ReviewEvent($eventId: UUID!, $input: ReviewEventInput!) {
+              reviewEvent(eventId: $eventId, input: $input) {
+                name
+                status
+                adminNotes
+              }
+            }
+            """,
+            new
+            {
+                eventId,
+                input = new { status = "REJECTED", adminNotes = feedback }
+            });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("reviewEvent");
+        Assert.Equal("Rejected Event", result.GetProperty("name").GetString());
+        Assert.Equal("REJECTED", result.GetProperty("status").GetString());
+        // Moderator feedback must be stored and accessible to the organizer
+        Assert.Equal(feedback, result.GetProperty("adminNotes").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateMyEvent_ByContributor_ResetsToPendingApproval()
+    {
+        // When a contributor updates their event (e.g. after rejection), the status
+        // must reset to PENDING_APPROVAL so the event goes back through moderation.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("lc-update@example.com", "Update Organizer");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "lc-update-tech");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Rejected Then Updated Event",
+                "rejected-then-updated",
+                "An event that was rejected and is now being resubmitted.",
+                "Venue",
+                "Prague",
+                FirstDayOfNextMonthUtc(),
+                domain,
+                user,
+                status: EventStatus.Rejected);
+            ev.AdminNotes = "Please add more venue details.";
+            ev.PublishedAtUtc = null;
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        var nextMonth = FirstDayOfNextMonthUtc();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation UpdateMyEvent($eventId: UUID!, $input: EventSubmissionInput!) {
+              updateMyEvent(eventId: $eventId, input: $input) {
+                name
+                status
+              }
+            }
+            """,
+            new
+            {
+                eventId,
+                input = new
+                {
+                    domainSlug = "lc-update-tech",
+                    name = "Rejected Then Updated Event",
+                    description = "Now with a proper venue name and an expanded event description.",
+                    eventUrl = "https://events.example.com/resubmit",
+                    venueName = "Prague Congress Centre",
+                    addressLine1 = "Václavské náměstí 1",
+                    city = "Prague",
+                    countryCode = "CZ",
+                    isFree = true,
+                    currencyCode = "EUR",
+                    latitude = 50.075m,
+                    longitude = 14.437m,
+                    startsAtUtc = nextMonth,
+                    endsAtUtc = nextMonth.AddHours(4),
+                    attendanceMode = "IN_PERSON"
+                }
+            });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("updateMyEvent");
+        Assert.Equal("Rejected Then Updated Event", result.GetProperty("name").GetString());
+        // After an organizer updates/resubmits, the event must go back to pending review
+        Assert.Equal("PENDING_APPROVAL", result.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task ReviewEvent_Reject_AdminNotes_VisibleInDashboard()
+    {
+        // Organizer-facing dashboard must surface the adminNotes for rejected events
+        // so organizers can understand what to fix before resubmitting.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var adminId = Guid.Empty;
+        var organizerId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("dash-reject-admin@example.com", "Dash Reject Admin", ApplicationUserRole.Admin);
+            var organizer = CreateUser("dash-reject-org@example.com", "Dash Reject Organizer");
+            adminId = admin.Id;
+            organizerId = organizer.Id;
+            var domain = CreateDomain("Tech", "dash-reject-tech");
+            dbContext.Users.AddRange(admin, organizer);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Dashboard Rejected Event",
+                "dashboard-rejected-event",
+                "An event rejected with feedback shown in the dashboard.",
+                "Venue",
+                "Prague",
+                FirstDayOfNextMonthUtc(),
+                domain,
+                organizer,
+                status: EventStatus.Rejected);
+            ev.AdminNotes = "Missing venue details — please add a specific venue name.";
+            ev.PublishedAtUtc = null;
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        // Organizer requests their dashboard
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, organizerId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyDashboard {
+              myDashboard {
+                eventAnalytics {
+                  eventName
+                  status
+                  adminNotes
+                }
+              }
+            }
+            """);
+
+        var analytics = document.RootElement
+            .GetProperty("data")
+            .GetProperty("myDashboard")
+            .GetProperty("eventAnalytics")
+            .EnumerateArray()
+            .First();
+
+        Assert.Equal("Dashboard Rejected Event", analytics.GetProperty("eventName").GetString());
+        Assert.Equal("REJECTED", analytics.GetProperty("status").GetString());
+        // Admin notes must be surfaced through the dashboard so the organizer knows what to fix
+        Assert.Equal(
+            "Missing venue details — please add a specific venue name.",
+            analytics.GetProperty("adminNotes").GetString());
     }
 }
 

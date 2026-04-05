@@ -6,6 +6,7 @@ import { useEventsStore } from '@/stores/events'
 import { useDomainsStore } from '@/stores/domains'
 import { useAuthStore } from '@/stores/auth'
 import { useCommunitiesStore } from '@/stores/communities'
+import { computeEventReadiness } from '@/composables/useEventReadiness'
 import type { CommunityMembership } from '@/types'
 
 const { t } = useI18n()
@@ -223,6 +224,23 @@ const stepTitle = computed(() => {
 })
 
 const parsedPrice = computed(() => Number.parseFloat(form.priceAmount))
+
+// ── Submission readiness ───────────────────────────────────────────────────
+const readiness = computed(() =>
+  computeEventReadiness({
+    name: form.name,
+    description: form.description,
+    domainSlug: form.domainSlug,
+    startsAtUtc: form.startsAtUtc,
+    eventUrl: form.eventUrl,
+    timezone: form.timezone,
+    attendanceMode: form.attendanceMode,
+    venueName: form.venueName,
+    city: form.city,
+    isFree: form.isFree,
+    priceAmount: form.priceAmount,
+  }),
+)
 
 // ── Submit ─────────────────────────────────────────────────────────────────
 async function handleSubmit() {
@@ -668,6 +686,40 @@ loadDraft()
 
           <!-- Global submission error -->
           <p v-if="submissionError" class="submit-error" role="alert">{{ submissionError }}</p>
+
+          <!-- Readiness checklist (visible on step 5 before submit) -->
+          <div
+            v-if="currentStep === TOTAL_STEPS"
+            class="readiness-panel"
+            :class="readiness.canSubmit ? 'readiness-panel--ok' : 'readiness-panel--blocked'"
+            role="region"
+            :aria-label="t('readiness.panelTitle')"
+          >
+            <div class="readiness-header">
+              <span class="readiness-icon" aria-hidden="true">{{ readiness.canSubmit ? '✅' : '⚠️' }}</span>
+              <strong class="readiness-status">
+                {{ readiness.canSubmit ? t('readiness.canSubmit') : t('readiness.cannotSubmit') }}
+              </strong>
+            </div>
+            <template v-if="readiness.blockingIssues.length > 0">
+              <p class="readiness-section-label">{{ t('readiness.blockingHeading') }}</p>
+              <ul class="readiness-list readiness-list--blocking" :aria-label="t('readiness.blockingHeading')">
+                <li v-for="item in readiness.blockingIssues" :key="item.key" class="readiness-item readiness-item--blocking">
+                  <span class="readiness-item-icon" aria-hidden="true">✗</span>
+                  {{ t(`readiness.${item.key}`) }}
+                </li>
+              </ul>
+            </template>
+            <template v-if="readiness.recommendations.length > 0">
+              <p class="readiness-section-label">{{ t('readiness.recommendationsHeading') }}</p>
+              <ul class="readiness-list readiness-list--recommendations" :aria-label="t('readiness.recommendationsHeading')">
+                <li v-for="item in readiness.recommendations" :key="item.key" class="readiness-item readiness-item--recommendation">
+                  <span class="readiness-item-icon" aria-hidden="true">💡</span>
+                  {{ t(`readiness.${item.key}`) }}
+                </li>
+              </ul>
+            </template>
+          </div>
 
           <!-- Step navigation actions -->
           <div class="form-actions">
@@ -1116,6 +1168,81 @@ loadDraft()
   .submit-error {
     padding: 0 1.25rem 0.75rem;
   }
+
+  .readiness-panel {
+    margin: 0 1.25rem 1rem;
+  }
 }
-</style>
+
+/* ── Readiness panel ── */
+.readiness-panel {
+  margin: 1rem 0 0;
+  padding: 1rem 1.25rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+}
+
+.readiness-panel--ok {
+  background: rgba(74, 222, 128, 0.08);
+  border: 1px solid rgba(74, 222, 128, 0.3);
+}
+
+.readiness-panel--blocked {
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+}
+
+.readiness-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.readiness-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.readiness-status {
+  font-weight: 600;
+}
+
+.readiness-section-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+  margin: 0.75rem 0 0.25rem;
+}
+
+.readiness-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.readiness-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.375rem;
+}
+
+.readiness-item-icon {
+  flex-shrink: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.readiness-item--blocking {
+  color: var(--color-text);
+}
+
+.readiness-item--recommendation {
+  color: var(--color-text-secondary);
+}</style>
 

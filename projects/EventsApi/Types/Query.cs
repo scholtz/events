@@ -1071,4 +1071,109 @@ public sealed class Query
                 ImportBlockReason: alreadyImported ? "Already imported." : blockReason);
         }).ToList();
     }
+
+    // ── Event submission readiness ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Evaluates an organizer's event draft against the platform's submission-readiness
+    /// model and returns a structured list of blocking issues and non-blocking recommendations.
+    ///
+    /// The same rules are applied here as by the frontend composable, keeping validation
+    /// authoritative, centralised, and testable independently of the UI.
+    ///
+    /// Authorization: the caller must own the event or be a platform admin.
+    /// </summary>
+    [Authorize]
+    public async Task<EventReadinessResult> CheckEventReadinessAsync(
+        Guid eventId,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var currentUserId = claimsPrincipal.GetRequiredUserId();
+
+        var ev = await dbContext.Events
+            .AsNoTracking()
+            .Include(e => e.Domain)
+            .SingleOrDefaultAsync(e => e.Id == eventId, cancellationToken)
+            ?? throw new GraphQLException(
+                ErrorBuilder.New()
+                    .SetMessage("Event was not found.")
+                    .SetCode("EVENT_NOT_FOUND")
+                    .Build());
+
+        if (ev.SubmittedByUserId != currentUserId && !claimsPrincipal.IsAdmin())
+        {
+            throw new GraphQLException(
+                ErrorBuilder.New()
+                    .SetMessage("You can only check readiness for your own events.")
+                    .SetCode("FORBIDDEN")
+                    .Build());
+        }
+
+        return ComputeEventReadiness(ev);
+    }
+
+    /// <summary>
+    /// Computes the submission-readiness result for a persisted event.
+    /// Mirrors the deterministic model in the frontend useEventReadiness composable
+    /// so backend and frontend checks stay in sync.
+    /// </summary>
+    private static EventReadinessResult ComputeEventReadiness(CatalogEvent ev)
+    {
+        const int MinDescriptionLength = 50;
+
+        var blocking = new List<EventReadinessIssue>();
+        var recommendations = new List<EventReadinessIssue>();
+
+        // ── Blocking checks ────────────────────────────────────────────────────
+
+        if (string.IsNullOrWhiteSpace(ev.Name))
+            blocking.Add(new EventReadinessIssue("missingTitle", true, "Add an event title."));
+
+        if (string.IsNullOrWhiteSpace(ev.Description))
+            blocking.Add(new EventReadinessIssue("missingDescription", true, "Add a description."));
+
+        if (ev.DomainId == Guid.Empty || ev.Domain is null)
+            blocking.Add(new EventReadinessIssue("missingDomain", true, "Choose a category (tag)."));
+
+        if (ev.StartsAtUtc == default)
+            blocking.Add(new EventReadinessIssue("missingStartDate", true, "Set a start date and time."));
+
+        if (string.IsNullOrWhiteSpace(ev.EventUrl))
+        {
+            blocking.Add(new EventReadinessIssue("missingEventUrl", true, "Add a website or registration URL."));
+        }
+        else if (!Uri.TryCreate(ev.EventUrl, UriKind.Absolute, out var parsedUrl)
+                 || (parsedUrl.Scheme != Uri.UriSchemeHttps && parsedUrl.Scheme != Uri.UriSchemeHttp))
+        {
+            blocking.Add(new EventReadinessIssue("invalidEventUrl", true, "Enter a valid URL (e.g. https://example.com/event)."));
+        }
+
+        if (!ev.IsFree && (ev.PriceAmount is null || ev.PriceAmount < 0))
+            blocking.Add(new EventReadinessIssue("invalidPrice", true, "Enter a valid price for this paid event."));
+
+        // ── Recommendations ────────────────────────────────────────────────────
+
+        if (string.IsNullOrWhiteSpace(ev.Timezone))
+            recommendations.Add(new EventReadinessIssue("missingTimezone", false, "Add a timezone so attendees know the exact local time."));
+
+        var needsVenue = ev.AttendanceMode == AttendanceMode.InPerson || ev.AttendanceMode == AttendanceMode.Hybrid;
+
+        if (needsVenue && string.IsNullOrWhiteSpace(ev.VenueName))
+            recommendations.Add(new EventReadinessIssue("missingVenue", false, "Add a venue name for this in-person event."));
+
+        if (needsVenue && string.IsNullOrWhiteSpace(ev.City))
+            recommendations.Add(new EventReadinessIssue("missingCity", false, "Add a city to help attendees find the event."));
+
+        var descTrimmed = ev.Description?.Trim() ?? string.Empty;
+        if (descTrimmed.Length > 0 && descTrimmed.Length < MinDescriptionLength)
+            recommendations.Add(new EventReadinessIssue("shortDescription", false, "Expand the description — a longer description helps attendees decide whether to attend."));
+
+        return new EventReadinessResult(
+            CanSubmit: blocking.Count == 0,
+            BlockingIssues: blocking,
+            Recommendations: recommendations);
+    }
+
 }

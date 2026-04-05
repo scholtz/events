@@ -360,6 +360,45 @@ export default {
     saveError: 'Zmeny sa momentálne nepodarilo uložiť.',
     notFound: 'Túto udalosť sa nepodarilo nájsť.',
     loadError: 'Načítanie podrobností udalosti zlyhalo.',
+    resubmitButton: 'Znovu odoslať na kontrolu',
+    resubmitting: 'Odosiela sa…',
+  },
+
+  // ── Pripravenosť udalosti ─────────────────────────────────────────────────
+  readiness: {
+    panelTitle: 'Pripravenosť na odoslanie',
+    canSubmit: 'Pripravené na odoslanie',
+    cannotSubmit: 'Pred odoslaním opravte nasledujúce problémy',
+    blockingHeading: 'Povinné pred odoslaním',
+    recommendationsHeading: 'Odporúčané vylepšenia',
+    missingTitle: 'Pridajte názov udalosti',
+    missingDescription: 'Pridajte popis',
+    missingDomain: 'Vyberte kategóriu (tag)',
+    missingStartDate: 'Nastavte dátum a čas začiatku',
+    missingEventUrl: 'Pridajte webovú adresu alebo registračný odkaz',
+    invalidEventUrl: 'Zadajte platnú URL adresu (napr. https://priklad.sk/udalost)',
+    invalidPrice: 'Zadajte platnú cenu pre túto platenú udalosť',
+    missingTimezone: 'Pridajte časové pásmo, aby účastníci vedeli presný miestny čas',
+    missingVenue: 'Pridajte miesto konania pre túto prezenčnú udalosť',
+    missingCity: 'Pridajte mesto, aby účastníci ľahšie našli udalosť',
+    shortDescription: 'Rozšírte popis — dlhší popis pomáha účastníkom rozhodnúť sa, či sa zúčastnia',
+  },
+
+  // ── Životný cyklus udalosti ───────────────────────────────────────────────
+  lifecycle: {
+    panelTitle: 'Stav udalosti',
+    draft: 'Koncept',
+    draftExplanation: 'Táto udalosť je uložená lokálne a nie je verejne viditeľná. Odošlite ju na kontrolu, keď bude pripravená.',
+    draftAction: 'Po vyplnení všetkých povinných polí odošlite na kontrolu.',
+    pending: 'V kontrole',
+    pendingExplanation: 'Vaša udalosť čaká na schválenie moderátorom. Momentálne nie je potrebná žiadna ďalšia akcia.',
+    pendingAction: 'Upozorníme vás, keď bude udalosť schválená alebo vrátená so spätnou väzbou.',
+    published: 'Zverejnená',
+    publishedExplanation: 'Táto udalosť je naživo a verejne viditeľná pre všetkých návštevníkov.',
+    publishedAction: 'Uložené úpravy budú pred zverejnením preskúmané.',
+    rejected: 'Vrátená na úpravu',
+    rejectedExplanation: 'Táto udalosť bola vrátená moderátorom. Pozrite si spätnú väzbu nižšie, aktualizujte udalosť a znovu ju odošlite.',
+    rejectedAction: 'Opravte uvedené problémy a znovu odošlite, keď budete pripravení.',
   },
 
   favorites: {

@@ -1007,9 +1007,10 @@ public sealed class Mutation
             throw CreateError("Event end date must be after the start date.", "INVALID_EVENT_DATES");
         }
 
-        if (!Uri.TryCreate(input.EventUrl, UriKind.Absolute, out _))
+        if (!Uri.TryCreate(input.EventUrl, UriKind.Absolute, out var parsedEventUrl)
+            || (parsedEventUrl.Scheme != Uri.UriSchemeHttps && parsedEventUrl.Scheme != Uri.UriSchemeHttp))
         {
-            throw CreateError("Event URL must be an absolute URL.", "INVALID_EVENT_URL");
+            throw CreateError("Event URL must be an HTTP or HTTPS URL.", "INVALID_EVENT_URL");
         }
 
         if (input.PriceAmount is not null && input.PriceAmount < 0)

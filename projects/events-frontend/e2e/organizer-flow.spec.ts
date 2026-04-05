@@ -4,6 +4,9 @@ import {
   makeAdminUser,
   makeTechDomain,
   makeApprovedEvent,
+  makePendingEvent,
+  makeRejectedEvent,
+  makeDraftEvent,
   loginAs,
   type MockCalendarAction,
 } from './helpers/mock-api'
@@ -715,5 +718,270 @@ test.describe('Organizer calendar analytics journey', () => {
       has: page.locator('.stat-label', { hasText: 'Calendar Adds' }),
     })
     await expect(calCard.locator('.stat-number--calendar')).toContainText('1')
+  })
+})
+
+// ── Submission readiness checklist ────────────────────────────────────────────
+
+test.describe('Submission readiness checklist', () => {
+  /**
+   * Navigates to step 5 of the submit wizard by filling in minimal required
+   * data for the first 4 steps.
+   */
+  async function goToStep5(page: Page, { clearLocalDraft = true }: { clearLocalDraft?: boolean } = {}) {
+    if (clearLocalDraft) {
+      await page.evaluate(() => localStorage.removeItem('event_draft'))
+      await page.reload()
+    }
+    // Step 1
+    await page.locator('#event-title').fill('Prague Crypto Summit')
+    await page.locator('#event-description').fill('A great technology conference for blockchain enthusiasts in Prague.')
+    await page.locator('#event-domain').selectOption({ index: 1 })
+    await page.getByRole('button', { name: 'Next' }).click()
+    // Step 2
+    await page.locator('#event-date').fill('2026-09-15')
+    await page.getByRole('button', { name: 'Next' }).click()
+    // Step 3
+    await page.getByRole('button', { name: 'Next' }).click()
+    // Step 4
+    await page.getByRole('button', { name: 'Next' }).click()
+    // Now on step 5
+  }
+
+  test('shows readiness panel on step 5 when event URL is filled', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+
+    setupMockApi(page, { users: [user], domains: [domain] })
+    await loginAs(page, user)
+    await page.goto('/submit')
+    await goToStep5(page)
+
+    // Fill in the event URL so all blocking issues are resolved
+    await page.locator('#event-link').fill('https://example.com/event')
+
+    // Readiness panel should appear and show OK status
+    await expect(page.locator('.readiness-panel')).toBeVisible()
+    await expect(page.locator('.readiness-panel--ok')).toBeVisible()
+    await expect(page.locator('.readiness-status')).toContainText('Ready to submit')
+  })
+
+  test('shows blocking issue when event URL is missing on step 5', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+
+    setupMockApi(page, { users: [user], domains: [domain] })
+    await loginAs(page, user)
+    await page.goto('/submit')
+    await goToStep5(page)
+
+    // Leave event URL empty
+    await page.locator('#event-link').fill('')
+
+    // Readiness panel should show blocked state
+    await expect(page.locator('.readiness-panel--blocked')).toBeVisible()
+    await expect(page.locator('.readiness-status')).toContainText('Fix the issues below before submitting')
+    await expect(page.locator('.readiness-list--blocking')).toContainText('Add a website or registration URL')
+  })
+
+  test('shows recommendations for missing timezone on step 5', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+
+    setupMockApi(page, { users: [user], domains: [domain] })
+    await loginAs(page, user)
+    await page.goto('/submit')
+    await goToStep5(page)
+
+    // Fill event URL (so blocking issues resolved) but leave timezone blank
+    await page.locator('#event-link').fill('https://example.com/event')
+
+    // Should show recommendation about timezone
+    await expect(page.locator('.readiness-list--recommendations')).toContainText('Add a timezone')
+  })
+
+  test('readiness panel is not shown on steps 1-4', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+
+    setupMockApi(page, { users: [user], domains: [domain] })
+    await loginAs(page, user)
+    await page.goto('/submit')
+    await page.evaluate(() => localStorage.removeItem('event_draft'))
+    await page.reload()
+
+    // On step 1 — no readiness panel
+    await expect(page.locator('.readiness-panel')).toBeHidden()
+
+    // Navigate to step 2
+    await page.locator('#event-title').fill('Event Title')
+    await page.locator('#event-description').fill('Event description for testing step 1.')
+    await page.locator('#event-domain').selectOption({ index: 1 })
+    await page.getByRole('button', { name: 'Next' }).click()
+    await expect(page.locator('.step-label')).toContainText('Step 2')
+
+    // Still no readiness panel on step 2
+    await expect(page.locator('.readiness-panel')).toBeHidden()
+  })
+
+  test('mobile viewport: readiness panel is visible at 390x844', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+
+    setupMockApi(page, { users: [user], domains: [domain] })
+    await page.setViewportSize({ width: 390, height: 844 })
+    await loginAs(page, user)
+    await page.goto('/submit')
+    await goToStep5(page)
+
+    // Fill event URL
+    await page.locator('#event-link').fill('https://example.com/event')
+
+    // Readiness panel should be visible on mobile
+    await expect(page.locator('.readiness-panel')).toBeVisible()
+  })
+})
+
+// ── Event lifecycle status card ────────────────────────────────────────────────
+
+test.describe('Event lifecycle status card on edit page', () => {
+  test('shows PUBLISHED lifecycle card for a published event', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-lc-pub',
+      slug: 'lc-published',
+      name: 'Published LC Event',
+      eventUrl: 'https://example.com',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+      status: 'PUBLISHED',
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    await loginAs(page, user)
+    await page.goto(`/edit/${event.id}`)
+
+    // Should show lifecycle card
+    await expect(page.locator('.lifecycle-card')).toBeVisible()
+    await expect(page.locator('.lifecycle-badge')).toContainText('Published')
+    await expect(page.locator('.lifecycle-explanation')).toContainText('publicly visible')
+  })
+
+  test('shows DRAFT lifecycle card for a draft event', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeDraftEvent({
+      id: 'ev-lc-draft',
+      slug: 'lc-draft',
+      name: 'Draft LC Event',
+      eventUrl: 'https://example.com',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    await loginAs(page, user)
+    await page.goto(`/edit/${event.id}`)
+
+    await expect(page.locator('.lifecycle-card')).toBeVisible()
+    await expect(page.locator('.lifecycle-badge')).toContainText('Draft')
+    await expect(page.locator('.lifecycle-explanation')).toContainText('not yet visible')
+  })
+
+  test('shows PENDING_APPROVAL lifecycle card for a pending event', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makePendingEvent({
+      id: 'ev-lc-pending',
+      slug: 'lc-pending',
+      name: 'Pending LC Event',
+      eventUrl: 'https://example.com',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    await loginAs(page, user)
+    await page.goto(`/edit/${event.id}`)
+
+    await expect(page.locator('.lifecycle-card')).toBeVisible()
+    await expect(page.locator('.lifecycle-badge')).toContainText('Under Review')
+    await expect(page.locator('.lifecycle-explanation')).toContainText('moderator')
+  })
+
+  test('shows REJECTED lifecycle card with admin notes', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeRejectedEvent({
+      id: 'ev-lc-rej',
+      slug: 'lc-rejected',
+      name: 'Rejected LC Event',
+      eventUrl: 'https://example.com',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+      adminNotes: 'Please add more venue details and a valid website.',
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    await loginAs(page, user)
+    await page.goto(`/edit/${event.id}`)
+
+    await expect(page.locator('.lifecycle-card')).toBeVisible()
+    await expect(page.locator('.lifecycle-badge')).toContainText('Returned for Changes')
+    await expect(page.locator('.lifecycle-explanation')).toContainText('returned by a moderator')
+    // Admin notes should be visible
+    await expect(page.locator('.lifecycle-admin-notes')).toContainText('Please add more venue details')
+  })
+
+  test('shows resubmit button for rejected event when readiness is OK (step 5)', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeRejectedEvent({
+      id: 'ev-lc-rej-resubmit',
+      slug: 'lc-rejected-resubmit',
+      name: 'Rejected Resubmit Event',
+      description: 'A long enough description to pass the readiness check for resubmission.',
+      eventUrl: 'https://example.com/event',
+      city: 'Prague',
+      venueName: 'Prague Congress Centre',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    await loginAs(page, user)
+    await page.goto(`/edit/${event.id}`)
+
+    // Navigate through all steps to reach step 5
+    await page.getByRole('button', { name: 'Next' }).click()
+    await page.getByRole('button', { name: 'Next' }).click()
+    await page.getByRole('button', { name: 'Next' }).click()
+    await page.getByRole('button', { name: 'Next' }).click()
+    await expect(page.locator('.step-label')).toContainText('Step 5')
+
+    // Resubmit button should be visible when event is REJECTED and readiness passes
+    await expect(page.getByRole('button', { name: 'Resubmit for Review' })).toBeVisible()
+  })
+
+  test('lifecycle card status applies correct CSS variant class', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeRejectedEvent({
+      id: 'ev-lc-css',
+      slug: 'lc-css-check',
+      name: 'CSS Check Event',
+      eventUrl: 'https://example.com',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    await loginAs(page, user)
+    await page.goto(`/edit/${event.id}`)
+
+    // The lifecycle card should have the status--rejected variant class
+    await expect(page.locator('.lifecycle-card.status--rejected')).toBeVisible()
+    await expect(page.locator('.lifecycle-badge.status--rejected')).toBeVisible()
   })
 })
