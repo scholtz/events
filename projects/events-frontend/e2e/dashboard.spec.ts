@@ -1868,3 +1868,501 @@ test.describe('Dashboard – My Communities section', () => {
     await expect(page.locator('.communities-empty')).toHaveCount(0)
   })
 })
+
+// ── Analytics state banners ───────────────────────────────────────────────────
+
+test.describe('Dashboard analytics state banners', () => {
+  test('shows early-data banner when all published events are newly live and saves are low', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    // Published just 3 days ago — newly live, no saves
+    const event = makeApprovedEvent({
+      id: 'ev-early-state',
+      slug: 'early-state-event',
+      name: 'Early State Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+      publishedAtUtc: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Early-data banner should be visible
+    const banner = page.locator('.analytics-state-banner--early')
+    await expect(banner).toBeVisible()
+    await expect(banner).toContainText(/newly published|just published|still forming|Data is still forming/i)
+  })
+
+  test('shows low-signal banner when published event is older and has few saves', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    // Published 30 days ago (default) — not newly published, but no saves
+    const event = makeApprovedEvent({
+      id: 'ev-low-signal-state',
+      slug: 'low-signal-state-event',
+      name: 'Low Signal State Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Low-signal banner should be visible (not early because > 14 days old)
+    const banner = page.locator('.analytics-state-banner--low-signal')
+    await expect(banner).toBeVisible()
+    await expect(banner).toContainText(/limited saves|limited distribution|low engagement/i)
+  })
+
+  test('does not show analytics state banner for events with normal signal (≥5 saves)', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-normal-state',
+      slug: 'normal-state-event',
+      name: 'Normal State Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    const state = setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    // 5 saves → normal signal
+    for (let i = 0; i < 5; i++) {
+      state.favoriteEvents.push({
+        id: `fav-normal-${i}`,
+        userId: `u-${i}`,
+        eventId: event.id,
+        createdAtUtc: new Date().toISOString(),
+      })
+    }
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // No analytics state banners should appear for a normal-signal dashboard
+    await expect(page.locator('.analytics-state-banner--early')).toHaveCount(0)
+    await expect(page.locator('.analytics-state-banner--low-signal')).toHaveCount(0)
+  })
+
+  test('does not show analytics state banner when there are no events at all', async ({ page }) => {
+    const user = makeAdminUser()
+    setupMockApi(page, { users: [user] })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Empty state is shown instead; no analytics state banners
+    await expect(page.locator('.analytics-state-banner--early')).toHaveCount(0)
+    await expect(page.locator('.analytics-state-banner--low-signal')).toHaveCount(0)
+  })
+
+  test('shows early-data banner for multi-event organizer when all events are newly published', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const recentPublished = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString()
+
+    const events = [
+      makeApprovedEvent({
+        id: 'ev-multi-early-1',
+        slug: 'multi-early-1',
+        name: 'Multi Early Event One',
+        submittedByUserId: user.id,
+        submittedBy: { displayName: user.displayName },
+        publishedAtUtc: recentPublished,
+      }),
+      makeApprovedEvent({
+        id: 'ev-multi-early-2',
+        slug: 'multi-early-2',
+        name: 'Multi Early Event Two',
+        submittedByUserId: user.id,
+        submittedBy: { displayName: user.displayName },
+        publishedAtUtc: recentPublished,
+      }),
+    ]
+
+    setupMockApi(page, { users: [user], domains: [domain], events })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Both events are newly published → early-data banner
+    await expect(page.locator('.analytics-state-banner--early')).toBeVisible()
+  })
+
+  test('shows low-signal banner when one event is new but another is older (mixed freshness)', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+
+    const events = [
+      makeApprovedEvent({
+        id: 'ev-mix-new',
+        slug: 'mix-new-event',
+        name: 'New Event',
+        submittedByUserId: user.id,
+        submittedBy: { displayName: user.displayName },
+        publishedAtUtc: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), // 3 days old
+      }),
+      makeApprovedEvent({
+        id: 'ev-mix-old',
+        slug: 'mix-old-event',
+        name: 'Older Event',
+        submittedByUserId: user.id,
+        submittedBy: { displayName: user.displayName },
+        publishedAtUtc: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days old
+      }),
+    ]
+
+    setupMockApi(page, { users: [user], domains: [domain], events })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Mixed age → not ALL newly published → low_signal, not early
+    await expect(page.locator('.analytics-state-banner--low-signal')).toBeVisible()
+    await expect(page.locator('.analytics-state-banner--early')).toHaveCount(0)
+  })
+})
+
+// ── Freshness indicator ───────────────────────────────────────────────────────
+
+test.describe('Dashboard freshness indicator', () => {
+  test('freshness indicator does not appear immediately after load (data is fresh)', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-fresh-1',
+      slug: 'fresh-event-1',
+      name: 'Fresh Data Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // The freshness indicator should NOT be visible right after loading
+    await expect(page.locator('.freshness-indicator')).toHaveCount(0)
+  })
+
+  test('freshness indicator appears after 6 minutes and shows a refresh button', async ({
+    page,
+  }) => {
+    // Install a fake clock starting at a known time so we can fast-forward deterministically.
+    await page.clock.install({ time: new Date('2026-01-01T12:00:00Z') })
+
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-stale-clock-1',
+      slug: 'stale-clock-event',
+      name: 'Stale Clock Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Freshness indicator should be absent immediately after load
+    await expect(page.locator('.freshness-indicator')).toHaveCount(0)
+
+    // Advance the fake clock by 6 minutes and run all due timers (including the 60-s interval).
+    await page.clock.fastForward('06:00')
+
+    // The freshness indicator should now be visible (data is > 5 minutes old)
+    await expect(page.locator('.freshness-indicator')).toBeVisible()
+    await expect(page.locator('.freshness-refresh-btn')).toBeVisible()
+  })
+
+  test('clicking Refresh button reloads dashboard and hides the freshness indicator', async ({
+    page,
+  }) => {
+    await page.clock.install({ time: new Date('2026-01-01T12:00:00Z') })
+
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-refresh-clock-1',
+      slug: 'refresh-clock-event',
+      name: 'Refresh Clock Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Advance time past staleness threshold
+    await page.clock.fastForward('06:00')
+    await expect(page.locator('.freshness-refresh-btn')).toBeVisible()
+
+    // Click the Refresh button — this calls fetchDashboard() which resets lastFetchedAt
+    await page.locator('.freshness-refresh-btn').click()
+
+    // After a successful refresh, the freshness indicator should disappear
+    await expect(page.locator('.freshness-indicator')).toHaveCount(0)
+    // Dashboard content is still visible
+    await expect(page.getByText('Total Events')).toBeVisible()
+  })
+})
+
+// ── Dashboard localization (SK / DE) ──────────────────────────────────────────
+
+test.describe('Dashboard i18n – Slovak locale', () => {
+  test('shows dashboard KPI labels in Slovak', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    setupMockApi(page, { users: [user], domains: [domain] })
+
+    // Switch to Slovak locale before loading the page
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'sk')
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Key Slovak KPI labels
+    await expect(page.locator('.stat-label', { hasText: 'Zverejnené' })).toBeVisible()
+    await expect(page.locator('.stat-label', { hasText: 'Celkom uložení' })).toBeVisible()
+  })
+
+  test('shows per-event guidance in Slovak when event has no saves', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-sk-guidance',
+      slug: 'sk-guidance-event',
+      name: 'SK Guidance Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'sk')
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Slovak recommendation text for an event with no saves
+    await expect(page.locator('.rec-text')).toContainText(/Žiadne uloženia|zdieľ|uložení/i)
+  })
+
+  test('shows low-signal banner in Slovak when published event has low engagement', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    // Published 30 days ago (default), no saves → low_signal state
+    const event = makeApprovedEvent({
+      id: 'ev-sk-low-signal',
+      slug: 'sk-low-signal-event',
+      name: 'SK Low Signal Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'sk')
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    const banner = page.locator('.analytics-state-banner--low-signal')
+    await expect(banner).toBeVisible()
+    // Banner title should be in Slovak
+    await expect(banner).toContainText(/Zatiaľ nízke zapojenie/)
+  })
+})
+
+test.describe('Dashboard i18n – German locale', () => {
+  test('shows dashboard KPI labels in German', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    setupMockApi(page, { users: [user], domains: [domain] })
+
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'de')
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Key German KPI labels
+    await expect(page.locator('.stat-label', { hasText: 'Veröffentlicht' })).toBeVisible()
+    await expect(page.locator('.stat-label', { hasText: 'Gesamte Speicherungen' })).toBeVisible()
+  })
+
+  test('shows per-event guidance in German when event has no saves', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-de-guidance',
+      slug: 'de-guidance-event',
+      name: 'DE Guidance Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'de')
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // German recommendation text
+    await expect(page.locator('.rec-text')).toContainText(/Speicherungen|Link/i)
+  })
+
+  test('shows early-data banner in German for newly published event', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-de-early',
+      slug: 'de-early-event',
+      name: 'DE Early Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+      publishedAtUtc: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'de')
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    const banner = page.locator('.analytics-state-banner--early')
+    await expect(banner).toBeVisible()
+    await expect(banner).toContainText(/Daten werden noch gesammelt/)
+  })
+})
+
+// ── Multi-event organizer attention scan ──────────────────────────────────────
+
+test.describe('Multi-event organizer attention scan', () => {
+  test('organizer can distinguish events with and without recommendations', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+
+    const needsAttentionEvent = makeRejectedEvent({
+      id: 'ev-multi-attention',
+      slug: 'multi-attention-event',
+      name: 'Needs Attention Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+      adminNotes: 'Please add venue details.',
+    })
+
+    const healthyEvent = makeApprovedEvent({
+      id: 'ev-multi-healthy',
+      slug: 'multi-healthy-event',
+      name: 'Healthy Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+      language: 'en',
+      timezone: 'Europe/Bratislava',
+    })
+
+    const state = setupMockApi(page, {
+      users: [user],
+      domains: [domain],
+      events: [needsAttentionEvent, healthyEvent],
+    })
+    // Give the healthy event enough saves for normal signal
+    for (let i = 0; i < 5; i++) {
+      state.favoriteEvents.push({
+        id: `fav-healthy-${i}`,
+        userId: `u-${i}`,
+        eventId: healthyEvent.id,
+        createdAtUtc: new Date().toISOString(),
+      })
+    }
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Rejected event should have a recommendation row (needs attention)
+    await expect(page.locator('.event-recommendation-row.rec--rejected')).toBeVisible()
+
+    // The healthy event should NOT have a recommendation row
+    // (it has saves, language, timezone, and domain)
+    // There should be exactly 1 recommendation row total (only for the rejected event)
+    await expect(page.locator('.event-recommendation-row')).toHaveCount(1)
+  })
+
+  test('multi-event organizer sees per-event recommendations for each event state', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+
+    const draftEvent = makeDraftEvent({
+      id: 'ev-scan-draft',
+      slug: 'scan-draft',
+      name: 'Draft Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    const pendingEvent = makePendingEvent({
+      id: 'ev-scan-pending',
+      slug: 'scan-pending',
+      name: 'Pending Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    const publishedNoSavesEvent = makeApprovedEvent({
+      id: 'ev-scan-pub-nosaves',
+      slug: 'scan-pub-nosaves',
+      name: 'Published No Saves',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    setupMockApi(page, {
+      users: [user],
+      domains: [domain],
+      events: [draftEvent, pendingEvent, publishedNoSavesEvent],
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // All three events should have recommendation rows
+    await expect(page.locator('.event-recommendation-row')).toHaveCount(3)
+
+    // Each row should have an appropriate class
+    await expect(page.locator('.event-recommendation-row.rec--draft')).toHaveCount(1)
+    await expect(page.locator('.event-recommendation-row.rec--pending')).toHaveCount(1)
+    await expect(page.locator('.event-recommendation-row.rec--guidance')).toHaveCount(1)
+  })
+})

@@ -32,6 +32,8 @@ export const useDashboardStore = defineStore('dashboard', () => {
   const overview = ref<DashboardOverview | null>(null)
   const loading = ref(false)
   const error = ref('')
+  /** UTC timestamp of the most recent successful dashboard fetch. */
+  const lastFetchedAt = ref<Date | null>(null)
 
   /** Returns analytics for a single event by its ID, or null if not found. */
   function getEventAnalytics(eventId: string): EventAnalyticsItem | null {
@@ -44,6 +46,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
     try {
       const data = await gqlRequest<{ myDashboard: DashboardOverview }>(DASHBOARD_QUERY)
       overview.value = data.myDashboard
+      lastFetchedAt.value = new Date()
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Unable to load dashboard.'
       overview.value = null
@@ -55,12 +58,14 @@ export const useDashboardStore = defineStore('dashboard', () => {
   function clearDashboard() {
     overview.value = null
     error.value = ''
+    lastFetchedAt.value = null
   }
 
   return {
     overview,
     loading,
     error,
+    lastFetchedAt,
     getEventAnalytics,
     fetchDashboard,
     clearDashboard,

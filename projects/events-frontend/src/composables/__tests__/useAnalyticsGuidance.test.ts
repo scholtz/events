@@ -483,3 +483,270 @@ describe('Analytics guidance — combined scenario coverage', () => {
     expect(eventRecommendationVariant(item, now)).toBe('rec--guidance')
   })
 })
+
+// ── classifyDashboardAnalyticsState ──────────────────────────────────────────
+
+import {
+  classifyDashboardAnalyticsState,
+  type DashboardAnalyticsState,
+} from '@/composables/useAnalyticsGuidance'
+import type { DashboardOverview } from '@/types'
+
+/** Minimal DashboardOverview stub for classifier tests. */
+function makeOverview(
+  overrides: Partial<
+    Pick<DashboardOverview, 'publishedEvents' | 'totalInterestedCount' | 'eventAnalytics'>
+  > = {},
+): Pick<DashboardOverview, 'publishedEvents' | 'totalInterestedCount' | 'eventAnalytics'> {
+  return {
+    publishedEvents: 0,
+    totalInterestedCount: 0,
+    eventAnalytics: [],
+    ...overrides,
+  }
+}
+
+/** Creates a single published EventAnalyticsItem for use in overview.eventAnalytics. */
+function makePublishedAnalyticsItem(publishedDaysAgo: number, now: Date): EventAnalyticsItem {
+  const publishedAtUtc = new Date(now.getTime() - publishedDaysAgo * 24 * 60 * 60 * 1000).toISOString()
+  return makeItem({ status: 'PUBLISHED', publishedAtUtc })
+}
+
+describe('classifyDashboardAnalyticsState', () => {
+  const now = new Date('2026-06-01T00:00:00Z')
+
+  // ── empty state ────────────────────────────────────────────────────────────
+
+  it('returns "empty" when there are no published events', () => {
+    const state: DashboardAnalyticsState = classifyDashboardAnalyticsState(
+      makeOverview({ publishedEvents: 0, totalInterestedCount: 0, eventAnalytics: [] }),
+      now,
+    )
+    expect(state).toBe('empty')
+  })
+
+  it('returns "empty" when publishedEvents is 0 even if totalInterestedCount > 0', () => {
+    // Defensive: totalInterestedCount should be 0 when there are no published events,
+    // but the classifier should not trust that and uses publishedEvents as the gate.
+    expect(
+      classifyDashboardAnalyticsState(
+        makeOverview({ publishedEvents: 0, totalInterestedCount: 10, eventAnalytics: [] }),
+        now,
+      ),
+    ).toBe('empty')
+  })
+
+  // ── normal state ───────────────────────────────────────────────────────────
+
+  it('returns "normal" when totalInterestedCount >= 5 (threshold)', () => {
+    expect(
+      classifyDashboardAnalyticsState(
+        makeOverview({
+          publishedEvents: 1,
+          totalInterestedCount: 5,
+          eventAnalytics: [makePublishedAnalyticsItem(30, now)],
+        }),
+        now,
+      ),
+    ).toBe('normal')
+  })
+
+  it('returns "normal" when totalInterestedCount is well above threshold', () => {
+    expect(
+      classifyDashboardAnalyticsState(
+        makeOverview({
+          publishedEvents: 2,
+          totalInterestedCount: 42,
+          eventAnalytics: [
+            makePublishedAnalyticsItem(20, now),
+            makePublishedAnalyticsItem(5, now),
+          ],
+        }),
+        now,
+      ),
+    ).toBe('normal')
+  })
+
+  it('returns "normal" for a single published event with enough saves even if newly published', () => {
+    // "normal" takes priority over "early" regardless of freshness
+    expect(
+      classifyDashboardAnalyticsState(
+        makeOverview({
+          publishedEvents: 1,
+          totalInterestedCount: 5,
+          eventAnalytics: [makePublishedAnalyticsItem(2, now)], // published 2 days ago
+        }),
+        now,
+      ),
+    ).toBe('normal')
+  })
+
+  // ── early state ────────────────────────────────────────────────────────────
+
+  it('returns "early" when all published events are within 14 days old and saves < 5', () => {
+    expect(
+      classifyDashboardAnalyticsState(
+        makeOverview({
+          publishedEvents: 1,
+          totalInterestedCount: 0,
+          eventAnalytics: [makePublishedAnalyticsItem(7, now)],
+        }),
+        now,
+      ),
+    ).toBe('early')
+  })
+
+  it('returns "early" when two events both published within 14 days with low saves', () => {
+    expect(
+      classifyDashboardAnalyticsState(
+        makeOverview({
+          publishedEvents: 2,
+          totalInterestedCount: 2,
+          eventAnalytics: [
+            makePublishedAnalyticsItem(3, now),
+            makePublishedAnalyticsItem(10, now),
+          ],
+        }),
+        now,
+      ),
+    ).toBe('early')
+  })
+
+  it('returns "early" for an event published exactly 14 days ago (boundary included)', () => {
+    expect(
+      classifyDashboardAnalyticsState(
+        makeOverview({
+          publishedEvents: 1,
+          totalInterestedCount: 1,
+          eventAnalytics: [makePublishedAnalyticsItem(14, now)],
+        }),
+        now,
+      ),
+    ).toBe('early')
+  })
+
+  it('returns "early" when newly published event has a few calendar adds but no saves', () => {
+    const item = {
+      ...makeItem({ status: 'PUBLISHED', publishedAtUtc: new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString() }),
+      totalCalendarActions: 2,
+      calendarActionsLast7Days: 2,
+    }
+    expect(
+      classifyDashboardAnalyticsState(
+        makeOverview({ publishedEvents: 1, totalInterestedCount: 0, eventAnalytics: [item] }),
+        now,
+      ),
+    ).toBe('early')
+  })
+
+  // ── low_signal state ───────────────────────────────────────────────────────
+
+  it('returns "low_signal" when event is older than 14 days with zero saves', () => {
+    expect(
+      classifyDashboardAnalyticsState(
+        makeOverview({
+          publishedEvents: 1,
+          totalInterestedCount: 0,
+          eventAnalytics: [makePublishedAnalyticsItem(15, now)],
+        }),
+        now,
+      ),
+    ).toBe('low_signal')
+  })
+
+  it('returns "low_signal" when has 1-4 saves but event is older than 14 days (niche signal)', () => {
+    expect(
+      classifyDashboardAnalyticsState(
+        makeOverview({
+          publishedEvents: 1,
+          totalInterestedCount: 3,
+          eventAnalytics: [makePublishedAnalyticsItem(30, now)],
+        }),
+        now,
+      ),
+    ).toBe('low_signal')
+  })
+
+  it('returns "low_signal" when one event is new and another is old (not ALL are newly published)', () => {
+    expect(
+      classifyDashboardAnalyticsState(
+        makeOverview({
+          publishedEvents: 2,
+          totalInterestedCount: 1,
+          eventAnalytics: [
+            makePublishedAnalyticsItem(5, now),  // new
+            makePublishedAnalyticsItem(30, now), // old — breaks the "all new" condition
+          ],
+        }),
+        now,
+      ),
+    ).toBe('low_signal')
+  })
+
+  it('returns "low_signal" when event published exactly 15 days ago (just outside early window)', () => {
+    expect(
+      classifyDashboardAnalyticsState(
+        makeOverview({
+          publishedEvents: 1,
+          totalInterestedCount: 0,
+          eventAnalytics: [makePublishedAnalyticsItem(15, now)],
+        }),
+        now,
+      ),
+    ).toBe('low_signal')
+  })
+
+  it('returns "low_signal" when publishedAtUtc is null (unknown age → treated as old)', () => {
+    // daysSincePublished(null) returns MAX_SAFE_INTEGER → > 14 days → not newly published
+    const item = makeItem({ status: 'PUBLISHED', publishedAtUtc: null, totalInterestedCount: 0 })
+    expect(
+      classifyDashboardAnalyticsState(
+        makeOverview({ publishedEvents: 1, totalInterestedCount: 0, eventAnalytics: [item] }),
+        now,
+      ),
+    ).toBe('low_signal')
+  })
+
+  // ── State progression scenario ─────────────────────────────────────────────
+
+  it('full progression: empty → early → low_signal → normal as saves accumulate over time', () => {
+    // Step 1: no published events yet
+    expect(classifyDashboardAnalyticsState(makeOverview(), now)).toBe('empty')
+
+    // Step 2: newly published, no saves
+    expect(
+      classifyDashboardAnalyticsState(
+        makeOverview({
+          publishedEvents: 1,
+          totalInterestedCount: 0,
+          eventAnalytics: [makePublishedAnalyticsItem(3, now)],
+        }),
+        now,
+      ),
+    ).toBe('early')
+
+    // Step 3: 2 saves after 20 days
+    expect(
+      classifyDashboardAnalyticsState(
+        makeOverview({
+          publishedEvents: 1,
+          totalInterestedCount: 2,
+          eventAnalytics: [makePublishedAnalyticsItem(20, now)],
+        }),
+        now,
+      ),
+    ).toBe('low_signal')
+
+    // Step 4: 5+ saves → normal
+    expect(
+      classifyDashboardAnalyticsState(
+        makeOverview({
+          publishedEvents: 1,
+          totalInterestedCount: 5,
+          eventAnalytics: [makePublishedAnalyticsItem(20, now)],
+        }),
+        now,
+      ),
+    ).toBe('normal')
+  })
+})

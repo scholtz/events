@@ -451,6 +451,14 @@ export default {
       'Ihre Veranstaltung ist noch keiner Kategorie zugeordnet. Die Zuweisung zu einer passenden Kategorie hilft Teilnehmern, die Community-Hubs durchsuchen, diese Veranstaltung zu entdecken. Bearbeiten Sie die Veranstaltung, um eine Kategorie auszuwählen.',
     adminNotesFeedback: 'Moderatorenfeedback:',
     metricTimeframeAllTime: 'Gesamtzahl aller Zeiten',
+    dataLastRefreshed: 'Vor {minutes} Min. aktualisiert',
+    refreshNow: 'Aktualisieren',
+    analyticsStateEarlyTitle: 'Daten werden noch gesammelt.',
+    analyticsStateEarly:
+      'Ihre Veranstaltungen wurden kürzlich veröffentlicht. Speicherungen und Kalendereinträge erscheinen typischerweise erst nach einigen Tagen — das ist bei neu veröffentlichten Veranstaltungen normal. Prüfen Sie es erneut, nachdem Sie in Ihren Community-Kanälen geteilt haben.',
+    analyticsStateLowSignalTitle: 'Bisher geringe Interaktion.',
+    analyticsStateLowSignal:
+      'Ihre veröffentlichten Veranstaltungen haben bisher nur wenige Speicherungen erhalten. Dies ist häufig bei Nischenthemen oder Veranstaltungen mit begrenzter Verbreitung. Versuchen Sie, den Veranstaltungslink zu teilen, prüfen Sie, ob Titel und Beschreibung klar sind, und stellen Sie sicher, dass die Veranstaltung einer passenden Kategorie zugeordnet ist.',
     hubManagementTitle: 'Hub-Verwaltung',
     hubManagementDescription:
       'Sie sind Administrator der folgenden Community-Hubs. Aktualisieren Sie Branding und Inhalt, um das Erscheinungsbild jedes Hubs zu gestalten.',
