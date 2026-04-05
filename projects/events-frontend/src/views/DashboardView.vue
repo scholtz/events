@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useAuthStore } from '@/stores/auth'
@@ -13,6 +13,7 @@ import {
   calendarTrendVariant,
   eventRecommendationType,
   eventRecommendationVariant,
+  classifyDashboardAnalyticsState,
 } from '@/composables/useAnalyticsGuidance'
 
 const { t, locale } = useI18n()
@@ -24,6 +25,37 @@ const communitiesStore = useCommunitiesStore()
 const overview = computed(() => dashboardStore.overview)
 const MAX_COMMUNITY_LINKS = 10
 const MAX_FEATURED_EVENTS = 5
+
+// ── Analytics state and freshness ────────────────────────────────────────────
+
+/** High-level classification of the organizer's current analytics signal strength. */
+const analyticsState = computed(() =>
+  overview.value
+    ? classifyDashboardAnalyticsState(overview.value)
+    : 'empty',
+)
+
+/** Staleness threshold: show the freshness indicator when data is older than 5 minutes. */
+const STALE_THRESHOLD_MS = 5 * 60 * 1000
+
+/**
+ * Reactive "current time" ref updated every 60 seconds so the stale indicator
+ * recomputes automatically without requiring user interaction.
+ */
+const now = ref(Date.now())
+let freshnessTimer: number | null = null
+
+/** Minutes since the dashboard was last successfully refreshed. Null when unknown. */
+const minutesSinceRefresh = computed<number | null>(() => {
+  if (!dashboardStore.lastFetchedAt) return null
+  return Math.floor((now.value - dashboardStore.lastFetchedAt.getTime()) / 60_000)
+})
+
+/** True when data is present but older than the staleness threshold. */
+const isDataStale = computed(() => {
+  if (!dashboardStore.lastFetchedAt) return false
+  return now.value - dashboardStore.lastFetchedAt.getTime() > STALE_THRESHOLD_MS
+})
 
 // ── My Communities state ─────────────────────────────────────────────────────
 const myCommunities = ref<CommunityMembership[]>([])
@@ -274,13 +306,34 @@ async function loadMyCommunities() {
   }
 }
 
-onMounted(async () => {
-  if (auth.isAuthenticated) {
+onMounted(() => {
+  // Start the freshness timer so isDataStale recomputes automatically each minute.
+  freshnessTimer = setInterval(() => {
+    now.value = Date.now()
+  }, 60_000)
+})
+
+// Use `watch` with `{ immediate: true }` instead of checking `auth.isAuthenticated` inside
+// `onMounted`. This handles the auth race where `checkAuth()` in App.vue completes
+// asynchronously AFTER `onMounted` fires (e.g. on a page reload or direct navigation with
+// a token in localStorage). The watch fires again once `isAuthenticated` becomes true.
+watch(
+  () => auth.isAuthenticated,
+  async (isAuthenticated) => {
+    if (!isAuthenticated) return
     await dashboardStore.fetchDashboard()
     await domainsStore.fetchMyManagedDomains()
     initHubForms(domainsStore.myManagedDomains)
     await Promise.all(domainsStore.myManagedDomains.map((d) => loadHubFeaturedEvents(d.id)))
     await loadMyCommunities()
+  },
+  { immediate: true },
+)
+
+onUnmounted(() => {
+  if (freshnessTimer !== null) {
+    clearInterval(freshnessTimer)
+    freshnessTimer = null
   }
 })
 
@@ -471,9 +524,56 @@ function communityRoleLabel(role: string): string {
         </div>
 
         <!-- Analytics section -->
-        <div class="section-header">
-          <h2>{{ t('dashboard.eventPerformance') }}</h2>
-          <p class="section-subtitle performance-description">{{ t('dashboard.performanceDescription') }}</p>
+        <div class="section-header analytics-section-header">
+          <div>
+            <h2>{{ t('dashboard.eventPerformance') }}</h2>
+            <p class="section-subtitle performance-description">{{ t('dashboard.performanceDescription') }}</p>
+          </div>
+          <!-- Freshness indicator: shown only when data is older than 5 minutes -->
+          <div
+            v-if="isDataStale && !dashboardStore.loading"
+            class="freshness-indicator"
+            role="status"
+            :aria-label="t('dashboard.dataLastRefreshed', { minutes: minutesSinceRefresh })"
+          >
+            <span class="freshness-text">{{ t('dashboard.dataLastRefreshed', { minutes: minutesSinceRefresh }) }}</span>
+            <button
+              class="btn btn-outline btn-sm freshness-refresh-btn"
+              :disabled="dashboardStore.loading"
+              @click="dashboardStore.fetchDashboard()"
+            >
+              {{ t('dashboard.refreshNow') }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Dashboard-level analytics state banner -->
+        <!-- 'early': all published events are newly live and saves are still forming -->
+        <div
+          v-if="analyticsState === 'early' && overview.managedEvents.length > 0"
+          class="card analytics-state-banner analytics-state-banner--early"
+          role="note"
+          aria-label="Analytics state: early data"
+        >
+          <span class="guidance-icon" aria-hidden="true">🌱</span>
+          <div>
+            <strong>{{ t('dashboard.analyticsStateEarlyTitle') }}</strong>
+            <p class="analytics-state-detail">{{ t('dashboard.analyticsStateEarly') }}</p>
+          </div>
+        </div>
+
+        <!-- 'low_signal': has older published events but engagement is still sparse -->
+        <div
+          v-else-if="analyticsState === 'low_signal' && overview.publishedEvents > 0"
+          class="card analytics-state-banner analytics-state-banner--low-signal"
+          role="note"
+          aria-label="Analytics state: low signal"
+        >
+          <span class="guidance-icon" aria-hidden="true">📉</span>
+          <div>
+            <strong>{{ t('dashboard.analyticsStateLowSignalTitle') }}</strong>
+            <p class="analytics-state-detail">{{ t('dashboard.analyticsStateLowSignal') }}</p>
+          </div>
         </div>
 
         <!-- No events empty state -->
@@ -1338,6 +1438,63 @@ tr:hover td {
   font-size: 1.125rem;
   flex-shrink: 0;
   margin-top: 0.05rem;
+}
+
+/* ── Dashboard-level analytics state banners ── */
+.analytics-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.analytics-state-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.875rem;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+}
+
+.analytics-state-banner--early {
+  background: rgba(19, 127, 236, 0.05);
+  border: 1px solid rgba(19, 127, 236, 0.18);
+}
+
+.analytics-state-banner--low-signal {
+  background: rgba(255, 149, 0, 0.05);
+  border: 1px solid rgba(255, 149, 0, 0.22);
+}
+
+.analytics-state-banner .guidance-icon {
+  font-size: 1.5rem;
+}
+
+.analytics-state-detail {
+  margin: 0.25rem 0 0;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+/* ── Freshness indicator ── */
+.freshness-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.freshness-text {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+}
+
+.freshness-refresh-btn {
+  padding: 0.25rem 0.625rem;
+  font-size: 0.75rem;
 }
 
 /* ── First-event welcome card ── */

@@ -451,6 +451,14 @@ export default {
       'Vaša udalosť zatiaľ nie je priradená ku kategórii. Priradenie ku vhodnej kategórii pomáha účastníkom prehliadajúcim komunitné huby ju objaviť. Upravte udalosť a vyberte kategóriu.',
     adminNotesFeedback: 'Spätná väzba moderátora:',
     metricTimeframeAllTime: 'Celkový počet za všetky časy',
+    dataLastRefreshed: 'Aktualizované pred {minutes} min',
+    refreshNow: 'Obnoviť',
+    analyticsStateEarlyTitle: 'Dáta sa ešte formujú.',
+    analyticsStateEarly:
+      'Vaše udalosti boli nedávno zverejnené. Uloženia a pridania do kalendára sa zvyčajne objavia po niekoľkých dňoch — toto je pri nových udalostiach bežné. Skontrolujte to znova po zdieľaní v komunitných kanáloch.',
+    analyticsStateLowSignalTitle: 'Zatiaľ nízke zapojenie.',
+    analyticsStateLowSignal:
+      'Vaše zverejnené udalosti majú zatiaľ obmedzený počet uložení. To je bežné pri niche témach alebo udalostiach s obmedzenou distribúciou. Skúste zdieľať odkaz na udalosť, skontrolujte, či sú názov a popis jasné, a overte, či je udalosť priradená ku vhodnej kategórii.',
     hubManagementTitle: 'Správa hubu',
     hubManagementDescription:
       'Ste správcom nasledujúcich komunitných hubov. Aktualizujte branding a obsah, aby ste ovplyvnili, ako sa každý hub zobrazuje návštevníkom.',

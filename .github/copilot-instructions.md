@@ -444,12 +444,55 @@ A PR that only adds tests, or only adds UI without tests, or only adds backend c
 - Keep key names descriptive of content, not of the UI element (e.g., `eventDetail.backToEvents` not `eventDetail.backLink`).
 
 ### loginAs helper uses English labels
-- The `loginAs()` E2E helper in `e2e/helpers/mock-api.ts` fills form fields using English labels (`Email`, `Password`, `Sign In`). When testing localized views, either switch the language **after** calling `loginAs()`, or use localStorage seeding to bypass the login UI.
+- The `loginAs()` E2E helper in `e2e/helpers/mock-api.ts` fills form fields using English labels (`Email`, `Password`, `Sign In`). **Never call `loginAs()` in locale tests** because the translated form labels (e.g. `'E-mail'` in Slovak, `'Heslo'` for Password) will not match the hard-coded English selectors and the test will time out.
+- For locale-specific tests that need an authenticated user, bypass the login form entirely by using `addInitScript` to seed both the auth token AND the locale in `localStorage`, then navigate directly to the target page:
+  ```ts
+  await page.addInitScript(
+    ({ token, locale }: { token: string; locale: string }) => {
+      localStorage.setItem('auth_token', token)
+      localStorage.setItem('auth_expires', new Date(Date.now() + 60 * 60 * 1000).toISOString())
+      localStorage.setItem('app_locale', locale)
+    },
+    { token: `token-${user.id}`, locale: 'sk' },
+  )
+  setupMockApi(page, { users: [user], ... })
+  await page.goto('/dashboard')
+  await page.waitForURL(/\/dashboard$/)
+  ```
+- The mock API recognizes any `token-${userId}` bearer token and resolves `currentUserId` automatically — no login GraphQL mutation needed.
+- **Never call `loginAs()` followed by `page.addInitScript` for locale** — `addInitScript` only affects the *next* navigation after it is registered; the login form has already rendered with the default locale during the `loginAs()` flow, so the locale setting arrives too late.
+
+### Auth race condition in view onMounted
+`App.vue` calls `authStore.checkAuth()` asynchronously in its own `onMounted`. Views that check `auth.isAuthenticated` in THEIR own `onMounted` will see `false` on a direct-navigation page load (e.g., reload, or `seedAuthAndLocale` → `page.goto('/dashboard')`), because `checkAuth()` hasn't resolved yet.
+
+**Rule**: Any view that needs to fetch data gated on authentication must use `watch(() => auth.isAuthenticated, callback, { immediate: true })` instead of `if (auth.isAuthenticated)` inside `onMounted`. This pattern is already used in `AdminView.vue` and `DashboardView.vue`.
+
+```ts
+// ✅ Correct — deferred until auth resolves
+watch(
+  () => auth.isAuthenticated,
+  async (isAuthenticated) => {
+    if (!isAuthenticated) return
+    await dashboardStore.fetchDashboard()
+    // ...
+  },
+  { immediate: true },
+)
+
+// ❌ Wrong — auth.isAuthenticated may be false on first render tick
+onMounted(async () => {
+  if (auth.isAuthenticated) {
+    await dashboardStore.fetchDashboard() // skipped on page reload
+  }
+})
+```
+
+If you add a new authenticated view and tests fail with seedAuthAndLocale but pass with loginAs, this is the likely cause.
 
 ### i18n E2E tests — mock-state requirements for conditional UI
 When writing E2E tests for localized UI, **always check whether the UI element being tested is conditionally rendered**, and populate the mock state accordingly:
 - **Portfolio filter controls** (status, category, language, date-from, date-to, sort) are inside `<template v-else>` that only renders when `overview.managedEvents.length > 0`. Tests that assert on these filter controls MUST include at least one event with `submittedByUserId: user.id` in the mock setup, or the filter section will never appear and the test will time out.
-- **Dashboard analytics cards** only appear when the user has submitted events. Supply `makeApprovedEvent({ submittedByUserId: user.id })` in the mock state.
+- **Dashboard analytics cards** only appear when the user has submitted events. Supply `makeApprovedEvent({ submittedByUserId: user.id })` in the mock state. The KPI stat labels (`.stat-label`) appear inside `<template v-else-if="overview">` which only renders after `fetchDashboard()` succeeds — this is triggered by the `watch(() => auth.isAuthenticated, ...)` in `DashboardView.vue`.
 - **Hub overview and branding forms** in `DashboardView.vue` and `HubManageView.vue` only appear when the user administers at least one hub. Supply appropriate hub fixtures if testing those sections.
 - General rule: **before writing any assertion, trace the `v-if`/`v-else-if`/`v-else` chain** that wraps the element and ensure the mock state satisfies every guard condition.
 

@@ -464,6 +464,14 @@ export default {
       "Your event isn't assigned to a category yet. Assigning it to a relevant category helps attendees browsing community hubs discover it. Edit the event to choose a category.",
     adminNotesFeedback: 'Moderator feedback:',
     metricTimeframeAllTime: 'All-time total',
+    dataLastRefreshed: 'Updated {minutes} min ago',
+    refreshNow: 'Refresh',
+    analyticsStateEarlyTitle: 'Data is still forming.',
+    analyticsStateEarly:
+      'Your events are newly published. Saves and calendar adds typically take a few days to appear — this is normal for recently live events. Check back after sharing in your community channels.',
+    analyticsStateLowSignalTitle: 'Low engagement so far.',
+    analyticsStateLowSignal:
+      'Your published events have had limited saves so far. This is common for niche topics or events with limited distribution. Try sharing the event link, checking that your title and description are clear, and verifying that the event is assigned to a relevant category.',
     hubManagementTitle: 'Hub Management',
     hubManagementDescription:
       'You are an administrator of the following community hubs. Update branding and content to shape how each hub appears to visitors.',

@@ -10,7 +10,7 @@
  * locale-specific text via the existing `t()` helper.
  */
 
-import type { EventAnalyticsItem } from '@/types'
+import type { DashboardOverview, EventAnalyticsItem } from '@/types'
 
 // ── Trend variant ────────────────────────────────────────────────────────────
 
@@ -166,4 +166,63 @@ export function eventRecommendationVariant(
     if (days > 0 && days <= 7) return 'rec--urgent'
   }
   return 'rec--guidance'
+}
+
+// ── Dashboard-level analytics state ──────────────────────────────────────────
+
+/**
+ * High-level classification of the organizer's overall analytics dashboard state.
+ *
+ * - `empty`      : No published events; organizer has not yet launched anything live.
+ * - `early`      : At least one published event but all are newly published (≤14 days) and
+ *                  total saves are very low (< 3). Data is still forming — patience message.
+ * - `low_signal` : Has published events with some activity but total saves are below the
+ *                  normal-signal threshold (< 5). Likely a niche or lightly-distributed event.
+ * - `normal`     : Sufficient engagement signal (≥ 5 total saves across published events).
+ *                  Standard analytics view without extra explanation.
+ */
+export type DashboardAnalyticsState = 'empty' | 'early' | 'low_signal' | 'normal'
+
+/** Minimum total saves to be considered "normal signal". */
+const NORMAL_SIGNAL_THRESHOLD = 5
+
+/** Maximum age in days for a published event to be considered "newly published". */
+const NEWLY_PUBLISHED_DAYS = 14
+
+/**
+ * Classifies the organizer's dashboard into a high-level analytics state based on their
+ * published-event count and aggregate engagement.
+ *
+ * Decision rules (in priority order):
+ * 1. No published events → `empty`
+ * 2. Published events + total saves ≥ NORMAL_SIGNAL_THRESHOLD → `normal`
+ * 3. All published events are newly published (≤14 days old) + total saves < NORMAL_SIGNAL_THRESHOLD → `early`
+ * 4. Otherwise (has older published events but low saves) → `low_signal`
+ *
+ * @param overview Subset of the dashboard overview needed for classification.
+ * @param now      Reference instant (defaults to `new Date()` for testability).
+ */
+export function classifyDashboardAnalyticsState(
+  overview: Pick<DashboardOverview, 'publishedEvents' | 'totalInterestedCount' | 'eventAnalytics'>,
+  now: Date = new Date(),
+): DashboardAnalyticsState {
+  if (overview.publishedEvents === 0) return 'empty'
+  if (overview.totalInterestedCount >= NORMAL_SIGNAL_THRESHOLD) return 'normal'
+  return areAllPublishedEventsNewlyPublished(overview.eventAnalytics, now) ? 'early' : 'low_signal'
+}
+
+/**
+ * Returns true when every PUBLISHED event in the analytics list was published within
+ * the NEWLY_PUBLISHED_DAYS window and at least one published event is present.
+ * Used as a guard inside classifyDashboardAnalyticsState.
+ */
+function areAllPublishedEventsNewlyPublished(
+  eventAnalytics: Pick<EventAnalyticsItem, 'status' | 'publishedAtUtc'>[],
+  now: Date,
+): boolean {
+  const publishedAnalytics = eventAnalytics.filter((e) => e.status === 'PUBLISHED')
+  return (
+    publishedAnalytics.length > 0 &&
+    publishedAnalytics.every((e) => daysSincePublished(e.publishedAtUtc, now) <= NEWLY_PUBLISHED_DAYS)
+  )
 }
