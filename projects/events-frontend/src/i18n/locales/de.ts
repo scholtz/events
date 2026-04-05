@@ -360,6 +360,45 @@ export default {
     saveError: 'Die Änderungen konnten gerade nicht gespeichert werden.',
     notFound: 'Diese Veranstaltung konnte nicht gefunden werden.',
     loadError: 'Laden der Veranstaltungsdetails fehlgeschlagen.',
+    resubmitButton: 'Erneut zur Überprüfung einreichen',
+    resubmitting: 'Wird eingereicht…',
+  },
+
+  // ── Einreichungsbereitschaft ───────────────────────────────────────────────
+  readiness: {
+    panelTitle: 'Einreichungsbereitschaft',
+    canSubmit: 'Bereit zur Einreichung',
+    cannotSubmit: 'Beheben Sie die folgenden Probleme vor der Einreichung',
+    blockingHeading: 'Erforderlich vor der Einreichung',
+    recommendationsHeading: 'Empfohlene Verbesserungen',
+    missingTitle: 'Veranstaltungstitel hinzufügen',
+    missingDescription: 'Beschreibung hinzufügen',
+    missingDomain: 'Kategorie (Tag) auswählen',
+    missingStartDate: 'Startdatum und -uhrzeit festlegen',
+    missingEventUrl: 'Website oder Anmelde-URL hinzufügen',
+    invalidEventUrl: 'Gültige URL eingeben (z.B. https://beispiel.de/veranstaltung)',
+    invalidPrice: 'Gültigen Preis für diese kostenpflichtige Veranstaltung eingeben',
+    missingTimezone: 'Zeitzone hinzufügen, damit Teilnehmer die genaue Ortszeit kennen',
+    missingVenue: 'Veranstaltungsort für diese Präsenzveranstaltung hinzufügen',
+    missingCity: 'Stadt hinzufügen, damit Teilnehmer die Veranstaltung leichter finden',
+    shortDescription: 'Beschreibung erweitern — eine längere Beschreibung hilft Teilnehmern bei der Entscheidung',
+  },
+
+  // ── Veranstaltungslebenszyklus ────────────────────────────────────────────
+  lifecycle: {
+    panelTitle: 'Veranstaltungsstatus',
+    draft: 'Entwurf',
+    draftExplanation: 'Diese Veranstaltung ist lokal gespeichert und noch nicht öffentlich sichtbar. Reichen Sie sie zur Überprüfung ein, wenn sie fertig ist.',
+    draftAction: 'Reichen Sie ein, sobald alle Pflichtfelder ausgefüllt sind.',
+    pending: 'In Prüfung',
+    pendingExplanation: 'Ihre Veranstaltung wartet auf Genehmigung durch einen Moderator. Derzeit ist keine weitere Aktion erforderlich.',
+    pendingAction: 'Wir benachrichtigen Sie, sobald die Veranstaltung genehmigt oder mit Feedback zurückgegeben wird.',
+    published: 'Veröffentlicht',
+    publishedExplanation: 'Diese Veranstaltung ist live und für alle Besucher öffentlich sichtbar.',
+    publishedAction: 'Gespeicherte Bearbeitungen werden vor der Veröffentlichung überprüft.',
+    rejected: 'Zur Überarbeitung zurückgegeben',
+    rejectedExplanation: 'Diese Veranstaltung wurde von einem Moderator zurückgegeben. Lesen Sie das Feedback unten, aktualisieren Sie die Veranstaltung und reichen Sie sie erneut ein.',
+    rejectedAction: 'Beheben Sie die genannten Probleme und reichen Sie erneut ein, wenn Sie bereit sind.',
   },
 
   favorites: {
