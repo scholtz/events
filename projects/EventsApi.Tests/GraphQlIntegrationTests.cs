@@ -3774,6 +3774,249 @@ public sealed class GraphQlIntegrationTests
         Assert.Contains("INVALID_TIMEZONE", errors.ToString());
     }
 
+    // ── URL scheme enforcement tests ──────────────────────────────────────────
+
+    [Fact]
+    public async Task SubmitEvent_RejectsNonHttpsUrl_FtpScheme()
+    {
+        // The readiness model requires HTTP/HTTPS event URLs. The mutation must enforce
+        // the same rule so that direct API calls cannot bypass the product constraint.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("url-ftp-submit@example.com", "FTP Submit User");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "url-ftp-submit-tech");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        var nextMonth = FirstDayOfNextMonthUtc();
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation SubmitEvent($input: EventSubmissionInput!) {
+                  submitEvent(input: $input) { name }
+                }
+                """,
+            variables = new
+            {
+                input = new
+                {
+                    domainSlug = "url-ftp-submit-tech",
+                    name = "FTP URL Event",
+                    description = "An event with an ftp:// URL.",
+                    eventUrl = "ftp://events.example.com/ftp-event",
+                    venueName = "Venue",
+                    addressLine1 = "Address 1",
+                    city = "Prague",
+                    countryCode = "CZ",
+                    isFree = true,
+                    currencyCode = "EUR",
+                    latitude = 50.075m,
+                    longitude = 14.437m,
+                    startsAtUtc = nextMonth,
+                    endsAtUtc = nextMonth.AddHours(4),
+                    attendanceMode = "IN_PERSON"
+                }
+            }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        Assert.Contains("INVALID_EVENT_URL", errors.ToString());
+    }
+
+    [Fact]
+    public async Task SubmitEvent_RejectsNonHttpsUrl_FileScheme()
+    {
+        // file:// URIs are absolute but are not valid event page URLs.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("url-file-submit@example.com", "File Submit User");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "url-file-submit-tech");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        var nextMonth = FirstDayOfNextMonthUtc();
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation SubmitEvent($input: EventSubmissionInput!) {
+                  submitEvent(input: $input) { name }
+                }
+                """,
+            variables = new
+            {
+                input = new
+                {
+                    domainSlug = "url-file-submit-tech",
+                    name = "File URL Event",
+                    description = "An event with a file:// URL.",
+                    eventUrl = "file:///tmp/event.html",
+                    venueName = "Venue",
+                    addressLine1 = "Address 1",
+                    city = "Prague",
+                    countryCode = "CZ",
+                    isFree = true,
+                    currencyCode = "EUR",
+                    latitude = 50.075m,
+                    longitude = 14.437m,
+                    startsAtUtc = nextMonth,
+                    endsAtUtc = nextMonth.AddHours(4),
+                    attendanceMode = "IN_PERSON"
+                }
+            }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        Assert.Contains("INVALID_EVENT_URL", errors.ToString());
+    }
+
+    [Fact]
+    public async Task SubmitEvent_AcceptsHttpUrl()
+    {
+        // Plain http:// URLs are allowed (not just https://) — some event pages
+        // may not have TLS. The rule is HTTP/HTTPS, not HTTPS-only.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("url-http-submit@example.com", "HTTP Submit User");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "url-http-submit-tech");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        var nextMonth = FirstDayOfNextMonthUtc();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation SubmitEvent($input: EventSubmissionInput!) {
+              submitEvent(input: $input) { name }
+            }
+            """,
+            new
+            {
+                input = new
+                {
+                    domainSlug = "url-http-submit-tech",
+                    name = "HTTP URL Event",
+                    description = "An event with an http:// URL.",
+                    eventUrl = "http://events.example.com/http-event",
+                    venueName = "Venue",
+                    addressLine1 = "Address 1",
+                    city = "Prague",
+                    countryCode = "CZ",
+                    isFree = true,
+                    currencyCode = "EUR",
+                    latitude = 50.075m,
+                    longitude = 14.437m,
+                    startsAtUtc = nextMonth,
+                    endsAtUtc = nextMonth.AddHours(4),
+                    attendanceMode = "IN_PERSON"
+                }
+            });
+
+        // Should succeed — http:// is valid
+        var result = document.RootElement.GetProperty("data").GetProperty("submitEvent");
+        Assert.Equal("HTTP URL Event", result.GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateMyEvent_RejectsNonHttpsUrl()
+    {
+        // The HTTP/HTTPS URL requirement must also be enforced on the update mutation
+        // so that resubmitting a previously-approved event cannot smuggle in an ftp:// URL.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("url-update-invalid@example.com", "URL Update Invalid User");
+            userId = user.Id;
+            var domain = CreateDomain("Tech", "url-update-invalid-tech");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Valid Event", "url-update-valid",
+                "A valid event that will have its URL changed to an invalid scheme.",
+                "Venue", "Prague", FirstDayOfNextMonthUtc(), domain, user);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        var nextMonth = FirstDayOfNextMonthUtc();
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation UpdateMyEvent($eventId: UUID!, $input: EventSubmissionInput!) {
+                  updateMyEvent(eventId: $eventId, input: $input) { name }
+                }
+                """,
+            variables = new
+            {
+                eventId,
+                input = new
+                {
+                    domainSlug = "url-update-invalid-tech",
+                    name = "Valid Event",
+                    description = "Description with bad URL.",
+                    eventUrl = "ftp://events.example.com/bad-url",
+                    venueName = "Venue",
+                    addressLine1 = "Address 1",
+                    city = "Prague",
+                    countryCode = "CZ",
+                    isFree = true,
+                    currencyCode = "EUR",
+                    latitude = 50.075m,
+                    longitude = 14.437m,
+                    startsAtUtc = nextMonth,
+                    endsAtUtc = nextMonth.AddHours(4),
+                    attendanceMode = "IN_PERSON"
+                }
+            }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        Assert.Contains("INVALID_EVENT_URL", errors.ToString());
+    }
+
     [Fact]
     public async Task TrackDiscoveryAction_RecordsSearchAndFilterActions()
     {
