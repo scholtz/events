@@ -444,7 +444,23 @@ A PR that only adds tests, or only adds UI without tests, or only adds backend c
 - Keep key names descriptive of content, not of the UI element (e.g., `eventDetail.backToEvents` not `eventDetail.backLink`).
 
 ### loginAs helper uses English labels
-- The `loginAs()` E2E helper in `e2e/helpers/mock-api.ts` fills form fields using English labels (`Email`, `Password`, `Sign In`). When testing localized views, either switch the language **after** calling `loginAs()`, or use localStorage seeding to bypass the login UI.
+- The `loginAs()` E2E helper in `e2e/helpers/mock-api.ts` fills form fields using English labels (`Email`, `Password`, `Sign In`). **Never call `loginAs()` in locale tests** because the translated form labels (e.g. `'E-mail'` in Slovak, `'Heslo'` for Password) will not match the hard-coded English selectors and the test will time out.
+- For locale-specific tests that need an authenticated user, bypass the login form entirely by using `addInitScript` to seed both the auth token AND the locale in `localStorage`, then navigate directly to the target page:
+  ```ts
+  await page.addInitScript(
+    ({ token, locale }: { token: string; locale: string }) => {
+      localStorage.setItem('auth_token', token)
+      localStorage.setItem('auth_expires', new Date(Date.now() + 60 * 60 * 1000).toISOString())
+      localStorage.setItem('app_locale', locale)
+    },
+    { token: `token-${user.id}`, locale: 'sk' },
+  )
+  setupMockApi(page, { users: [user], ... })
+  await page.goto('/dashboard')
+  await page.waitForURL(/\/dashboard$/)
+  ```
+- The mock API recognizes any `token-${userId}` bearer token and resolves `currentUserId` automatically — no login GraphQL mutation needed.
+- **Never call `loginAs()` followed by `page.addInitScript` for locale** — by the time `addInitScript` runs on the next navigation the app has already initialized with the default locale.
 
 ### i18n E2E tests — mock-state requirements for conditional UI
 When writing E2E tests for localized UI, **always check whether the UI element being tested is conditionally rendered**, and populate the mock state accordingly:

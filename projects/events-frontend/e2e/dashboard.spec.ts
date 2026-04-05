@@ -2127,14 +2127,17 @@ test.describe('Dashboard i18n – Slovak locale', () => {
   test('shows dashboard KPI labels in Slovak', async ({ page }) => {
     const user = makeAdminUser()
     const domain = makeTechDomain()
+    // Set both auth token and locale via addInitScript to bypass the translated login form
+    await page.addInitScript(
+      ({ token, locale }: { token: string; locale: string }) => {
+        localStorage.setItem('auth_token', token)
+        localStorage.setItem('auth_expires', new Date(Date.now() + 60 * 60 * 1000).toISOString())
+        localStorage.setItem('app_locale', locale)
+      },
+      { token: `token-${user.id}`, locale: 'sk' },
+    )
     setupMockApi(page, { users: [user], domains: [domain] })
-
-    // Switch to Slovak locale before loading the page
-    await page.addInitScript(() => {
-      localStorage.setItem('app_locale', 'sk')
-    })
-
-    await loginAs(page, user)
+    await page.goto('/dashboard')
     await page.waitForURL(/\/dashboard$/)
 
     // Key Slovak KPI labels
@@ -2153,17 +2156,21 @@ test.describe('Dashboard i18n – Slovak locale', () => {
       submittedBy: { displayName: user.displayName },
     })
 
+    await page.addInitScript(
+      ({ token, locale }: { token: string; locale: string }) => {
+        localStorage.setItem('auth_token', token)
+        localStorage.setItem('auth_expires', new Date(Date.now() + 60 * 60 * 1000).toISOString())
+        localStorage.setItem('app_locale', locale)
+      },
+      { token: `token-${user.id}`, locale: 'sk' },
+    )
     setupMockApi(page, { users: [user], domains: [domain], events: [event] })
-
-    await page.addInitScript(() => {
-      localStorage.setItem('app_locale', 'sk')
-    })
-
-    await loginAs(page, user)
+    await page.goto('/dashboard')
     await page.waitForURL(/\/dashboard$/)
 
     // Slovak recommendation text for an event with no saves
-    await expect(page.locator('.rec-text')).toContainText(/Žiadne uloženia|zdieľ|uložení/i)
+    // 'Pro túto udalosť zatiaľ nie sú žiadne uloženia. Skúste zdieľať odkaz...'
+    await expect(page.locator('.rec-text')).toContainText(/zdieľ/)
   })
 
   test('shows low-signal banner in Slovak when published event has low engagement', async ({
@@ -2180,19 +2187,22 @@ test.describe('Dashboard i18n – Slovak locale', () => {
       submittedBy: { displayName: user.displayName },
     })
 
+    await page.addInitScript(
+      ({ token, locale }: { token: string; locale: string }) => {
+        localStorage.setItem('auth_token', token)
+        localStorage.setItem('auth_expires', new Date(Date.now() + 60 * 60 * 1000).toISOString())
+        localStorage.setItem('app_locale', locale)
+      },
+      { token: `token-${user.id}`, locale: 'sk' },
+    )
     setupMockApi(page, { users: [user], domains: [domain], events: [event] })
-
-    await page.addInitScript(() => {
-      localStorage.setItem('app_locale', 'sk')
-    })
-
-    await loginAs(page, user)
+    await page.goto('/dashboard')
     await page.waitForURL(/\/dashboard$/)
 
     const banner = page.locator('.analytics-state-banner--low-signal')
     await expect(banner).toBeVisible()
     // Banner title should be in Slovak
-    await expect(banner).toContainText(/Zatiaľ nízke zapojenie/)
+    await expect(banner).toContainText('Zatiaľ nízke zapojenie.')
   })
 })
 
@@ -2200,13 +2210,16 @@ test.describe('Dashboard i18n – German locale', () => {
   test('shows dashboard KPI labels in German', async ({ page }) => {
     const user = makeAdminUser()
     const domain = makeTechDomain()
+    await page.addInitScript(
+      ({ token, locale }: { token: string; locale: string }) => {
+        localStorage.setItem('auth_token', token)
+        localStorage.setItem('auth_expires', new Date(Date.now() + 60 * 60 * 1000).toISOString())
+        localStorage.setItem('app_locale', locale)
+      },
+      { token: `token-${user.id}`, locale: 'de' },
+    )
     setupMockApi(page, { users: [user], domains: [domain] })
-
-    await page.addInitScript(() => {
-      localStorage.setItem('app_locale', 'de')
-    })
-
-    await loginAs(page, user)
+    await page.goto('/dashboard')
     await page.waitForURL(/\/dashboard$/)
 
     // Key German KPI labels
@@ -2225,17 +2238,20 @@ test.describe('Dashboard i18n – German locale', () => {
       submittedBy: { displayName: user.displayName },
     })
 
+    await page.addInitScript(
+      ({ token, locale }: { token: string; locale: string }) => {
+        localStorage.setItem('auth_token', token)
+        localStorage.setItem('auth_expires', new Date(Date.now() + 60 * 60 * 1000).toISOString())
+        localStorage.setItem('app_locale', locale)
+      },
+      { token: `token-${user.id}`, locale: 'de' },
+    )
     setupMockApi(page, { users: [user], domains: [domain], events: [event] })
-
-    await page.addInitScript(() => {
-      localStorage.setItem('app_locale', 'de')
-    })
-
-    await loginAs(page, user)
+    await page.goto('/dashboard')
     await page.waitForURL(/\/dashboard$/)
 
-    // German recommendation text
-    await expect(page.locator('.rec-text')).toContainText(/Speicherungen|Link/i)
+    // German recommendation text: 'Noch keine Speicherungen für diese Veranstaltung. Versuchen Sie den Link zu teilen...'
+    await expect(page.locator('.rec-text')).toContainText(/Speicherungen/)
   })
 
   test('shows early-data banner in German for newly published event', async ({ page }) => {
@@ -2250,18 +2266,21 @@ test.describe('Dashboard i18n – German locale', () => {
       publishedAtUtc: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
     })
 
+    await page.addInitScript(
+      ({ token, locale }: { token: string; locale: string }) => {
+        localStorage.setItem('auth_token', token)
+        localStorage.setItem('auth_expires', new Date(Date.now() + 60 * 60 * 1000).toISOString())
+        localStorage.setItem('app_locale', locale)
+      },
+      { token: `token-${user.id}`, locale: 'de' },
+    )
     setupMockApi(page, { users: [user], domains: [domain], events: [event] })
-
-    await page.addInitScript(() => {
-      localStorage.setItem('app_locale', 'de')
-    })
-
-    await loginAs(page, user)
+    await page.goto('/dashboard')
     await page.waitForURL(/\/dashboard$/)
 
     const banner = page.locator('.analytics-state-banner--early')
     await expect(banner).toBeVisible()
-    await expect(banner).toContainText(/Daten werden noch gesammelt/)
+    await expect(banner).toContainText('Daten werden noch gesammelt.')
   })
 })
 
