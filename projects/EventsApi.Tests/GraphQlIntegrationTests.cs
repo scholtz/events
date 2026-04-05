@@ -614,6 +614,83 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task EventsQuery_UpcomingSort_DomainScopedHubPreservesQualityRanking()
+    {
+        // Verifies that when filtering to a specific domain (hub view), the upcoming-first
+        // and completeness-tiebreaker ranking rules still apply correctly. Events from
+        // other domains must not appear in the hub result, and within the hub the same
+        // deterministic ordering rules hold as for global discovery.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var sameStartTime = DateTime.UtcNow.AddDays(5);
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("hub-rank@example.com", "Hub Rank Tester");
+            var crypto = CreateDomain("Crypto", "crypto");
+            var tech = CreateDomain("Tech", "tech");
+            var now = DateTime.UtcNow;
+
+            dbContext.Users.AddRange(user);
+            dbContext.Domains.AddRange(crypto, tech);
+
+            // Hub: two crypto events with same start time but different completeness
+            var cryptoComplete = CreateEvent(
+                "Crypto Complete",
+                "crypto-complete",
+                "Well-described upcoming crypto event.",
+                "Main Stage",
+                "Prague",
+                sameStartTime,
+                crypto,
+                user);
+
+            var cryptoIncomplete = CreateEvent(
+                "Crypto Sparse",
+                "crypto-sparse",
+                "Sparse crypto event with no location detail.",
+                "TBD", // will be cleared
+                "TBD", // will be cleared
+                sameStartTime,
+                crypto,
+                user);
+            cryptoIncomplete.City = string.Empty;
+            cryptoIncomplete.VenueName = string.Empty;
+            cryptoIncomplete.EventUrl = string.Empty;
+
+            // Past crypto event — must appear after upcoming crypto events
+            var cryptoPast = CreateEvent(
+                "Crypto Past",
+                "crypto-past",
+                "Concluded crypto summit.",
+                "Old Hall",
+                "Prague",
+                now.AddDays(-10),
+                crypto,
+                user);
+
+            // Tech event — must NOT appear in crypto hub results
+            var techEvent = CreateEvent(
+                "Tech Summit",
+                "tech-summit",
+                "Tech-only event.",
+                "Tech HQ",
+                "Prague",
+                sameStartTime,
+                tech,
+                user);
+
+            dbContext.Events.AddRange(cryptoComplete, cryptoIncomplete, cryptoPast, techEvent);
+        });
+
+        using var client = factory.CreateClient();
+
+        var names = await QueryEventNamesAsync(client, new { domainSlug = "crypto", sortBy = "UPCOMING" });
+
+        // Tech event must be excluded; within crypto: upcoming events before past,
+        // and more-complete event before sparse event at the same start time.
+        Assert.Equal(["Crypto Complete", "Crypto Sparse", "Crypto Past"], names);
+    }
+
+    [Fact]
     public async Task EventsQuery_TreatsBlankFiltersAsUnsetAndKeepsPendingEventsPrivate()
     {
         await using var factory = new EventsApiWebApplicationFactory();

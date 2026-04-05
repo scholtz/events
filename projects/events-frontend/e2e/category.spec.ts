@@ -849,3 +849,78 @@ test.describe('Hub navigation journey', () => {
     ).toBeVisible()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Rank context badge on hub pages
+// ---------------------------------------------------------------------------
+
+test.describe('Hub rank context badge', () => {
+  test('shows "Sorted by upcoming date" rank context badge when events are present', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-1', name: 'Tech Meetup', slug: 'tech-meetup' }),
+        makeApprovedEvent({ id: 'e-2', name: 'AI Workshop', slug: 'ai-workshop' }),
+      ],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.rank-context-badge')).toBeVisible()
+    await expect(page.locator('.rank-context-badge')).toContainText('Sorted by upcoming date')
+  })
+
+  test('rank context badge is not shown when hub has no events', async ({ page }) => {
+    setupMockApi(page, { domains: [makeTechDomain()], events: [] })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.rank-context-badge')).toBeHidden()
+  })
+
+  test('rank context badge is visible on mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-1', name: 'Tech Event', slug: 'tech-event' })],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.rank-context-badge')).toBeVisible()
+  })
+
+  test('i18n: rank context badge is localized in German', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-1', name: 'Tech Meetup', slug: 'tech-meetup' })],
+    })
+
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'de')
+    })
+
+    await page.goto('/category/technology')
+
+    // German translation of home.rankContextUpcoming
+    await expect(page.locator('.rank-context-badge')).toContainText('Nach Datum sortiert')
+  })
+
+  test('i18n: rank context badge is localized in Slovak', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-1', name: 'Tech Meetup', slug: 'tech-meetup' })],
+    })
+
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'sk')
+    })
+
+    await page.goto('/category/technology')
+
+    // Slovak translation of home.rankContextUpcoming
+    await expect(page.locator('.rank-context-badge')).toContainText('Zoradené podľa dátumu')
+  })
+})

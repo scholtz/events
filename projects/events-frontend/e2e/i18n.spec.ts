@@ -823,3 +823,69 @@ test.describe('Localized category hub quiet state', () => {
     ).toBeVisible()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Localized rank context badge (HomeView discovery)
+// ---------------------------------------------------------------------------
+
+test.describe('Localized rank context badge', () => {
+  test('rank context badge shows "Nach Datum sortiert" in German (UPCOMING sort)', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-1', name: 'Tech Meetup', slug: 'tech-meetup' }),
+      ],
+    })
+
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'de')
+    })
+
+    await page.goto('/')
+
+    await expect(page.locator('.rank-context-badge')).toBeVisible()
+    await expect(page.locator('.rank-context-badge')).toContainText('Nach Datum sortiert')
+  })
+
+  test('rank context badge shows "Zoradené podľa dátumu" in Slovak (UPCOMING sort)', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-1', name: 'Tech Meetup', slug: 'tech-meetup' }),
+      ],
+    })
+
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'sk')
+    })
+
+    await page.goto('/')
+
+    await expect(page.locator('.rank-context-badge')).toBeVisible()
+    await expect(page.locator('.rank-context-badge')).toContainText('Zoradené podľa dátumu')
+  })
+
+  test('rank context badge shows "Neueste zuerst" in German when NEWEST sort is active', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-1', name: 'Tech Meetup', slug: 'tech-meetup' }),
+      ],
+    })
+
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'de')
+    })
+
+    await page.goto('/?sort=newest')
+
+    await expect(page.locator('.rank-context-badge')).toBeVisible()
+    await expect(page.locator('.rank-context-badge')).toContainText('Neueste zuerst')
+  })
+})
