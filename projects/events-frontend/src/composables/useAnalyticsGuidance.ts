@@ -208,12 +208,21 @@ export function classifyDashboardAnalyticsState(
 ): DashboardAnalyticsState {
   if (overview.publishedEvents === 0) return 'empty'
   if (overview.totalInterestedCount >= NORMAL_SIGNAL_THRESHOLD) return 'normal'
+  return areAllPublishedEventsNewlyPublished(overview.eventAnalytics, now) ? 'early' : 'low_signal'
+}
 
-  // Check whether every published event is still within the "newly published" window.
-  const publishedAnalytics = overview.eventAnalytics.filter((e) => e.status === 'PUBLISHED')
-  const allNewlyPublished =
+/**
+ * Returns true when every PUBLISHED event in the analytics list was published within
+ * the NEWLY_PUBLISHED_DAYS window and at least one published event is present.
+ * Used as a guard inside classifyDashboardAnalyticsState.
+ */
+function areAllPublishedEventsNewlyPublished(
+  eventAnalytics: Pick<EventAnalyticsItem, 'status' | 'publishedAtUtc'>[],
+  now: Date,
+): boolean {
+  const publishedAnalytics = eventAnalytics.filter((e) => e.status === 'PUBLISHED')
+  return (
     publishedAnalytics.length > 0 &&
     publishedAnalytics.every((e) => daysSincePublished(e.publishedAtUtc, now) <= NEWLY_PUBLISHED_DAYS)
-
-  return allNewlyPublished ? 'early' : 'low_signal'
+  )
 }

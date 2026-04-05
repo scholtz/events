@@ -43,7 +43,7 @@ const STALE_THRESHOLD_MS = 5 * 60 * 1000
  * recomputes automatically without requiring user interaction.
  */
 const now = ref(Date.now())
-let freshnessTimer: ReturnType<typeof setInterval> | null = null
+let freshnessTimer: number | null = null
 
 /** Minutes since the dashboard was last successfully refreshed. Null when unknown. */
 const minutesSinceRefresh = computed<number | null>(() => {

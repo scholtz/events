@@ -1894,7 +1894,7 @@ test.describe('Dashboard analytics state banners', () => {
     // Early-data banner should be visible
     const banner = page.locator('.analytics-state-banner--early')
     await expect(banner).toBeVisible()
-    await expect(banner).toContainText(/newly published|just published|still forming|Data is still forming/i)
+    await expect(banner).toContainText('Data is still forming.')
   })
 
   test('shows low-signal banner when published event is older and has few saves', async ({
@@ -1918,7 +1918,7 @@ test.describe('Dashboard analytics state banners', () => {
     // Low-signal banner should be visible (not early because > 14 days old)
     const banner = page.locator('.analytics-state-banner--low-signal')
     await expect(banner).toBeVisible()
-    await expect(banner).toContainText(/limited saves|limited distribution|low engagement/i)
+    await expect(banner).toContainText('Low engagement so far.')
   })
 
   test('does not show analytics state banner for events with normal signal (≥5 saves)', async ({
