@@ -182,6 +182,15 @@ const lowSignalMessage = computed(() => {
     : t('home.fewResultsMany', { count })
 })
 
+/**
+ * Subtle rank-context label explaining the current result ordering.
+ * Category hubs always use UPCOMING sort (nearest upcoming first).
+ * Shown only when there are results to rank.
+ */
+const rankContextLabel = computed(() =>
+  events.value.length > 0 ? t('home.rankContextUpcoming') : null,
+)
+
 /** True when the authenticated user is a global admin or administers this specific domain hub. */
 const isHubAdmin = computed(
   () =>
@@ -361,6 +370,10 @@ onMounted(async () => {
           </RouterLink>
         </div>
 
+        <div v-if="rankContextLabel" class="rank-context-badge" aria-live="polite">
+          {{ rankContextLabel }}
+        </div>
+
         <div v-if="lowSignalMessage" class="low-signal-notice" role="status" aria-live="polite">
           <span class="low-signal-icon" aria-hidden="true">🌱</span>
           <span class="low-signal-text">{{ lowSignalMessage }}</span>
@@ -535,6 +548,20 @@ onMounted(async () => {
   font-size: 0.875rem;
   color: var(--color-text-secondary);
   margin: 0;
+}
+
+/* Subtle label explaining current sort order on this hub */
+.rank-context-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.75rem;
+  color: var(--color-text-muted, #9ca3af);
+  background: var(--color-surface-raised, #1e2130);
+  border: 1px solid var(--color-border, #2a2d3a);
+  border-radius: 999px;
+  padding: 0.2rem 0.65rem;
+  margin-bottom: 0.75rem;
+  letter-spacing: 0.01em;
 }
 
 /* Low-signal notice: only a handful of events in this hub */

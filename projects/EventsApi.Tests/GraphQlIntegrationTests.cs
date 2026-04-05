@@ -614,6 +614,83 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task EventsQuery_UpcomingSort_DomainScopedHubPreservesQualityRanking()
+    {
+        // Verifies that when filtering to a specific domain (hub view), the upcoming-first
+        // and completeness-tiebreaker ranking rules still apply correctly. Events from
+        // other domains must not appear in the hub result, and within the hub the same
+        // deterministic ordering rules hold as for global discovery.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var sameStartTime = DateTime.UtcNow.AddDays(5);
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("hub-rank@example.com", "Hub Rank Tester");
+            var crypto = CreateDomain("Crypto", "crypto");
+            var tech = CreateDomain("Tech", "tech");
+            var now = DateTime.UtcNow;
+
+            dbContext.Users.AddRange(user);
+            dbContext.Domains.AddRange(crypto, tech);
+
+            // Hub: two crypto events with same start time but different completeness
+            var cryptoComplete = CreateEvent(
+                "Crypto Complete",
+                "crypto-complete",
+                "Well-described upcoming crypto event.",
+                "Main Stage",
+                "Prague",
+                sameStartTime,
+                crypto,
+                user);
+
+            var cryptoIncomplete = CreateEvent(
+                "Crypto Sparse",
+                "crypto-sparse",
+                "Sparse crypto event with no location detail.",
+                "TBD", // will be cleared
+                "TBD", // will be cleared
+                sameStartTime,
+                crypto,
+                user);
+            cryptoIncomplete.City = string.Empty;
+            cryptoIncomplete.VenueName = string.Empty;
+            cryptoIncomplete.EventUrl = string.Empty;
+
+            // Past crypto event — must appear after upcoming crypto events
+            var cryptoPast = CreateEvent(
+                "Crypto Past",
+                "crypto-past",
+                "Concluded crypto summit.",
+                "Old Hall",
+                "Prague",
+                now.AddDays(-10),
+                crypto,
+                user);
+
+            // Tech event — must NOT appear in crypto hub results
+            var techEvent = CreateEvent(
+                "Tech Summit",
+                "tech-summit",
+                "Tech-only event.",
+                "Tech HQ",
+                "Prague",
+                sameStartTime,
+                tech,
+                user);
+
+            dbContext.Events.AddRange(cryptoComplete, cryptoIncomplete, cryptoPast, techEvent);
+        });
+
+        using var client = factory.CreateClient();
+
+        var names = await QueryEventNamesAsync(client, new { domainSlug = "crypto", sortBy = "UPCOMING" });
+
+        // Tech event must be excluded; within crypto: upcoming events before past,
+        // and more-complete event before sparse event at the same start time.
+        Assert.Equal(["Crypto Complete", "Crypto Sparse", "Crypto Past"], names);
+    }
+
+    [Fact]
     public async Task EventsQuery_TreatsBlankFiltersAsUnsetAndKeepsPendingEventsPrivate()
     {
         await using var factory = new EventsApiWebApplicationFactory();
@@ -922,6 +999,72 @@ public sealed class GraphQlIntegrationTests
         // No match
         var noMatch = await QueryEventNamesAsync(client, new { locationText = "Nonexistent City XYZ" });
         Assert.Empty(noMatch);
+    }
+
+    [Fact]
+    public async Task EventsQuery_LocationText_PreservesUpcomingSortOrderWithinMatchingCity()
+    {
+        // Verifies that when filtering by locationText, the UPCOMING sort still correctly
+        // orders results: future events before past events, nearest upcoming first.
+        // This ensures city-based discovery produces trustworthy, chronologically relevant results.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var now = DateTime.UtcNow;
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("city-sort@example.com", "City Sort Tester");
+            var tech = CreateDomain("Tech", "tech");
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(tech);
+            dbContext.Events.AddRange(
+                // Prague events at different times
+                CreateEvent(
+                    "Prague Near Future",
+                    "prague-near-future",
+                    "Upcoming event in Prague in 3 days.",
+                    "Main Hall",
+                    "Prague",
+                    now.AddDays(3),
+                    tech,
+                    user),
+                CreateEvent(
+                    "Prague Far Future",
+                    "prague-far-future",
+                    "Upcoming event in Prague in 30 days.",
+                    "Conference Center",
+                    "Prague",
+                    now.AddDays(30),
+                    tech,
+                    user),
+                CreateEvent(
+                    "Prague Past",
+                    "prague-past",
+                    "Concluded event in Prague.",
+                    "Old Hall",
+                    "Prague",
+                    now.AddDays(-7),
+                    tech,
+                    user),
+                // Berlin event should not appear in Prague results
+                CreateEvent(
+                    "Berlin Summit",
+                    "berlin-summit",
+                    "Event in Berlin.",
+                    "Berlin Venue",
+                    "Berlin",
+                    now.AddDays(1),
+                    tech,
+                    user));
+        });
+
+        using var client = factory.CreateClient();
+
+        var names = await QueryEventNamesAsync(
+            client,
+            new { locationText = "Prague", sortBy = "UPCOMING" });
+
+        // Berlin event excluded; Prague events: nearest upcoming first, past events last
+        Assert.Equal(["Prague Near Future", "Prague Far Future", "Prague Past"], names);
     }
 
     [Fact]

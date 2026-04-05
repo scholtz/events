@@ -1302,6 +1302,188 @@ test.describe('Price range filter', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Location / city filter
+// ---------------------------------------------------------------------------
+
+test.describe('Location filter', () => {
+  test('location filter shows only events matching the city', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-prague', name: 'Prague Summit', slug: 'prague-summit', city: 'Prague' }),
+        makeApprovedEvent({ id: 'e-berlin', name: 'Berlin Meetup', slug: 'berlin-meetup', city: 'Berlin' }),
+        makeApprovedEvent({ id: 'e-vienna', name: 'Vienna Conference', slug: 'vienna-conference', city: 'Vienna' }),
+      ],
+    })
+    await page.goto('/?location=Prague')
+
+    await expect(page.locator('.event-card', { hasText: 'Prague Summit' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Berlin Meetup' })).toBeHidden()
+    await expect(page.locator('.event-card', { hasText: 'Vienna Conference' })).toBeHidden()
+    // Location chip should be visible
+    await expect(page.locator('.filter-chip', { hasText: /Prague/i })).toBeVisible()
+  })
+
+  test('location filter chip is restored from URL on reload', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-prague', name: 'Prague Summit', slug: 'prague-summit', city: 'Prague' }),
+        makeApprovedEvent({ id: 'e-berlin', name: 'Berlin Meetup', slug: 'berlin-meetup', city: 'Berlin' }),
+      ],
+    })
+    await page.goto('/?location=Prague')
+
+    await expect(page.locator('.filter-chip', { hasText: /Prague/i })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Prague Summit' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Berlin Meetup' })).toBeHidden()
+  })
+
+  test('removing location chip restores all events', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-prague', name: 'Prague Summit', slug: 'prague-summit', city: 'Prague' }),
+        makeApprovedEvent({ id: 'e-berlin', name: 'Berlin Meetup', slug: 'berlin-meetup', city: 'Berlin' }),
+      ],
+    })
+    await page.goto('/?location=Prague')
+
+    // Only Prague event visible
+    await expect(page.locator('.event-card', { hasText: 'Berlin Meetup' })).toBeHidden()
+
+    // Remove the location chip
+    await page.locator('.filter-chip', { hasText: /Prague/i }).click()
+
+    // Both events should now be visible
+    await expect(page.locator('.event-card', { hasText: 'Prague Summit' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Berlin Meetup' })).toBeVisible()
+  })
+
+  test('location filter with no matching events shows city-specific empty state', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-prague', name: 'Prague Summit', slug: 'prague-summit', city: 'Prague' }),
+      ],
+    })
+    await page.goto('/?location=Berlin')
+
+    await expect(page.getByRole('heading', { name: 'No events found' })).toBeVisible()
+    await expect(page.locator('.empty-state')).toContainText('"Berlin"')
+    // Recovery action: try online events
+    await expect(
+      page.locator('.empty-state .recovery-action', { hasText: 'Try online events' }),
+    ).toBeVisible()
+  })
+
+  test('location filter URL updates when user types location', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-prague', name: 'Prague Summit', slug: 'prague-summit', city: 'Prague' }),
+      ],
+    })
+    await page.goto('/')
+
+    await page.getByRole('button', { name: 'More filters' }).click()
+    await page.locator('#filter-location').fill('Prague')
+    await page.locator('#filter-location').press('Enter')
+
+    await expect(page).toHaveURL(/location=Prague/)
+  })
+
+  test('mobile viewport: location filter and matching results are both visible', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-prague', name: 'Prague Summit', slug: 'prague-summit', city: 'Prague' }),
+        makeApprovedEvent({ id: 'e-berlin', name: 'Berlin Meetup', slug: 'berlin-meetup', city: 'Berlin' }),
+      ],
+    })
+    await page.goto('/?location=Prague')
+
+    await expect(page.locator('.filter-chip', { hasText: /Prague/i })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Prague Summit' })).toBeVisible()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// City-based discovery — full user journey
+// ---------------------------------------------------------------------------
+
+test.describe('City-based discovery journey', () => {
+  test('user filters by city, sees matching events, then switches to online when city has no events', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-online',
+          name: 'Global Webinar',
+          slug: 'global-webinar',
+          attendanceMode: 'ONLINE',
+          city: '',
+          venueName: '',
+        }),
+        makeApprovedEvent({
+          id: 'e-prague',
+          name: 'Prague Tech Meetup',
+          slug: 'prague-tech-meetup',
+          city: 'Prague',
+          attendanceMode: 'IN_PERSON',
+        }),
+      ],
+    })
+
+    // Start: all events visible
+    await page.goto('/')
+    await expect(page.locator('.event-card', { hasText: 'Prague Tech Meetup' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Global Webinar' })).toBeVisible()
+
+    // Navigate to Berlin filter — no events in Berlin
+    await page.goto('/?location=Berlin')
+    await expect(page.getByRole('heading', { name: 'No events found' })).toBeVisible()
+    await expect(page.locator('.empty-state')).toContainText('"Berlin"')
+
+    // Click "Try online events" recovery action
+    await page.locator('.empty-state .recovery-action', { hasText: 'Try online events' }).click()
+
+    // Should now see online events
+    await expect(page.locator('.event-card', { hasText: 'Global Webinar' })).toBeVisible()
+    await expect(page.locator('.empty-state')).toBeHidden()
+  })
+
+  test('city with sparse events shows low-signal notice with browse-all action', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-only',
+          name: 'Only Prague Event',
+          slug: 'only-prague-event',
+          city: 'Prague',
+        }),
+      ],
+    })
+    await page.goto('/?location=Prague')
+
+    // One event matches — low-signal notice should appear
+    await expect(page.locator('.low-signal-notice')).toBeVisible()
+    // Recovery action: clear filters
+    await expect(
+      page.locator('.low-signal-notice .low-signal-action', { hasText: 'Clear filters' }),
+    ).toBeVisible()
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Results summary
 // ---------------------------------------------------------------------------
 
