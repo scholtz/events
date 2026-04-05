@@ -728,8 +728,8 @@ test.describe('Submission readiness checklist', () => {
    * Navigates to step 5 of the submit wizard by filling in minimal required
    * data for the first 4 steps.
    */
-  async function goToStep5(page: Page, opts: { clearLocalDraft?: boolean } = {}) {
-    if (opts.clearLocalDraft !== false) {
+  async function goToStep5(page: Page, { clearLocalDraft = true }: { clearLocalDraft?: boolean } = {}) {
+    if (clearLocalDraft) {
       await page.evaluate(() => localStorage.removeItem('event_draft'))
       await page.reload()
     }

@@ -111,7 +111,8 @@ export function computeEventReadiness(form: EventFormSnapshot): EventReadiness {
     items.push({ key: 'missingCity', blocking: false })
   }
 
-  if (form.description.trim().length > 0 && form.description.trim().length < MIN_DESCRIPTION_LENGTH) {
+  const descTrimmed = form.description.trim()
+  if (descTrimmed.length > 0 && descTrimmed.length < MIN_DESCRIPTION_LENGTH) {
     items.push({ key: 'shortDescription', blocking: false })
   }
 

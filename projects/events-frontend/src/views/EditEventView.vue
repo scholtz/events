@@ -6,7 +6,7 @@ import { useEventsStore } from '@/stores/events'
 import { useDomainsStore } from '@/stores/domains'
 import { gqlRequest } from '@/lib/graphql'
 import { computeEventReadiness, lifecycleStatusKey, lifecycleStatusVariant } from '@/composables/useEventReadiness'
-import type { CatalogEvent } from '@/types'
+import type { CatalogEvent, EventStatus } from '@/types'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -170,14 +170,14 @@ const readiness = computed(() =>
 )
 
 // ── Lifecycle helpers ──────────────────────────────────────────────────────
-const eventStatus = computed(() => originalEvent.value?.status ?? null)
+const eventStatus = computed<EventStatus | null>(() => originalEvent.value?.status ?? null)
 
 const statusKey = computed(() =>
-  eventStatus.value ? lifecycleStatusKey(eventStatus.value as Parameters<typeof lifecycleStatusKey>[0]) : null,
+  eventStatus.value ? lifecycleStatusKey(eventStatus.value) : null,
 )
 
 const statusVariant = computed(() =>
-  eventStatus.value ? lifecycleStatusVariant(eventStatus.value as Parameters<typeof lifecycleStatusVariant>[0]) : null,
+  eventStatus.value ? lifecycleStatusVariant(eventStatus.value) : null,
 )
 
 // Resubmit = save changes for a rejected event (same mutation, status resets to PendingApproval server-side)
@@ -744,7 +744,7 @@ onMounted(loadEvent)
             </div>
             <template v-if="readiness.blockingIssues.length > 0">
               <p class="readiness-section-label">{{ t('readiness.blockingHeading') }}</p>
-              <ul class="readiness-list readiness-list--blocking" aria-label="Blocking issues">
+              <ul class="readiness-list readiness-list--blocking" :aria-label="t('readiness.blockingHeading')">
                 <li v-for="item in readiness.blockingIssues" :key="item.key" class="readiness-item readiness-item--blocking">
                   <span class="readiness-item-icon" aria-hidden="true">✗</span>
                   {{ t(`readiness.${item.key}`) }}
@@ -753,7 +753,7 @@ onMounted(loadEvent)
             </template>
             <template v-if="readiness.recommendations.length > 0">
               <p class="readiness-section-label">{{ t('readiness.recommendationsHeading') }}</p>
-              <ul class="readiness-list readiness-list--recommendations" aria-label="Recommendations">
+              <ul class="readiness-list readiness-list--recommendations" :aria-label="t('readiness.recommendationsHeading')">
                 <li v-for="item in readiness.recommendations" :key="item.key" class="readiness-item readiness-item--recommendation">
                   <span class="readiness-item-icon" aria-hidden="true">💡</span>
                   {{ t(`readiness.${item.key}`) }}

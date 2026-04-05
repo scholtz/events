@@ -703,7 +703,7 @@ loadDraft()
             </div>
             <template v-if="readiness.blockingIssues.length > 0">
               <p class="readiness-section-label">{{ t('readiness.blockingHeading') }}</p>
-              <ul class="readiness-list readiness-list--blocking" aria-label="Blocking issues">
+              <ul class="readiness-list readiness-list--blocking" :aria-label="t('readiness.blockingHeading')">
                 <li v-for="item in readiness.blockingIssues" :key="item.key" class="readiness-item readiness-item--blocking">
                   <span class="readiness-item-icon" aria-hidden="true">✗</span>
                   {{ t(`readiness.${item.key}`) }}
@@ -712,7 +712,7 @@ loadDraft()
             </template>
             <template v-if="readiness.recommendations.length > 0">
               <p class="readiness-section-label">{{ t('readiness.recommendationsHeading') }}</p>
-              <ul class="readiness-list readiness-list--recommendations" aria-label="Recommendations">
+              <ul class="readiness-list readiness-list--recommendations" :aria-label="t('readiness.recommendationsHeading')">
                 <li v-for="item in readiness.recommendations" :key="item.key" class="readiness-item readiness-item--recommendation">
                   <span class="readiness-item-icon" aria-hidden="true">💡</span>
                   {{ t(`readiness.${item.key}`) }}
