@@ -1219,9 +1219,25 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         .filter((a) => a.status === 'PUBLISHED')
         .reduce((sum, a) => sum + a.totalInterestedCount, 0)
 
+      const totalInterestedLast7Days = eventAnalytics
+        .filter((a) => a.status === 'PUBLISHED')
+        .reduce((sum, a) => sum + a.interestedLast7Days, 0)
+
+      const totalInterestedLast30Days = eventAnalytics
+        .filter((a) => a.status === 'PUBLISHED')
+        .reduce((sum, a) => sum + a.interestedLast30Days, 0)
+
       const totalCalendarActions = eventAnalytics
         .filter((a) => a.status === 'PUBLISHED')
         .reduce((sum, a) => sum + a.totalCalendarActions, 0)
+
+      const totalCalendarActionsLast7Days = eventAnalytics
+        .filter((a) => a.status === 'PUBLISHED')
+        .reduce((sum, a) => sum + a.calendarActionsLast7Days, 0)
+
+      const totalCalendarActionsLast30Days = eventAnalytics
+        .filter((a) => a.status === 'PUBLISHED')
+        .reduce((sum, a) => sum + a.calendarActionsLast30Days, 0)
 
       const overview = {
         totalSubmittedEvents: managedEvents.length,
@@ -1230,7 +1246,11 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         rejectedEvents: managedEvents.filter((e) => e.status === 'REJECTED').length,
         draftEvents: managedEvents.filter((e) => e.status === 'DRAFT').length,
         totalInterestedCount,
+        totalInterestedLast7Days,
+        totalInterestedLast30Days,
         totalCalendarActions,
+        totalCalendarActionsLast7Days,
+        totalCalendarActionsLast30Days,
         managedEvents: managedEvents.map((e) => ({
           id: e.id,
           name: e.name,

@@ -490,6 +490,12 @@ export default {
       'Ihre Veranstaltung ist noch keiner Kategorie zugeordnet. Die Zuweisung zu einer passenden Kategorie hilft Teilnehmern, die Community-Hubs durchsuchen, diese Veranstaltung zu entdecken. Bearbeiten Sie die Veranstaltung, um eine Kategorie auszuwählen.',
     adminNotesFeedback: 'Moderatorenfeedback:',
     metricTimeframeAllTime: 'Gesamtzahl aller Zeiten',
+    recentThisWeek: 'diese Woche',
+    recentThisMonth: 'diesen Monat',
+    recentSavesThisWeek: '+{count} Speicherungen diese Woche',
+    recentSavesThisMonth: '+{count} Speicherungen diesen Monat',
+    recentCalendarThisWeek: '+{count} Kalendereinträge diese Woche',
+    recentCalendarThisMonth: '+{count} Kalendereinträge diesen Monat',
     dataLastRefreshed: 'Vor {minutes} Min. aktualisiert',
     refreshNow: 'Aktualisieren',
     analyticsStateEarlyTitle: 'Daten werden noch gesammelt.',
@@ -498,6 +504,9 @@ export default {
     analyticsStateLowSignalTitle: 'Bisher geringe Interaktion.',
     analyticsStateLowSignal:
       'Ihre veröffentlichten Veranstaltungen haben bisher nur wenige Speicherungen erhalten. Dies ist häufig bei Nischenthemen oder Veranstaltungen mit begrenzter Verbreitung. Versuchen Sie, den Veranstaltungslink zu teilen, prüfen Sie, ob Titel und Beschreibung klar sind, und stellen Sie sicher, dass die Veranstaltung einer passenden Kategorie zugeordnet ist.',
+    analyticsStateNormalTitle: 'Gutes Engagement-Signal.',
+    analyticsStateNormal:
+      'Ihre Veranstaltungen gewinnen an Fahrt. Teilen Sie weiterhin in Community-Kanälen und stellen Sie sicher, dass Ihre Veranstaltungsdetails — Titel, Beschreibung, Ort und Datum — vollständig und leicht lesbar sind.',
     hubManagementTitle: 'Hub-Verwaltung',
     hubManagementDescription:
       'Sie sind Administrator der folgenden Community-Hubs. Aktualisieren Sie Branding und Inhalt, um das Erscheinungsbild jedes Hubs zu gestalten.',

@@ -510,6 +510,20 @@ function communityRoleLabel(role: string): string {
               <div class="stat-label">{{ t('dashboard.totalSaves') }}</div>
               <div class="stat-helper">{{ t('dashboard.totalSavesHelper') }}</div>
               <div class="stat-timeframe">{{ t('dashboard.metricTimeframeAllTime') }}</div>
+              <div
+                v-if="overview.totalInterestedLast7Days > 0"
+                class="stat-recent stat-recent--active"
+                :aria-label="t('dashboard.recentSavesThisWeek', { count: overview.totalInterestedLast7Days })"
+              >
+                +{{ overview.totalInterestedLast7Days }} {{ t('dashboard.recentThisWeek') }}
+              </div>
+              <div
+                v-else-if="overview.totalInterestedLast30Days > 0"
+                class="stat-recent stat-recent--recent"
+                :aria-label="t('dashboard.recentSavesThisMonth', { count: overview.totalInterestedLast30Days })"
+              >
+                +{{ overview.totalInterestedLast30Days }} {{ t('dashboard.recentThisMonth') }}
+              </div>
             </div>
           </div>
           <div class="stat-card card">
@@ -519,6 +533,20 @@ function communityRoleLabel(role: string): string {
               <div class="stat-label">{{ t('dashboard.calendarAdds') }}</div>
               <div class="stat-helper">{{ t('dashboard.calendarAddsHelper') }}</div>
               <div class="stat-timeframe">{{ t('dashboard.metricTimeframeAllTime') }}</div>
+              <div
+                v-if="overview.totalCalendarActionsLast7Days > 0"
+                class="stat-recent stat-recent--active"
+                :aria-label="t('dashboard.recentCalendarThisWeek', { count: overview.totalCalendarActionsLast7Days })"
+              >
+                +{{ overview.totalCalendarActionsLast7Days }} {{ t('dashboard.recentThisWeek') }}
+              </div>
+              <div
+                v-else-if="overview.totalCalendarActionsLast30Days > 0"
+                class="stat-recent stat-recent--recent"
+                :aria-label="t('dashboard.recentCalendarThisMonth', { count: overview.totalCalendarActionsLast30Days })"
+              >
+                +{{ overview.totalCalendarActionsLast30Days }} {{ t('dashboard.recentThisMonth') }}
+              </div>
             </div>
           </div>
         </div>
@@ -548,9 +576,23 @@ function communityRoleLabel(role: string): string {
         </div>
 
         <!-- Dashboard-level analytics state banner -->
+        <!-- 'normal': sufficient engagement signal — positive acknowledgment -->
+        <div
+          v-if="analyticsState === 'normal' && overview.publishedEvents > 0"
+          class="card analytics-state-banner analytics-state-banner--normal"
+          role="note"
+          aria-label="Analytics state: normal signal"
+        >
+          <span class="guidance-icon" aria-hidden="true">📈</span>
+          <div>
+            <strong>{{ t('dashboard.analyticsStateNormalTitle') }}</strong>
+            <p class="analytics-state-detail">{{ t('dashboard.analyticsStateNormal') }}</p>
+          </div>
+        </div>
+
         <!-- 'early': all published events are newly live and saves are still forming -->
         <div
-          v-if="analyticsState === 'early' && overview.managedEvents.length > 0"
+          v-else-if="analyticsState === 'early' && overview.managedEvents.length > 0"
           class="card analytics-state-banner analytics-state-banner--early"
           role="note"
           aria-label="Analytics state: early data"
@@ -1468,6 +1510,11 @@ tr:hover td {
   border: 1px solid rgba(255, 149, 0, 0.22);
 }
 
+.analytics-state-banner--normal {
+  background: rgba(74, 222, 128, 0.06);
+  border: 1px solid rgba(74, 222, 128, 0.22);
+}
+
 .analytics-state-banner .guidance-icon {
   font-size: 1.5rem;
 }
@@ -1576,6 +1623,26 @@ tr:hover td {
   letter-spacing: 0.05em;
   color: var(--color-text-secondary);
   opacity: 0.6;
+}
+
+/* ── Aggregate recent activity badge in KPI cards ── */
+.stat-recent {
+  display: inline-block;
+  margin-top: 0.375rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.stat-recent--active {
+  background: rgba(74, 222, 128, 0.14);
+  color: #2d9e5a;
+}
+
+.stat-recent--recent {
+  background: rgba(19, 127, 236, 0.1);
+  color: var(--color-primary);
 }
 
 /* ── Empty states ── */

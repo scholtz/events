@@ -50,8 +50,18 @@ public sealed record DashboardOverview(
     int RejectedEvents,
     /// <summary>Count of events currently in DRAFT status.</summary>
     int DraftEvents,
+    /// <summary>All-time save count across published events.</summary>
     int TotalInterestedCount,
+    /// <summary>Save count across published events in the last 7 days.</summary>
+    int TotalInterestedLast7Days,
+    /// <summary>Save count across published events in the last 30 days.</summary>
+    int TotalInterestedLast30Days,
+    /// <summary>All-time add-to-calendar count across published events.</summary>
     int TotalCalendarActions,
+    /// <summary>Add-to-calendar count across published events in the last 7 days.</summary>
+    int TotalCalendarActionsLast7Days,
+    /// <summary>Add-to-calendar count across published events in the last 30 days.</summary>
+    int TotalCalendarActionsLast30Days,
     IReadOnlyList<CatalogEvent> ManagedEvents,
     IReadOnlyList<EventAnalyticsItem> EventAnalytics,
     IReadOnlyList<EventDomain> AvailableDomains);

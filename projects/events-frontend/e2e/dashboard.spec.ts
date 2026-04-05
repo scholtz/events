@@ -1922,7 +1922,7 @@ test.describe('Dashboard analytics state banners', () => {
     await expect(banner).toContainText('Low engagement so far.')
   })
 
-  test('does not show analytics state banner for events with normal signal (≥5 saves)', async ({
+  test('shows normal-signal banner for events with sufficient engagement (≥5 saves)', async ({
     page,
   }) => {
     const user = makeAdminUser()
@@ -1949,7 +1949,10 @@ test.describe('Dashboard analytics state banners', () => {
     await loginAs(page, user)
     await page.waitForURL(/\/dashboard$/)
 
-    // No analytics state banners should appear for a normal-signal dashboard
+    // Normal-signal banner should appear; early and low-signal banners should not
+    const normalBanner = page.locator('.analytics-state-banner--normal')
+    await expect(normalBanner).toBeVisible()
+    await expect(normalBanner).toContainText('Good engagement signal.')
     await expect(page.locator('.analytics-state-banner--early')).toHaveCount(0)
     await expect(page.locator('.analytics-state-banner--low-signal')).toHaveCount(0)
   })
@@ -1963,6 +1966,7 @@ test.describe('Dashboard analytics state banners', () => {
     // Empty state is shown instead; no analytics state banners
     await expect(page.locator('.analytics-state-banner--early')).toHaveCount(0)
     await expect(page.locator('.analytics-state-banner--low-signal')).toHaveCount(0)
+    await expect(page.locator('.analytics-state-banner--normal')).toHaveCount(0)
   })
 
   test('shows early-data banner for multi-event organizer when all events are newly published', async ({
@@ -2031,6 +2035,166 @@ test.describe('Dashboard analytics state banners', () => {
     // Mixed age → not ALL newly published → low_signal, not early
     await expect(page.locator('.analytics-state-banner--low-signal')).toBeVisible()
     await expect(page.locator('.analytics-state-banner--early')).toHaveCount(0)
+  })
+})
+
+// ── Aggregate trend KPI display ───────────────────────────────────────────────
+
+test.describe('KPI aggregate trend badges', () => {
+  test('shows "this week" badge on Total Saves KPI when saves occurred in last 7 days', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-kpi-trend-week',
+      slug: 'kpi-trend-week',
+      name: 'KPI Trend Week Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    const state = setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    // Save within last 7 days
+    state.favoriteEvents.push({
+      id: 'fav-kpi-week-1',
+      userId: 'attendee-kpi-1',
+      eventId: event.id,
+      createdAtUtc: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Should show "+1 this week" badge on the Total Saves KPI card
+    await expect(page.locator('.stat-recent--active', { hasText: 'this week' })).toBeVisible()
+  })
+
+  test('shows "this month" badge on Total Saves KPI when saves in last 30 but not 7 days', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-kpi-trend-month',
+      slug: 'kpi-trend-month',
+      name: 'KPI Trend Month Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    const state = setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    // Save between 7 and 30 days ago
+    state.favoriteEvents.push({
+      id: 'fav-kpi-month-1',
+      userId: 'attendee-kpi-2',
+      eventId: event.id,
+      createdAtUtc: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // No "this week" badge; but "this month" badge should be visible
+    await expect(page.locator('.stat-recent--active')).toHaveCount(0)
+    await expect(page.locator('.stat-recent--recent', { hasText: 'this month' })).toBeVisible()
+  })
+
+  test('shows no trend badge when no saves in last 30 days', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-kpi-no-trend',
+      slug: 'kpi-no-trend',
+      name: 'KPI No Trend Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    const state = setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    // Save older than 30 days
+    state.favoriteEvents.push({
+      id: 'fav-kpi-old-1',
+      userId: 'attendee-kpi-3',
+      eventId: event.id,
+      createdAtUtc: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString(),
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // No trend badges when there's no recent activity
+    await expect(page.locator('.stat-recent')).toHaveCount(0)
+  })
+
+  test('shows "this week" trend badge on Calendar Adds KPI when calendar action in last 7 days', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-kpi-cal-week',
+      slug: 'kpi-cal-week',
+      name: 'KPI Cal Week Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    const state = setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    // Calendar action within last 7 days
+    state.calendarActions.push({
+      id: 'cal-kpi-week-1',
+      eventId: event.id,
+      provider: 'google',
+      triggeredAtUtc: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Calendar Adds KPI should show "+1 this week"
+    await expect(page.locator('.stat-recent--active', { hasText: 'this week' })).toBeVisible()
+  })
+
+  test('aggregate trend badge only counts published events saves', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const publishedEvent = makeApprovedEvent({
+      id: 'ev-kpi-pub',
+      slug: 'kpi-pub',
+      name: 'Published Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+    const pendingEvent = {
+      ...makeApprovedEvent({
+        id: 'ev-kpi-pend',
+        slug: 'kpi-pend',
+        name: 'Pending Event',
+        submittedByUserId: user.id,
+        submittedBy: { displayName: user.displayName },
+      }),
+      status: 'PENDING_APPROVAL' as const,
+    }
+
+    const state = setupMockApi(page, {
+      users: [user],
+      domains: [domain],
+      events: [publishedEvent, pendingEvent],
+    })
+    // Save on the pending event this week — should NOT count in KPI aggregate
+    state.favoriteEvents.push({
+      id: 'fav-kpi-pend-1',
+      userId: 'attendee-kpi-pend',
+      eventId: pendingEvent.id,
+      createdAtUtc: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // No "this week" badge should appear (save is on a non-published event)
+    await expect(page.locator('.stat-recent--active')).toHaveCount(0)
   })
 })
 
@@ -2193,6 +2357,64 @@ test.describe('Dashboard i18n – Slovak locale', () => {
     // Banner title should be in Slovak
     await expect(banner).toContainText('Zatiaľ nízke zapojenie.')
   })
+
+  test('shows normal-signal banner in Slovak when published event has sufficient engagement', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-sk-normal',
+      slug: 'sk-normal-event',
+      name: 'SK Normal Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    await seedAuthAndLocale(page, user, 'sk')
+    const state = setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    // 5 saves → normal signal
+    for (let i = 0; i < 5; i++) {
+      state.favoriteEvents.push({
+        id: `fav-sk-normal-${i}`,
+        userId: `u-sk-${i}`,
+        eventId: event.id,
+        createdAtUtc: new Date().toISOString(),
+      })
+    }
+    await page.goto('/dashboard')
+    await page.waitForURL(/\/dashboard$/)
+
+    const banner = page.locator('.analytics-state-banner--normal')
+    await expect(banner).toBeVisible()
+    await expect(banner).toContainText('Dobré signály zapojenia.')
+  })
+
+  test('shows "this week" trend badge in Slovak for saves within last 7 days', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-sk-trend-week',
+      slug: 'sk-trend-week-event',
+      name: 'SK Trend Week Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    await seedAuthAndLocale(page, user, 'sk')
+    const state = setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    state.favoriteEvents.push({
+      id: 'fav-sk-week-1',
+      userId: 'u-sk-week',
+      eventId: event.id,
+      createdAtUtc: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    })
+    await page.goto('/dashboard')
+    await page.waitForURL(/\/dashboard$/)
+
+    // Slovak "this week" label is "tento týždeň"
+    await expect(page.locator('.stat-recent--active', { hasText: 'tento týždeň' })).toBeVisible()
+  })
 })
 
 test.describe('Dashboard i18n – German locale', () => {
@@ -2249,6 +2471,64 @@ test.describe('Dashboard i18n – German locale', () => {
     const banner = page.locator('.analytics-state-banner--early')
     await expect(banner).toBeVisible()
     await expect(banner).toContainText('Daten werden noch gesammelt.')
+  })
+
+  test('shows normal-signal banner in German for event with sufficient engagement', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-de-normal',
+      slug: 'de-normal-event',
+      name: 'DE Normal Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    await seedAuthAndLocale(page, user, 'de')
+    const state = setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    // 5 saves → normal signal
+    for (let i = 0; i < 5; i++) {
+      state.favoriteEvents.push({
+        id: `fav-de-normal-${i}`,
+        userId: `u-de-${i}`,
+        eventId: event.id,
+        createdAtUtc: new Date().toISOString(),
+      })
+    }
+    await page.goto('/dashboard')
+    await page.waitForURL(/\/dashboard$/)
+
+    const banner = page.locator('.analytics-state-banner--normal')
+    await expect(banner).toBeVisible()
+    await expect(banner).toContainText('Gutes Engagement-Signal.')
+  })
+
+  test('shows "this week" trend badge in German for saves within last 7 days', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-de-trend-week',
+      slug: 'de-trend-week-event',
+      name: 'DE Trend Week Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    await seedAuthAndLocale(page, user, 'de')
+    const state = setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    state.favoriteEvents.push({
+      id: 'fav-de-week-1',
+      userId: 'u-de-week',
+      eventId: event.id,
+      createdAtUtc: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    })
+    await page.goto('/dashboard')
+    await page.waitForURL(/\/dashboard$/)
+
+    // German "this week" label is "diese Woche"
+    await expect(page.locator('.stat-recent--active', { hasText: 'diese Woche' })).toBeVisible()
   })
 })
 
