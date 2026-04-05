@@ -713,3 +713,45 @@ After a user saves (favorites) a published event, a `.calendar-prompt` div appea
 - `MockScheduledFeaturedEvent` requires `isEnabled: boolean` and `displayLabel: string | null` fields.
 - The `FeaturedEventsForDomain` mock handler filters by `sfe.isEnabled !== false` before building the active scheduled list.
 - Always assign unique `id` values to every `MockScheduledFeaturedEvent` created in the same test.
+
+## Discovery empty-state and recovery UX quality standards
+
+When implementing or modifying discovery empty-state behavior (`HomeView.vue`, `CategoryLandingView.vue`, `discoveryRecovery.ts`), always follow these standards.
+
+### State classification model
+- `discoveryRecovery.ts` contains pure functions: `computeEmptyStateMessage`, `computeRecoverySuggestion` (returns `{label, actionKey}`), and `computeLowSignalMessage`.
+- Empty-state messages must distinguish between: (a) no-filter empty catalog, (b) single-filter over-filtering (gives a targeted recovery action), and (c) multi-filter over-filtering (gives a generic clear-all action).
+- Low-signal notice (1–3 results) must appear on both the main discovery page and category hub pages.
+
+### Link text and Playwright strict mode
+**CRITICAL**: When you add any new link or button to a shared layout area (nav, low-signal notice, fallback suggestions, empty state), check whether its **visible text is a substring of any existing breadcrumb, heading, or nav link** before writing tests.
+
+Playwright's `getByRole('link', { name: '...' })` is **case-insensitive and substring-matching by default**. A new "Browse all events" link will be matched by `getByRole('link', { name: 'All Events' })` (and its localized variants), breaking existing tests.
+
+Rules to follow:
+1. **Always use `{ exact: true }`** when selecting breadcrumb links or any link whose text might appear as a substring in another link on the same page: `page.getByRole('link', { name: 'All Events', exact: true })`.
+2. After adding any new link to a page, **search all spec files for `getByRole('link', { name:` and `getByRole('link', { name:` patterns** that could now match your new link. Fix them with `exact: true`.
+3. Run the affected spec files locally before pushing to catch ambiguous-locator errors.
+
+### Recovery action test requirements
+Every implementation of empty-state recovery or low-signal guidance must have E2E tests covering:
+1. **English default**: recovery button text and empty-state heading visible
+2. **German locale** (`addInitScript` to set `app_locale`, then navigate to pre-filtered URL): German recovery action text visible
+3. **Slovak locale** (same approach): Slovak recovery action text visible
+4. **Mobile viewport** (390×844): recovery buttons visible without horizontal scrolling
+5. **User flow**: user clicks recovery action → filter changes → events become visible
+6. **Category hub**: low-signal notice + browse-all recovery link appear when 1–3 hub events exist
+
+### i18n test patterns for locale-dependent UI
+When testing localized labels that appear only after a language switch, use `addInitScript` + pre-filtered URL instead of switching language in the UI and then clicking localized buttons:
+```ts
+// ✅ Correct: set locale before navigation
+await page.addInitScript(() => { localStorage.setItem('app_locale', 'de') })
+await page.goto('/?mode=in-person')
+await expect(page.locator('.recovery-action', { hasText: 'Online-Veranstaltungen versuchen' })).toBeVisible()
+
+// ❌ Wrong: switch language then click a localized button (timing issues)
+await page.goto('/')
+await page.getByRole('combobox', { name: 'Language' }).selectOption('de')
+await page.getByRole('button', { name: 'Weitere Filter' }).click() // fails — button may not render yet
+```

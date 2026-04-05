@@ -1773,7 +1773,7 @@ test.describe('Category landing page', () => {
     })
     await page.goto('/category/technology')
 
-    const breadcrumbLink = page.getByRole('link', { name: 'All Events' })
+    const breadcrumbLink = page.getByRole('link', { name: 'All Events', exact: true })
     await expect(breadcrumbLink).toBeVisible()
     await breadcrumbLink.click()
     await expect(page).toHaveURL('/')
@@ -3037,5 +3037,98 @@ test.describe('Event card language and timezone context', () => {
     await expect(card).toBeVisible()
     await expect(card.locator('.event-detail-language')).toBeVisible()
     await expect(card.locator('.event-detail-timezone')).toBeVisible()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Empty-state recovery – mobile viewport
+// ---------------------------------------------------------------------------
+
+test.describe('Empty state recovery — mobile viewport', () => {
+  test('empty state recovery button is visible at mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      // Only ONLINE events; IN_PERSON filter will empty the result set
+      events: [makeApprovedEvent({ id: 'e-mob-online', attendanceMode: 'ONLINE' })],
+    })
+    await page.goto('/?mode=in-person')
+
+    await expect(page.locator('.empty-state')).toBeVisible()
+    // Primary clear-filters button must be reachable without horizontal scrolling
+    await expect(
+      page.locator('.empty-state').getByRole('button', { name: 'Clear filters' }),
+    ).toBeVisible()
+    // Secondary recovery action must also be visible
+    await expect(page.locator('.empty-state .recovery-action')).toBeVisible()
+  })
+
+  test('clear filters from mobile empty state restores events', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-mob-tech', name: 'Mobile Tech Event', slug: 'mobile-tech-event' })],
+    })
+    await page.goto('/?mode=in-person&location=NowhereCity')
+
+    // Over-filtered state
+    await expect(page.locator('.empty-state')).toBeVisible()
+
+    // Click the primary "Clear filters" button
+    await page.locator('.empty-state').getByRole('button', { name: 'Clear filters' }).click()
+
+    // Events are now visible
+    await expect(page.locator('.event-card', { hasText: 'Mobile Tech Event' })).toBeVisible()
+    await expect(page.locator('.empty-state')).toBeHidden()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// User flow: broadening search from over-filtered empty state
+// ---------------------------------------------------------------------------
+
+test.describe('Recovery user flow — broadening from over-filtered state', () => {
+  test('user applies mode filter → empty state → clicks recovery → sees events', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-flow', name: 'Flow Test Event', slug: 'flow-test-event', attendanceMode: 'ONLINE' })],
+    })
+    await page.goto('/')
+
+    // Verify event is visible without filters
+    await expect(page.locator('.event-card', { hasText: 'Flow Test Event' })).toBeVisible()
+
+    // Apply IN_PERSON filter which yields empty state
+    await page.getByRole('button', { name: 'More filters' }).click()
+    await page.locator('select#filter-attendance-mode').selectOption('IN_PERSON')
+
+    await expect(page.locator('.empty-state')).toBeVisible()
+    await expect(page.locator('.empty-state .recovery-action', { hasText: 'Try online events' })).toBeVisible()
+
+    // Click the "Try online events" recovery action
+    await page.locator('.empty-state .recovery-action', { hasText: 'Try online events' }).click()
+
+    // Events should be visible again with online mode applied
+    await expect(page.locator('.event-card', { hasText: 'Flow Test Event' })).toBeVisible()
+    await expect(page.locator('.empty-state')).toBeHidden()
+  })
+
+  test('user applies date filter → empty state → clears dates → sees events', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-date-flow', name: 'Date Flow Event', slug: 'date-flow-event' })],
+    })
+    // Past date range that yields no events
+    await page.goto('/?from=2020-01-01&to=2020-01-31')
+
+    await expect(page.locator('.empty-state')).toBeVisible()
+    // Secondary recovery: clear date range
+    await expect(page.locator('.empty-state .recovery-action', { hasText: 'Clear date range' })).toBeVisible()
+
+    await page.locator('.empty-state .recovery-action', { hasText: 'Clear date range' }).click()
+
+    // Events visible after clearing dates
+    await expect(page.locator('.event-card', { hasText: 'Date Flow Event' })).toBeVisible()
+    await expect(page.locator('.empty-state')).toBeHidden()
   })
 })
