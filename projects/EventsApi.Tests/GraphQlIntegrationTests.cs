@@ -14854,6 +14854,222 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal("TOO_MANY_SCHEDULED_FEATURES", code);
     }
 
+    // ── Scheduling window boundary time tests ─────────────────────────────────
+
+    /// <summary>
+    /// Verifies that a schedule whose window started just before "now" IS included
+    /// in the public featured list (StartsAtUtc is inclusive: StartsAtUtc &lt;= now).
+    /// </summary>
+    [Fact]
+    public async Task FeaturedEventsForDomain_ScheduleStartedJustNow_IsIncluded()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("boundary-start@example.com", "Boundary Start User");
+            var domain = CreateDomain("Boundary Start Hub", "boundary-start-hub");
+            var ev = CreateEvent("Boundary Start Event", "boundary-start-event", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(1), domain, user);
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.Add(ev);
+
+            // Window started 1 second ago — schedule is inside the active window.
+            dbContext.Set<ScheduledFeaturedEvent>().Add(new ScheduledFeaturedEvent
+            {
+                DomainId = domain.Id,
+                EventId = ev.Id,
+                StartsAtUtc = DateTime.UtcNow.AddSeconds(-1),
+                EndsAtUtc = DateTime.UtcNow.AddDays(7),
+                Priority = 0,
+            });
+        });
+
+        using var client = factory.CreateClient();
+
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            query FeaturedEventsForDomain($domainSlug: String!) {
+              featuredEventsForDomain(domainSlug: $domainSlug) { name }
+            }
+            """,
+            new { domainSlug = "boundary-start-hub" });
+
+        var events = doc.RootElement.GetProperty("data").GetProperty("featuredEventsForDomain");
+        Assert.Equal(1, events.GetArrayLength());
+        Assert.Equal("Boundary Start Event", events[0].GetProperty("name").GetString());
+    }
+
+    /// <summary>
+    /// Verifies that a schedule whose window ended just before "now" IS NOT included
+    /// in the public featured list (EndsAtUtc is exclusive: EndsAtUtc &gt; now).
+    /// </summary>
+    [Fact]
+    public async Task FeaturedEventsForDomain_ScheduleEndedJustNow_IsExcluded()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("boundary-end@example.com", "Boundary End User");
+            var domain = CreateDomain("Boundary End Hub", "boundary-end-hub");
+            var activeEvent = CreateEvent("Active Event", "boundary-end-active", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(1), domain, user);
+            var justEndedEvent = CreateEvent("Just Ended Event", "boundary-end-expired", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(2), domain, user);
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.AddRange(activeEvent, justEndedEvent);
+
+            var now = DateTime.UtcNow;
+
+            // Window ended 1 second ago — schedule is OUTSIDE the active window.
+            dbContext.Set<ScheduledFeaturedEvent>().Add(new ScheduledFeaturedEvent
+            {
+                DomainId = domain.Id,
+                EventId = justEndedEvent.Id,
+                StartsAtUtc = now.AddDays(-7),
+                EndsAtUtc = now.AddSeconds(-1),
+                Priority = 0,
+            });
+
+            // Still-active window — should appear.
+            dbContext.Set<ScheduledFeaturedEvent>().Add(new ScheduledFeaturedEvent
+            {
+                DomainId = domain.Id,
+                EventId = activeEvent.Id,
+                StartsAtUtc = now.AddMinutes(-1),
+                EndsAtUtc = now.AddDays(7),
+                Priority = 0,
+            });
+        });
+
+        using var client = factory.CreateClient();
+
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            query FeaturedEventsForDomain($domainSlug: String!) {
+              featuredEventsForDomain(domainSlug: $domainSlug) { name }
+            }
+            """,
+            new { domainSlug = "boundary-end-hub" });
+
+        var events = doc.RootElement.GetProperty("data").GetProperty("featuredEventsForDomain");
+        Assert.Equal(1, events.GetArrayLength());
+        Assert.Equal("Active Event", events[0].GetProperty("name").GetString());
+    }
+
+    /// <summary>
+    /// Verifies that a schedule whose window has not yet started IS NOT included
+    /// in the public featured list (StartsAtUtc must be &lt;= now).
+    /// </summary>
+    [Fact]
+    public async Task FeaturedEventsForDomain_ScheduleNotYetStarted_IsExcluded()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("boundary-future@example.com", "Future User");
+            var domain = CreateDomain("Future Sched Hub", "future-sched-hub");
+            var ev = CreateEvent("Future Featured Event", "future-featured-event", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(5), domain, user);
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.Add(ev);
+
+            // Window starts in the future — schedule is not yet active.
+            dbContext.Set<ScheduledFeaturedEvent>().Add(new ScheduledFeaturedEvent
+            {
+                DomainId = domain.Id,
+                EventId = ev.Id,
+                StartsAtUtc = DateTime.UtcNow.AddSeconds(30),
+                EndsAtUtc = DateTime.UtcNow.AddDays(7),
+                Priority = 0,
+            });
+        });
+
+        using var client = factory.CreateClient();
+
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            query FeaturedEventsForDomain($domainSlug: String!) {
+              featuredEventsForDomain(domainSlug: $domainSlug) { name }
+            }
+            """,
+            new { domainSlug = "future-sched-hub" });
+
+        var events = doc.RootElement.GetProperty("data").GetProperty("featuredEventsForDomain");
+        Assert.Equal(0, events.GetArrayLength());
+    }
+
+    /// <summary>
+    /// Verifies that overlapping schedule windows are both included and ordered
+    /// deterministically by Priority (lower = first), then EndsAtUtc (nearest first).
+    /// Overlapping windows are explicitly permitted; ordering resolves any visual conflict.
+    /// </summary>
+    [Fact]
+    public async Task FeaturedEventsForDomain_OverlappingScheduleWindows_BothIncludedOrderedCorrectly()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("boundary-overlap@example.com", "Overlap User");
+            var domain = CreateDomain("Overlap Hub", "overlap-hub");
+            var ev1 = CreateEvent("Overlap Event A", "overlap-event-a", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(3), domain, user);
+            var ev2 = CreateEvent("Overlap Event B", "overlap-event-b", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(4), domain, user);
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.AddRange(ev1, ev2);
+
+            var now = DateTime.UtcNow;
+            // Both windows are fully overlapping; resolved by Priority only.
+            dbContext.Set<ScheduledFeaturedEvent>().AddRange(
+                new ScheduledFeaturedEvent
+                {
+                    DomainId = domain.Id, EventId = ev1.Id,
+                    StartsAtUtc = now.AddMinutes(-30), EndsAtUtc = now.AddDays(5),
+                    Priority = 1,
+                },
+                new ScheduledFeaturedEvent
+                {
+                    DomainId = domain.Id, EventId = ev2.Id,
+                    StartsAtUtc = now.AddMinutes(-30), EndsAtUtc = now.AddDays(5),
+                    Priority = 0,
+                }
+            );
+        });
+
+        using var client = factory.CreateClient();
+
+        using var doc = await ExecuteGraphQlAsync(
+            client,
+            """
+            query FeaturedEventsForDomain($domainSlug: String!) {
+              featuredEventsForDomain(domainSlug: $domainSlug) { name }
+            }
+            """,
+            new { domainSlug = "overlap-hub" });
+
+        var events = doc.RootElement.GetProperty("data").GetProperty("featuredEventsForDomain");
+        // Both are included — overlapping is allowed, ordering is deterministic.
+        Assert.Equal(2, events.GetArrayLength());
+        // Priority 0 (ev2) appears before Priority 1 (ev1).
+        Assert.Equal("Overlap Event B", events[0].GetProperty("name").GetString());
+        Assert.Equal("Overlap Event A", events[1].GetProperty("name").GetString());
+    }
+
     [Fact]
     public async Task SubmitEvent_WithCommunityGroupId_EventManagerRole_CreatesGroupEventLink()
     {
