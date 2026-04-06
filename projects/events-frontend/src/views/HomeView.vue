@@ -25,6 +25,8 @@ import { usePwa } from '@/composables/usePwa'
 import EventCard from '@/components/events/EventCard.vue'
 import EventFilters from '@/components/events/EventFilters.vue'
 import { safeHexColor } from '@/lib/colorUtils'
+import { gqlRequest } from '@/lib/graphql'
+import type { CatalogEvent } from '@/types'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -50,6 +52,50 @@ const overviewSnippet = computed(() => {
   if (!text) return null
   return text.length > 200 ? text.slice(0, 200).trimEnd() + '…' : text
 })
+
+// ── Subdomain featured events ─────────────────────────────────────────────
+/** Active scheduled featured events for the current subdomain hub. */
+const subdomainFeaturedEvents = ref<CatalogEvent[]>([])
+
+// Mirrors the EVENT_FIELDS used in CategoryLandingView for featuredEventsForDomain —
+// kept inline here since EVENT_FIELDS is not exported from the events store.
+const FEATURED_EVENT_FIELDS = `
+  id name slug description eventUrl
+  venueName addressLine1 city countryCode
+  latitude longitude startsAtUtc endsAtUtc
+  submittedAtUtc updatedAtUtc publishedAtUtc
+  adminNotes status isFree priceAmount currencyCode domainId mapUrl
+  attendanceMode timezone
+  domain { id name slug subdomain }
+  submittedBy { displayName }
+`
+
+async function fetchSubdomainFeaturedEvents(domainSlug: string) {
+  try {
+    const data = await gqlRequest<{ featuredEventsForDomain: CatalogEvent[] }>(
+      `query FeaturedEventsForDomain($domainSlug: String!) {
+        featuredEventsForDomain(domainSlug: $domainSlug) { ${FEATURED_EVENT_FIELDS} }
+      }`,
+      { domainSlug },
+    )
+    subdomainFeaturedEvents.value = data.featuredEventsForDomain
+  } catch (err) {
+    console.error('[HomeView] Failed to fetch subdomain featured events:', err)
+    subdomainFeaturedEvents.value = []
+  }
+}
+
+watch(
+  activeDomain,
+  (domain) => {
+    if (domain) {
+      fetchSubdomainFeaturedEvents(domain.slug)
+    } else {
+      subdomainFeaturedEvents.value = []
+    }
+  },
+  { immediate: true },
+)
 
 const mapCenter = computed(() => {
   const firstEvent = eventsStore.discoveryEvents[0]
@@ -469,6 +515,25 @@ watch(
           <img :src="activeDomain.bannerUrl" :alt="activeDomain.name" class="subdomain-banner" />
         </div>
       </div>
+      <!-- Scheduled featured events for this subdomain hub -->
+      <div v-if="subdomainFeaturedEvents.length" class="subdomain-featured-section container">
+        <h2 class="subdomain-featured-heading">
+          <span aria-hidden="true">⭐</span>
+          {{ t('home.subdomainFeaturedHeading') }}
+        </h2>
+        <div class="subdomain-featured-grid">
+          <div
+            v-for="event in subdomainFeaturedEvents"
+            :key="event.id"
+            class="subdomain-featured-card-wrap"
+          >
+            <span class="subdomain-featured-badge" :aria-label="t('home.subdomainFeaturedHeading')">
+              ⭐ {{ t('home.subdomainFeaturedHeading') }}
+            </span>
+            <EventCard :event="event" />
+          </div>
+        </div>
+      </div>
     </section>
     <section v-else class="hero">
       <div class="hero-video-wrapper" aria-hidden="true">
@@ -882,6 +947,45 @@ watch(
 
 .main-site-link:hover {
   text-decoration: underline;
+}
+
+/* ── Subdomain featured events ──────────────────────────────────────────── */
+.subdomain-featured-section {
+  padding: 1.25rem 1rem 0;
+}
+
+.subdomain-featured-heading {
+  font-size: 1.125rem;
+  font-weight: 700;
+  margin: 0 0 0.875rem;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--color-text);
+}
+
+.subdomain-featured-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.subdomain-featured-card-wrap {
+  position: relative;
+}
+
+.subdomain-featured-badge {
+  position: absolute;
+  top: -0.5rem;
+  left: 0.75rem;
+  background: var(--color-primary, #137fec);
+  color: #fff;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--radius-sm, 4px);
+  z-index: 1;
+  pointer-events: none;
 }
 
 .hero-content {

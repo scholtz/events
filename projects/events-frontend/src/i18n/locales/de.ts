@@ -57,6 +57,7 @@ export default {
     subdomainViewFullHub: 'Zur Hub-Seite',
     subdomainCuratedBy: 'Kuratiert von {credit}',
     subdomainPageTitle: '{name} Veranstaltungen',
+    subdomainFeaturedHeading: 'Jetzt im Fokus',
     updatingResults: 'Ergebnisse werden aktualisiert…',
     updatingDescription: 'Ihre Filter werden angewendet und die besten Ergebnisse werden geladen.',
     errorOffline: 'Sie sind offline',

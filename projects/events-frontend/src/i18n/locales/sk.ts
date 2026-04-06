@@ -57,6 +57,7 @@ export default {
     subdomainViewFullHub: 'Zobraziť celú stránku hubu',
     subdomainCuratedBy: 'Spravuje: {credit}',
     subdomainPageTitle: '{name} – Podujatia',
+    subdomainFeaturedHeading: 'Práve v popredí',
     updatingResults: 'Aktualizácia výsledkov…',
     updatingDescription: 'Aplikujú sa vaše filtre a načítavajú sa najlepšie výsledky.',
     errorOffline: 'Ste offline',
