@@ -1332,8 +1332,7 @@ test.describe('Category landing page: scheduled featured events', () => {
     await page.goto('/category/technology')
 
     await expect(page.locator('.featured-section')).toBeVisible()
-    // Slovak heading should be present (not the English "Featured Events")
-    await expect(page.locator('.featured-title')).not.toContainText('Featured Events')
+    await expect(page.locator('.featured-title')).toContainText('Odporúčané podujatia')
   })
 
   test('featured section heading is localized in German', async ({ page }) => {
@@ -1351,7 +1350,6 @@ test.describe('Category landing page: scheduled featured events', () => {
     await page.goto('/category/technology')
 
     await expect(page.locator('.featured-section')).toBeVisible()
-    // German heading should be present (not the English "Featured Events")
-    await expect(page.locator('.featured-title')).not.toContainText('Featured Events')
+    await expect(page.locator('.featured-title')).toContainText('Hervorgehobene Veranstaltungen')
   })
 })
