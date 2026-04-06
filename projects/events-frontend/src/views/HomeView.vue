@@ -312,6 +312,8 @@ const emptyStateRecoveryAction = computed<{ label: string; action: () => void } 
       }
     case 'clearDomain':
       return { label, action: () => eventsStore.setFilters({ domain: '' }) }
+    case 'clearLanguage':
+      return { label, action: () => eventsStore.setFilters({ language: '' }) }
     default:
       return null
   }

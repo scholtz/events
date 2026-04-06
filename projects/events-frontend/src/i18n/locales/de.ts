@@ -122,6 +122,7 @@ export default {
     recoveryClearDates: 'Datumsbereich löschen',
     recoveryShowAllPrices: 'Alle Preise anzeigen',
     recoveryClearDomainTag: 'Tag-Filter entfernen',
+    recoveryShowAllLanguages: 'Veranstaltungen in allen Sprachen anzeigen',
     recoveryBrowseHub: '{name}-Hub erkunden',
     fallbackSuggestionsTitle: 'Das könnte Sie auch interessieren',
     fallbackSuggestionsDesc: 'Erkunden Sie den Hub dieser Kategorie — dort können weitere bevorstehende Veranstaltungen, kuratierte Inhalte oder verwandte Communitys zu finden sein.',
@@ -234,6 +235,7 @@ export default {
     starts: 'Beginn',
     ends: 'Ende',
     timezone: 'Zeitzone',
+    language: 'Veranstaltungssprache',
     venueAndLocation: 'Veranstaltungsort & Standort',
     locationOnMap: 'Standort auf der Karte',
     mapIframeTitle: 'Interaktive Karte mit Veranstaltungsort',
@@ -357,6 +359,9 @@ export default {
     communityGroupLabel: 'Community-Gruppe',
     communityGroupNone: 'Keine Community (persönliche Veranstaltung)',
     communityGroupHint: 'Verknüpfen Sie diese Veranstaltung mit einer Ihrer verwalteten Communities. Sie wird nach der Veröffentlichung auf der Community-Seite angezeigt.',
+    languageLabel: 'Veranstaltungssprache',
+    languageNone: 'Nicht angegeben',
+    languageHint: 'Die Hauptsprache, in der die Veranstaltung gehalten oder präsentiert wird. Hilft Teilnehmern, Veranstaltungen in ihrer Sprache zu finden.',
   },
 
   // ── Edit Event ─────────────────────────────────────────────────────────────

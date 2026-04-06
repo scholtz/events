@@ -122,6 +122,7 @@ export default {
     recoveryClearDates: 'Vymazať rozsah dátumov',
     recoveryShowAllPrices: 'Zobraziť všetky ceny',
     recoveryClearDomainTag: 'Odstrániť filter tagu',
+    recoveryShowAllLanguages: 'Zobraziť udalosti vo všetkých jazykoch',
     recoveryBrowseHub: 'Preskúmať hub {name}',
     fallbackSuggestionsTitle: 'Mohlo by vás zaujímať',
     fallbackSuggestionsDesc: 'Preskúmajte hub tejto kategórie — môžu tam byť ďalšie nadchádzajúce udalosti, kurátorský obsah alebo súvisiace komunity.',
@@ -234,6 +235,7 @@ export default {
     starts: 'Začiatok',
     ends: 'Koniec',
     timezone: 'Časové pásmo',
+    language: 'Jazyk udalosti',
     venueAndLocation: 'Miesto a lokalita',
     locationOnMap: 'Poloha na mape',
     mapIframeTitle: 'Interaktívna mapa s polohou udalosti',
@@ -357,6 +359,9 @@ export default {
     communityGroupLabel: 'Komunitná skupina',
     communityGroupNone: 'Bez komunity (osobná udalosť)',
     communityGroupHint: 'Priraďte túto udalosť k jednej z vašich spravovaných komunít. Po zverejnení sa zobrazí na stránke komunity.',
+    languageLabel: 'Jazyk udalosti',
+    languageNone: 'Nešpecifikovaný',
+    languageHint: 'Primárny jazyk, v ktorom sa udalosť koná alebo prezentuje. Pomáha účastníkom nájsť udalosti v ich jazyku.',
   },
 
   // ── Edit Event ─────────────────────────────────────────────────────────────

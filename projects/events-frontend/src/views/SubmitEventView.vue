@@ -30,6 +30,7 @@ const form = reactive({
   additionalTagSlugs: [] as string[],
   countryCode: 'CZ',
   attendanceMode: 'IN_PERSON',
+  language: '',
   startsAtUtc: '',
   endsAtUtc: '',
   timezone: '',
@@ -277,6 +278,7 @@ async function handleSubmit() {
         : new Date(form.startsAtUtc).toISOString(),
       attendanceMode: form.attendanceMode as 'IN_PERSON' | 'ONLINE' | 'HYBRID',
       timezone: form.timezone.trim() || undefined,
+      language: form.language.trim() || undefined,
       communityGroupId: form.communityGroupId || undefined,
     })
     clearDraft()
@@ -449,6 +451,23 @@ loadDraft()
                 <option value="IN_PERSON">{{ t('attendanceMode.IN_PERSON') }}</option>
                 <option value="ONLINE">{{ t('attendanceMode.ONLINE') }}</option>
                 <option value="HYBRID">{{ t('attendanceMode.HYBRID') }}</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="event-language">
+                {{ t('submitEvent.languageLabel') }}
+                <span class="form-hint">{{ t('submitEvent.languageHint') }}</span>
+              </label>
+              <select id="event-language" v-model="form.language" class="form-select">
+                <option value="">{{ t('submitEvent.languageNone') }}</option>
+                <option value="en">{{ t('filters.langEn') }}</option>
+                <option value="sk">{{ t('filters.langSk') }}</option>
+                <option value="cs">{{ t('filters.langCs') }}</option>
+                <option value="de">{{ t('filters.langDe') }}</option>
+                <option value="fr">{{ t('filters.langFr') }}</option>
+                <option value="es">{{ t('filters.langEs') }}</option>
+                <option value="pl">{{ t('filters.langPl') }}</option>
               </select>
             </div>
 

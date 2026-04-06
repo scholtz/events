@@ -130,6 +130,7 @@ export default {
     recoveryClearDates: 'Clear date range',
     recoveryShowAllPrices: 'Show all prices',
     recoveryClearDomainTag: 'Remove tag filter',
+    recoveryShowAllLanguages: 'Show events in all languages',
     recoveryBrowseHub: 'Explore {name} hub',
     // Fallback suggestions section (shown below empty state)
     fallbackSuggestionsTitle: 'You might also like',
@@ -246,6 +247,7 @@ export default {
     starts: 'Starts',
     ends: 'Ends',
     timezone: 'Timezone',
+    language: 'Event Language',
     venueAndLocation: 'Venue & Location',
     locationOnMap: 'Location on Map',
     mapIframeTitle: 'Interactive map showing event location',
@@ -370,6 +372,9 @@ export default {
     communityGroupLabel: 'Community Group',
     communityGroupNone: 'No community (personal event)',
     communityGroupHint: 'Associate this event with one of your managed communities. It will appear on the community page once published.',
+    languageLabel: 'Event Language',
+    languageNone: 'Not specified',
+    languageHint: 'The primary language spoken or presented at this event. Helps attendees find events in their language.',
   },
 
   // ── Edit Event ─────────────────────────────────────────────────────────────
