@@ -962,7 +962,7 @@ test.describe('Localized hub manage scheduled featured events section', () => {
   ): MockScheduledFeaturedEvent {
     const now = Date.now()
     return {
-      id: 'sfe-i18n-1',
+      id: `sfe-i18n-${now}`,
       domainId,
       eventId,
       startsAtUtc: new Date(now - 3_600_000).toISOString(),
@@ -970,7 +970,7 @@ test.describe('Localized hub manage scheduled featured events section', () => {
       priority: 0,
       isEnabled: true,
       displayLabel: null,
-      createdAtUtc: new Date().toISOString(),
+      createdAtUtc: new Date(now).toISOString(),
       createdByUserId: null,
     }
   }
