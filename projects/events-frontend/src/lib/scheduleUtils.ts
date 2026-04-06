@@ -13,6 +13,58 @@
 import type { ScheduleStatus } from '@/types'
 
 // ---------------------------------------------------------------------------
+// Schedule form validation
+// ---------------------------------------------------------------------------
+
+/**
+ * i18n key returned by `validateScheduleInput` when validation fails.
+ * Callers translate this to a human-readable message via `t(key)`.
+ */
+export type ScheduleValidationError =
+  | 'hubManage.schedules.errorSelectEvent'
+  | 'hubManage.schedules.errorDatesRequired'
+  | 'hubManage.schedules.errorStartBeforeEnd'
+
+/**
+ * Validates the three primary fields of a schedule form.
+ *
+ * Returns the i18n key of the first validation error found, or `null` when
+ * all fields are valid.  The caller is responsible for translating the returned
+ * key into a display string (e.g. via `t(key)`).
+ *
+ * @param eventId   - The selected event ID (empty string = nothing selected).
+ * @param startsAt  - `datetime-local` input value for the window start.
+ * @param endsAt    - `datetime-local` input value for the window end.
+ */
+export function validateScheduleInput(
+  eventId: string,
+  startsAt: string,
+  endsAt: string,
+): ScheduleValidationError | null {
+  if (!eventId) return 'hubManage.schedules.errorSelectEvent'
+  return validateScheduleDates(startsAt, endsAt)
+}
+
+/**
+ * Validates only the date fields of a schedule form (used by the edit flow
+ * where the event cannot be changed and needs no re-validation).
+ *
+ * Returns the i18n key of the first date-related error, or `null` if valid.
+ *
+ * @param startsAt  - `datetime-local` input value for the window start.
+ * @param endsAt    - `datetime-local` input value for the window end.
+ */
+export function validateScheduleDates(
+  startsAt: string,
+  endsAt: string,
+): 'hubManage.schedules.errorDatesRequired' | 'hubManage.schedules.errorStartBeforeEnd' | null {
+  if (!startsAt || !endsAt) return 'hubManage.schedules.errorDatesRequired'
+  if (new Date(fromDatetimeLocalValue(startsAt)) >= new Date(fromDatetimeLocalValue(endsAt)))
+    return 'hubManage.schedules.errorStartBeforeEnd'
+  return null
+}
+
+// ---------------------------------------------------------------------------
 // Schedule status classification
 // ---------------------------------------------------------------------------
 

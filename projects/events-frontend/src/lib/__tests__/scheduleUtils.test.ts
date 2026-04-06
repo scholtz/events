@@ -10,7 +10,13 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fromDatetimeLocalValue, scheduleStatus, toDatetimeLocalValue } from '@/lib/scheduleUtils'
+import {
+  fromDatetimeLocalValue,
+  scheduleStatus,
+  toDatetimeLocalValue,
+  validateScheduleDates,
+  validateScheduleInput,
+} from '@/lib/scheduleUtils'
 
 // ---------------------------------------------------------------------------
 // scheduleStatus
@@ -174,5 +180,123 @@ describe('fromDatetimeLocalValue', () => {
   it('produces consistent UTC strings for midnight boundary values', () => {
     expect(fromDatetimeLocalValue('2026-01-01T00:00')).toBe('2026-01-01T00:00:00.000Z')
     expect(fromDatetimeLocalValue('2026-12-31T23:59')).toBe('2026-12-31T23:59:00.000Z')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// validateScheduleDates
+// ---------------------------------------------------------------------------
+
+describe('validateScheduleDates', () => {
+  it('returns null when both dates are present and start is before end', () => {
+    expect(validateScheduleDates('2026-06-15T10:00', '2026-06-16T10:00')).toBeNull()
+  })
+
+  it('returns errorDatesRequired when startsAt is empty', () => {
+    expect(validateScheduleDates('', '2026-06-16T10:00')).toBe(
+      'hubManage.schedules.errorDatesRequired',
+    )
+  })
+
+  it('returns errorDatesRequired when endsAt is empty', () => {
+    expect(validateScheduleDates('2026-06-15T10:00', '')).toBe(
+      'hubManage.schedules.errorDatesRequired',
+    )
+  })
+
+  it('returns errorDatesRequired when both dates are empty', () => {
+    expect(validateScheduleDates('', '')).toBe('hubManage.schedules.errorDatesRequired')
+  })
+
+  it('returns errorStartBeforeEnd when start equals end', () => {
+    expect(validateScheduleDates('2026-06-15T10:00', '2026-06-15T10:00')).toBe(
+      'hubManage.schedules.errorStartBeforeEnd',
+    )
+  })
+
+  it('returns errorStartBeforeEnd when start is after end', () => {
+    expect(validateScheduleDates('2026-06-17T10:00', '2026-06-15T10:00')).toBe(
+      'hubManage.schedules.errorStartBeforeEnd',
+    )
+  })
+
+  it('returns errorStartBeforeEnd when start is one minute after end', () => {
+    expect(validateScheduleDates('2026-06-15T10:01', '2026-06-15T10:00')).toBe(
+      'hubManage.schedules.errorStartBeforeEnd',
+    )
+  })
+
+  it('returns null for start exactly one minute before end', () => {
+    expect(validateScheduleDates('2026-06-15T09:59', '2026-06-15T10:00')).toBeNull()
+  })
+
+  it('works correctly for ISO strings that already have Z suffix', () => {
+    expect(
+      validateScheduleDates('2026-06-15T10:00:00.000Z', '2026-06-16T10:00:00.000Z'),
+    ).toBeNull()
+  })
+
+  it('errors take priority: required before start-before-end', () => {
+    // Empty string checked before doing date comparison
+    expect(validateScheduleDates('', '2026-06-15T10:00')).toBe(
+      'hubManage.schedules.errorDatesRequired',
+    )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// validateScheduleInput
+// ---------------------------------------------------------------------------
+
+describe('validateScheduleInput', () => {
+  it('returns null when all fields are valid', () => {
+    expect(
+      validateScheduleInput('event-id-123', '2026-06-15T10:00', '2026-06-16T10:00'),
+    ).toBeNull()
+  })
+
+  it('returns errorSelectEvent when eventId is empty', () => {
+    expect(validateScheduleInput('', '2026-06-15T10:00', '2026-06-16T10:00')).toBe(
+      'hubManage.schedules.errorSelectEvent',
+    )
+  })
+
+  it('eventId check takes priority over date validation', () => {
+    // Even if dates are also invalid, the eventId error surfaces first
+    expect(validateScheduleInput('', '', '')).toBe('hubManage.schedules.errorSelectEvent')
+  })
+
+  it('returns errorDatesRequired when startsAt is empty (eventId present)', () => {
+    expect(validateScheduleInput('event-id-123', '', '2026-06-16T10:00')).toBe(
+      'hubManage.schedules.errorDatesRequired',
+    )
+  })
+
+  it('returns errorDatesRequired when endsAt is empty (eventId present)', () => {
+    expect(validateScheduleInput('event-id-123', '2026-06-15T10:00', '')).toBe(
+      'hubManage.schedules.errorDatesRequired',
+    )
+  })
+
+  it('returns errorStartBeforeEnd when start equals end (eventId present)', () => {
+    expect(
+      validateScheduleInput('event-id-123', '2026-06-15T10:00', '2026-06-15T10:00'),
+    ).toBe('hubManage.schedules.errorStartBeforeEnd')
+  })
+
+  it('returns errorStartBeforeEnd when start is after end (eventId present)', () => {
+    expect(
+      validateScheduleInput('event-id-123', '2026-06-16T10:00', '2026-06-15T10:00'),
+    ).toBe('hubManage.schedules.errorStartBeforeEnd')
+  })
+
+  it('returns null for a valid UUIDv4 eventId with valid dates', () => {
+    expect(
+      validateScheduleInput(
+        'e3b0c442-98fc-1c14-9afb-0602300300d7',
+        '2026-01-01T00:00',
+        '2026-12-31T23:59',
+      ),
+    ).toBeNull()
   })
 })

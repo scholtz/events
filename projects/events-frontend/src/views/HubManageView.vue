@@ -10,6 +10,8 @@ import {
   fromDatetimeLocalValue,
   scheduleStatus,
   toDatetimeLocalValue,
+  validateScheduleDates,
+  validateScheduleInput,
 } from '@/lib/scheduleUtils'
 import type { CatalogEvent, EventDomain, ScheduledFeaturedEvent } from '@/types'
 
@@ -204,13 +206,12 @@ function formatDateTime(dateStr: string): string {
 }
 
 function newScheduleFormError(): string {
-  if (!newScheduleForm.value.eventId) return t('hubManage.schedules.errorSelectEvent')
-  const starts = newScheduleForm.value.startsAtUtc
-  const ends = newScheduleForm.value.endsAtUtc
-  if (!starts || !ends) return t('hubManage.schedules.errorDatesRequired')
-  if (new Date(fromDatetimeLocalValue(starts)) >= new Date(fromDatetimeLocalValue(ends)))
-    return t('hubManage.schedules.errorStartBeforeEnd')
-  return ''
+  const key = validateScheduleInput(
+    newScheduleForm.value.eventId,
+    newScheduleForm.value.startsAtUtc,
+    newScheduleForm.value.endsAtUtc,
+  )
+  return key ? t(key) : ''
 }
 
 async function handleCreateSchedule() {
@@ -266,17 +267,17 @@ function cancelEditSchedule() {
 }
 
 async function handleUpdateSchedule(scheduleId: string) {
-  const starts = fromDatetimeLocalValue(editScheduleForm.value.startsAtUtc)
-  const ends = fromDatetimeLocalValue(editScheduleForm.value.endsAtUtc)
-  if (!editScheduleForm.value.startsAtUtc || !editScheduleForm.value.endsAtUtc) {
-    editScheduleError.value = t('hubManage.schedules.errorDatesRequired')
-    return
-  }
-  if (new Date(starts) >= new Date(ends)) {
-    editScheduleError.value = t('hubManage.schedules.errorStartBeforeEnd')
+  const dateError = validateScheduleDates(
+    editScheduleForm.value.startsAtUtc,
+    editScheduleForm.value.endsAtUtc,
+  )
+  if (dateError) {
+    editScheduleError.value = t(dateError)
     return
   }
   editScheduleError.value = ''
+  const starts = fromDatetimeLocalValue(editScheduleForm.value.startsAtUtc)
+  const ends = fromDatetimeLocalValue(editScheduleForm.value.endsAtUtc)
   schedulesSaving.value = true
   try {
     const updated = await domainsStore.updateScheduledFeaturedEvent(
