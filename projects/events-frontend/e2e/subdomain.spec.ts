@@ -523,3 +523,127 @@ test.describe('Subdomain hub SEO meta tags', () => {
     await expect(page).toHaveTitle(/Technology.*Podujatia/)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Subdomain hub: scheduled featured events
+// ---------------------------------------------------------------------------
+// When a visitor arrives on a category subdomain (e.g. tech.events.biatec.io),
+// the subdomain header should surface any active scheduled featured events from
+// the domain hub so curated content is immediately visible without requiring
+// the user to navigate to /category/:slug.
+// ---------------------------------------------------------------------------
+
+test.describe('Subdomain hub: scheduled featured events', () => {
+  test('shows active featured event in subdomain header when a schedule is active', async ({
+    page,
+  }) => {
+    const now = new Date()
+    const domain = makeTechDomain()
+    const featuredEvent = makeApprovedEvent({
+      id: 'event-featured',
+      name: 'Featured Tech Conference',
+      slug: 'featured-tech-conference',
+      domainId: domain.id,
+      domain: { id: domain.id, name: domain.name, slug: domain.slug, subdomain: domain.subdomain },
+    })
+    const schedule: import('./helpers/mock-api').MockScheduledFeaturedEvent = {
+      id: 'sfe-active',
+      domainId: domain.id,
+      eventId: featuredEvent.id,
+      startsAtUtc: new Date(now.getTime() - 3_600_000).toISOString(),
+      endsAtUtc: new Date(now.getTime() + 86_400_000).toISOString(),
+      priority: 0,
+      isEnabled: true,
+      displayLabel: null,
+      createdAtUtc: now.toISOString(),
+      createdByUserId: null,
+    }
+    setupMockApi(page, {
+      domains: [domain],
+      events: [featuredEvent],
+      scheduledFeaturedEvents: [schedule],
+    })
+    await page.goto('/?subdomain=tech')
+
+    await expect(page.locator('.subdomain-header')).toBeVisible()
+    await expect(page.locator('.subdomain-featured-section')).toBeVisible()
+    await expect(
+      page.locator('.subdomain-featured-section .event-card', { hasText: 'Featured Tech Conference' }),
+    ).toBeVisible()
+  })
+
+  test('does not show featured section when no active schedule exists', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent()],
+      scheduledFeaturedEvents: [],
+    })
+    await page.goto('/?subdomain=tech')
+
+    await expect(page.locator('.subdomain-header')).toBeVisible()
+    await expect(page.locator('.subdomain-featured-section')).toBeHidden()
+  })
+
+  test('does not show featured section when the only schedule is expired', async ({ page }) => {
+    const now = new Date()
+    const domain = makeTechDomain()
+    const ev = makeApprovedEvent({ domainId: domain.id })
+    const schedule: import('./helpers/mock-api').MockScheduledFeaturedEvent = {
+      id: 'sfe-expired',
+      domainId: domain.id,
+      eventId: ev.id,
+      startsAtUtc: new Date(now.getTime() - 7_200_000).toISOString(),
+      endsAtUtc: new Date(now.getTime() - 3_600_000).toISOString(), // ended 1 hour ago
+      priority: 0,
+      isEnabled: true,
+      displayLabel: null,
+      createdAtUtc: now.toISOString(),
+      createdByUserId: null,
+    }
+    setupMockApi(page, {
+      domains: [domain],
+      events: [ev],
+      scheduledFeaturedEvents: [schedule],
+    })
+    await page.goto('/?subdomain=tech')
+
+    await expect(page.locator('.subdomain-header')).toBeVisible()
+    await expect(page.locator('.subdomain-featured-section')).toBeHidden()
+  })
+
+  test('shows featured heading in Slovak locale', async ({ page }) => {
+    const now = new Date()
+    const domain = makeTechDomain()
+    const featuredEvent = makeApprovedEvent({
+      id: 'event-sk',
+      name: 'Slovak Featured Event',
+      slug: 'slovak-featured-event',
+      domainId: domain.id,
+      domain: { id: domain.id, name: domain.name, slug: domain.slug, subdomain: domain.subdomain },
+    })
+    const schedule: import('./helpers/mock-api').MockScheduledFeaturedEvent = {
+      id: 'sfe-sk',
+      domainId: domain.id,
+      eventId: featuredEvent.id,
+      startsAtUtc: new Date(now.getTime() - 3_600_000).toISOString(),
+      endsAtUtc: new Date(now.getTime() + 86_400_000).toISOString(),
+      priority: 0,
+      isEnabled: true,
+      displayLabel: null,
+      createdAtUtc: now.toISOString(),
+      createdByUserId: null,
+    }
+    setupMockApi(page, {
+      domains: [domain],
+      events: [featuredEvent],
+      scheduledFeaturedEvents: [schedule],
+    })
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'sk')
+    })
+    await page.goto('/?subdomain=tech')
+
+    await expect(page.locator('.subdomain-featured-section')).toBeVisible()
+    await expect(page.locator('.subdomain-featured-heading')).toContainText('Práve v popredí')
+  })
+})
