@@ -58,6 +58,9 @@ export default {
     subdomainCuratedBy: 'Kuratiert von {credit}',
     subdomainPageTitle: '{name} Veranstaltungen',
     subdomainFeaturedHeading: 'Jetzt im Fokus',
+    subdomainNoEvents: 'Keine bevorstehenden Veranstaltungen im {name}-Hub',
+    subdomainNoEventsDescription:
+      'Dieser Community-Hub hat aktuell keine bevorstehenden Veranstaltungen. Schauen Sie bald wieder vorbei oder durchsuchen Sie Veranstaltungen aller Communities.',
     updatingResults: 'Ergebnisse werden aktualisiert…',
     updatingDescription: 'Ihre Filter werden angewendet und die besten Ergebnisse werden geladen.',
     errorOffline: 'Sie sind offline',

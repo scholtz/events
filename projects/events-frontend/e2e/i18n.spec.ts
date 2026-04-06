@@ -889,3 +889,62 @@ test.describe('Localized rank context badge', () => {
     await expect(page.locator('.rank-context-badge')).toContainText('Neueste zuerst')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Localized subdomain hub empty state
+// ---------------------------------------------------------------------------
+
+test.describe('Localized subdomain hub empty state', () => {
+  function makeCryptoDomainForI18n() {
+    return {
+      id: 'dom-crypto',
+      name: 'Crypto',
+      slug: 'crypto',
+      subdomain: 'crypto',
+      description: 'Blockchain and crypto events',
+      isActive: true,
+      createdAtUtc: new Date().toISOString(),
+    }
+  }
+
+  test('subdomain hub empty state heading is localized in German', async ({ page }) => {
+    setupMockApi(page, { domains: [makeCryptoDomainForI18n()], events: [] })
+
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'de')
+    })
+
+    await page.goto('/?subdomain=crypto&domain=crypto')
+
+    await expect(page.locator('.subdomain-empty-state h2')).toContainText('Keine bevorstehenden Veranstaltungen im Crypto-Hub')
+    await expect(page.locator('.subdomain-empty-state')).toContainText('Community-Hub')
+  })
+
+  test('subdomain hub empty state heading is localized in Slovak', async ({ page }) => {
+    setupMockApi(page, { domains: [makeCryptoDomainForI18n()], events: [] })
+
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'sk')
+    })
+
+    await page.goto('/?subdomain=crypto&domain=crypto')
+
+    await expect(page.locator('.subdomain-empty-state h2')).toContainText('V hube Crypto zatiaľ nie sú žiadne nadchádzajúce podujatia')
+  })
+
+  test('subdomain hub empty state "View full hub page" is localized in German', async ({
+    page,
+  }) => {
+    setupMockApi(page, { domains: [makeCryptoDomainForI18n()], events: [] })
+
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'de')
+    })
+
+    await page.goto('/?subdomain=crypto&domain=crypto')
+
+    await expect(
+      page.locator('.subdomain-empty-state').getByRole('link', { name: 'Zur Hub-Seite' }),
+    ).toBeVisible()
+  })
+})
