@@ -5,10 +5,16 @@ import {
   makeContributorUser,
   makeTechDomain,
   makeApprovedEvent,
+  makePublicGroup,
+  makePrivateGroup,
   loginAs,
   seedAuthAndLocale,
 } from './helpers/mock-api'
-import type { MockDomainAdministrator, MockScheduledFeaturedEvent } from './helpers/mock-api'
+import type {
+  MockDomainAdministrator,
+  MockDomainCuratedCommunity,
+  MockScheduledFeaturedEvent,
+} from './helpers/mock-api'
 
 test.describe('Hub Manage page (/hub/:slug/manage)', () => {
   // ── Unauthenticated gate ───────────────────────────────────────────────────
@@ -1002,6 +1008,184 @@ test.describe('Hub Manage page (/hub/:slug/manage)', () => {
     ).toBeVisible()
     await expect(
       page.locator('.hub-schedule-item').first().getByRole('button', { name: 'Odstrániť' }),
+    ).toBeVisible()
+  })
+
+  // ── Curated Community Groups ──────────────────────────────────────────────
+
+  test('curated communities section is shown to admin', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      communityGroups: [],
+      domainCuratedCommunities: [],
+    })
+    await loginAs(page, admin)
+
+    await page.goto('/hub/technology/manage')
+
+    await expect(
+      page.getByRole('heading', { name: 'Curated Community Groups' }),
+    ).toBeVisible()
+    await expect(
+      page.getByText('No community groups curated yet.'),
+    ).toBeVisible()
+  })
+
+  test('curated community is shown in the list after loading', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    const group = makePublicGroup({ name: 'Prague Builders', slug: 'prague-builders' })
+    const curatedEntry: MockDomainCuratedCommunity = {
+      id: 'cc-1',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: true,
+      annotation: 'Core organizer group',
+      createdAtUtc: new Date().toISOString(),
+    }
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      communityGroups: [group],
+      domainCuratedCommunities: [curatedEntry],
+    })
+    await loginAs(page, admin)
+
+    await page.goto('/hub/technology/manage')
+
+    const list = page.locator('.hub-curated-community-list')
+    await expect(list).toBeVisible()
+    const item = list.locator('.hub-curated-community-item').first()
+    await expect(item.getByRole('link', { name: 'Prague Builders' })).toBeVisible()
+    // Annotation input should have the steward note pre-filled
+    await expect(item.locator('.hub-curated-community-annotation-input')).toHaveValue(
+      'Core organizer group',
+    )
+    // Enabled badge should be shown
+    await expect(item.locator('.badge--enabled')).toBeVisible()
+  })
+
+  test('admin can add a public community group from the picker', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    const group = makePublicGroup({ name: 'Blockchain Collective', slug: 'blockchain-collective' })
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      communityGroups: [group],
+      domainCuratedCommunities: [],
+    })
+    await loginAs(page, admin)
+
+    await page.goto('/hub/technology/manage')
+
+    // Select the group from the picker
+    await page
+      .locator('.hub-curated-community-select')
+      .selectOption({ label: 'Blockchain Collective' })
+    await page.getByRole('button', { name: 'Add community' }).click()
+
+    // The group should appear in the list
+    const list = page.locator('.hub-curated-community-list')
+    await expect(list.locator('.hub-curated-community-item')).toHaveCount(1)
+    await expect(list.getByRole('link', { name: 'Blockchain Collective' })).toBeVisible()
+  })
+
+  test('admin can remove a curated community', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    const group = makePublicGroup({ name: 'Removable Group', slug: 'removable-group' })
+    const curatedEntry: MockDomainCuratedCommunity = {
+      id: 'cc-remove',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: true,
+      annotation: null,
+      createdAtUtc: new Date().toISOString(),
+    }
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      communityGroups: [group],
+      domainCuratedCommunities: [curatedEntry],
+    })
+    await loginAs(page, admin)
+
+    await page.goto('/hub/technology/manage')
+
+    const list = page.locator('.hub-curated-community-list')
+    await expect(list.locator('.hub-curated-community-item')).toHaveCount(1)
+
+    // Click Remove
+    await list.locator('.hub-curated-community-item').first().getByRole('button', { name: 'Remove' }).click()
+
+    // Should show empty state
+    await expect(page.getByText('No community groups curated yet.')).toBeVisible()
+  })
+
+  test('no eligible groups message shown when no public groups exist', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    const privateGroup = makePrivateGroup({ name: 'Secret Group', slug: 'secret-group' })
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      communityGroups: [privateGroup],
+      domainCuratedCommunities: [],
+    })
+    await loginAs(page, admin)
+
+    await page.goto('/hub/technology/manage')
+
+    await expect(
+      page.getByText('No public community groups are available to add.'),
+    ).toBeVisible()
+  })
+
+  test('Curated Community Groups section is localized in Slovak', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    await seedAuthAndLocale(page, admin, 'sk')
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      communityGroups: [],
+      domainCuratedCommunities: [],
+    })
+
+    await page.goto('/hub/technology/manage')
+
+    await expect(
+      page.getByRole('heading', { name: 'Kurácie komunitných skupín' }),
+    ).toBeVisible()
+    await expect(
+      page.getByText('Zatiaľ žiadne kurácie komunitných skupín.'),
+    ).toBeVisible()
+  })
+
+  test('Curated Community Groups section is localized in German', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    await seedAuthAndLocale(page, admin, 'de')
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      communityGroups: [],
+      domainCuratedCommunities: [],
+    })
+
+    await page.goto('/hub/technology/manage')
+
+    await expect(
+      page.getByRole('heading', { name: 'Kuratierte Community-Gruppen' }),
+    ).toBeVisible()
+    await expect(
+      page.getByText('Noch keine kuratierten Community-Gruppen.'),
     ).toBeVisible()
   })
 })

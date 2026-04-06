@@ -51,6 +51,8 @@ export interface EventDomain {
   publishedEventCount?: number
   /** Curator-managed community/external links shown on the public hub page. */
   links?: DomainLink[]
+  /** Steward-curated community groups shown on the public hub page. */
+  curatedCommunities?: DomainCuratedCommunity[]
 }
 
 /** Matches backend DomainLink entity */
@@ -269,6 +271,18 @@ export interface CommunityGroup {
   isActive: boolean
   createdAtUtc: string
   createdByUserId: string | null
+}
+
+/** Matches backend DomainCuratedCommunity entity (steward-curated hub community group) */
+export interface DomainCuratedCommunity {
+  id: string
+  domainId: string
+  groupId: string
+  group: CommunityGroup
+  displayOrder: number
+  isEnabled: boolean
+  annotation: string | null
+  createdAtUtc: string
 }
 
 /** Matches backend CommunityMembership entity */

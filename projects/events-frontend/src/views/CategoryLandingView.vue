@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import EventCard from '@/components/events/EventCard.vue'
-import type { CatalogEvent, EventDomain } from '@/types'
+import type { CatalogEvent, DomainCuratedCommunity, EventDomain } from '@/types'
 import { gqlRequest } from '@/lib/graphql'
 import { safeHexColor } from '@/lib/colorUtils'
 import { useAuthStore } from '@/stores/auth'
@@ -19,6 +19,7 @@ const slug = computed(() => route.params.slug as string)
 const domain = ref<EventDomain | null>(null)
 const events = ref<CatalogEvent[]>([])
 const featuredEvents = ref<CatalogEvent[]>([])
+const curatedCommunities = ref<DomainCuratedCommunity[]>([])
 const loading = ref(false)
 const error = ref('')
 
@@ -59,7 +60,7 @@ async function fetchCategoryData() {
     }
 
     // Fetch events and featured events in parallel
-    const [eventsData, featuredData] = await Promise.all([
+    const [eventsData, featuredData, communitiesData] = await Promise.all([
       gqlRequest<{ events: CatalogEvent[] }>(
         `query CategoryEvents($filter: EventFilterInput) {
           events(filter: $filter) { ${EVENT_FIELDS} }
@@ -72,13 +73,24 @@ async function fetchCategoryData() {
         }`,
         { domainSlug: slug.value },
       ),
+      gqlRequest<{ curatedCommunitiesForDomain: DomainCuratedCommunity[] }>(
+        `query CuratedCommunitiesForDomain($domainSlug: String!) {
+          curatedCommunitiesForDomain(domainSlug: $domainSlug) {
+            id groupId displayOrder isEnabled annotation
+            group { id name slug summary visibility isActive createdAtUtc createdByUserId }
+          }
+        }`,
+        { domainSlug: slug.value },
+      ).catch(() => ({ curatedCommunitiesForDomain: [] })),
     ])
     events.value = eventsData.events
     featuredEvents.value = featuredData.featuredEventsForDomain
+    curatedCommunities.value = communitiesData.curatedCommunitiesForDomain
   } catch (err) {
     error.value = err instanceof Error ? err.message : t('category.errorLoad')
     events.value = []
     featuredEvents.value = []
+    curatedCommunities.value = []
   } finally {
     loading.value = false
   }
@@ -337,6 +349,43 @@ onMounted(async () => {
             </li>
           </ul>
         </div>
+
+        <!-- Curated Community Groups section -->
+        <section
+          v-if="curatedCommunities.length"
+          class="curated-communities-section"
+          aria-labelledby="curated-communities-heading"
+        >
+          <h2 id="curated-communities-heading" class="curated-communities-title">
+            <span class="curated-communities-icon" aria-hidden="true">🤝</span>
+            {{ t('category.curatedCommunities') }}
+          </h2>
+          <p class="curated-communities-description">{{ t('category.curatedCommunitiesDescription') }}</p>
+          <ul class="curated-communities-list" aria-label="Curated communities in this hub">
+            <li
+              v-for="entry in curatedCommunities"
+              :key="entry.groupId"
+              class="curated-community-card"
+            >
+              <div class="curated-community-card-content">
+                <RouterLink
+                  :to="`/community/${entry.group.slug}`"
+                  class="curated-community-name"
+                >{{ entry.group.name }}</RouterLink>
+                <p v-if="entry.group.summary" class="curated-community-summary">
+                  {{ entry.group.summary }}
+                </p>
+                <p v-if="entry.annotation" class="curated-community-annotation">
+                  {{ entry.annotation }}
+                </p>
+              </div>
+              <RouterLink
+                :to="`/community/${entry.group.slug}`"
+                class="curated-community-cta"
+              >{{ t('category.exploreGroup') }}</RouterLink>
+            </li>
+          </ul>
+        </section>
 
         <!-- Featured Events section -->
         <section v-if="featuredEvents.length" class="featured-section" aria-labelledby="featured-heading">
@@ -869,5 +918,104 @@ onMounted(async () => {
 .manage-hub-btn {
   margin-top: 0.75rem;
   align-self: flex-start;
+}
+
+/* ── Curated communities section ─────────────────────────────── */
+.curated-communities-section {
+  margin-bottom: 1.5rem;
+  padding: 1.25rem 1.5rem;
+  background: var(--color-surface-raised, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
+  border-radius: var(--radius-md);
+}
+
+.curated-communities-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0 0 0.375rem;
+  color: var(--color-text);
+}
+
+.curated-communities-icon {
+  font-size: 1.125rem;
+}
+
+.curated-communities-description {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  margin: 0 0 1rem;
+}
+
+.curated-communities-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 0.75rem;
+}
+
+.curated-community-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.1));
+  background: var(--color-surface, rgba(255, 255, 255, 0.02));
+  transition: border-color 0.15s;
+}
+
+.curated-community-card:hover {
+  border-color: var(--category-color, var(--color-primary, #3b82f6));
+}
+
+.curated-community-card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.curated-community-name {
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.curated-community-name:hover {
+  text-decoration: underline;
+  color: var(--category-color, var(--color-primary, #3b82f6));
+}
+
+.curated-community-summary {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.curated-community-annotation {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted, rgba(255, 255, 255, 0.45));
+  margin: 0;
+  font-style: italic;
+  line-height: 1.5;
+}
+
+.curated-community-cta {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--category-color, var(--color-primary, #3b82f6));
+  text-decoration: none;
+  align-self: flex-start;
+}
+
+.curated-community-cta:hover {
+  text-decoration: underline;
 }
 </style>

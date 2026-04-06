@@ -171,6 +171,16 @@ export type MockDomainLink = {
   createdAtUtc: string
 }
 
+export type MockDomainCuratedCommunity = {
+  id: string
+  domainId: string
+  groupId: string
+  displayOrder: number
+  isEnabled: boolean
+  annotation: string | null
+  createdAtUtc: string
+}
+
 export type MockCommunityGroup = {
   id: string
   name: string
@@ -235,6 +245,7 @@ export type MockState = {
   domains: MockDomain[]
   domainAdministrators: MockDomainAdministrator[]
   domainLinks: MockDomainLink[]
+  domainCuratedCommunities: MockDomainCuratedCommunity[]
   events: MockEvent[]
   featuredEvents: MockFeaturedEvent[]
   scheduledFeaturedEvents: MockScheduledFeaturedEvent[]
@@ -270,6 +281,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
     domains: initial?.domains ?? [],
     domainAdministrators: initial?.domainAdministrators ?? [],
     domainLinks: initial?.domainLinks ?? [],
+    domainCuratedCommunities: initial?.domainCuratedCommunities ?? [],
     events: initial?.events ?? [],
     featuredEvents: initial?.featuredEvents ?? [],
     scheduledFeaturedEvents: initial?.scheduledFeaturedEvents ?? [],
@@ -1036,6 +1048,65 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       return
     }
 
+    if (query.includes('mutation') && query.includes('SetDomainCuratedCommunities')) {
+      const input = variables.input || {}
+      const domain = state.domains.find((d) => d.id === input.domainId)
+      const currentUser = state.users.find((u) => u.id === state.currentUserId)
+      if (!currentUser) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Not authorized', extensions: { code: 'AUTH_NOT_AUTHORIZED' } }] }),
+        })
+        return
+      }
+      // Check if user is a domain admin or global admin
+      const isGlobalAdmin = currentUser.role === 'ADMIN'
+      const isDomainAdmin = state.domainAdministrators.some(
+        (da) => da.domainId === input.domainId && da.userId === currentUser.id,
+      )
+      if (!isGlobalAdmin && !isDomainAdmin) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Forbidden', extensions: { code: 'FORBIDDEN' } }] }),
+        })
+        return
+      }
+      const newEntries: MockDomainCuratedCommunity[] = []
+      if (domain) {
+        state.domainCuratedCommunities = state.domainCuratedCommunities.filter(
+          (c) => c.domainId !== domain.id,
+        )
+        const communityItems: { groupId: string; isEnabled: boolean; annotation: string | null }[] =
+          input.communities ?? []
+        communityItems.forEach((item, i) => {
+          const entry: MockDomainCuratedCommunity = {
+            id: `curated-${domain.id}-${i}`,
+            domainId: domain.id,
+            groupId: item.groupId,
+            displayOrder: i,
+            isEnabled: item.isEnabled ?? true,
+            annotation: item.annotation ?? null,
+            createdAtUtc: new Date().toISOString(),
+          }
+          state.domainCuratedCommunities.push(entry)
+          newEntries.push(entry)
+        })
+      }
+      // Attach group objects to returned entries
+      const entriesWithGroups = newEntries.map((entry) => ({
+        ...entry,
+        group: state.communityGroups.find((g) => g.id === entry.groupId) ?? null,
+      }))
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { setDomainCuratedCommunities: entriesWithGroups } }),
+      })
+      return
+    }
+
     // ── Queries ──
     if (query.includes('query') && query.includes('AdminOverview')) {
       const currentUser = state.users.find((u) => u.id === state.currentUserId)
@@ -1721,6 +1792,67 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({ data: { domainBySlug: domainWithLinks } }),
+      })
+      return
+    }
+
+    if (query.includes('query') && query.includes('CuratedCommunitiesForDomain')) {
+      const domainSlug = variables.domainSlug as string | undefined
+      const domain = domainSlug ? state.domains.find((d) => d.slug === domainSlug) : null
+      const entries = domain
+        ? state.domainCuratedCommunities
+            .filter((c) => c.domainId === domain.id && c.isEnabled)
+            .sort((a, b) => a.displayOrder - b.displayOrder)
+            .map((c) => ({
+              ...c,
+              group: state.communityGroups.find((g) => g.id === c.groupId) ?? null,
+            }))
+            .filter((c) => c.group && c.group.visibility === 'PUBLIC' && c.group.isActive)
+        : []
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { curatedCommunitiesForDomain: entries } }),
+      })
+      return
+    }
+
+    if (query.includes('query') && query.includes('GetDomainCuratedCommunitiesAdmin')) {
+      const domainId = variables.domainId as string | undefined
+      const currentUser = state.users.find((u) => u.id === state.currentUserId)
+      if (!currentUser) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Not authorized', extensions: { code: 'AUTH_NOT_AUTHORIZED' } }] }),
+        })
+        return
+      }
+      const isGlobalAdmin = currentUser.role === 'ADMIN'
+      const isDomainAdmin = state.domainAdministrators.some(
+        (da) => da.domainId === domainId && da.userId === currentUser.id,
+      )
+      if (!isGlobalAdmin && !isDomainAdmin) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Forbidden', extensions: { code: 'FORBIDDEN' } }] }),
+        })
+        return
+      }
+      const entries = domainId
+        ? state.domainCuratedCommunities
+            .filter((c) => c.domainId === domainId)
+            .sort((a, b) => a.displayOrder - b.displayOrder)
+            .map((c) => ({
+              ...c,
+              group: state.communityGroups.find((g) => g.id === c.groupId) ?? null,
+            }))
+        : []
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { domainCuratedCommunitiesAdmin: entries } }),
       })
       return
     }

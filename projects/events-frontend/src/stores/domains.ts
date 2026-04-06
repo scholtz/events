@@ -1,7 +1,13 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { gqlRequest } from '@/lib/graphql'
-import type { DomainAdministrator, DomainLink, EventDomain, ScheduledFeaturedEvent } from '@/types'
+import type {
+  DomainAdministrator,
+  DomainCuratedCommunity,
+  DomainLink,
+  EventDomain,
+  ScheduledFeaturedEvent,
+} from '@/types'
 
 const DOMAIN_FIELDS = `id name slug subdomain description isActive createdAtUtc
   createdByUserId primaryColor accentColor logoUrl bannerUrl
@@ -190,6 +196,34 @@ export const useDomainsStore = defineStore('domains', () => {
     return data.setDomainLinks
   }
 
+  const CURATED_COMMUNITY_FIELDS = `
+    id domainId groupId displayOrder isEnabled annotation createdAtUtc
+    group { id name slug summary visibility isActive createdAtUtc createdByUserId }
+  `
+
+  async function fetchCuratedCommunities(domainId: string): Promise<DomainCuratedCommunity[]> {
+    const data = await gqlRequest<{ domainCuratedCommunitiesAdmin: DomainCuratedCommunity[] }>(
+      `query GetDomainCuratedCommunitiesAdmin($domainId: UUID!) {
+        domainCuratedCommunitiesAdmin(domainId: $domainId) { ${CURATED_COMMUNITY_FIELDS} }
+      }`,
+      { domainId },
+    )
+    return data.domainCuratedCommunitiesAdmin
+  }
+
+  async function setCuratedCommunities(
+    domainId: string,
+    communities: { groupId: string; isEnabled: boolean; annotation: string | null }[],
+  ): Promise<DomainCuratedCommunity[]> {
+    const data = await gqlRequest<{ setDomainCuratedCommunities: DomainCuratedCommunity[] }>(
+      `mutation SetDomainCuratedCommunities($input: SetDomainCuratedCommunitiesInput!) {
+        setDomainCuratedCommunities(input: $input) { ${CURATED_COMMUNITY_FIELDS} }
+      }`,
+      { input: { domainId, communities } },
+    )
+    return data.setDomainCuratedCommunities
+  }
+
   const SCHEDULED_FEATURED_EVENT_FIELDS = `
     id domainId eventId startsAtUtc endsAtUtc priority isEnabled displayLabel createdAtUtc createdByUserId
     event { id name slug status startsAtUtc domain { id name slug } }
@@ -265,6 +299,8 @@ export const useDomainsStore = defineStore('domains', () => {
     updateDomainOverview,
     setDomainFeaturedEvents,
     setDomainLinks,
+    fetchCuratedCommunities,
+    setCuratedCommunities,
     fetchScheduledFeaturedEvents,
     scheduleFeaturedEvent,
     updateScheduledFeaturedEvent,

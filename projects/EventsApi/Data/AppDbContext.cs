@@ -16,6 +16,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<DomainFeaturedEvent> DomainFeaturedEvents => Set<DomainFeaturedEvent>();
     public DbSet<ScheduledFeaturedEvent> ScheduledFeaturedEvents => Set<ScheduledFeaturedEvent>();
     public DbSet<DomainLink> DomainLinks => Set<DomainLink>();
+    public DbSet<DomainCuratedCommunity> DomainCuratedCommunities => Set<DomainCuratedCommunity>();
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
     public DbSet<EventReminder> EventReminders => Set<EventReminder>();
     public DbSet<CommunityGroup> CommunityGroups => Set<CommunityGroup>();
@@ -108,6 +109,25 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasOne(dl => dl.Domain)
                 .WithMany(d => d.Links)
                 .HasForeignKey(dl => dl.DomainId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<DomainCuratedCommunity>(entity =>
+        {
+            // Each community group can only be curated once per domain
+            entity.HasIndex(dcc => new { dcc.DomainId, dcc.GroupId }).IsUnique();
+            entity.HasIndex(dcc => new { dcc.DomainId, dcc.DisplayOrder });
+
+            entity.Property(dcc => dcc.Annotation).HasMaxLength(300);
+
+            entity.HasOne(dcc => dcc.Domain)
+                .WithMany()
+                .HasForeignKey(dcc => dcc.DomainId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(dcc => dcc.Group)
+                .WithMany()
+                .HasForeignKey(dcc => dcc.GroupId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

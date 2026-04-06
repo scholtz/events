@@ -322,6 +322,28 @@ public sealed class AppDbInitializer(
                 cancellationToken);
         }
 
+        // ── DomainCuratedCommunities join table ──────────────────────────────
+        if (!await TableExistsAsync("DomainCuratedCommunities", cancellationToken))
+        {
+            await _dbContext.Database.ExecuteSqlRawAsync(
+                """
+                CREATE TABLE "DomainCuratedCommunities" (
+                    "Id" TEXT NOT NULL CONSTRAINT "PK_DomainCuratedCommunities" PRIMARY KEY,
+                    "DomainId" TEXT NOT NULL,
+                    "GroupId" TEXT NOT NULL,
+                    "DisplayOrder" INTEGER NOT NULL DEFAULT 0,
+                    "IsEnabled" INTEGER NOT NULL DEFAULT 1,
+                    "Annotation" TEXT NULL,
+                    "CreatedAtUtc" TEXT NOT NULL,
+                    CONSTRAINT "FK_DomainCuratedCommunities_Domains_DomainId" FOREIGN KEY ("DomainId") REFERENCES "Domains" ("Id") ON DELETE CASCADE,
+                    CONSTRAINT "FK_DomainCuratedCommunities_CommunityGroups_GroupId" FOREIGN KEY ("GroupId") REFERENCES "CommunityGroups" ("Id") ON DELETE CASCADE
+                );
+                CREATE UNIQUE INDEX "IX_DomainCuratedCommunities_DomainId_GroupId" ON "DomainCuratedCommunities" ("DomainId", "GroupId");
+                CREATE INDEX "IX_DomainCuratedCommunities_DomainId_DisplayOrder" ON "DomainCuratedCommunities" ("DomainId", "DisplayOrder");
+                """,
+                cancellationToken);
+        }
+
         // ── DomainAdministrators join table ──────────────────────────────────
         if (!await TableExistsAsync("DomainAdministrators", cancellationToken))
         {

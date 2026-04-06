@@ -13,7 +13,7 @@ import {
   validateScheduleDates,
   validateScheduleInput,
 } from '@/lib/scheduleUtils'
-import type { CatalogEvent, EventDomain, ScheduledFeaturedEvent } from '@/types'
+import type { CatalogEvent, CommunityGroup, DomainCuratedCommunity, EventDomain, ScheduledFeaturedEvent } from '@/types'
 
 const { t, locale } = useI18n()
 const route = useRoute()
@@ -54,6 +54,18 @@ const newLinkForm = ref({ title: '', url: '' })
 const linksSaving = ref(false)
 const linksSuccess = ref(false)
 const linksError = ref('')
+
+// ── Curated community groups state ───────────────────────────────────────────
+const MAX_CURATED_COMMUNITIES = 20
+// Cast to Ref<T[]> to work around a vue-tsc TS2345 caused by CommunityVisibility
+// being resolved through two different module paths across the reactive wrapper boundary.
+const curatedCommunities = ref([]) as import('vue').Ref<DomainCuratedCommunity[]>
+const curatedCommunitiesLoading = ref(false)
+const curatedCommunitiesError = ref('')
+const curatedCommunitiesSaving = ref(false)
+const curatedCommunitiesSuccess = ref(false)
+const addCuratedGroupId = ref('')
+const availableCommunityGroups = ref<CommunityGroup[]>([])
 
 // ── Featured events state ─────────────────────────────────────────────────────
 const featuredEvents = ref<CatalogEvent[]>([])
@@ -137,6 +149,8 @@ async function loadDomain() {
       await loadFeaturedEvents()
       await loadAvailableEvents()
       await loadScheduledFeaturedEvents()
+      await loadCuratedCommunities()
+      await loadAvailableCommunityGroups()
     }
   } catch {
     error.value = t('hubManage.errorLoad')
@@ -191,6 +205,36 @@ async function loadScheduledFeaturedEvents() {
     schedules.value = []
   } finally {
     schedulesLoading.value = false
+  }
+}
+
+async function loadCuratedCommunities() {
+  if (!domain.value) return
+  curatedCommunitiesLoading.value = true
+  curatedCommunitiesError.value = ''
+  try {
+    curatedCommunities.value = await domainsStore.fetchCuratedCommunities(domain.value.id)
+  } catch {
+    curatedCommunitiesError.value = t('hubManage.curatedCommunities.loadError')
+    curatedCommunities.value = []
+  } finally {
+    curatedCommunitiesLoading.value = false
+  }
+}
+
+async function loadAvailableCommunityGroups() {
+  try {
+    const data = await gqlRequest<{ communityGroups: CommunityGroup[] }>(
+      `query HubAvailableCommunityGroups {
+        communityGroups { id name slug summary visibility isActive createdAtUtc createdByUserId }
+      }`,
+    )
+    // Only public active groups are eligible
+    availableCommunityGroups.value = data.communityGroups.filter(
+      (g: CommunityGroup) => g.isActive && g.visibility === 'PUBLIC',
+    )
+  } catch {
+    availableCommunityGroups.value = []
   }
 }
 
@@ -388,6 +432,78 @@ async function handleSaveLinks() {
     linksError.value = t('hubManage.saveError')
   } finally {
     linksSaving.value = false
+  }
+}
+
+// ── Curated community handlers ────────────────────────────────────────────────
+
+const pickableCommunityGroups = computed(() =>
+  availableCommunityGroups.value.filter(
+    (g: CommunityGroup) =>
+      !curatedCommunities.value.some((c: DomainCuratedCommunity) => c.groupId === g.id),
+  ),
+)
+
+function handleAddCuratedCommunity() {
+  if (!addCuratedGroupId.value) return
+  if (curatedCommunities.value.length >= MAX_CURATED_COMMUNITIES) return
+  const group = availableCommunityGroups.value.find((g: CommunityGroup) => g.id === addCuratedGroupId.value)
+  if (!group) return
+  curatedCommunities.value = [
+    ...curatedCommunities.value,
+    {
+      id: `new-${Date.now()}`,
+      domainId: domain.value!.id,
+      groupId: group.id,
+      group: { ...group } as DomainCuratedCommunity['group'],
+      displayOrder: curatedCommunities.value.length,
+      isEnabled: true,
+      annotation: null,
+      createdAtUtc: new Date().toISOString(),
+    },
+  ]
+  addCuratedGroupId.value = ''
+  curatedCommunitiesSuccess.value = false
+}
+
+function handleRemoveCuratedCommunity(groupId: string) {
+  curatedCommunities.value = curatedCommunities.value.filter(
+    (c: DomainCuratedCommunity) => c.groupId !== groupId,
+  )
+  curatedCommunitiesSuccess.value = false
+}
+
+function handleMoveCuratedCommunity(index: number, direction: 'up' | 'down') {
+  const newIndex = direction === 'up' ? index - 1 : index + 1
+  if (newIndex < 0 || newIndex >= curatedCommunities.value.length) return
+  // Clone to avoid in-place mutation before Vue detects changes
+  const items = curatedCommunities.value.map((c) => ({ ...c }))
+  // splice out the element and insert at the new position
+  const removed = items.splice(index, 1)
+  if (!removed[0]) return
+  items.splice(newIndex, 0, removed[0])
+  curatedCommunities.value = items
+  curatedCommunitiesSuccess.value = false
+}
+
+async function handleSaveCuratedCommunities() {
+  curatedCommunitiesError.value = ''
+  curatedCommunitiesSuccess.value = false
+  curatedCommunitiesSaving.value = true
+  try {
+    curatedCommunities.value = await domainsStore.setCuratedCommunities(
+      domain.value!.id,
+      curatedCommunities.value.map((c: DomainCuratedCommunity) => ({
+        groupId: c.groupId,
+        isEnabled: c.isEnabled,
+        annotation: c.annotation,
+      })),
+    )
+    curatedCommunitiesSuccess.value = true
+  } catch {
+    curatedCommunitiesError.value = t('hubManage.curatedCommunities.saveError')
+  } finally {
+    curatedCommunitiesSaving.value = false
   }
 }
 
@@ -1047,6 +1163,157 @@ const pickableEvents = computed(() =>
             </span>
           </div>
         </section>
+
+        <!-- ── Curated Community Groups ──────────────────────────────────── -->
+        <section class="manage-section card" aria-labelledby="curated-communities-heading">
+          <h2 id="curated-communities-heading" class="manage-section-title">
+            {{ t('hubManage.curatedCommunities.title') }}
+          </h2>
+          <p class="manage-section-hint">{{ t('hubManage.curatedCommunities.hint') }}</p>
+
+          <div v-if="curatedCommunitiesLoading" class="hub-featured-loading text-secondary">
+            {{ t('common.loading') }}
+          </div>
+          <template v-else>
+            <p v-if="curatedCommunitiesError" class="manage-error" role="alert">
+              {{ curatedCommunitiesError }}
+            </p>
+
+            <!-- Curated community list -->
+            <ul class="hub-curated-community-list" aria-label="Curated communities">
+              <li
+                v-for="(entry, index) in curatedCommunities"
+                :key="entry.groupId"
+                class="hub-curated-community-item"
+              >
+                <div class="hub-curated-community-order" aria-hidden="true">{{ index + 1 }}</div>
+                <div class="hub-curated-community-info">
+                  <div class="hub-curated-community-name-row">
+                    <RouterLink
+                      :to="`/community/${entry.group.slug}`"
+                      class="hub-curated-community-name"
+                      target="_blank"
+                    >{{ entry.group.name }}</RouterLink>
+                    <span
+                      class="hub-curated-community-badge"
+                      :class="entry.isEnabled ? 'badge--enabled' : 'badge--disabled'"
+                    >
+                      {{ entry.isEnabled ? t('hubManage.curatedCommunities.enabled') : t('hubManage.curatedCommunities.disabledBadge') }}
+                    </span>
+                  </div>
+                  <p v-if="entry.group.summary" class="hub-curated-community-summary">
+                    {{ entry.group.summary }}
+                  </p>
+                  <label class="hub-curated-community-annotation-label">
+                    <span>{{ t('hubManage.curatedCommunities.annotation') }}</span>
+                    <input
+                      v-model="entry.annotation"
+                      class="form-input hub-curated-community-annotation-input"
+                      type="text"
+                      maxlength="300"
+                      :placeholder="t('hubManage.curatedCommunities.annotationPlaceholder')"
+                    />
+                  </label>
+                  <label class="hub-curated-community-enabled-label">
+                    <input
+                      v-model="entry.isEnabled"
+                      type="checkbox"
+                    />
+                    <span>{{ t('hubManage.curatedCommunities.enabled') }}</span>
+                  </label>
+                </div>
+                <div class="hub-curated-community-actions">
+                  <button
+                    type="button"
+                    class="btn btn-outline btn-sm"
+                    :disabled="index === 0"
+                    :aria-label="`Move ${entry.group.name} up`"
+                    @click="handleMoveCuratedCommunity(index, 'up')"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-outline btn-sm"
+                    :disabled="index === curatedCommunities.length - 1"
+                    :aria-label="`Move ${entry.group.name} down`"
+                    @click="handleMoveCuratedCommunity(index, 'down')"
+                  >
+                    ↓
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-outline btn-sm"
+                    @click="handleRemoveCuratedCommunity(entry.groupId)"
+                  >
+                    {{ t('hubManage.curatedCommunities.remove') }}
+                  </button>
+                </div>
+              </li>
+            </ul>
+
+            <p
+              v-if="!curatedCommunities.length"
+              class="text-secondary hub-curated-community-empty"
+            >
+              {{ t('hubManage.curatedCommunities.empty') }}
+            </p>
+
+            <!-- Add community picker -->
+            <div
+              v-if="curatedCommunities.length < MAX_CURATED_COMMUNITIES"
+              class="hub-add-curated-community-form"
+            >
+              <select
+                v-model="addCuratedGroupId"
+                class="form-input hub-curated-community-select"
+                :aria-label="t('hubManage.curatedCommunities.selectGroup')"
+              >
+                <option value="">{{ t('hubManage.curatedCommunities.selectGroup') }}</option>
+                <option
+                  v-for="group in pickableCommunityGroups"
+                  :key="group.id"
+                  :value="group.id"
+                >
+                  {{ group.name }}
+                </option>
+              </select>
+              <button
+                type="button"
+                class="btn btn-outline btn-sm"
+                :disabled="!addCuratedGroupId"
+                @click="handleAddCuratedCommunity"
+              >
+                {{ t('hubManage.curatedCommunities.add') }}
+              </button>
+            </div>
+
+            <p
+              v-if="pickableCommunityGroups.length === 0 && curatedCommunities.length === 0"
+              class="text-secondary hub-curated-community-no-eligible"
+            >
+              {{ t('hubManage.curatedCommunities.noEligibleGroups') }}
+            </p>
+
+            <div class="hub-form-actions">
+              <button
+                type="button"
+                class="btn btn-primary"
+                :disabled="curatedCommunitiesSaving"
+                @click="handleSaveCuratedCommunities"
+              >
+                {{
+                  curatedCommunitiesSaving
+                    ? t('hubManage.curatedCommunities.saving')
+                    : t('hubManage.curatedCommunities.save')
+                }}
+              </button>
+              <span v-if="curatedCommunitiesSuccess" class="hub-save-success">
+                {{ t('hubManage.curatedCommunities.saved') }}
+              </span>
+            </div>
+          </template>
+        </section>
       </template>
     </template>
   </div>
@@ -1498,5 +1765,147 @@ const pickableEvents = computed(() =>
 
 .btn-danger:hover {
   background: rgba(248, 113, 113, 0.08);
+}
+
+/* ── Curated community groups section ── */
+.hub-curated-community-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.hub-curated-community-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.875rem;
+  border-radius: var(--radius-sm, 4px);
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
+  background: var(--color-surface-secondary, rgba(255, 255, 255, 0.04));
+}
+
+.hub-curated-community-order {
+  flex-shrink: 0;
+  width: 1.5rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted, rgba(255, 255, 255, 0.35));
+  padding-top: 0.125rem;
+  text-align: center;
+}
+
+.hub-curated-community-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.hub-curated-community-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.hub-curated-community-name {
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.hub-curated-community-name:hover {
+  text-decoration: underline;
+}
+
+.hub-curated-community-summary {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.hub-curated-community-badge {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  padding: 0.125rem 0.4rem;
+  border-radius: 9999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.badge--enabled {
+  background: rgba(74, 222, 128, 0.15);
+  color: #4ade80;
+}
+
+.badge--disabled {
+  background: rgba(156, 163, 175, 0.15);
+  color: #9ca3af;
+}
+
+.hub-curated-community-annotation-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+}
+
+.hub-curated-community-annotation-input {
+  font-size: 0.875rem;
+}
+
+.hub-curated-community-enabled-label {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.hub-curated-community-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  flex-shrink: 0;
+}
+
+.hub-curated-community-empty,
+.hub-curated-community-no-eligible {
+  font-size: 0.875rem;
+  padding: 0.5rem 0;
+}
+
+.hub-add-curated-community-form {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.hub-curated-community-select {
+  flex: 1;
+  min-width: 180px;
+}
+
+@media (max-width: 640px) {
+  .hub-curated-community-item {
+    flex-direction: column;
+  }
+
+  .hub-curated-community-actions {
+    flex-direction: row;
+    width: 100%;
+  }
+
+  .hub-add-curated-community-form {
+    flex-direction: column;
+  }
 }
 </style>
