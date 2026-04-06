@@ -5,7 +5,7 @@ import {
   makeApprovedEvent,
   makePublicGroup,
 } from './helpers/mock-api'
-import type { MockDomain, MockDomainCuratedCommunity } from './helpers/mock-api'
+import type { MockDomain, MockDomainCuratedCommunity, MockScheduledFeaturedEvent } from './helpers/mock-api'
 
 test.describe('Category landing page', () => {
   test('renders domain heading, description and event list', async ({ page }) => {
@@ -1026,5 +1026,332 @@ test.describe('Hub rank context badge', () => {
 
     await expect(page.locator('.curated-communities-section')).toBeHidden()
     await expect(page.getByRole('link', { name: 'Hidden Group' })).toBeHidden()
+  })
+})
+
+// ── Scheduled Featured Events on category landing page ──────────────────────
+
+test.describe('Category landing page: scheduled featured events', () => {
+  function makeActiveSfe(
+    domain: ReturnType<typeof makeTechDomain>,
+    event: ReturnType<typeof makeApprovedEvent>,
+    overrides: Partial<MockScheduledFeaturedEvent> = {},
+  ): MockScheduledFeaturedEvent {
+    const now = Date.now()
+    return {
+      id: 'sfe-1',
+      domainId: domain.id,
+      eventId: event.id,
+      startsAtUtc: new Date(now - 3_600_000).toISOString(), // started 1 h ago
+      endsAtUtc: new Date(now + 86_400_000).toISOString(), // ends in 24 h
+      priority: 0,
+      isEnabled: true,
+      displayLabel: null,
+      createdAtUtc: new Date().toISOString(),
+      createdByUserId: null,
+      ...overrides,
+    }
+  }
+
+  test('shows starred featured section when an active scheduled highlight exists', async ({ page }) => {
+    const domain = makeTechDomain()
+    const featured = makeApprovedEvent({
+      id: 'ev-featured',
+      name: 'Blockchain Summit',
+      slug: 'blockchain-summit',
+      domainId: domain.id,
+    })
+    setupMockApi(page, {
+      domains: [domain],
+      events: [featured],
+      scheduledFeaturedEvents: [makeActiveSfe(domain, featured)],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.featured-section')).toBeVisible()
+    await expect(
+      page.locator('.featured-section .event-card', { hasText: 'Blockchain Summit' }),
+    ).toBeVisible()
+  })
+
+  test('featured event is deduplicated from the regular event grid', async ({ page }) => {
+    const domain = makeTechDomain()
+    const featured = makeApprovedEvent({
+      id: 'ev-featured',
+      name: 'Blockchain Summit',
+      slug: 'blockchain-summit',
+      domainId: domain.id,
+    })
+    const other = makeApprovedEvent({
+      id: 'ev-other',
+      name: 'AI Meetup',
+      slug: 'ai-meetup',
+      domainId: domain.id,
+    })
+    setupMockApi(page, {
+      domains: [domain],
+      events: [featured, other],
+      scheduledFeaturedEvents: [makeActiveSfe(domain, featured)],
+    })
+
+    await page.goto('/category/technology')
+
+    // Featured event appears in the featured section
+    await expect(
+      page.locator('.featured-section .event-card', { hasText: 'Blockchain Summit' }),
+    ).toBeVisible()
+    // Featured event does NOT also appear in the regular grid
+    await expect(
+      page.locator('.events-grid .event-card', { hasText: 'Blockchain Summit' }),
+    ).toBeHidden()
+    // Other event appears only in the regular grid
+    await expect(page.locator('.events-grid .event-card', { hasText: 'AI Meetup' })).toBeVisible()
+  })
+
+  test('no featured section when no active schedule and no static featured events', async ({
+    page,
+  }) => {
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({ domainId: domain.id })
+    setupMockApi(page, {
+      domains: [domain],
+      events: [event],
+      scheduledFeaturedEvents: [],
+      featuredEvents: [],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.featured-section')).toBeHidden()
+  })
+
+  test('expired schedule does not show featured section (no static fallback)', async ({ page }) => {
+    const now = Date.now()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({ id: 'ev-expired', domainId: domain.id })
+    const expiredSfe: MockScheduledFeaturedEvent = {
+      id: 'sfe-expired',
+      domainId: domain.id,
+      eventId: event.id,
+      startsAtUtc: new Date(now - 7_200_000).toISOString(), // started 2 h ago
+      endsAtUtc: new Date(now - 3_600_000).toISOString(), // ended 1 h ago
+      priority: 0,
+      isEnabled: true,
+      displayLabel: null,
+      createdAtUtc: new Date().toISOString(),
+      createdByUserId: null,
+    }
+    setupMockApi(page, {
+      domains: [domain],
+      events: [event],
+      scheduledFeaturedEvents: [expiredSfe],
+      featuredEvents: [],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.featured-section')).toBeHidden()
+  })
+
+  test('upcoming (not yet started) schedule does not show featured section', async ({ page }) => {
+    const now = Date.now()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({ id: 'ev-upcoming', domainId: domain.id })
+    const upcomingSfe: MockScheduledFeaturedEvent = {
+      id: 'sfe-upcoming',
+      domainId: domain.id,
+      eventId: event.id,
+      startsAtUtc: new Date(now + 3_600_000).toISOString(), // starts in 1 h
+      endsAtUtc: new Date(now + 86_400_000).toISOString(), // ends in 24 h
+      priority: 0,
+      isEnabled: true,
+      displayLabel: null,
+      createdAtUtc: new Date().toISOString(),
+      createdByUserId: null,
+    }
+    setupMockApi(page, {
+      domains: [domain],
+      events: [event],
+      scheduledFeaturedEvents: [upcomingSfe],
+      featuredEvents: [],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.featured-section')).toBeHidden()
+  })
+
+  test('active schedule takes precedence over static featured events', async ({ page }) => {
+    const domain = makeTechDomain()
+    const scheduled = makeApprovedEvent({
+      id: 'ev-scheduled',
+      name: 'Scheduled Highlight',
+      slug: 'scheduled-highlight',
+      domainId: domain.id,
+    })
+    const staticFeatured = makeApprovedEvent({
+      id: 'ev-static',
+      name: 'Static Featured',
+      slug: 'static-featured',
+      domainId: domain.id,
+    })
+    setupMockApi(page, {
+      domains: [domain],
+      events: [scheduled, staticFeatured],
+      scheduledFeaturedEvents: [makeActiveSfe(domain, scheduled)],
+      featuredEvents: [{ domainSlug: domain.slug, eventId: staticFeatured.id, displayOrder: 0 }],
+    })
+
+    await page.goto('/category/technology')
+
+    // Scheduled event appears in the featured section
+    await expect(
+      page.locator('.featured-section .event-card', { hasText: 'Scheduled Highlight' }),
+    ).toBeVisible()
+    // Static featured event does NOT appear in the featured section (overridden by schedule)
+    await expect(
+      page.locator('.featured-section .event-card', { hasText: 'Static Featured' }),
+    ).toBeHidden()
+  })
+
+  test('disabled schedule falls back to static featured events', async ({ page }) => {
+    const now = Date.now()
+    const domain = makeTechDomain()
+    const scheduledEvent = makeApprovedEvent({
+      id: 'ev-scheduled',
+      name: 'Should Not Feature',
+      slug: 'should-not-feature',
+      domainId: domain.id,
+    })
+    const staticEvent = makeApprovedEvent({
+      id: 'ev-static',
+      name: 'Static Fallback',
+      slug: 'static-fallback',
+      domainId: domain.id,
+    })
+    const disabledSfe: MockScheduledFeaturedEvent = {
+      id: 'sfe-disabled',
+      domainId: domain.id,
+      eventId: scheduledEvent.id,
+      startsAtUtc: new Date(now - 3_600_000).toISOString(),
+      endsAtUtc: new Date(now + 86_400_000).toISOString(),
+      priority: 0,
+      isEnabled: false,
+      displayLabel: null,
+      createdAtUtc: new Date().toISOString(),
+      createdByUserId: null,
+    }
+    setupMockApi(page, {
+      domains: [domain],
+      events: [scheduledEvent, staticEvent],
+      scheduledFeaturedEvents: [disabledSfe],
+      featuredEvents: [{ domainSlug: domain.slug, eventId: staticEvent.id, displayOrder: 0 }],
+    })
+
+    await page.goto('/category/technology')
+
+    // Disabled scheduled event does not appear in the featured section
+    await expect(
+      page.locator('.featured-section .event-card', { hasText: 'Should Not Feature' }),
+    ).toBeHidden()
+    // Static fallback is shown instead
+    await expect(
+      page.locator('.featured-section .event-card', { hasText: 'Static Fallback' }),
+    ).toBeVisible()
+  })
+
+  test('multiple active schedules rendered in priority order (lower value first)', async ({
+    page,
+  }) => {
+    const now = Date.now()
+    const domain = makeTechDomain()
+    const ev1 = makeApprovedEvent({
+      id: 'ev-prio1',
+      name: 'Priority One Event',
+      slug: 'prio-one',
+      domainId: domain.id,
+    })
+    const ev0 = makeApprovedEvent({
+      id: 'ev-prio0',
+      name: 'Priority Zero Event',
+      slug: 'prio-zero',
+      domainId: domain.id,
+    })
+    const sfe1: MockScheduledFeaturedEvent = {
+      id: 'sfe-prio1',
+      domainId: domain.id,
+      eventId: ev1.id,
+      startsAtUtc: new Date(now - 3_600_000).toISOString(),
+      endsAtUtc: new Date(now + 86_400_000).toISOString(),
+      priority: 1,
+      isEnabled: true,
+      displayLabel: null,
+      createdAtUtc: new Date().toISOString(),
+      createdByUserId: null,
+    }
+    const sfe0: MockScheduledFeaturedEvent = {
+      id: 'sfe-prio0',
+      domainId: domain.id,
+      eventId: ev0.id,
+      startsAtUtc: new Date(now - 3_600_000).toISOString(),
+      endsAtUtc: new Date(now + 86_400_000).toISOString(),
+      priority: 0,
+      isEnabled: true,
+      displayLabel: null,
+      createdAtUtc: new Date().toISOString(),
+      createdByUserId: null,
+    }
+    setupMockApi(page, {
+      domains: [domain],
+      events: [ev1, ev0],
+      scheduledFeaturedEvents: [sfe1, sfe0], // intentionally out of priority order
+    })
+
+    await page.goto('/category/technology')
+
+    const cards = page.locator('.featured-section .event-card')
+    await expect(cards).toHaveCount(2)
+    // Priority 0 (lower value = higher precedence) appears first
+    await expect(cards.nth(0)).toContainText('Priority Zero Event')
+    await expect(cards.nth(1)).toContainText('Priority One Event')
+  })
+
+  test('featured section heading is localized in Slovak', async ({ page }) => {
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({ id: 'ev-sk', domainId: domain.id })
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'sk')
+    })
+    setupMockApi(page, {
+      domains: [domain],
+      events: [event],
+      scheduledFeaturedEvents: [makeActiveSfe(domain, event)],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.featured-section')).toBeVisible()
+    // Slovak heading should be present (not the English "Featured Events")
+    await expect(page.locator('.featured-title')).not.toContainText('Featured Events')
+  })
+
+  test('featured section heading is localized in German', async ({ page }) => {
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({ id: 'ev-de', domainId: domain.id })
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'de')
+    })
+    setupMockApi(page, {
+      domains: [domain],
+      events: [event],
+      scheduledFeaturedEvents: [makeActiveSfe(domain, event)],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.featured-section')).toBeVisible()
+    // German heading should be present (not the English "Featured Events")
+    await expect(page.locator('.featured-title')).not.toContainText('Featured Events')
   })
 })
