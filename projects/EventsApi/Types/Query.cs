@@ -211,6 +211,64 @@ public sealed class Query
                 cancellationToken);
 
     /// <summary>
+    /// Returns the enabled curated community groups for a domain hub, ordered by DisplayOrder.
+    /// Only enabled entries for active, public community groups are returned.
+    /// Private groups are never exposed on public hub surfaces.
+    /// Publicly accessible without authentication.
+    /// </summary>
+    public async Task<IReadOnlyList<DomainCuratedCommunity>> GetCuratedCommunitiesForDomainAsync(
+        string domainSlug,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var normalizedSlug = domainSlug.Trim().ToLowerInvariant();
+        return await dbContext.DomainCuratedCommunities
+            .AsNoTracking()
+            .Where(dcc => dcc.Domain.Slug == normalizedSlug && dcc.Domain.IsActive)
+            .Where(dcc => dcc.IsEnabled)
+            .Where(dcc => dcc.Group.IsActive && dcc.Group.Visibility == CommunityVisibility.Public)
+            .OrderBy(dcc => dcc.DisplayOrder)
+            .Include(dcc => dcc.Group)
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Returns all curated community entries for a domain hub (including disabled),
+    /// for use in the hub management UI.
+    /// Restricted to domain administrators and global administrators.
+    /// </summary>
+    [Authorize]
+    public async Task<IReadOnlyList<DomainCuratedCommunity>> GetDomainCuratedCommunitiesAdminAsync(
+        Guid domainId,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        if (!claimsPrincipal.IsAdmin())
+        {
+            var currentUserId = claimsPrincipal.GetRequiredUserId();
+            var isDomainAdmin = await dbContext.DomainAdministrators.AnyAsync(
+                da => da.DomainId == domainId && da.UserId == currentUserId,
+                cancellationToken);
+
+            if (!isDomainAdmin)
+            {
+                throw new GraphQLException(ErrorBuilder.New()
+                    .SetMessage("You must be a global administrator or a domain administrator to perform this action.")
+                    .SetCode("FORBIDDEN")
+                    .Build());
+            }
+        }
+
+        return await dbContext.DomainCuratedCommunities
+            .AsNoTracking()
+            .Where(dcc => dcc.DomainId == domainId)
+            .OrderBy(dcc => dcc.DisplayOrder)
+            .Include(dcc => dcc.Group)
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>
     /// Returns the curated featured events for a domain hub, ordered by DisplayOrder.
     /// Only published events that belong to the domain are returned.
     /// Events that have been unpublished or deleted after being featured are silently excluded.

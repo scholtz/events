@@ -350,6 +350,42 @@ public sealed class SetDomainLinksInput
 }
 
 /// <summary>
+/// A single curated community group entry for a domain hub.
+/// </summary>
+public sealed class DomainCuratedCommunityItem
+{
+    /// <summary>ID of the community group to curate into the hub.</summary>
+    public Guid GroupId { get; init; }
+
+    /// <summary>
+    /// Whether this entry is enabled for public hub rendering.
+    /// Disabled entries are kept for reference but not shown publicly.
+    /// Defaults to true.
+    /// </summary>
+    public bool IsEnabled { get; init; } = true;
+
+    /// <summary>
+    /// Optional steward-authored note explaining why this community is relevant.
+    /// Displayed publicly alongside the community card. Maximum 300 characters.
+    /// </summary>
+    public string? Annotation { get; init; }
+}
+
+/// <summary>
+/// Input for replacing the curated community groups for a domain hub atomically.
+/// Pass an empty list to remove all curated communities.
+/// Restricted to domain administrators and global administrators.
+/// Maximum 20 curated communities per hub.
+/// Only public, active community groups may be curated.
+/// </summary>
+public sealed class SetDomainCuratedCommunitiesInput
+{
+    public Guid DomainId { get; init; }
+    /// <summary>Ordered list of community entries. DisplayOrder is assigned from the list position (0-based).</summary>
+    public required List<DomainCuratedCommunityItem> Communities { get; init; }
+}
+
+/// <summary>
 /// Input for a global admin to approve or reject an external-source ownership claim.
 /// Only global admins may call reviewExternalSourceClaim.
 /// </summary>

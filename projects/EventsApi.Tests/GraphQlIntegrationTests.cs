@@ -17903,6 +17903,456 @@ public sealed class GraphQlIntegrationTests
             "Missing venue details — please add a specific venue name.",
             analytics.GetProperty("adminNotes").GetString());
     }
+
+    // ── SetDomainCuratedCommunities / hub community curation tests ───────────
+
+    [Fact]
+    public async Task SetDomainCuratedCommunities_GlobalAdmin_PersistsCommunitiesInOrder()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var adminId = Guid.Empty;
+        var domainId = Guid.Empty;
+        var group1Id = Guid.Empty;
+        var group2Id = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("curated-admin@example.com", "Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var domain = CreateDomain("Curated Hub", "curated-hub-test");
+            domainId = domain.Id;
+            var group1 = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Prague Builders",
+                Slug = "prague-builders",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Public,
+                CreatedByUserId = admin.Id,
+            };
+            group1Id = group1.Id;
+            var group2 = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Blockchain Collective",
+                Slug = "blockchain-collective",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Public,
+                CreatedByUserId = admin.Id,
+            };
+            group2Id = group2.Id;
+            dbContext.Users.Add(admin);
+            dbContext.Domains.Add(domain);
+            dbContext.CommunityGroups.AddRange(group1, group2);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation SetCuratedCommunities($input: SetDomainCuratedCommunitiesInput!) {
+              setDomainCuratedCommunities(input: $input) {
+                displayOrder
+                isEnabled
+                annotation
+                group { name slug }
+              }
+            }
+            """,
+            new
+            {
+                input = new
+                {
+                    domainId,
+                    communities = new[]
+                    {
+                        new { groupId = group1Id, isEnabled = true, annotation = "Key builders community" },
+                        new { groupId = group2Id, isEnabled = true, annotation = (string?)null },
+                    }
+                }
+            });
+
+        var entries = document.RootElement.GetProperty("data").GetProperty("setDomainCuratedCommunities");
+        Assert.Equal(2, entries.GetArrayLength());
+        Assert.Equal(0, entries[0].GetProperty("displayOrder").GetInt32());
+        Assert.Equal("Prague Builders", entries[0].GetProperty("group").GetProperty("name").GetString());
+        Assert.Equal("Key builders community", entries[0].GetProperty("annotation").GetString());
+        Assert.Equal(1, entries[1].GetProperty("displayOrder").GetInt32());
+        Assert.Equal("Blockchain Collective", entries[1].GetProperty("group").GetProperty("name").GetString());
+        Assert.True(entries[1].GetProperty("annotation").ValueKind == System.Text.Json.JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task SetDomainCuratedCommunities_DomainAdmin_Allowed()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var domainAdminId = Guid.Empty;
+        var domainId = Guid.Empty;
+        var groupId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("global-admin-cc@example.com", "Global Admin", ApplicationUserRole.Admin);
+            var domainAdmin = CreateUser("domain-admin-cc@example.com", "Domain Admin");
+            domainAdminId = domainAdmin.Id;
+            var domain = CreateDomain("DA Curated Hub", "da-curated-hub");
+            domainId = domain.Id;
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Tech Circle",
+                Slug = "tech-circle",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Public,
+                CreatedByUserId = admin.Id,
+            };
+            groupId = group.Id;
+            dbContext.Users.AddRange(admin, domainAdmin);
+            dbContext.Domains.Add(domain);
+            dbContext.CommunityGroups.Add(group);
+            dbContext.DomainAdministrators.Add(new DomainAdministrator { DomainId = domain.Id, UserId = domainAdmin.Id });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, domainAdminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation SetCuratedCommunities($input: SetDomainCuratedCommunitiesInput!) {
+              setDomainCuratedCommunities(input: $input) {
+                group { name }
+                displayOrder
+              }
+            }
+            """,
+            new
+            {
+                input = new
+                {
+                    domainId,
+                    communities = new[] { new { groupId, isEnabled = true, annotation = (string?)null } }
+                }
+            });
+
+        var entries = document.RootElement.GetProperty("data").GetProperty("setDomainCuratedCommunities");
+        Assert.Equal(1, entries.GetArrayLength());
+        Assert.Equal("Tech Circle", entries[0].GetProperty("group").GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task SetDomainCuratedCommunities_RegularUser_Forbidden()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var domainId = Guid.Empty;
+        var groupId = Guid.NewGuid();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("regular-cc@example.com", "Regular User");
+            userId = user.Id;
+            var domain = CreateDomain("Forbidden Hub", "forbidden-cc-hub");
+            domainId = domain.Id;
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation SetCuratedCommunities($input: SetDomainCuratedCommunitiesInput!) {
+                  setDomainCuratedCommunities(input: $input) { displayOrder }
+                }
+                """,
+            variables = new { input = new { domainId, communities = Array.Empty<object>() } }
+        });
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("FORBIDDEN", body);
+    }
+
+    [Fact]
+    public async Task SetDomainCuratedCommunities_Unauthenticated_ReturnsAuthError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var domainId = Guid.NewGuid();
+
+        using var client = factory.CreateClient();
+        // No auth header
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation SetCuratedCommunities($input: SetDomainCuratedCommunitiesInput!) {
+                  setDomainCuratedCommunities(input: $input) { displayOrder }
+                }
+                """,
+            variables = new { input = new { domainId, communities = Array.Empty<object>() } }
+        });
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("AUTH_NOT_AUTHENTICATED", body);
+    }
+
+    [Fact]
+    public async Task SetDomainCuratedCommunities_EmptyList_RemovesAllEntries()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var adminId = Guid.Empty;
+        var domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("clear-cc-admin@example.com", "Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var domain = CreateDomain("Clear CC Hub", "clear-cc-hub");
+            domainId = domain.Id;
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Old Community",
+                Slug = "old-community",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Public,
+            };
+            dbContext.Users.Add(admin);
+            dbContext.Domains.Add(domain);
+            dbContext.CommunityGroups.Add(group);
+            dbContext.DomainCuratedCommunities.Add(new EventsApi.Data.Entities.DomainCuratedCommunity
+            {
+                DomainId = domain.Id,
+                GroupId = group.Id,
+                DisplayOrder = 0,
+                IsEnabled = true,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation SetCuratedCommunities($input: SetDomainCuratedCommunitiesInput!) {
+              setDomainCuratedCommunities(input: $input) { displayOrder }
+            }
+            """,
+            new
+            {
+                input = new
+                {
+                    domainId,
+                    communities = Array.Empty<object>()
+                }
+            });
+
+        var entries = document.RootElement.GetProperty("data").GetProperty("setDomainCuratedCommunities");
+        Assert.Equal(0, entries.GetArrayLength());
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal(0, await db.DomainCuratedCommunities.CountAsync(dcc => dcc.DomainId == domainId));
+    }
+
+    [Fact]
+    public async Task SetDomainCuratedCommunities_PrivateGroup_ReturnsError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var adminId = Guid.Empty;
+        var domainId = Guid.Empty;
+        var groupId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("private-cc-admin@example.com", "Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var domain = CreateDomain("Private CC Hub", "private-cc-hub");
+            domainId = domain.Id;
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Secret Group",
+                Slug = "secret-group",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Private,
+            };
+            groupId = group.Id;
+            dbContext.Users.Add(admin);
+            dbContext.Domains.Add(domain);
+            dbContext.CommunityGroups.Add(group);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation SetCuratedCommunities($input: SetDomainCuratedCommunitiesInput!) {
+                  setDomainCuratedCommunities(input: $input) { displayOrder }
+                }
+                """,
+            variables = new { input = new { domainId, communities = new[] { new { groupId, isEnabled = true, annotation = (string?)null } } } }
+        });
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("GROUP_PRIVATE", body);
+    }
+
+    [Fact]
+    public async Task CuratedCommunitiesForDomain_PublicQuery_ReturnsEnabledPublicGroupsOnly()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var adminId = Guid.Empty;
+        var domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("public-cc-admin@example.com", "Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var domain = CreateDomain("Public CC Hub", "public-cc-hub");
+            domainId = domain.Id;
+
+            var group1 = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Visible Community",
+                Slug = "visible-community",
+                Summary = "A public active group",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Public,
+            };
+            var group2 = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Disabled Community",
+                Slug = "disabled-community",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Public,
+            };
+            dbContext.Users.Add(admin);
+            dbContext.Domains.Add(domain);
+            dbContext.CommunityGroups.AddRange(group1, group2);
+            dbContext.DomainCuratedCommunities.AddRange(
+                new EventsApi.Data.Entities.DomainCuratedCommunity
+                {
+                    DomainId = domain.Id,
+                    GroupId = group1.Id,
+                    DisplayOrder = 0,
+                    IsEnabled = true,
+                    Annotation = "Core community",
+                },
+                new EventsApi.Data.Entities.DomainCuratedCommunity
+                {
+                    DomainId = domain.Id,
+                    GroupId = group2.Id,
+                    DisplayOrder = 1,
+                    IsEnabled = false, // disabled — must not appear publicly
+                });
+        });
+
+        // Public query — no auth header
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query CuratedCommunities($domainSlug: String!) {
+              curatedCommunitiesForDomain(domainSlug: $domainSlug) {
+                displayOrder
+                isEnabled
+                annotation
+                group { name slug summary }
+              }
+            }
+            """,
+            new { domainSlug = "public-cc-hub" });
+
+        var entries = document.RootElement.GetProperty("data").GetProperty("curatedCommunitiesForDomain");
+        Assert.Equal(1, entries.GetArrayLength());
+        Assert.Equal("Visible Community", entries[0].GetProperty("group").GetProperty("name").GetString());
+        Assert.Equal("Core community", entries[0].GetProperty("annotation").GetString());
+    }
+
+    [Fact]
+    public async Task CuratedCommunitiesForDomain_EmptyState_ReturnsEmptyList()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            dbContext.Domains.Add(CreateDomain("Empty CC Hub", "empty-cc-hub"));
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query CuratedCommunities($domainSlug: String!) {
+              curatedCommunitiesForDomain(domainSlug: $domainSlug) {
+                displayOrder
+              }
+            }
+            """,
+            new { domainSlug = "empty-cc-hub" });
+
+        var entries = document.RootElement.GetProperty("data").GetProperty("curatedCommunitiesForDomain");
+        Assert.Equal(0, entries.GetArrayLength());
+    }
+
+    [Fact]
+    public async Task SetDomainCuratedCommunities_IsEnabledFalse_DisabledEntryNotReturnedPublicly()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var adminId = Guid.Empty;
+        var domainId = Guid.Empty;
+        var groupId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("disabled-cc-admin@example.com", "Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var domain = CreateDomain("Disabled CC Hub", "disabled-cc-hub");
+            domainId = domain.Id;
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Hidden Group",
+                Slug = "hidden-group",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Public,
+            };
+            groupId = group.Id;
+            dbContext.Users.Add(admin);
+            dbContext.Domains.Add(domain);
+            dbContext.CommunityGroups.Add(group);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        // Set with isEnabled = false
+        await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation SetCuratedCommunities($input: SetDomainCuratedCommunitiesInput!) {
+              setDomainCuratedCommunities(input: $input) { displayOrder }
+            }
+            """,
+            new
+            {
+                input = new
+                {
+                    domainId,
+                    communities = new[] { new { groupId, isEnabled = false, annotation = (string?)null } }
+                }
+            });
+
+        // Public query must not return disabled entries
+        using var unauthenticatedClient = factory.CreateClient();
+        using var publicDoc = await ExecuteGraphQlAsync(
+            unauthenticatedClient,
+            """
+            query CuratedCommunities($domainSlug: String!) {
+              curatedCommunitiesForDomain(domainSlug: $domainSlug) { group { name } }
+            }
+            """,
+            new { domainSlug = "disabled-cc-hub" });
+
+        var entries = publicDoc.RootElement.GetProperty("data").GetProperty("curatedCommunitiesForDomain");
+        Assert.Equal(0, entries.GetArrayLength());
+    }
 }
 
 

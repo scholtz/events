@@ -792,6 +792,83 @@ public sealed class Mutation
         return newLinks;
     }
 
+    /// <summary>
+    /// Replaces the curated community groups for a domain hub atomically.
+    /// Pass an empty list to remove all curated communities.
+    /// Maximum 20 community groups per hub.
+    /// Only public, active community groups may be curated.
+    /// Restricted to domain administrators and global administrators.
+    /// </summary>
+    [Authorize]
+    public async Task<IReadOnlyList<DomainCuratedCommunity>> SetDomainCuratedCommunitiesAsync(
+        SetDomainCuratedCommunitiesInput input,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        await EnsureDomainAdminOrGlobalAdminAsync(input.DomainId, claimsPrincipal, dbContext, cancellationToken);
+
+        if (input.Communities.Count > 20)
+        {
+            throw CreateError("A domain hub can have at most 20 curated community groups.", "TOO_MANY_COMMUNITIES");
+        }
+
+        // Validate that each group exists, is active, and is public
+        var groupIds = input.Communities.Select(c => c.GroupId).Distinct().ToList();
+        if (groupIds.Count != input.Communities.Count)
+        {
+            throw CreateError("Duplicate community group IDs are not allowed.", "DUPLICATE_GROUP");
+        }
+
+        var groups = await dbContext.CommunityGroups
+            .Where(g => groupIds.Contains(g.Id))
+            .ToListAsync(cancellationToken);
+
+        foreach (var item in input.Communities)
+        {
+            var group = groups.FirstOrDefault(g => g.Id == item.GroupId)
+                ?? throw CreateError($"Community group '{item.GroupId}' was not found.", "GROUP_NOT_FOUND");
+
+            if (!group.IsActive)
+                throw CreateError($"Community group '{group.Name}' is not active and cannot be curated.", "GROUP_INACTIVE");
+
+            if (group.Visibility != CommunityVisibility.Public)
+                throw CreateError($"Community group '{group.Name}' is private and cannot be featured on a public hub.", "GROUP_PRIVATE");
+
+            if (item.Annotation is { Length: > 300 })
+                throw CreateError("Annotation must not exceed 300 characters.", "ANNOTATION_TOO_LONG");
+        }
+
+        // Replace existing curated communities for this domain
+        var existing = await dbContext.DomainCuratedCommunities
+            .Where(dcc => dcc.DomainId == input.DomainId)
+            .ToListAsync(cancellationToken);
+
+        dbContext.DomainCuratedCommunities.RemoveRange(existing);
+
+        var newEntries = input.Communities
+            .Select((item, i) => new DomainCuratedCommunity
+            {
+                DomainId = input.DomainId,
+                GroupId = item.GroupId,
+                DisplayOrder = i,
+                IsEnabled = item.IsEnabled,
+                Annotation = string.IsNullOrWhiteSpace(item.Annotation) ? null : item.Annotation.Trim(),
+            })
+            .ToList();
+
+        dbContext.DomainCuratedCommunities.AddRange(newEntries);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        // Load the Group navigation property for the returned entries
+        foreach (var entry in newEntries)
+        {
+            entry.Group = groups.First(g => g.Id == entry.GroupId);
+        }
+
+        return newEntries;
+    }
+
     [Authorize]
     public async Task<SavedSearch> SaveSearchAsync(
         SavedSearchInput input,

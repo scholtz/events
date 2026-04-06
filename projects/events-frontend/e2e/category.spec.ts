@@ -1,6 +1,11 @@
 import { test, expect } from '@playwright/test'
-import { setupMockApi, makeTechDomain, makeApprovedEvent } from './helpers/mock-api'
-import type { MockDomain } from './helpers/mock-api'
+import {
+  setupMockApi,
+  makeTechDomain,
+  makeApprovedEvent,
+  makePublicGroup,
+} from './helpers/mock-api'
+import type { MockDomain, MockDomainCuratedCommunity } from './helpers/mock-api'
 
 test.describe('Category landing page', () => {
   test('renders domain heading, description and event list', async ({ page }) => {
@@ -922,5 +927,104 @@ test.describe('Hub rank context badge', () => {
 
     // Slovak translation of home.rankContextUpcoming
     await expect(page.locator('.rank-context-badge')).toContainText('Zoradené podľa dátumu')
+  })
+
+  // ── Curated Community Groups on category page ─────────────────────────────
+
+  test('shows curated communities section when hub has curated groups', async ({ page }) => {
+    const domain = makeTechDomain()
+    const group = makePublicGroup({ name: 'Prague Builders', slug: 'prague-builders', summary: 'Key builders group' })
+    const curatedEntry: MockDomainCuratedCommunity = {
+      id: 'cc-1',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: true,
+      annotation: 'Core organizers of the Prague tech scene',
+      createdAtUtc: new Date().toISOString(),
+    }
+    setupMockApi(page, {
+      domains: [domain],
+      events: [],
+      communityGroups: [group],
+      domainCuratedCommunities: [curatedEntry],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(
+      page.getByRole('heading', { name: 'Communities in this hub' }),
+    ).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Prague Builders' })).toBeVisible()
+    await expect(page.getByText('Core organizers of the Prague tech scene')).toBeVisible()
+    await expect(page.getByText('Key builders group')).toBeVisible()
+    // Explore community link
+    await expect(page.getByRole('link', { name: 'Explore community' })).toBeVisible()
+  })
+
+  test('curated community explore link navigates to /community/:slug', async ({ page }) => {
+    const domain = makeTechDomain()
+    const group = makePublicGroup({ name: 'Tech Circle', slug: 'tech-circle' })
+    const curatedEntry: MockDomainCuratedCommunity = {
+      id: 'cc-nav',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: true,
+      annotation: null,
+      createdAtUtc: new Date().toISOString(),
+    }
+    setupMockApi(page, {
+      domains: [domain],
+      events: [],
+      communityGroups: [group],
+      domainCuratedCommunities: [curatedEntry],
+    })
+
+    await page.goto('/category/technology')
+
+    const exploreLink = page.getByRole('link', { name: 'Explore community' })
+    await expect(exploreLink).toHaveAttribute('href', '/community/tech-circle')
+  })
+
+  test('curated communities section not shown when hub has no curated groups', async ({ page }) => {
+    const domain = makeTechDomain()
+    setupMockApi(page, {
+      domains: [domain],
+      events: [],
+      communityGroups: [],
+      domainCuratedCommunities: [],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(
+      page.locator('.curated-communities-section'),
+    ).toBeHidden()
+  })
+
+  test('disabled curated community does not appear on public category page', async ({ page }) => {
+    const domain = makeTechDomain()
+    const group = makePublicGroup({ name: 'Hidden Group', slug: 'hidden-group' })
+    const disabledEntry: MockDomainCuratedCommunity = {
+      id: 'cc-disabled',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: false, // disabled
+      annotation: null,
+      createdAtUtc: new Date().toISOString(),
+    }
+    setupMockApi(page, {
+      domains: [domain],
+      events: [],
+      communityGroups: [group],
+      domainCuratedCommunities: [disabledEntry],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.curated-communities-section')).toBeHidden()
+    await expect(page.getByRole('link', { name: 'Hidden Group' })).toBeHidden()
   })
 })
