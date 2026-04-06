@@ -62,6 +62,9 @@ export default {
     subdomainCuratedBy: 'Curated by {credit}',
     subdomainPageTitle: '{name} Events',
     subdomainFeaturedHeading: 'Featured right now',
+    subdomainNoEvents: 'No upcoming events in the {name} hub',
+    subdomainNoEventsDescription:
+      'This community hub has no upcoming events right now. Check back soon, or browse events from all communities.',
     updatingResults: 'Updating results…',
     updatingDescription: 'Applying your filters and loading the best matching events.',
     errorOffline: "You're offline",

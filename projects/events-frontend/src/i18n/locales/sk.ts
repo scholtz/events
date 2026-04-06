@@ -58,6 +58,9 @@ export default {
     subdomainCuratedBy: 'Spravuje: {credit}',
     subdomainPageTitle: '{name} – Podujatia',
     subdomainFeaturedHeading: 'Práve v popredí',
+    subdomainNoEvents: 'V hube {name} zatiaľ nie sú žiadne nadchádzajúce podujatia',
+    subdomainNoEventsDescription:
+      'Tento komunitný hub momentálne nemá žiadne nadchádzajúce podujatia. Skúste to neskôr alebo prehľadajte podujatia zo všetkých komunít.',
     updatingResults: 'Aktualizácia výsledkov…',
     updatingDescription: 'Aplikujú sa vaše filtre a načítavajú sa najlepšie výsledky.',
     errorOffline: 'Ste offline',

@@ -318,6 +318,26 @@ const emptyStateDomainHub = computed(() => {
 })
 
 /**
+ * True when on a subdomain hub where the only active filter is the domain
+ * filter that was forced by the subdomain context — meaning no additional
+ * user-applied filters are narrowing the results.
+ *
+ * In this state the empty set means "this hub genuinely has no events yet"
+ * rather than "the user's filters are too strict". We show a hub-specific
+ * empty state instead of generic filter-recovery controls.
+ */
+const isSubdomainEmptyState = computed(() => {
+  if (!isSubdomainView.value || !activeDomain.value) return false
+  if (eventsStore.discoveryEvents.length > 0) return false
+  if (eventsStore.discoveryLoading) return false
+  if (eventsStore.discoveryError) return false
+  // The domain filter is forced by subdomain context; check if it is the
+  // only active chip (i.e. the user has applied no additional filters).
+  const nonSortChips = eventsStore.activeFilterChips.filter((c) => c.key !== 'sortBy')
+  return nonSortChips.length === 1 && nonSortChips[0]?.key === 'domain'
+})
+
+/**
  * Fallback domain hubs to surface as curated suggestions when the result set
  * is empty and no single domain filter is active. Surfaces up to 3 domains
  * so users can pivot to a relevant category hub.
@@ -662,6 +682,27 @@ watch(
             </div>
           </template>
 
+          <!-- Subdomain hub empty state: shown when on a hub subdomain with no events and no additional user-applied filters -->
+          <div v-else-if="isSubdomainEmptyState" class="results-state empty-state card subdomain-empty-state" role="status">
+            <div class="empty-icon" aria-hidden="true">📅</div>
+            <h2>{{ t('home.subdomainNoEvents', { name: activeDomain!.name }) }}</h2>
+            <p>{{ t('home.subdomainNoEventsDescription') }}</p>
+            <div class="state-actions">
+              <RouterLink
+                :to="`/category/${activeDomain!.slug}`"
+                class="btn btn-primary subdomain-hub-link"
+              >
+                {{ t('home.subdomainViewFullHub') }}
+              </RouterLink>
+              <RouterLink to="/" class="btn btn-outline">
+                {{ t('home.lowSignalBrowseAll') }}
+              </RouterLink>
+              <RouterLink to="/submit" class="btn btn-ghost">
+                {{ t('home.submitAnEvent') }}
+              </RouterLink>
+            </div>
+          </div>
+
           <div v-else class="results-state empty-state card">
             <div class="empty-icon">{{ savedSearchEmptyStateMessage ? '🔖' : '🔍' }}</div>
             <h2>{{ savedSearchEmptyStateMessage ? t('home.savedSearchNoMatches', { name: eventsStore.lastAppliedSavedSearchName }) : t('home.noEventsFound') }}</h2>
@@ -695,7 +736,7 @@ watch(
           </div>
 
           <!-- Curated fallback suggestions: shown below the empty-state card when a domain hub is relevant -->
-          <div v-if="emptyStateDomainHub" class="fallback-suggestions">
+          <div v-if="emptyStateDomainHub && !isSubdomainEmptyState" class="fallback-suggestions">
             <h3 class="fallback-suggestions-title">{{ t('home.fallbackSuggestionsTitle') }}</h3>
             <p class="fallback-suggestions-desc">{{ t('home.fallbackSuggestionsDesc') }}</p>
             <div class="fallback-hub-cards">

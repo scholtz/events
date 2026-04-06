@@ -605,7 +605,8 @@ test.describe('Domain filter', () => {
     await page.goto('/?subdomain=crypto&domain=crypto')
 
     await expect(page.getByRole('heading', { name: 'Crypto Events' })).toBeVisible()
-    const hubLink = page.getByRole('link', { name: 'View full hub page' })
+    // Scope to the subdomain header so we get the header link, not the empty-state one
+    const hubLink = page.locator('.subdomain-header').getByRole('link', { name: 'View full hub page' })
     await expect(hubLink).toBeVisible()
     await expect(hubLink).toHaveAttribute('href', '/category/crypto')
   })
@@ -750,7 +751,8 @@ test.describe('Domain filter', () => {
 
     await page.goto('/?subdomain=crypto&domain=crypto')
 
-    await expect(page.getByRole('link', { name: 'Zobraziť celú stránku hubu' })).toBeVisible()
+    // Scope to the subdomain header so we get the header link, not the empty-state one
+    await expect(page.locator('.subdomain-header').getByRole('link', { name: 'Zobraziť celú stránku hubu' })).toBeVisible()
   })
 })
 
@@ -3541,5 +3543,92 @@ test.describe('Saved-search empty state', () => {
     await expect(page.locator('.empty-state')).toBeVisible()
     // The h2 heading is announced by screen readers and should identify the saved search
     await expect(page.locator('.empty-state h2')).toContainText('Free In-Person')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Subdomain hub empty state
+// ---------------------------------------------------------------------------
+
+test.describe('Subdomain hub empty state', () => {
+  test('subdomain hub with no events shows hub-specific empty state', async ({ page }) => {
+    setupMockApi(page, { domains: [makeCryptoDomain()], events: [] })
+
+    await page.goto('/?subdomain=crypto&domain=crypto')
+
+    await expect(page.locator('.subdomain-empty-state')).toBeVisible()
+    await expect(page.locator('.subdomain-empty-state h2')).toContainText('No upcoming events in the Crypto hub')
+    await expect(page.locator('.subdomain-empty-state')).toContainText('This community hub has no upcoming events right now')
+  })
+
+  test('subdomain hub empty state shows "View full hub page" link', async ({ page }) => {
+    setupMockApi(page, { domains: [makeCryptoDomain()], events: [] })
+
+    await page.goto('/?subdomain=crypto&domain=crypto')
+
+    // Scope to empty state to distinguish from the header link
+    await expect(page.locator('.subdomain-empty-state').getByRole('link', { name: 'View full hub page' })).toBeVisible()
+  })
+
+  test('subdomain hub empty state shows "Browse all events" link', async ({ page }) => {
+    setupMockApi(page, { domains: [makeCryptoDomain()], events: [] })
+
+    await page.goto('/?subdomain=crypto&domain=crypto')
+
+    await expect(page.locator('.subdomain-empty-state').getByRole('link', { name: 'Browse all events' })).toBeVisible()
+  })
+
+  test('subdomain hub empty state does NOT show filter-recovery actions', async ({ page }) => {
+    setupMockApi(page, { domains: [makeCryptoDomain()], events: [] })
+
+    await page.goto('/?subdomain=crypto&domain=crypto')
+
+    // On a subdomain hub, "Clear filters" / "Remove tag filter" are misleading
+    await expect(page.locator('.subdomain-empty-state .recovery-action')).toBeHidden()
+    await expect(page.locator('.subdomain-empty-state .browse-hub-action')).toBeHidden()
+  })
+
+  test('subdomain hub with additional filters and no results shows generic empty state', async ({
+    page,
+  }) => {
+    setupMockApi(page, { domains: [makeCryptoDomain()], events: [] })
+
+    // Additional ?mode=online filter on top of forced domain filter
+    await page.goto('/?subdomain=crypto&domain=crypto&mode=online')
+
+    // Should show the generic empty state (not subdomain-specific), since the user has an extra filter
+    await expect(page.locator('.subdomain-empty-state')).toBeHidden()
+    await expect(page.locator('.empty-state h2')).toContainText('No events found')
+  })
+
+  test('subdomain hub empty state is accessible: has role status', async ({ page }) => {
+    setupMockApi(page, { domains: [makeCryptoDomain()], events: [] })
+
+    await page.goto('/?subdomain=crypto&domain=crypto')
+
+    const emptyState = page.locator('.subdomain-empty-state')
+    await expect(emptyState).toHaveAttribute('role', 'status')
+  })
+
+  test('subdomain hub empty state is visible at mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    setupMockApi(page, { domains: [makeCryptoDomain()], events: [] })
+
+    await page.goto('/?subdomain=crypto&domain=crypto')
+
+    await expect(page.locator('.subdomain-empty-state')).toBeVisible()
+    await expect(page.locator('.subdomain-empty-state h2')).toBeVisible()
+  })
+
+  test('subdomain hub fallback suggestions are not shown when subdomain empty state is active', async ({
+    page,
+  }) => {
+    setupMockApi(page, { domains: [makeCryptoDomain()], events: [] })
+
+    await page.goto('/?subdomain=crypto&domain=crypto')
+
+    // The domain-specific fallback suggestions section should be suppressed since
+    // the subdomain empty state already provides hub navigation actions
+    await expect(page.locator('.fallback-suggestions')).toBeHidden()
   })
 })
