@@ -48,6 +48,7 @@ The codebase already implements a meaningful part of the platform. This roadmap 
 - Category landing pages and subdomain hub pages surface domain branding and administrator-managed metadata, with graceful fallbacks when assets are absent
 - Event detail pages show a domain hub context card linking back to the relevant category hub, including logo, description, and curator credit
 - Hub management workflow respects current permission model: domain administrators manage only their own hub identity without requiring global admin access
+- **Time-windowed featured-event scheduling** for domain hubs: stewards define UTC start/end windows, per-entry priority, and enable/disable flags; public hub pages show only currently active entries ordered deterministically; expired and upcoming entries are excluded from public rendering; fallback to the static featured-event list when no active schedule exists; 31 backend integration tests and full Playwright coverage across create, edit, remove, disable, badge states, and localization
 - Community groups with full membership lifecycle: join, request, approve/reject
 - Community group role management: OWNER, ADMIN, EVENT_MANAGER, MEMBER with server-side authorization
 - Public and private group visibility with appropriate access controls for each
@@ -136,11 +137,11 @@ The roadmap should align more closely with the product's differentiator: domain 
 - The hub management UI (`/hub/:slug/manage`) lets domain stewards configure all branding and metadata fields within validated, bounded controls.
 - Event detail pages show a hub context card linking back to the relevant category hub.
 - Domain administrators manage only their own hub without global admin permissions.
+- **Time-windowed featured-event scheduling**: domain stewards can create, edit, reorder, disable, and remove schedule entries with explicit UTC start and end windows. Each entry has a deterministic priority so multiple active highlights render in a stable order. Active schedules take precedence over the legacy static featured-event list on public hub and category pages. Expired or disabled entries are excluded automatically. The management UI clearly communicates Active, Upcoming, Expired, and Disabled states with inline validation. Backend enforces authorization (domain or global admin), time-window direction, domain-event membership, published-event requirement, and a per-domain limit of 20 scheduled entries. Compatibility fallback preserves existing static featured events when no scheduled highlight is currently active.
 
 ### Next priorities
 
 - Deepen community-group ownership and event curation within hubs
-- Support programmatic featured-event scheduling (e.g. time-windowed highlights)
 - Keep event-to-domain linking consistent as new discovery surfaces are added
 
 ### Why this matters
