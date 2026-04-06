@@ -15071,6 +15071,228 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task UpdateScheduledFeaturedEvent_Unauthenticated_ReturnsAuthError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid scheduleId = Guid.NewGuid();
+
+        // No auth — request sent directly without seeding or token
+        using var client = factory.CreateClient();
+
+        var body = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation UpdateSched($input: UpdateScheduledFeaturedEventInput!) {
+                  updateScheduledFeaturedEvent(input: $input) { id }
+                }
+                """,
+            variables = new
+            {
+                input = new
+                {
+                    scheduleId,
+                    startsAtUtc = DateTime.UtcNow.AddDays(1),
+                    endsAtUtc = DateTime.UtcNow.AddDays(2),
+                    priority = 0,
+                    isEnabled = true
+                }
+            }
+        });
+
+        var response = await JsonDocument.ParseAsync(await body.Content.ReadAsStreamAsync());
+        Assert.True(response.RootElement.TryGetProperty("errors", out _));
+    }
+
+    [Fact]
+    public async Task UpdateScheduledFeaturedEvent_RegularUser_ReturnsForbidden()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid userId = Guid.Empty;
+        Guid scheduleId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("update-sched-forbidden@example.com", "Regular User");
+            userId = user.Id;
+            var admin = CreateUser("update-sched-owner@example.com", "Admin Owner", ApplicationUserRole.Admin);
+            var domain = CreateDomain("Update Forbidden Hub", "update-forbidden-hub");
+            var ev = CreateEvent("Update Forbidden Event", "update-forbidden-event", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(10), domain, admin);
+            var schedule = new ScheduledFeaturedEvent
+            {
+                DomainId = domain.Id,
+                EventId = ev.Id,
+                StartsAtUtc = DateTime.UtcNow.AddDays(1),
+                EndsAtUtc = DateTime.UtcNow.AddDays(3),
+                Priority = 0,
+            };
+            scheduleId = schedule.Id;
+            dbContext.Users.AddRange(user, admin);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.Add(ev);
+            dbContext.Set<ScheduledFeaturedEvent>().Add(schedule);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+            "Bearer", await CreateTokenAsync(factory, userId));
+
+        var body = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation UpdateSched($input: UpdateScheduledFeaturedEventInput!) {
+                  updateScheduledFeaturedEvent(input: $input) { id }
+                }
+                """,
+            variables = new
+            {
+                input = new
+                {
+                    scheduleId,
+                    startsAtUtc = DateTime.UtcNow.AddDays(1),
+                    endsAtUtc = DateTime.UtcNow.AddDays(4),
+                    priority = 0,
+                    isEnabled = true
+                }
+            }
+        });
+
+        var document = await JsonDocument.ParseAsync(await body.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out _));
+    }
+
+    [Fact]
+    public async Task UpdateScheduledFeaturedEvent_InvalidTimeRange_ReturnsError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid adminId = Guid.Empty;
+        Guid scheduleId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("update-sched-timerange@example.com", "Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var domain = CreateDomain("Update Time Range Hub", "update-time-range-hub");
+            var ev = CreateEvent("Update Time Range Event", "update-time-range-event", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(10), domain, admin);
+            var schedule = new ScheduledFeaturedEvent
+            {
+                DomainId = domain.Id,
+                EventId = ev.Id,
+                StartsAtUtc = DateTime.UtcNow.AddDays(1),
+                EndsAtUtc = DateTime.UtcNow.AddDays(3),
+                Priority = 0,
+            };
+            scheduleId = schedule.Id;
+            dbContext.Users.Add(admin);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.Add(ev);
+            dbContext.Set<ScheduledFeaturedEvent>().Add(schedule);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+            "Bearer", await CreateTokenAsync(factory, adminId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation UpdateSched($input: UpdateScheduledFeaturedEventInput!) {
+                  updateScheduledFeaturedEvent(input: $input) { id }
+                }
+                """,
+            variables = new
+            {
+                input = new
+                {
+                    scheduleId,
+                    // endsAtUtc is BEFORE startsAtUtc — invalid
+                    startsAtUtc = DateTime.UtcNow.AddDays(5),
+                    endsAtUtc = DateTime.UtcNow.AddDays(1),
+                    priority = 0,
+                    isEnabled = true
+                }
+            }
+        });
+
+        var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        var code = errors[0].GetProperty("extensions").GetProperty("code").GetString();
+        Assert.Equal("INVALID_TIME_RANGE", code);
+    }
+
+    [Fact]
+    public async Task RemoveScheduledFeaturedEvent_Unauthenticated_ReturnsAuthError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid scheduleId = Guid.NewGuid();
+
+        // No auth — must be rejected
+        using var client = factory.CreateClient();
+
+        var body = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation RemoveSched($scheduleId: UUID!) {
+                  removeScheduledFeaturedEvent(scheduleId: $scheduleId)
+                }
+                """,
+            variables = new { scheduleId }
+        });
+
+        var response = await JsonDocument.ParseAsync(await body.Content.ReadAsStreamAsync());
+        Assert.True(response.RootElement.TryGetProperty("errors", out _));
+    }
+
+    [Fact]
+    public async Task RemoveScheduledFeaturedEvent_RegularUser_ReturnsForbidden()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid userId = Guid.Empty;
+        Guid scheduleId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("remove-sched-forbidden@example.com", "Regular User");
+            userId = user.Id;
+            var admin = CreateUser("remove-sched-owner@example.com", "Admin Owner", ApplicationUserRole.Admin);
+            var domain = CreateDomain("Remove Forbidden Hub", "remove-forbidden-hub");
+            var ev = CreateEvent("Remove Forbidden Event", "remove-forbidden-event", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(10), domain, admin);
+            var schedule = new ScheduledFeaturedEvent
+            {
+                DomainId = domain.Id,
+                EventId = ev.Id,
+                StartsAtUtc = DateTime.UtcNow.AddDays(1),
+                EndsAtUtc = DateTime.UtcNow.AddDays(3),
+                Priority = 0,
+            };
+            scheduleId = schedule.Id;
+            dbContext.Users.AddRange(user, admin);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.Add(ev);
+            dbContext.Set<ScheduledFeaturedEvent>().Add(schedule);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+            "Bearer", await CreateTokenAsync(factory, userId));
+
+        var body = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation RemoveSched($scheduleId: UUID!) {
+                  removeScheduledFeaturedEvent(scheduleId: $scheduleId)
+                }
+                """,
+            variables = new { scheduleId }
+        });
+
+        var document = await JsonDocument.ParseAsync(await body.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out _));
+    }
+
+    [Fact]
     public async Task SubmitEvent_WithCommunityGroupId_EventManagerRole_CreatesGroupEventLink()
     {
         await using var factory = new EventsApiWebApplicationFactory();

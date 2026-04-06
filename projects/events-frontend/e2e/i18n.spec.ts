@@ -17,8 +17,10 @@ import {
   makePendingEvent,
   makeRejectedEvent,
   makeTechDomain,
+  seedAuthAndLocale,
   setupMockApi,
 } from './helpers/mock-api'
+import type { MockScheduledFeaturedEvent } from './helpers/mock-api'
 
 test.describe('Language switcher', () => {
   test('language switcher is visible in the header', async ({ page }) => {
@@ -945,6 +947,133 @@ test.describe('Localized subdomain hub empty state', () => {
 
     await expect(
       page.locator('.subdomain-empty-state').getByRole('link', { name: 'Zur Hub-Seite' }),
+    ).toBeVisible()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Localized hub manage scheduled featured events section
+// ---------------------------------------------------------------------------
+
+test.describe('Localized hub manage scheduled featured events section', () => {
+  function makeActiveSfe(
+    domainId: string,
+    eventId: string,
+  ): MockScheduledFeaturedEvent {
+    const now = Date.now()
+    return {
+      id: `sfe-i18n-${now}`,
+      domainId,
+      eventId,
+      startsAtUtc: new Date(now - 3_600_000).toISOString(),
+      endsAtUtc: new Date(now + 86_400_000).toISOString(),
+      priority: 0,
+      isEnabled: true,
+      displayLabel: null,
+      createdAtUtc: new Date(now).toISOString(),
+      createdByUserId: null,
+    }
+  }
+
+  test('Scheduled Featured Events section heading is localized in Slovak', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({ domainId: domain.id })
+    await seedAuthAndLocale(page, admin, 'sk')
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      events: [event],
+      scheduledFeaturedEvents: [makeActiveSfe(domain.id, event.id)],
+    })
+
+    await page.goto('/hub/technology/manage')
+
+    await expect(page.getByRole('heading', { name: 'Naplánované featured podujatia' })).toBeVisible()
+  })
+
+  test('Scheduled Featured Events section heading is localized in German', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({ domainId: domain.id })
+    await seedAuthAndLocale(page, admin, 'de')
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      events: [event],
+      scheduledFeaturedEvents: [makeActiveSfe(domain.id, event.id)],
+    })
+
+    await page.goto('/hub/technology/manage')
+
+    await expect(page.getByRole('heading', { name: 'Geplante Featured-Events' })).toBeVisible()
+  })
+
+  test('active status badge is localized in Slovak', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({ domainId: domain.id })
+    await seedAuthAndLocale(page, admin, 'sk')
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      events: [event],
+      scheduledFeaturedEvents: [makeActiveSfe(domain.id, event.id)],
+    })
+
+    await page.goto('/hub/technology/manage')
+
+    await expect(page.locator('.hub-schedule-status-badge--active')).toContainText('Aktívne')
+  })
+
+  test('active status badge is localized in German', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({ domainId: domain.id })
+    await seedAuthAndLocale(page, admin, 'de')
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      events: [event],
+      scheduledFeaturedEvents: [makeActiveSfe(domain.id, event.id)],
+    })
+
+    await page.goto('/hub/technology/manage')
+
+    await expect(page.locator('.hub-schedule-status-badge--active')).toContainText('Aktiv')
+  })
+
+  test('empty state message is localized in Slovak', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    await seedAuthAndLocale(page, admin, 'sk')
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      scheduledFeaturedEvents: [],
+    })
+
+    await page.goto('/hub/technology/manage')
+
+    await expect(
+      page.locator('.hub-schedule-list').getByText('Žiadne naplánované zvýraznenia.'),
+    ).toBeVisible()
+  })
+
+  test('empty state message is localized in German', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    await seedAuthAndLocale(page, admin, 'de')
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      scheduledFeaturedEvents: [],
+    })
+
+    await page.goto('/hub/technology/manage')
+
+    await expect(
+      page.locator('.hub-schedule-list').getByText('Noch keine geplanten Highlights.'),
     ).toBeVisible()
   })
 })
