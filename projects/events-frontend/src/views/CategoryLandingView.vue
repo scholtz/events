@@ -176,6 +176,14 @@ const upcomingCount = computed(() => {
   return events.value.filter((e) => new Date(e.startsAtUtc) >= now).length
 })
 
+/**
+ * True when the catalog has events but every event has already taken place.
+ * Used to display a notice helping users understand why no upcoming events appear.
+ */
+const allEventsInPast = computed(
+  () => events.value.length > 0 && upcomingCount.value === 0,
+)
+
 /** Featured event IDs set for fast deduplication in the main list */
 const featuredEventIds = computed(() => new Set(featuredEvents.value.map((e) => e.id)))
 
@@ -423,6 +431,14 @@ onMounted(async () => {
           {{ rankContextLabel }}
         </div>
 
+        <div v-if="allEventsInPast" class="all-in-past-notice" role="status" aria-live="polite">
+          <span class="all-in-past-icon" aria-hidden="true">⏳</span>
+          <span class="all-in-past-text">{{ t('category.allEventsInPast') }}</span>
+          <RouterLink to="/" class="btn btn-sm all-in-past-action">
+            {{ t('category.allEventsInPastBrowse') }}
+          </RouterLink>
+        </div>
+
         <div v-if="lowSignalMessage" class="low-signal-notice" role="status" aria-live="polite">
           <span class="low-signal-icon" aria-hidden="true">🌱</span>
           <span class="low-signal-text">{{ lowSignalMessage }}</span>
@@ -630,6 +646,48 @@ onMounted(async () => {
 .low-signal-icon {
   flex-shrink: 0;
   line-height: 1.4;
+}
+
+/* All-events-in-past notice: shown when every visible event has already taken place */
+.all-in-past-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 0.875rem;
+  margin-bottom: 0.75rem;
+  background: var(--color-surface-raised);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  flex-wrap: wrap;
+}
+
+.all-in-past-icon {
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+
+.all-in-past-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.all-in-past-action {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.625rem;
+  white-space: nowrap;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+}
+
+.all-in-past-action:hover {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
 }
 
 .events-grid {

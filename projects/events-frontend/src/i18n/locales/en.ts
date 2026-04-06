@@ -121,6 +121,9 @@ export default {
     rankContextUpcoming: 'Sorted by upcoming date',
     rankContextNewest: 'Newest additions first',
     rankContextRelevance: 'Best matches for "{search}"',
+    // All-events-in-past notice: shown when results exist but every event has already taken place
+    allEventsInPast: 'All listed events have already taken place.',
+    allEventsInPastBrowse: 'Browse for upcoming events',
     // Recovery actions shown in empty state as a secondary action
     recoveryTryOnline: 'Try online events',
     recoveryTryInPerson: 'Try in-person events',
@@ -787,6 +790,8 @@ export default {
     curatedCommunities: 'Communities in this hub',
     curatedCommunitiesDescription: 'These community groups actively shape this hub.',
     exploreGroup: 'Explore community',
+    allEventsInPast: 'All listed events have already taken place.',
+    allEventsInPastBrowse: 'Browse for upcoming events',
   },
 
   // ── Hub manage page ────────────────────────────────────────────────────────
