@@ -61,6 +61,7 @@ export default {
     subdomainViewFullHub: 'View full hub page',
     subdomainCuratedBy: 'Curated by {credit}',
     subdomainPageTitle: '{name} Events',
+    subdomainFeaturedHeading: 'Featured right now',
     updatingResults: 'Updating results…',
     updatingDescription: 'Applying your filters and loading the best matching events.',
     errorOffline: "You're offline",
