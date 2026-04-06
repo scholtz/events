@@ -57,10 +57,15 @@ const overviewSnippet = computed(() => {
 /** Active scheduled featured events for the current subdomain hub. */
 const subdomainFeaturedEvents = ref<CatalogEvent[]>([])
 
-const SUBDOMAIN_FEATURED_EVENT_FIELDS = `
+// Mirrors the EVENT_FIELDS used in CategoryLandingView for featuredEventsForDomain —
+// kept inline here since EVENT_FIELDS is not exported from the events store.
+const FEATURED_EVENT_FIELDS = `
   id name slug description eventUrl
-  venueName city countryCode startsAtUtc endsAtUtc status isFree priceAmount currencyCode
-  attendanceMode timezone domainId
+  venueName addressLine1 city countryCode
+  latitude longitude startsAtUtc endsAtUtc
+  submittedAtUtc updatedAtUtc publishedAtUtc
+  adminNotes status isFree priceAmount currencyCode domainId mapUrl
+  attendanceMode timezone
   domain { id name slug subdomain }
   submittedBy { displayName }
 `
@@ -69,12 +74,13 @@ async function fetchSubdomainFeaturedEvents(domainSlug: string) {
   try {
     const data = await gqlRequest<{ featuredEventsForDomain: CatalogEvent[] }>(
       `query FeaturedEventsForDomain($domainSlug: String!) {
-        featuredEventsForDomain(domainSlug: $domainSlug) { ${SUBDOMAIN_FEATURED_EVENT_FIELDS} }
+        featuredEventsForDomain(domainSlug: $domainSlug) { ${FEATURED_EVENT_FIELDS} }
       }`,
       { domainSlug },
     )
     subdomainFeaturedEvents.value = data.featuredEventsForDomain
-  } catch {
+  } catch (err) {
+    console.error('[HomeView] Failed to fetch subdomain featured events:', err)
     subdomainFeaturedEvents.value = []
   }
 }
@@ -521,7 +527,7 @@ watch(
             :key="event.id"
             class="subdomain-featured-card-wrap"
           >
-            <span class="subdomain-featured-badge" aria-label="Featured">
+            <span class="subdomain-featured-badge" :aria-label="t('home.subdomainFeaturedHeading')">
               ⭐ {{ t('home.subdomainFeaturedHeading') }}
             </span>
             <EventCard :event="event" />
