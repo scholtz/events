@@ -122,6 +122,10 @@ export default {
     fallbackCategoriesTitle: 'Veranstaltungskategorien durchsuchen',
     fallbackCategoriesDesc: 'Entdecken Sie Veranstaltungen nach Community oder Themenbereich. Diese Hubs kuratieren die besten bevorstehenden Veranstaltungen in ihrem Bereich.',
     fallbackHubCta: '{name} erkunden →',
+    // Saved-search empty state
+    savedSearchNoMatches: '„{name}" hat aktuell keine Treffer',
+    savedSearchEmpty:
+      'Ihre gespeicherte Suche „{name}" hat derzeit keine passenden Veranstaltungen. Dies ist wahrscheinlich vorübergehend — neue Veranstaltungen können bald hinzukommen. Versuchen Sie, die Filter zu erweitern, oder schauen Sie später wieder vorbei.',
   },
 
   filters: {

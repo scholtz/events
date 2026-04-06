@@ -122,6 +122,10 @@ export default {
     fallbackCategoriesTitle: 'Prehľadávať kategórie udalostí',
     fallbackCategoriesDesc: 'Objavujte udalosti podľa komunity alebo témy. Tieto huby kurátorujú najlepšie nadchádzajúce udalosti vo svojej oblasti.',
     fallbackHubCta: 'Preskúmať {name} →',
+    // Saved-search empty state
+    savedSearchNoMatches: '„{name}" momentálne nemá žiadne výsledky',
+    savedSearchEmpty:
+      'Vaše uložené vyhľadávanie „{name}" momentálne nemá žiadne zodpovedajúce udalosti. Je to pravdepodobne dočasné — čoskoro môžu pribudnúť nové udalosti. Skúste rozšíriť filtre alebo sa vráťte neskôr.',
   },
 
   filters: {

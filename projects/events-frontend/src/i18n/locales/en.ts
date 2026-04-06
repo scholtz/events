@@ -130,6 +130,10 @@ export default {
     fallbackCategoriesTitle: 'Browse event categories',
     fallbackCategoriesDesc: 'Discover events by community or topic area. These hubs curate the best upcoming events in their space.',
     fallbackHubCta: 'Explore {name} →',
+    // Saved-search empty state
+    savedSearchNoMatches: '"{name}" has no matches right now',
+    savedSearchEmpty:
+      'Your saved search "{name}" currently has no matching events. This is likely temporary — new events may be added soon. Try broadening the filters or check back later.',
   },
 
   // ── Event Filters ──────────────────────────────────────────────────────────

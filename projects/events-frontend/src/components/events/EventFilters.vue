@@ -106,7 +106,7 @@ async function handleSaveSearch() {
 }
 
 function applySavedSearch(savedSearch: SavedSearch) {
-  eventsStore.replaceFilters(savedSearchToFilters(savedSearch))
+  eventsStore.applyAndTrackSavedSearch(savedSearch.name, savedSearchToFilters(savedSearch))
 }
 
 async function removeSavedSearch(savedSearchId: string) {

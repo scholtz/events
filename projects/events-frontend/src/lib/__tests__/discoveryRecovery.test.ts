@@ -14,6 +14,7 @@ import {
   computeLowSignalMessage,
   computeRecoverySuggestion,
   computeRecoverySuggestionLabel,
+  computeSavedSearchEmptyStateMessage,
 } from '@/lib/discoveryRecovery'
 
 // ---------------------------------------------------------------------------
@@ -470,5 +471,30 @@ describe('computeRecoverySuggestion', () => {
       stubT,
     )
     expect(result?.actionKey).toBe('clearDomain')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// computeSavedSearchEmptyStateMessage
+// ---------------------------------------------------------------------------
+
+describe('computeSavedSearchEmptyStateMessage', () => {
+  it('returns null when savedSearchName is null', () => {
+    expect(computeSavedSearchEmptyStateMessage(null, stubT)).toBeNull()
+  })
+
+  it('returns null when savedSearchName is empty string (falsy)', () => {
+    expect(computeSavedSearchEmptyStateMessage('', stubT)).toBeNull()
+  })
+
+  it('returns a message containing the i18n key and preset name', () => {
+    const result = computeSavedSearchEmptyStateMessage('Prague Crypto', stubT)
+    expect(result).toContain('home.savedSearchEmpty')
+    expect(result).toContain('Prague Crypto')
+  })
+
+  it('interpolates the name param into the translated string', () => {
+    const result = computeSavedSearchEmptyStateMessage('My Weekly Tech', stubT)
+    expect(result).toBe('home.savedSearchEmpty:name=My Weekly Tech')
   })
 })

@@ -218,6 +218,14 @@ export const useEventsStore = defineStore('events', () => {
 
   const filters = ref<EventFilters>(createDefaultEventFilters())
 
+  /**
+   * Name of the saved search that was most recently applied via
+   * `applyAndTrackSavedSearch`. Used by the discovery view to show a
+   * context-aware "your saved search has no matches" empty state instead of a
+   * generic no-results message. Cleared whenever filters are changed manually.
+   */
+  const lastAppliedSavedSearchName = ref<string | null>(null)
+
   async function fetchEvents() {
     loading.value = true
     try {
@@ -403,15 +411,31 @@ export const useEventsStore = defineStore('events', () => {
   }
 
   function setFilters(newFilters: Partial<EventFilters>) {
+    lastAppliedSavedSearchName.value = null
     filters.value = { ...filters.value, ...newFilters }
   }
 
   function replaceFilters(nextFilters: EventFilters) {
+    lastAppliedSavedSearchName.value = null
     filters.value = { ...nextFilters }
   }
 
   function clearFilters() {
+    lastAppliedSavedSearchName.value = null
     replaceFilters(createDefaultEventFilters())
+  }
+
+  /**
+   * Applies a saved search preset and tracks the preset name so the discovery
+   * view can show a context-aware empty state if the preset yields no results.
+   *
+   * Unlike `replaceFilters`, this function preserves the saved-search context
+   * so the component can distinguish "saved search has no matches right now"
+   * from "user narrowed the search themselves".
+   */
+  function applyAndTrackSavedSearch(name: string, nextFilters: EventFilters) {
+    filters.value = { ...nextFilters }
+    lastAppliedSavedSearchName.value = name
   }
 
   return {
@@ -427,6 +451,7 @@ export const useEventsStore = defineStore('events', () => {
     detailError,
     detailFreshness,
     filters,
+    lastAppliedSavedSearchName,
     allEvents,
     pendingEvents,
     hasActiveFilters,
@@ -442,5 +467,6 @@ export const useEventsStore = defineStore('events', () => {
     setFilters,
     replaceFilters,
     clearFilters,
+    applyAndTrackSavedSearch,
   }
 })

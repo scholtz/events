@@ -3314,3 +3314,232 @@ test.describe('Recovery user flow — broadening from over-filtered state', () =
     await expect(page.locator('.empty-state')).toBeHidden()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Saved-search empty state
+// ---------------------------------------------------------------------------
+
+test.describe('Saved-search empty state', () => {
+  test('applying a saved search with no matches shows a saved-search-specific message', async ({
+    page,
+  }) => {
+    const admin = makeAdminUser()
+    const onlineEvent = makeApprovedEvent({
+      id: 'e-online-ss',
+      name: 'Online Summit',
+      slug: 'online-summit',
+      attendanceMode: 'ONLINE',
+    })
+    setupMockApi(page, {
+      users: [admin],
+      currentUserId: admin.id,
+      currentToken: `token-${admin.id}`,
+      domains: [makeTechDomain()],
+      events: [onlineEvent],
+      savedSearches: [
+        {
+          id: 'ss-1',
+          name: 'My Prague Events',
+          searchText: null,
+          domainSlug: null,
+          locationText: 'Prague',
+          startsFromUtc: null,
+          startsToUtc: null,
+          isFree: null,
+          priceMin: null,
+          priceMax: null,
+          sortBy: 'UPCOMING',
+          attendanceMode: 'IN_PERSON',
+          language: null,
+          timezone: null,
+          createdAtUtc: new Date().toISOString(),
+          updatedAtUtc: new Date().toISOString(),
+          userId: admin.id,
+        },
+      ],
+    })
+
+    await page.addInitScript(
+      ({ token }) => {
+        localStorage.setItem('auth_token', token)
+        localStorage.setItem('auth_expires', new Date(Date.now() + 60 * 60 * 1000).toISOString())
+      },
+      { token: `token-${admin.id}` },
+    )
+
+    await page.goto('/')
+
+    // Expand advanced filters to see saved searches
+    await page.getByRole('button', { name: 'More filters' }).click()
+
+    // Click the saved search (which has attendanceMode=IN_PERSON + location=Prague → no ONLINE events match)
+    await page.locator('.saved-search-apply', { hasText: 'My Prague Events' }).click()
+
+    // The empty state should be visible
+    await expect(page.locator('.empty-state')).toBeVisible()
+
+    // The heading should mention the saved search name
+    await expect(
+      page.getByRole('heading', { name: /"My Prague Events"/, level: 2 }),
+    ).toBeVisible()
+
+    // The body should contain the saved-search-specific message (not just a generic filter hint)
+    await expect(page.locator('.empty-state p')).toContainText('My Prague Events')
+  })
+
+  test('saved-search empty state shows "Clear filters" button to recover', async ({ page }) => {
+    const admin = makeAdminUser()
+    setupMockApi(page, {
+      users: [admin],
+      currentUserId: admin.id,
+      currentToken: `token-${admin.id}`,
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ attendanceMode: 'ONLINE' })],
+      savedSearches: [
+        {
+          id: 'ss-2',
+          name: 'In-Person Crypto',
+          searchText: null,
+          domainSlug: 'technology',
+          locationText: null,
+          startsFromUtc: null,
+          startsToUtc: null,
+          isFree: null,
+          priceMin: null,
+          priceMax: null,
+          sortBy: 'UPCOMING',
+          attendanceMode: 'IN_PERSON',
+          language: null,
+          timezone: null,
+          createdAtUtc: new Date().toISOString(),
+          updatedAtUtc: new Date().toISOString(),
+          userId: admin.id,
+        },
+      ],
+    })
+
+    await page.addInitScript(
+      ({ token }) => {
+        localStorage.setItem('auth_token', token)
+        localStorage.setItem('auth_expires', new Date(Date.now() + 60 * 60 * 1000).toISOString())
+      },
+      { token: `token-${admin.id}` },
+    )
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'More filters' }).click()
+    await page.locator('.saved-search-apply', { hasText: 'In-Person Crypto' }).click()
+
+    await expect(page.locator('.empty-state')).toBeVisible()
+    await expect(
+      page.locator('.empty-state').getByRole('button', { name: 'Clear filters' }),
+    ).toBeVisible()
+  })
+
+  test('manually changing a filter after a saved search resets to generic empty state', async ({
+    page,
+  }) => {
+    const admin = makeAdminUser()
+    setupMockApi(page, {
+      users: [admin],
+      currentUserId: admin.id,
+      currentToken: `token-${admin.id}`,
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ attendanceMode: 'ONLINE' })],
+      savedSearches: [
+        {
+          id: 'ss-3',
+          name: 'In-Person Only',
+          searchText: null,
+          domainSlug: null,
+          locationText: null,
+          startsFromUtc: null,
+          startsToUtc: null,
+          isFree: null,
+          priceMin: null,
+          priceMax: null,
+          sortBy: 'UPCOMING',
+          attendanceMode: 'IN_PERSON',
+          language: null,
+          timezone: null,
+          createdAtUtc: new Date().toISOString(),
+          updatedAtUtc: new Date().toISOString(),
+          userId: admin.id,
+        },
+      ],
+    })
+
+    await page.addInitScript(
+      ({ token }) => {
+        localStorage.setItem('auth_token', token)
+        localStorage.setItem('auth_expires', new Date(Date.now() + 60 * 60 * 1000).toISOString())
+      },
+      { token: `token-${admin.id}` },
+    )
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'More filters' }).click()
+
+    // Apply saved search → empty state with saved-search message
+    await page.locator('.saved-search-apply', { hasText: 'In-Person Only' }).click()
+    await expect(page.locator('.empty-state')).toBeVisible()
+    await expect(page.locator('.empty-state h2')).toContainText('In-Person Only')
+
+    // Clear filters manually → generic empty state (no saved search name)
+    await page.locator('.empty-state').getByRole('button', { name: 'Clear filters' }).click()
+
+    // After clearing, the event is visible (or if still empty, the message is generic)
+    // The saved-search heading should no longer appear
+    await expect(page.locator('.empty-state h2', { hasText: 'In-Person Only' })).toBeHidden()
+  })
+
+  test('saved-search empty state is accessible: heading identifies the saved search', async ({
+    page,
+  }) => {
+    const admin = makeAdminUser()
+    setupMockApi(page, {
+      users: [admin],
+      currentUserId: admin.id,
+      currentToken: `token-${admin.id}`,
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ attendanceMode: 'ONLINE' })],
+      savedSearches: [
+        {
+          id: 'ss-4',
+          name: 'Free In-Person',
+          searchText: null,
+          domainSlug: null,
+          locationText: null,
+          startsFromUtc: null,
+          startsToUtc: null,
+          isFree: true,
+          priceMin: null,
+          priceMax: null,
+          sortBy: 'UPCOMING',
+          attendanceMode: 'IN_PERSON',
+          language: null,
+          timezone: null,
+          createdAtUtc: new Date().toISOString(),
+          updatedAtUtc: new Date().toISOString(),
+          userId: admin.id,
+        },
+      ],
+    })
+
+    await page.addInitScript(
+      ({ token }) => {
+        localStorage.setItem('auth_token', token)
+        localStorage.setItem('auth_expires', new Date(Date.now() + 60 * 60 * 1000).toISOString())
+      },
+      { token: `token-${admin.id}` },
+    )
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'More filters' }).click()
+    await page.locator('.saved-search-apply', { hasText: 'Free In-Person' }).click()
+
+    await expect(page.locator('.empty-state')).toBeVisible()
+    // The h2 heading is announced by screen readers and should identify the saved search
+    await expect(page.locator('.empty-state h2')).toContainText('Free In-Person')
+  })
+})
