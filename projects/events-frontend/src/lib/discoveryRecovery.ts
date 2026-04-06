@@ -150,6 +150,25 @@ export function computeRecoverySuggestionLabel(
 }
 
 // ---------------------------------------------------------------------------
+// Saved-search empty-state message
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns a context-aware message explaining that a saved search preset
+ * currently has no matches. The message reassures the user that this is
+ * likely temporary and suggests checking back later or broadening the search.
+ *
+ * Returns `null` when no saved search is currently active.
+ */
+export function computeSavedSearchEmptyStateMessage(
+  savedSearchName: string | null,
+  t: TranslateFn,
+): string | null {
+  if (!savedSearchName) return null
+  return t('home.savedSearchEmpty', { name: savedSearchName })
+}
+
+// ---------------------------------------------------------------------------
 // Low-signal message
 // ---------------------------------------------------------------------------
 

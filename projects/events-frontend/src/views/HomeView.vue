@@ -8,6 +8,7 @@ import {
   computeEmptyStateMessage,
   computeLowSignalMessage,
   computeRecoverySuggestion,
+  computeSavedSearchEmptyStateMessage,
 } from '@/lib/discoveryRecovery'
 import {
   areEventFiltersEqual,
@@ -201,6 +202,15 @@ const emptyStateMessage = computed(() =>
     eventsStore.hasActiveFilters,
     t,
   ),
+)
+
+/**
+ * Context-aware message shown when a saved search preset was applied and
+ * returned zero results. Overrides the generic `emptyStateMessage` so the
+ * user understands the empty state is tied to their named preset.
+ */
+const savedSearchEmptyStateMessage = computed(() =>
+  computeSavedSearchEmptyStateMessage(eventsStore.lastAppliedSavedSearchName, t),
 )
 
 /**
@@ -588,9 +598,9 @@ watch(
           </template>
 
           <div v-else class="results-state empty-state card">
-            <div class="empty-icon">🔍</div>
-            <h2>{{ t('home.noEventsFound') }}</h2>
-            <p>{{ emptyStateMessage }}</p>
+            <div class="empty-icon">{{ savedSearchEmptyStateMessage ? '🔖' : '🔍' }}</div>
+            <h2>{{ savedSearchEmptyStateMessage ? t('home.savedSearchNoMatches', { name: eventsStore.lastAppliedSavedSearchName }) : t('home.noEventsFound') }}</h2>
+            <p>{{ savedSearchEmptyStateMessage ?? emptyStateMessage }}</p>
             <div class="state-actions">
               <button
                 v-if="eventsStore.hasActiveFilters"
