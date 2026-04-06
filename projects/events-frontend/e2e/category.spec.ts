@@ -1353,3 +1353,118 @@ test.describe('Category landing page: scheduled featured events', () => {
     await expect(page.locator('.featured-title')).toContainText('Hervorgehobene Veranstaltungen')
   })
 })
+
+// ---------------------------------------------------------------------------
+// All events in past — category hub edge case
+// ---------------------------------------------------------------------------
+
+test.describe('Category landing page: all events in past', () => {
+  const pastDate = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
+
+  test('shows all-in-past notice when every hub event has already taken place', async ({
+    page,
+  }) => {
+    const domain = makeTechDomain()
+    setupMockApi(page, {
+      domains: [domain],
+      events: [
+        makeApprovedEvent({ id: 'e-1', name: 'Old Tech Summit', slug: 'old-tech-summit', startsAtUtc: pastDate, endsAtUtc: pastDate }),
+        makeApprovedEvent({ id: 'e-2', name: 'Old Workshop', slug: 'old-workshop', startsAtUtc: pastDate, endsAtUtc: pastDate }),
+      ],
+    })
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.all-in-past-notice')).toBeVisible()
+    await expect(page.locator('.all-in-past-notice')).toContainText(
+      'All listed events have already taken place',
+    )
+  })
+
+  test('does not show all-in-past notice when at least one hub event is upcoming', async ({
+    page,
+  }) => {
+    const futureDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+    const domain = makeTechDomain()
+    setupMockApi(page, {
+      domains: [domain],
+      events: [
+        makeApprovedEvent({ id: 'e-past', name: 'Old Event', slug: 'old-event', startsAtUtc: pastDate, endsAtUtc: pastDate }),
+        makeApprovedEvent({ id: 'e-future', name: 'Upcoming Event', slug: 'upcoming-event', startsAtUtc: futureDate, endsAtUtc: futureDate }),
+      ],
+    })
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.all-in-past-notice')).toBeHidden()
+  })
+
+  test('does not show all-in-past notice when hub has no events (uses empty state instead)', async ({
+    page,
+  }) => {
+    setupMockApi(page, { domains: [makeTechDomain()], events: [] })
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.all-in-past-notice')).toBeHidden()
+    await expect(page.locator('.empty-state')).toBeVisible()
+  })
+
+  test('all-in-past notice is accessible: has role status', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-1', name: 'Past Hub Event', slug: 'past-hub-event', startsAtUtc: pastDate, endsAtUtc: pastDate }),
+      ],
+    })
+    await page.goto('/category/technology')
+
+    await expect(page.locator('[role="status"].all-in-past-notice')).toBeVisible()
+  })
+
+  test('all-in-past notice is visible at mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-1', name: 'Past Mobile Event', slug: 'past-mobile', startsAtUtc: pastDate, endsAtUtc: pastDate }),
+      ],
+    })
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.all-in-past-notice')).toBeVisible()
+  })
+
+  test('i18n: all-in-past notice is localized in Slovak', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'sk')
+    })
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-sk', name: 'Past SK Event', slug: 'past-sk', startsAtUtc: pastDate, endsAtUtc: pastDate }),
+      ],
+    })
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.all-in-past-notice')).toBeVisible()
+    await expect(page.locator('.all-in-past-notice')).toContainText(
+      'Všetky uvedené udalosti sa už uskutočnili',
+    )
+  })
+
+  test('i18n: all-in-past notice is localized in German', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'de')
+    })
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-de', name: 'Past DE Event', slug: 'past-de', startsAtUtc: pastDate, endsAtUtc: pastDate }),
+      ],
+    })
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.all-in-past-notice')).toBeVisible()
+    await expect(page.locator('.all-in-past-notice')).toContainText(
+      'Alle aufgeführten Veranstaltungen haben bereits stattgefunden',
+    )
+  })
+})

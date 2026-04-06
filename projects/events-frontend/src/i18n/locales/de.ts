@@ -115,6 +115,8 @@ export default {
     rankContextUpcoming: 'Nach Datum sortiert',
     rankContextNewest: 'Neueste zuerst',
     rankContextRelevance: 'Beste Treffer für „{search}"',
+    allEventsInPast: 'Alle aufgeführten Veranstaltungen haben bereits stattgefunden.',
+    allEventsInPastBrowse: 'Nach bevorstehenden Veranstaltungen suchen',
     recoveryTryOnline: 'Online-Veranstaltungen versuchen',
     recoveryTryInPerson: 'Präsenzveranstaltungen versuchen',
     recoveryClearDates: 'Datumsbereich löschen',
@@ -762,6 +764,8 @@ export default {
     curatedCommunities: 'Communities in diesem Hub',
     curatedCommunitiesDescription: 'Diese Community-Gruppen prägen aktiv diesen Hub.',
     exploreGroup: 'Community erkunden',
+    allEventsInPast: 'Alle aufgeführten Veranstaltungen haben bereits stattgefunden.',
+    allEventsInPastBrowse: 'Nach bevorstehenden Veranstaltungen suchen',
   },
 
   // ── Hub manage page ────────────────────────────────────────────────────────

@@ -691,6 +691,99 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task EventsQuery_UpcomingSort_MixedAttendanceModePreservesCorrectOrder()
+    {
+        // Verifies that the default UPCOMING sort correctly orders events regardless of
+        // attendance mode (IN_PERSON, ONLINE, HYBRID). All modes should follow the same
+        // upcoming-first, then ascending-by-start-date ordering rule. Attendance mode
+        // must not act as an implicit sort key.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var soon = DateTime.UtcNow.AddDays(2);
+        var later = DateTime.UtcNow.AddDays(5);
+        var past = DateTime.UtcNow.AddDays(-3);
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("mode-sort@example.com", "Mode Sort");
+            var domain = CreateDomain("Mixed Mode", "mixed-mode");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+
+            dbContext.Events.AddRange(
+                CreateEvent(
+                    "Online Event Soon",
+                    "online-event-soon",
+                    "An upcoming online session.",
+                    string.Empty,
+                    string.Empty,
+                    soon,
+                    domain,
+                    user,
+                    attendanceMode: AttendanceMode.Online),
+                CreateEvent(
+                    "Hybrid Event Later",
+                    "hybrid-event-later",
+                    "A later hybrid event.",
+                    "Convention Centre",
+                    "Prague",
+                    later,
+                    domain,
+                    user,
+                    attendanceMode: AttendanceMode.Hybrid),
+                CreateEvent(
+                    "In-Person Event Past",
+                    "in-person-event-past",
+                    "An already-concluded in-person meetup.",
+                    "Old Venue",
+                    "Brno",
+                    past,
+                    domain,
+                    user,
+                    attendanceMode: AttendanceMode.InPerson));
+        });
+
+        using var client = factory.CreateClient();
+        var names = await QueryEventNamesAsync(client, new { sortBy = "UPCOMING" });
+
+        // Upcoming events (online, hybrid) must appear before the past in-person event,
+        // and within upcoming events the nearer start time (online, 2 days) comes first.
+        Assert.Equal(["Online Event Soon", "Hybrid Event Later", "In-Person Event Past"], names);
+    }
+
+    [Fact]
+    public async Task EventsQuery_LanguageFilter_PreservesUpcomingSortWithinLanguage()
+    {
+        // Verifies that when a language filter is applied, the remaining events still
+        // follow the UPCOMING sort order: upcoming events before past events, and within
+        // each bucket ordered by start date (nearest upcoming first).
+        await using var factory = new EventsApiWebApplicationFactory();
+        var near = DateTime.UtcNow.AddDays(3);
+        var far = DateTime.UtcNow.AddDays(10);
+        var past = DateTime.UtcNow.AddDays(-5);
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("lang-sort@example.com", "Lang Sort");
+            var domain = CreateDomain("I18N Events", "i18n-events");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+
+            dbContext.Events.AddRange(
+                // German events — should be ordered: near → far → past
+                CreateEvent("DE Near", "de-near", "Upcoming German event.", "Venue A", "Berlin", near, domain, user, language: "de"),
+                CreateEvent("DE Past", "de-past", "Past German event.", "Venue B", "Hamburg", past, domain, user, language: "de"),
+                CreateEvent("DE Far", "de-far", "Future German event far out.", "Venue C", "Munich", far, domain, user, language: "de"),
+                // English event — must be excluded from the German filter result
+                CreateEvent("EN Event", "en-event", "English-language event.", "Venue D", "Prague", near, domain, user, language: "en"));
+        });
+
+        using var client = factory.CreateClient();
+        var names = await QueryEventNamesAsync(client, new { language = "de", sortBy = "UPCOMING" });
+
+        // English event excluded; German events ordered upcoming-first then ascending date.
+        Assert.DoesNotContain("EN Event", names);
+        Assert.Equal(["DE Near", "DE Far", "DE Past"], names);
+    }
+
+    [Fact]
     public async Task EventsQuery_TreatsBlankFiltersAsUnsetAndKeepsPendingEventsPrivate()
     {
         await using var factory = new EventsApiWebApplicationFactory();

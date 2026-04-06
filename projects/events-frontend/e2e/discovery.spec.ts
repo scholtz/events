@@ -2734,6 +2734,95 @@ test.describe('Rank context badge', () => {
 })
 
 // ---------------------------------------------------------------------------
+// All events in past — notice when every visible event has already taken place
+// ---------------------------------------------------------------------------
+
+test.describe('All events in past notice', () => {
+  const pastDate = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
+
+  test('shows all-in-past notice when every event is in the past (default sort)', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-1', name: 'Old Summit', slug: 'old-summit', startsAtUtc: pastDate, endsAtUtc: pastDate }),
+        makeApprovedEvent({ id: 'e-2', name: 'Old Workshop', slug: 'old-workshop', startsAtUtc: pastDate, endsAtUtc: pastDate }),
+      ],
+    })
+    await page.goto('/')
+
+    await expect(page.locator('.all-in-past-notice')).toBeVisible()
+    await expect(page.locator('.all-in-past-notice')).toContainText(
+      'All listed events have already taken place',
+    )
+  })
+
+  test('does not show all-in-past notice when at least one event is upcoming', async ({
+    page,
+  }) => {
+    const futureDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-past', name: 'Old Event', slug: 'old-event', startsAtUtc: pastDate, endsAtUtc: pastDate }),
+        makeApprovedEvent({ id: 'e-future', name: 'Future Event', slug: 'future-event', startsAtUtc: futureDate, endsAtUtc: futureDate }),
+      ],
+    })
+    await page.goto('/')
+
+    await expect(page.locator('.all-in-past-notice')).toBeHidden()
+  })
+
+  test('does not show all-in-past notice when there are no events', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [],
+    })
+    await page.goto('/')
+
+    await expect(page.locator('.all-in-past-notice')).toBeHidden()
+  })
+
+  test('all-in-past notice has an accessible role', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-1', name: 'Past Event', slug: 'past-event', startsAtUtc: pastDate, endsAtUtc: pastDate }),
+      ],
+    })
+    await page.goto('/')
+
+    await expect(page.locator('[role="status"].all-in-past-notice')).toBeVisible()
+  })
+
+  test('all-in-past notice is visible at mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-1', name: 'Past Only Event', slug: 'past-only', startsAtUtc: pastDate, endsAtUtc: pastDate }),
+      ],
+    })
+    await page.goto('/')
+
+    await expect(page.locator('.all-in-past-notice')).toBeVisible()
+  })
+
+  test('all-in-past notice is not shown for NEWEST sort', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-1', name: 'Old Summit', slug: 'old-summit', startsAtUtc: pastDate, endsAtUtc: pastDate }),
+      ],
+    })
+    await page.goto('/?sort=newest')
+
+    await expect(page.locator('.all-in-past-notice')).toBeHidden()
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Empty state recovery actions — context-aware secondary actions
 // ---------------------------------------------------------------------------
 

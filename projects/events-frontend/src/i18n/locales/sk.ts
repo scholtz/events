@@ -115,6 +115,8 @@ export default {
     rankContextUpcoming: 'Zoradené podľa dátumu',
     rankContextNewest: 'Najnovšie príspevky',
     rankContextRelevance: 'Najlepšie zhody pre „{search}"',
+    allEventsInPast: 'Všetky uvedené udalosti sa už uskutočnili.',
+    allEventsInPastBrowse: 'Hľadať nadchádzajúce udalosti',
     recoveryTryOnline: 'Vyskúšať online udalosti',
     recoveryTryInPerson: 'Vyskúšať osobné udalosti',
     recoveryClearDates: 'Vymazať rozsah dátumov',
@@ -762,6 +764,8 @@ export default {
     curatedCommunities: 'Komunity v tomto hube',
     curatedCommunitiesDescription: 'Tieto komunitné skupiny aktívne formujú tento hub.',
     exploreGroup: 'Preskúmať komunitu',
+    allEventsInPast: 'Všetky uvedené udalosti sa už uskutočnili.',
+    allEventsInPastBrowse: 'Hľadať nadchádzajúce udalosti',
   },
 
   // ── Hub manage page ────────────────────────────────────────────────────────
