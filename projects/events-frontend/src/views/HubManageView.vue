@@ -57,7 +57,9 @@ const linksError = ref('')
 
 // ── Curated community groups state ───────────────────────────────────────────
 const MAX_CURATED_COMMUNITIES = 20
-const curatedCommunities = ref<DomainCuratedCommunity[]>([])
+// Cast to Ref<T[]> to work around a vue-tsc TS2345 caused by CommunityVisibility
+// being resolved through two different module paths across the reactive wrapper boundary.
+const curatedCommunities = ref([]) as import('vue').Ref<DomainCuratedCommunity[]>
 const curatedCommunitiesLoading = ref(false)
 const curatedCommunitiesError = ref('')
 const curatedCommunitiesSaving = ref(false)
@@ -447,19 +449,19 @@ function handleAddCuratedCommunity() {
   if (curatedCommunities.value.length >= MAX_CURATED_COMMUNITIES) return
   const group = availableCommunityGroups.value.find((g: CommunityGroup) => g.id === addCuratedGroupId.value)
   if (!group) return
-   
-  const newEntry = {
-    id: `new-${Date.now()}`,
-    domainId: domain.value!.id,
-    groupId: group.id,
-    group,
-    displayOrder: curatedCommunities.value.length,
-    isEnabled: true,
-    annotation: null as string | null,
-    createdAtUtc: new Date().toISOString(),
-  }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  curatedCommunities.value.push(newEntry as any)
+  curatedCommunities.value = [
+    ...curatedCommunities.value,
+    {
+      id: `new-${Date.now()}`,
+      domainId: domain.value!.id,
+      groupId: group.id,
+      group: { ...group } as DomainCuratedCommunity['group'],
+      displayOrder: curatedCommunities.value.length,
+      isEnabled: true,
+      annotation: null,
+      createdAtUtc: new Date().toISOString(),
+    },
+  ]
   addCuratedGroupId.value = ''
   curatedCommunitiesSuccess.value = false
 }
@@ -474,14 +476,12 @@ function handleRemoveCuratedCommunity(groupId: string) {
 function handleMoveCuratedCommunity(index: number, direction: 'up' | 'down') {
   const newIndex = direction === 'up' ? index - 1 : index + 1
   if (newIndex < 0 || newIndex >= curatedCommunities.value.length) return
-  // Clone to avoid mutating the reactive array in place before Vue detects changes
+  // Clone to avoid in-place mutation before Vue detects changes
   const items = curatedCommunities.value.map((c) => ({ ...c }))
-  const temp = items[index]
-  // Workaround for vue-tsc TS2719 cross-module type resolution bug
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ;(items as any)[index] = items[newIndex]
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ;(items as any)[newIndex] = temp
+  // splice out the element and insert at the new position
+  const removed = items.splice(index, 1)
+  if (!removed[0]) return
+  items.splice(newIndex, 0, removed[0])
   curatedCommunities.value = items
   curatedCommunitiesSuccess.value = false
 }
@@ -1305,7 +1305,7 @@ const pickableEvents = computed(() =>
                 {{
                   curatedCommunitiesSaving
                     ? t('hubManage.curatedCommunities.saving')
-                    : t('admin.saveCommunityLinks')
+                    : t('hubManage.curatedCommunities.save')
                 }}
               </button>
               <span v-if="curatedCommunitiesSuccess" class="hub-save-success">

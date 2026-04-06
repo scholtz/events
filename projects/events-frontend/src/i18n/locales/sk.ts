@@ -820,6 +820,7 @@ export default {
       saveError: 'Nepodarilo sa uložiť kurácie komunít. Skúste to znova.',
       saved: '✓ Uložené',
       saving: 'Ukladám…',
+      save: 'Uložiť kurácie komunít',
       addPlaceholder: 'Vyhľadajte a vyberte verejnú komunitnú skupinu…',
       selectGroup: 'Vyberte skupinu…',
       add: 'Pridať komunitu',

@@ -845,6 +845,7 @@ export default {
       saveError: 'Failed to save curated communities. Please try again.',
       saved: '✓ Saved',
       saving: 'Saving…',
+      save: 'Save Curated Communities',
       addPlaceholder: 'Search and select a public community group…',
       selectGroup: 'Select a group…',
       add: 'Add community',

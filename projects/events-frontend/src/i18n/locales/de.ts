@@ -820,6 +820,7 @@ export default {
       saveError: 'Kuratierte Communities konnten nicht gespeichert werden. Bitte erneut versuchen.',
       saved: '✓ Gespeichert',
       saving: 'Speichern…',
+      save: 'Kuratierte Communities speichern',
       addPlaceholder: 'Öffentliche Community-Gruppe suchen und auswählen…',
       selectGroup: 'Gruppe auswählen…',
       add: 'Community hinzufügen',

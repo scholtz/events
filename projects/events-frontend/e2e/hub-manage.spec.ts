@@ -1189,4 +1189,3 @@ test.describe('Hub Manage page (/hub/:slug/manage)', () => {
     ).toBeVisible()
   })
 })
-
