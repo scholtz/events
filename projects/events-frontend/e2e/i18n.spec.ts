@@ -420,6 +420,28 @@ test.describe('Localized submit event', () => {
     // Country code placeholder should also be localized
     await expect(page.locator('#event-country')).toHaveAttribute('placeholder', 'z.B. DE')
   })
+
+  test('submit event language select label is localized in German', async ({ page }) => {
+    const user = makeAdminUser()
+    setupMockApi(page, { users: [user], domains: [makeTechDomain()] })
+
+    await loginAs(page, user)
+    await page.locator('#language-select').selectOption('de')
+
+    await page.goto('/submit')
+    await expect(page.getByLabel('Veranstaltungssprache', { exact: false })).toBeVisible()
+  })
+
+  test('submit event language select label is localized in Slovak', async ({ page }) => {
+    const user = makeAdminUser()
+    setupMockApi(page, { users: [user], domains: [makeTechDomain()] })
+
+    await loginAs(page, user)
+    await page.locator('#language-select').selectOption('sk')
+
+    await page.goto('/submit')
+    await expect(page.getByLabel('Jazyk udalosti', { exact: false })).toBeVisible()
+  })
 })
 
 test.describe('Localized portfolio view', () => {

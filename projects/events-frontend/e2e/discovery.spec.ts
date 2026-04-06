@@ -2910,6 +2910,34 @@ test.describe('Empty state recovery actions', () => {
     ).toBeVisible()
   })
 
+  test('language empty state shows "Show events in all languages" recovery button', async ({ page }) => {
+    setupMockApi(page, {
+      events: [makeApprovedEvent({ language: 'en' })],
+    })
+    // Filter to Czech language — no results since the only event is in English
+    await page.goto('/?lang=cs')
+
+    await expect(page.locator('.empty-state')).toBeVisible()
+    await expect(
+      page.locator('.empty-state .recovery-action', { hasText: 'Show events in all languages' }),
+    ).toBeVisible()
+  })
+
+  test('clicking language recovery button clears the language filter and shows events', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      events: [makeApprovedEvent({ name: 'English Event', slug: 'english-event', language: 'en' })],
+    })
+    await page.goto('/?lang=cs')
+
+    await expect(page.locator('.empty-state')).toBeVisible()
+    await page.locator('.empty-state .recovery-action', { hasText: 'Show events in all languages' }).click()
+
+    await expect(page.locator('.event-card', { hasText: 'English Event' })).toBeVisible()
+    await expect(page.locator('.empty-state')).toBeHidden()
+  })
+
   test('multi-filter empty state does not show a secondary recovery button', async ({ page }) => {
     setupMockApi(page, {
       domains: [makeTechDomain()],
