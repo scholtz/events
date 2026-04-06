@@ -739,7 +739,7 @@ test.describe('Domain filter', () => {
     await page.goto('/?subdomain=crypto&domain=crypto')
 
     await expect(page.getByRole('heading', { name: 'Crypto Events' })).toBeVisible()
-    await expect(page.getByRole('link', { name: 'View full hub page' })).toBeVisible()
+    await expect(page.locator('.subdomain-header').getByRole('link', { name: 'View full hub page' })).toBeVisible()
     await expect(page.locator('.event-card', { hasText: 'Mobile Crypto Event' })).toBeVisible()
   })
 
@@ -3630,5 +3630,64 @@ test.describe('Subdomain hub empty state', () => {
     // The domain-specific fallback suggestions section should be suppressed since
     // the subdomain empty state already provides hub navigation actions
     await expect(page.locator('.fallback-suggestions')).toBeHidden()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Subdomain hub low-signal state
+// ---------------------------------------------------------------------------
+
+test.describe('Subdomain hub low-signal state', () => {
+  const cryptoEvent = (overrides: Parameters<typeof makeApprovedEvent>[0] = {}) =>
+    makeApprovedEvent({
+      domainId: 'dom-crypto',
+      domain: { id: 'dom-crypto', name: 'Crypto', slug: 'crypto', subdomain: 'crypto' },
+      ...overrides,
+    })
+
+  test('subdomain hub with one event shows low-signal notice', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeCryptoDomain()],
+      events: [cryptoEvent({ id: 'e-1', name: 'Crypto Summit', slug: 'crypto-summit' })],
+    })
+
+    await page.goto('/?subdomain=crypto&domain=crypto')
+
+    await expect(page.locator('.low-signal-notice')).toBeVisible()
+  })
+
+  test('subdomain hub low-signal notice shows "View full hub page" instead of "Clear filters"', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      domains: [makeCryptoDomain()],
+      events: [cryptoEvent({ id: 'e-1', name: 'Crypto Summit', slug: 'crypto-summit' })],
+    })
+
+    await page.goto('/?subdomain=crypto&domain=crypto')
+
+    // Should NOT show "Clear filters" since the domain filter was forced by subdomain context
+    await expect(page.locator('.low-signal-notice button', { hasText: 'Clear filters' })).toBeHidden()
+    // Should instead link to the full hub page
+    const hubLink = page.locator('.low-signal-notice .subdomain-hub-link')
+    await expect(hubLink).toBeVisible()
+    await expect(hubLink).toHaveAttribute('href', '/category/crypto')
+  })
+
+  test('subdomain hub with user-applied filter low-signal shows "Clear filters"', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      domains: [makeCryptoDomain()],
+      events: [cryptoEvent({ id: 'e-1', name: 'Crypto Online', slug: 'crypto-online', attendanceMode: 'ONLINE' })],
+    })
+
+    // User adds ?mode=online on top of forced domain filter
+    await page.goto('/?subdomain=crypto&domain=crypto&mode=online')
+
+    // When user has applied an extra filter, "Clear filters" is correct
+    await expect(page.locator('.low-signal-notice')).toBeVisible()
+    await expect(page.locator('.low-signal-notice button', { hasText: 'Clear filters' })).toBeVisible()
+    await expect(page.locator('.low-signal-notice .subdomain-hub-link')).toBeHidden()
   })
 })

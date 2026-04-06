@@ -318,6 +318,23 @@ const emptyStateDomainHub = computed(() => {
 })
 
 /**
+ * True when on a subdomain hub and the domain filter is the ONLY active
+ * filter (i.e. no user-applied date, mode, language, location, price, etc.).
+ *
+ * This is used to distinguish two scenarios:
+ * - the catalog is empty because the hub genuinely has no events yet, and
+ * - the catalog is sparse (1–3 events) due to the hub's natural supply level.
+ *
+ * In both cases the user did NOT choose these constraints; showing
+ * filter-recovery actions like "Clear filters" would be misleading.
+ */
+const isSubdomainDomainOnlyFilter = computed(() => {
+  if (!isSubdomainView.value || !activeDomain.value) return false
+  const nonSortChips = eventsStore.activeFilterChips.filter((c) => c.key !== 'sortBy')
+  return nonSortChips.length === 1 && nonSortChips[0]?.key === 'domain'
+})
+
+/**
  * True when on a subdomain hub where the only active filter is the domain
  * filter that was forced by the subdomain context — meaning no additional
  * user-applied filters are narrowing the results.
@@ -327,14 +344,11 @@ const emptyStateDomainHub = computed(() => {
  * empty state instead of generic filter-recovery controls.
  */
 const isSubdomainEmptyState = computed(() => {
-  if (!isSubdomainView.value || !activeDomain.value) return false
+  if (!isSubdomainDomainOnlyFilter.value) return false
   if (eventsStore.discoveryEvents.length > 0) return false
   if (eventsStore.discoveryLoading) return false
   if (eventsStore.discoveryError) return false
-  // The domain filter is forced by subdomain context; check if it is the
-  // only active chip (i.e. the user has applied no additional filters).
-  const nonSortChips = eventsStore.activeFilterChips.filter((c) => c.key !== 'sortBy')
-  return nonSortChips.length === 1 && nonSortChips[0]?.key === 'domain'
+  return true
 })
 
 /**
@@ -661,8 +675,16 @@ watch(
             <div v-if="lowSignalMessage" class="low-signal-notice" role="status" aria-live="polite">
               <span class="low-signal-icon" aria-hidden="true">🌱</span>
               <span class="low-signal-text">{{ lowSignalMessage }}</span>
+              <!-- Subdomain hub with only the forced domain filter: point to hub page, not "Clear filters" -->
+              <RouterLink
+                v-if="isSubdomainDomainOnlyFilter"
+                :to="`/category/${activeDomain!.slug}`"
+                class="btn btn-sm low-signal-action subdomain-hub-link"
+              >
+                {{ t('home.subdomainViewFullHub') }}
+              </RouterLink>
               <button
-                v-if="eventsStore.hasActiveFilters"
+                v-else-if="eventsStore.hasActiveFilters"
                 class="btn btn-sm low-signal-action"
                 @click="clearDiscoveryFilters"
               >
