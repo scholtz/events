@@ -832,9 +832,6 @@ public sealed class Mutation
             if (!group.IsActive)
                 throw CreateError($"Community group '{group.Name}' is not active and cannot be curated.", "GROUP_INACTIVE");
 
-            if (group.Visibility != CommunityVisibility.Public)
-                throw CreateError($"Community group '{group.Name}' is private and cannot be featured on a public hub.", "GROUP_PRIVATE");
-
             if (item.Annotation is { Length: > 300 })
                 throw CreateError("Annotation must not exceed 300 characters.", "ANNOTATION_TOO_LONG");
         }

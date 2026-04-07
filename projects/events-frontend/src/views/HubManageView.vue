@@ -229,9 +229,11 @@ async function loadAvailableCommunityGroups() {
         communityGroups { id name slug summary visibility isActive createdAtUtc createdByUserId }
       }`,
     )
-    // Only public active groups are eligible
+    // All active groups (public and private) are eligible to be curated into a hub.
+    // Private groups display a "Request Access" CTA on the public hub page so users
+    // understand they can apply to join even if they cannot browse the group directly.
     availableCommunityGroups.value = data.communityGroups.filter(
-      (g: CommunityGroup) => g.isActive && g.visibility === 'PUBLIC',
+      (g: CommunityGroup) => g.isActive,
     )
   } catch {
     availableCommunityGroups.value = []

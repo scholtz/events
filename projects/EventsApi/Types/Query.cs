@@ -212,8 +212,9 @@ public sealed class Query
 
     /// <summary>
     /// Returns the enabled curated community groups for a domain hub, ordered by DisplayOrder.
-    /// Only enabled entries for active, public community groups are returned.
-    /// Private groups are never exposed on public hub surfaces.
+    /// Only enabled entries for active community groups are returned.
+    /// Both public and private groups may appear — private groups are explicitly curated
+    /// by a hub administrator and show a "Request Access" call-to-action to users.
     /// Publicly accessible without authentication.
     /// </summary>
     public async Task<IReadOnlyList<DomainCuratedCommunity>> GetCuratedCommunitiesForDomainAsync(
@@ -226,7 +227,7 @@ public sealed class Query
             .AsNoTracking()
             .Where(dcc => dcc.Domain.Slug == normalizedSlug && dcc.Domain.IsActive)
             .Where(dcc => dcc.IsEnabled)
-            .Where(dcc => dcc.Group.IsActive && dcc.Group.Visibility == CommunityVisibility.Public)
+            .Where(dcc => dcc.Group.IsActive)
             .OrderBy(dcc => dcc.DisplayOrder)
             .Include(dcc => dcc.Group)
             .ToListAsync(cancellationToken);
