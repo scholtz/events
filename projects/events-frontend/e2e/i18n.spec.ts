@@ -420,6 +420,28 @@ test.describe('Localized submit event', () => {
     // Country code placeholder should also be localized
     await expect(page.locator('#event-country')).toHaveAttribute('placeholder', 'z.B. DE')
   })
+
+  test('submit event language select label is localized in German', async ({ page }) => {
+    const user = makeAdminUser()
+    setupMockApi(page, { users: [user], domains: [makeTechDomain()] })
+
+    await loginAs(page, user)
+    await page.locator('#language-select').selectOption('de')
+
+    await page.goto('/submit')
+    await expect(page.getByLabel('Veranstaltungssprache', { exact: false })).toBeVisible()
+  })
+
+  test('submit event language select label is localized in Slovak', async ({ page }) => {
+    const user = makeAdminUser()
+    setupMockApi(page, { users: [user], domains: [makeTechDomain()] })
+
+    await loginAs(page, user)
+    await page.locator('#language-select').selectOption('sk')
+
+    await page.goto('/submit')
+    await expect(page.getByLabel('Jazyk udalosti', { exact: false })).toBeVisible()
+  })
 })
 
 test.describe('Localized portfolio view', () => {
@@ -726,6 +748,35 @@ test.describe('Localized discovery empty states and recovery', () => {
 
     // Slovak recovery action for mode filter
     await expect(page.locator('.recovery-action', { hasText: 'Vyskúšať online udalosti' })).toBeVisible()
+  })
+
+  test('language filter empty-state recovery action is localized in German', async ({ page }) => {
+    setupMockApi(page, {
+      events: [makeApprovedEvent({ id: 'e-lang-de', language: 'en' })],
+    })
+    await page.addInitScript(() => { localStorage.setItem('app_locale', 'de') })
+
+    // Navigate directly to Czech language filter — no German events, empty state expected
+    await page.goto('/?lang=cs')
+
+    await expect(page.getByRole('heading', { name: 'Keine Veranstaltungen gefunden' })).toBeVisible()
+    await expect(
+      page.locator('.recovery-action', { hasText: 'Veranstaltungen in allen Sprachen anzeigen' }),
+    ).toBeVisible()
+  })
+
+  test('language filter empty-state recovery action is localized in Slovak', async ({ page }) => {
+    setupMockApi(page, {
+      events: [makeApprovedEvent({ id: 'e-lang-sk', language: 'en' })],
+    })
+    await page.addInitScript(() => { localStorage.setItem('app_locale', 'sk') })
+
+    await page.goto('/?lang=cs')
+
+    await expect(page.getByRole('heading', { name: 'Nenašli sa žiadne udalosti' })).toBeVisible()
+    await expect(
+      page.locator('.recovery-action', { hasText: 'Zobraziť udalosti vo všetkých jazykoch' }),
+    ).toBeVisible()
   })
 
   test('low-signal notice is localized in German', async ({ page }) => {

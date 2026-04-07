@@ -133,6 +133,10 @@ export function computeRecoverySuggestion(
     return { label: t('home.recoveryClearDomainTag'), actionKey: 'clearDomain' }
   }
 
+  if (chip.key === 'language') {
+    return { label: t('home.recoveryShowAllLanguages'), actionKey: 'clearLanguage' }
+  }
+
   return null
 }
 

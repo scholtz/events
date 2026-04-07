@@ -668,6 +668,15 @@ Events support multiple tags via the `EventTag` junction entity (many-to-many re
 
 Global admins can edit any event. The `canEdit` computed property in `EventDetailView.vue` checks `authStore.isAdmin || event.submittedByUserId === authStore.currentUser?.id`. The `AdminView.vue` events table includes an Edit button (RouterLink to `/edit/:id`) for each event.
 
+## Edit event route uses event ID (UUID), NOT slug
+
+The route `/edit/:id` expects the **event's UUID** (e.g. `event.id`), **not** the event slug. `EditEventView.vue` uses `route.params.id` directly as the event ID when fetching via `eventById(id: $id)`.
+
+- **CORRECT in E2E tests**: `await page.goto('/edit/' + event.id)` (e.g. `'ev-my-event'`)
+- **WRONG in E2E tests**: `await page.goto('/edit/' + event.slug)` (e.g. `'my-event-slug'`)
+
+When navigating to the edit form using a slug, `EventById` returns `null`, `loadError` is set, and the form never renders — causing `#event-language`, `#event-title`, etc. to be unfindable.
+
 ## Important: Do not implement community groups yet
 
 Community groups are listed in the ROADMAP as expansion work that is not yet implemented. Do not start implementing community groups, membership management, or related features until explicitly approved. The current product foundation focuses on event discovery, submission, moderation, domain curation, and organizer workflows. Community groups will be added later as a separate initiative.

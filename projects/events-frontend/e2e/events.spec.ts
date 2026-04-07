@@ -2093,3 +2093,146 @@ test.describe('Event detail — community groups section', () => {
     await expect(page.locator('.community-group-name', { hasText: 'Mobile Community' })).toBeVisible()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Event language field in submit/edit forms and language display on detail page
+// ---------------------------------------------------------------------------
+
+test.describe('Event language field — submit form', () => {
+  test('language select is visible in step 1 of submit form', async ({ page }) => {
+    const user = makeAdminUser()
+    setupMockApi(page, { users: [user], domains: [makeTechDomain()] })
+    await loginAs(page, user)
+    await page.goto('/submit')
+
+    await expect(page.locator('#event-language')).toBeVisible()
+    await expect(page.getByLabel('Event Language', { exact: false })).toBeVisible()
+  })
+
+  test('language select defaults to "Not specified"', async ({ page }) => {
+    const user = makeAdminUser()
+    setupMockApi(page, { users: [user], domains: [makeTechDomain()] })
+    await loginAs(page, user)
+    await page.goto('/submit')
+
+    await expect(page.locator('#event-language')).toHaveValue('')
+  })
+
+  test('language select includes common languages', async ({ page }) => {
+    const user = makeAdminUser()
+    setupMockApi(page, { users: [user], domains: [makeTechDomain()] })
+    await loginAs(page, user)
+    await page.goto('/submit')
+
+    const langSelect = page.locator('#event-language')
+    await expect(langSelect.locator('option[value="en"]')).toBeAttached()
+    await expect(langSelect.locator('option[value="sk"]')).toBeAttached()
+    await expect(langSelect.locator('option[value="de"]')).toBeAttached()
+  })
+
+  test('selecting a language sends it in the submission', async ({ page }) => {
+    const user = makeAdminUser()
+    setupMockApi(page, { users: [user], domains: [makeTechDomain()] })
+    await loginAs(page, user)
+    await page.goto('/submit')
+
+    await page.locator('#event-language').selectOption('sk')
+    await expect(page.locator('#event-language')).toHaveValue('sk')
+  })
+})
+
+test.describe('Event language field — edit form', () => {
+  test('language select is visible in step 1 of edit form', async ({ page }) => {
+    const user = makeAdminUser()
+    const event = makeApprovedEvent({
+      id: 'ev-edit-lang',
+      name: 'Edit Language Event',
+      slug: 'edit-language-event',
+      submittedByUserId: user.id,
+      language: 'de',
+    })
+    setupMockApi(page, { users: [user], domains: [makeTechDomain()], events: [event] })
+    await loginAs(page, user)
+    await page.goto(`/edit/${event.id}`)
+
+    await expect(page.locator('#event-language')).toBeVisible()
+  })
+
+  test('edit form pre-fills language from existing event data', async ({ page }) => {
+    const user = makeAdminUser()
+    const event = makeApprovedEvent({
+      id: 'ev-prefill-lang',
+      name: 'Pre-fill Language Event',
+      slug: 'prefill-language-event',
+      submittedByUserId: user.id,
+      language: 'de',
+    })
+    setupMockApi(page, { users: [user], domains: [makeTechDomain()], events: [event] })
+    await loginAs(page, user)
+    await page.goto(`/edit/${event.id}`)
+
+    await expect(page.locator('#event-language')).toHaveValue('de')
+  })
+
+  test('edit form pre-fills empty language for events without language set', async ({ page }) => {
+    const user = makeAdminUser()
+    const event = makeApprovedEvent({
+      id: 'ev-nolang-edit',
+      name: 'No Language Edit Event',
+      slug: 'no-language-edit-event',
+      submittedByUserId: user.id,
+      language: null,
+    })
+    setupMockApi(page, { users: [user], domains: [makeTechDomain()], events: [event] })
+    await loginAs(page, user)
+    await page.goto(`/edit/${event.id}`)
+
+    await expect(page.locator('#event-language')).toHaveValue('')
+  })
+})
+
+test.describe('Event language display on event detail page', () => {
+  test('event detail page shows language when event has a language set', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-lang-detail',
+      name: 'Slovak Event',
+      slug: 'slovak-event',
+      language: 'sk',
+    })
+    setupMockApi(page, { events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await expect(page.locator('.language-label')).toBeVisible()
+    await expect(page.locator('.language-label')).toContainText('Slovak')
+  })
+
+  test('event detail page does not show language label when event has no language', async ({
+    page,
+  }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-nolang-detail',
+      name: 'No Language Detail Event',
+      slug: 'no-language-detail-event',
+      language: null,
+    })
+    setupMockApi(page, { events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await expect(page.locator('.language-label')).toBeHidden()
+  })
+
+  test('event detail language label is visible on mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    const event = makeApprovedEvent({
+      id: 'ev-lang-mobile',
+      name: 'Mobile Language Event',
+      slug: 'mobile-language-event',
+      language: 'en',
+    })
+    setupMockApi(page, { events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await expect(page.locator('.language-label')).toBeVisible()
+    await expect(page.locator('.language-label')).toContainText('English')
+  })
+})

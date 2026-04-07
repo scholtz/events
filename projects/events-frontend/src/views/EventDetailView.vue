@@ -353,6 +353,13 @@ function formatTimezoneLabel(timezone: string | null): string | null {
   }
 }
 
+function formatEventLanguageLabel(language: string | null | undefined): string | null {
+  if (!language) return null
+  const key = `filters.lang${language.charAt(0).toUpperCase()}${language.slice(1).toLowerCase()}`
+  const translated = t(key)
+  return translated !== key ? translated : language.toUpperCase()
+}
+
 function domainCatalogUrl(event: {
   domain?: {
     slug?: string
@@ -470,6 +477,10 @@ function domainHostDisplay(event: {
               <p v-if="event.timezone" class="timezone-label text-secondary">
                 <span aria-hidden="true">🌐</span>
                 {{ formatTimezoneLabel(event.timezone) }}
+              </p>
+              <p v-if="event.language" class="language-label text-secondary">
+                <span aria-hidden="true">🗣</span>
+                {{ t('eventDetail.language') }}: {{ formatEventLanguageLabel(event.language) }}
               </p>
             </div>
 

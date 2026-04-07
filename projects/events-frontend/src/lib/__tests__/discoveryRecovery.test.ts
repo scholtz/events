@@ -472,6 +472,18 @@ describe('computeRecoverySuggestion', () => {
     )
     expect(result?.actionKey).toBe('clearDomain')
   })
+
+  it('returns actionKey clearLanguage for language chip', () => {
+    const chips: Chip[] = [{ key: 'language' }]
+    const result = computeRecoverySuggestion(
+      defaultFilters({ language: 'de' }),
+      chips,
+      true,
+      stubT,
+    )
+    expect(result?.actionKey).toBe('clearLanguage')
+    expect(result?.label).toContain('home.recoveryShowAllLanguages')
+  })
 })
 
 // ---------------------------------------------------------------------------
