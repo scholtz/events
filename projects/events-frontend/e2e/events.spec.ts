@@ -2153,7 +2153,7 @@ test.describe('Event language field — edit form', () => {
     })
     setupMockApi(page, { users: [user], domains: [makeTechDomain()], events: [event] })
     await loginAs(page, user)
-    await page.goto(`/edit/${event.slug}`)
+    await page.goto(`/edit/${event.id}`)
 
     await expect(page.locator('#event-language')).toBeVisible()
   })
@@ -2169,7 +2169,7 @@ test.describe('Event language field — edit form', () => {
     })
     setupMockApi(page, { users: [user], domains: [makeTechDomain()], events: [event] })
     await loginAs(page, user)
-    await page.goto(`/edit/${event.slug}`)
+    await page.goto(`/edit/${event.id}`)
 
     await expect(page.locator('#event-language')).toHaveValue('de')
   })
@@ -2185,7 +2185,7 @@ test.describe('Event language field — edit form', () => {
     })
     setupMockApi(page, { users: [user], domains: [makeTechDomain()], events: [event] })
     await loginAs(page, user)
-    await page.goto(`/edit/${event.slug}`)
+    await page.goto(`/edit/${event.id}`)
 
     await expect(page.locator('#event-language')).toHaveValue('')
   })
