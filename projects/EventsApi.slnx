@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="./EventsApi/EventsApi.csproj" />
+  <Project Path="./EventsApi.Tests/EventsApi.Tests.csproj" />
+  <Project Path="docker-compose.dcproj">
+    <Build />
+  </Project>
+</Solution>

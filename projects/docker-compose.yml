@@ -1,0 +1,28 @@
+﻿version: '3.8'
+
+services:
+  postgresmaster:
+    image: postgres:18
+    environment:
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: master
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+
+  masterapi:
+    build:
+      context: .
+      dockerfile: EventsApi/Dockerfile
+    ports:
+      - "44350:44350"
+    depends_on:
+      - postgresmaster
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=https://+:44350
+      - ConnectionStrings__EventsCatalog=Host=postgresmaster;Port=5432;Database=eventsapi;Username=postgres;Password=password
+  
+volumes:
+  postgres_data:
