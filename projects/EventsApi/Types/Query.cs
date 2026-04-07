@@ -667,9 +667,12 @@ public sealed class Query
     /// 2. Within each bucket: ascending by start date (nearest upcoming first).
     /// 3. Schedule/venue completeness tiebreaker — events with more filled-in fields
     ///    (city, venue name, event URL) rank higher than sparse listings.
-    /// 4. Engagement signal — events saved by more attendees surface above zero-save
+    /// 4. Publication freshness tiebreaker — within the same completeness tier, recently
+    ///    published events (newest PublishedAtUtc) surface above older listings, rewarding
+    ///    organizers who keep content current and signalling timeliness to users.
+    /// 5. Engagement signal — events saved by more attendees surface above zero-save
     ///    events with identical completeness, rewarding well-prepared submissions.
-    /// 5. Alphabetical name as a final deterministic tiebreaker.
+    /// 6. Alphabetical name as a final deterministic tiebreaker.
     /// </summary>
     private static IOrderedQueryable<CatalogEvent> BuildUpcomingSort(
         IQueryable<CatalogEvent> query,
@@ -686,10 +689,15 @@ public sealed class Query
             .ThenByDescending(catalogEvent =>
                 (string.IsNullOrEmpty(catalogEvent.City) ? 0 : 1) +
                 (string.IsNullOrEmpty(catalogEvent.VenueName) ? 0 : 1) +
-                (string.IsNullOrEmpty(catalogEvent.EventUrl) ? 0 : 1));
+                (string.IsNullOrEmpty(catalogEvent.EventUrl) ? 0 : 1))
+            // Publication freshness: within the same completeness tier, more recently published
+            // events appear first. This rewards organizers who publish quality listings early and
+            // surfaces timely content to users browsing domain hubs. PublishedAtUtc is always set
+            // for published events; null values (unpublished) sort last.
+            .ThenByDescending(catalogEvent => catalogEvent.PublishedAtUtc);
 
         // Engagement signal: events saved by more attendees surface above zero-save events
-        // with identical completeness. Privacy-safe: only aggregate counts are used.
+        // with identical completeness and freshness. Privacy-safe: only aggregate counts are used.
         //
         // Implementation note: EF Core translates the Count() subquery below into a single
         // SQL statement with a correlated COUNT subquery in the ORDER BY clause — not N+1

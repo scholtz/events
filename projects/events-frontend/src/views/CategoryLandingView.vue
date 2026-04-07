@@ -287,6 +287,46 @@ const rankContextLabel = computed(() =>
   events.value.length > 0 ? t('home.rankContextUpcoming') : null,
 )
 
+/**
+ * Number of days ahead within which an event is labelled "Upcoming soon".
+ * Kept narrow (7 days) so the cue genuinely signals immediacy.
+ */
+const UPCOMING_SOON_DAYS = 7
+
+/**
+ * Number of days after publication within which an event is labelled "Recently added".
+ * A 14-day window aligns with the organizer analytics "newly published" threshold.
+ */
+const RECENTLY_ADDED_DAYS = 14
+
+/**
+ * Returns a per-event ranking-cue key that explains why this event appears where it does
+ * within the hub's non-featured event grid:
+ *
+ * - `'upcomingSoon'`   — starts within the next UPCOMING_SOON_DAYS days
+ * - `'recentlyAdded'`  — published within the last RECENTLY_ADDED_DAYS days (and not upcomingSoon)
+ * - `null`             — no cue (event is beyond both thresholds)
+ *
+ * At most one label is shown per event to keep the UI calm and uncluttered.
+ */
+function rankCueForEvent(event: CatalogEvent): 'upcomingSoon' | 'recentlyAdded' | null {
+  const now = new Date()
+  const starts = new Date(event.startsAtUtc)
+  const msDiff = starts.getTime() - now.getTime()
+  const daysUntilStart = msDiff / (1000 * 60 * 60 * 24)
+
+  if (daysUntilStart >= 0 && daysUntilStart <= UPCOMING_SOON_DAYS) return 'upcomingSoon'
+
+  if (event.publishedAtUtc) {
+    const published = new Date(event.publishedAtUtc)
+    const msSincePublish = now.getTime() - published.getTime()
+    const daysSincePublish = msSincePublish / (1000 * 60 * 60 * 24)
+    if (daysSincePublish >= 0 && daysSincePublish <= RECENTLY_ADDED_DAYS) return 'recentlyAdded'
+  }
+
+  return null
+}
+
 /** True when the authenticated user is a global admin or administers this specific domain hub. */
 const isHubAdmin = computed(
   () =>
@@ -581,7 +621,19 @@ onMounted(async () => {
         </div>
 
         <div v-if="events.length" class="events-grid">
-          <EventCard v-for="event in nonFeaturedEvents" :key="event.id" :event="event" />
+          <div v-for="event in nonFeaturedEvents" :key="event.id" class="event-card-wrap">
+            <span
+              v-if="rankCueForEvent(event) === 'upcomingSoon'"
+              class="rank-cue-badge rank-cue-badge--upcoming"
+              aria-label="Ranking cue"
+            >⚡ {{ t('category.rankCueUpcomingSoon') }}</span>
+            <span
+              v-else-if="rankCueForEvent(event) === 'recentlyAdded'"
+              class="rank-cue-badge rank-cue-badge--recent"
+              aria-label="Ranking cue"
+            >✨ {{ t('category.rankCueRecentlyAdded') }}</span>
+            <EventCard :event="event" />
+          </div>
           <!-- If all events are featured, show a note instead of an empty grid -->
           <p
             v-if="!nonFeaturedEvents.length && featuredEvents.length"
@@ -1067,6 +1119,41 @@ onMounted(async () => {
   border-radius: var(--radius-sm);
   padding: 0.2rem 0.5rem;
   margin-bottom: 0.5rem;
+}
+
+/* ── Per-event ranking cue badges ────────────────────────── */
+/* Wrap each non-featured event card so we can prepend a ranking cue badge */
+.event-card-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Base styles shared by all ranking cue badge variants */
+.rank-cue-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: var(--radius-sm);
+  padding: 0.2rem 0.5rem;
+  margin-bottom: 0.375rem;
+}
+
+/* "Upcoming soon" — warm accent (amber/orange) to convey immediacy */
+.rank-cue-badge--upcoming {
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+/* "Recently added" — cool accent (blue/teal) to convey freshness */
+.rank-cue-badge--recent {
+  color: var(--color-primary, #137fec);
+  background: rgba(19, 127, 236, 0.1);
+  border: 1px solid rgba(19, 127, 236, 0.25);
 }
 
 .all-featured-note {

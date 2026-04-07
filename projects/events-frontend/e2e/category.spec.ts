@@ -2191,3 +2191,255 @@ test.describe('Category hub: featured events precede ranked non-featured events'
     await expect(page.locator('.all-in-past-action')).toBeVisible()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Per-event ranking cue badges — explains why individual events surface where they do
+// ---------------------------------------------------------------------------
+
+test.describe('Category hub: per-event ranking cue badges', () => {
+  test('shows "Upcoming soon" badge on event starting within 7 days', async ({ page }) => {
+    const domain = makeTechDomain()
+    const inSixDays = new Date(Date.now() + 6 * 24 * 60 * 60 * 1000).toISOString()
+
+    setupMockApi(page, {
+      domains: [domain],
+      events: [
+        makeApprovedEvent({
+          id: 'near-event',
+          name: 'Near Future Talk',
+          slug: 'near-future-talk',
+          startsAtUtc: inSixDays,
+          endsAtUtc: inSixDays,
+          publishedAtUtc: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+        }),
+      ],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.rank-cue-badge--upcoming')).toBeVisible()
+    await expect(page.locator('.rank-cue-badge--upcoming')).toContainText('Upcoming soon')
+  })
+
+  test('shows "Recently added" badge on event published within 14 days', async ({ page }) => {
+    const domain = makeTechDomain()
+    const inSixMonths = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString()
+    const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString()
+
+    setupMockApi(page, {
+      domains: [domain],
+      events: [
+        makeApprovedEvent({
+          id: 'fresh-event',
+          name: 'Fresh Conference',
+          slug: 'fresh-conference',
+          startsAtUtc: inSixMonths,
+          endsAtUtc: inSixMonths,
+          publishedAtUtc: fiveDaysAgo,
+        }),
+      ],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.rank-cue-badge--recent')).toBeVisible()
+    await expect(page.locator('.rank-cue-badge--recent')).toContainText('Recently added')
+  })
+
+  test('shows "Upcoming soon" (not "Recently added") when event qualifies for both', async ({
+    page,
+  }) => {
+    const domain = makeTechDomain()
+    const inFiveDays = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString()
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
+
+    setupMockApi(page, {
+      domains: [domain],
+      events: [
+        makeApprovedEvent({
+          id: 'dual-qualify',
+          name: 'Dual Qualify Event',
+          slug: 'dual-qualify-event',
+          startsAtUtc: inFiveDays,
+          endsAtUtc: inFiveDays,
+          publishedAtUtc: threeDaysAgo,
+        }),
+      ],
+    })
+
+    await page.goto('/category/technology')
+
+    // Only "Upcoming soon" should appear — "Recently added" is suppressed when upcomingSoon applies
+    await expect(page.locator('.rank-cue-badge--upcoming')).toBeVisible()
+    await expect(page.locator('.rank-cue-badge--recent')).toBeHidden()
+  })
+
+  test('no ranking cue badge for past event with old publication date', async ({ page }) => {
+    const domain = makeTechDomain()
+    const twoMonthsAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString()
+
+    setupMockApi(page, {
+      domains: [domain],
+      events: [
+        makeApprovedEvent({
+          id: 'old-event',
+          name: 'Old Summit',
+          slug: 'old-summit',
+          startsAtUtc: twoMonthsAgo,
+          endsAtUtc: twoMonthsAgo,
+          publishedAtUtc: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
+        }),
+      ],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.rank-cue-badge--upcoming')).toBeHidden()
+    await expect(page.locator('.rank-cue-badge--recent')).toBeHidden()
+  })
+
+  test('no ranking cue badge for far-future event with old publication date', async ({ page }) => {
+    const domain = makeTechDomain()
+    const inOneYear = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
+
+    setupMockApi(page, {
+      domains: [domain],
+      events: [
+        makeApprovedEvent({
+          id: 'far-future',
+          name: 'Far Future Event',
+          slug: 'far-future-event',
+          startsAtUtc: inOneYear,
+          endsAtUtc: inOneYear,
+          publishedAtUtc: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
+        }),
+      ],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.rank-cue-badge--upcoming')).toBeHidden()
+    await expect(page.locator('.rank-cue-badge--recent')).toBeHidden()
+  })
+
+  test('mobile viewport: ranking cue badge is visible', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    const domain = makeTechDomain()
+    const inThreeDays = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
+
+    setupMockApi(page, {
+      domains: [domain],
+      events: [
+        makeApprovedEvent({
+          id: 'mobile-near',
+          name: 'Mobile Near Event',
+          slug: 'mobile-near-event',
+          startsAtUtc: inThreeDays,
+          endsAtUtc: inThreeDays,
+        }),
+      ],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.rank-cue-badge--upcoming')).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Mobile Near Event' })).toBeVisible()
+  })
+
+  test('i18n: ranking cue badges are localized in Slovak', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('app_locale', 'sk'))
+    const domain = makeTechDomain()
+    const inFourDays = new Date(Date.now() + 4 * 24 * 60 * 60 * 1000).toISOString()
+
+    setupMockApi(page, {
+      domains: [domain],
+      events: [
+        makeApprovedEvent({
+          id: 'sk-near',
+          name: 'Slovak Near Event',
+          slug: 'slovak-near-event',
+          startsAtUtc: inFourDays,
+          endsAtUtc: inFourDays,
+        }),
+      ],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.rank-cue-badge--upcoming')).toBeVisible()
+    await expect(page.locator('.rank-cue-badge--upcoming')).toContainText('Čoskoro')
+  })
+
+  test('i18n: "Recently added" cue is localized in German', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('app_locale', 'de'))
+    const domain = makeTechDomain()
+    const inSixMonths = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString()
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
+
+    setupMockApi(page, {
+      domains: [domain],
+      events: [
+        makeApprovedEvent({
+          id: 'de-fresh',
+          name: 'German Fresh Event',
+          slug: 'german-fresh-event',
+          startsAtUtc: inSixMonths,
+          endsAtUtc: inSixMonths,
+          publishedAtUtc: threeDaysAgo,
+        }),
+      ],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.rank-cue-badge--recent')).toBeVisible()
+    await expect(page.locator('.rank-cue-badge--recent')).toContainText('Neu hinzugefügt')
+  })
+
+  test('multiple events: each shows appropriate cue independently', async ({ page }) => {
+    const domain = makeTechDomain()
+    const inThreeDays = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
+    const inSixMonths = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString()
+    const oldPublication = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString()
+    const recentPublication = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+
+    setupMockApi(page, {
+      domains: [domain],
+      events: [
+        makeApprovedEvent({
+          id: 'near-1',
+          name: 'Upcoming Event',
+          slug: 'upcoming-event',
+          startsAtUtc: inThreeDays,
+          endsAtUtc: inThreeDays,
+          publishedAtUtc: oldPublication,
+        }),
+        makeApprovedEvent({
+          id: 'fresh-1',
+          name: 'Fresh Event',
+          slug: 'fresh-event',
+          startsAtUtc: inSixMonths,
+          endsAtUtc: inSixMonths,
+          publishedAtUtc: recentPublication,
+        }),
+        makeApprovedEvent({
+          id: 'plain-1',
+          name: 'Plain Event',
+          slug: 'plain-event',
+          startsAtUtc: inSixMonths,
+          endsAtUtc: inSixMonths,
+          publishedAtUtc: oldPublication,
+        }),
+      ],
+    })
+
+    await page.goto('/category/technology')
+
+    // One "Upcoming soon" badge and one "Recently added" badge
+    await expect(page.locator('.rank-cue-badge--upcoming')).toHaveCount(1)
+    await expect(page.locator('.rank-cue-badge--recent')).toHaveCount(1)
+    // The plain event has no badge
+    const eventCardWraps = page.locator('.event-card-wrap')
+    await expect(eventCardWraps).toHaveCount(3)
+  })
+})

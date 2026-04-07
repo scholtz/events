@@ -781,6 +781,9 @@ export default {
     relatedHubsTitle: 'Možno vás zaujmú aj tieto',
     relatedHubsDesc: 'Objavte nadchádzajúce podujatia v súvisiacich komunitných huboch.',
     relatedHubCta: 'Preskúmať {name} →',
+    // Per-event ranking cue badges
+    rankCueUpcomingSoon: 'Čoskoro',
+    rankCueRecentlyAdded: 'Nedávno pridané',
   },
 
   // ── Hub manage page ────────────────────────────────────────────────────────

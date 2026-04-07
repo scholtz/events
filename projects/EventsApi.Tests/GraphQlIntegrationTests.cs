@@ -614,6 +614,59 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task EventsQuery_UpcomingSort_PublicationFreshnessTiebreakerRanksRecentlyPublishedFirst()
+    {
+        // When two upcoming events have the same start date and equal completeness,
+        // the event published more recently should rank first. This rewards organizers
+        // who publish timely listings and surfaces fresh content on domain hub pages.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var sameStartTime = DateTime.UtcNow.AddDays(14);
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("freshness@example.com", "Freshness Tester");
+            var tech = CreateDomain("Tech", "tech");
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(tech);
+
+            // Both events have equal completeness (city, venueName, eventUrl all set)
+            // but differ in when they were published.
+            var freshEvent = CreateEvent(
+                "Fresh Talk",
+                "fresh-talk",
+                "An event published very recently.",
+                "Venue A",
+                "Prague",
+                sameStartTime,
+                tech,
+                user);
+            // Published just 2 days ago — should rank first
+            freshEvent.PublishedAtUtc = DateTime.UtcNow.AddDays(-2);
+
+            var staleEvent = CreateEvent(
+                "Stale Talk",
+                "stale-talk",
+                "An event published a long time ago.",
+                "Venue B",
+                "Prague",
+                sameStartTime,
+                tech,
+                user);
+            // Published 60 days ago — should rank after the fresh event
+            staleEvent.PublishedAtUtc = DateTime.UtcNow.AddDays(-60);
+
+            dbContext.Events.AddRange(freshEvent, staleEvent);
+        });
+
+        using var client = factory.CreateClient();
+
+        var names = await QueryEventNamesAsync(client, new { sortBy = "UPCOMING" });
+
+        // More recently published event must appear before the older one when all else is equal
+        Assert.Equal(["Fresh Talk", "Stale Talk"], names);
+    }
+
+    [Fact]
     public async Task EventsQuery_UpcomingSort_DomainScopedHubPreservesQualityRanking()
     {
         // Verifies that when filtering to a specific domain (hub view), the upcoming-first

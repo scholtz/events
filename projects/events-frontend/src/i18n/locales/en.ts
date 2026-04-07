@@ -807,6 +807,9 @@ export default {
     relatedHubsTitle: 'You might also explore',
     relatedHubsDesc: 'Discover upcoming events in related community hubs.',
     relatedHubCta: 'Explore {name} →',
+    // Per-event ranking cue badges: subtle labels explaining why an event surfaces where it does
+    rankCueUpcomingSoon: 'Upcoming soon',
+    rankCueRecentlyAdded: 'Recently added',
   },
 
   // ── Hub manage page ────────────────────────────────────────────────────────
