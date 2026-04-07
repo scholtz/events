@@ -26,10 +26,30 @@ const loading = ref(false)
 const error = ref('')
 
 // Per-group join/request state tracking
+// Initialized from persisted memberships on load, then updated reactively after actions.
 type GroupMemberStatus = 'none' | 'active' | 'pending'
 const groupMemberStatus = ref<Record<string, GroupMemberStatus>>({})
 const groupActionLoading = ref<Record<string, boolean>>({})
 const groupActionError = ref<Record<string, string | null>>({})
+
+/** Load persisted membership state for the visible curated groups. */
+async function loadMembershipStates(groupIds: string[]) {
+  if (!authStore.isAuthenticated || groupIds.length === 0) return
+  try {
+    const memberships = await communitiesStore.fetchMyMemberships()
+    const next: Record<string, GroupMemberStatus> = {}
+    for (const m of memberships) {
+      if (groupIds.includes(m.groupId)) {
+        if (m.status === 'ACTIVE') next[m.groupId] = 'active'
+        else if (m.status === 'PENDING') next[m.groupId] = 'pending'
+      }
+    }
+    // Merge: preserve any states that were already set in-session (e.g. user just joined)
+    groupMemberStatus.value = { ...next, ...groupMemberStatus.value }
+  } catch {
+    // Non-critical — fall back to 'none' (action buttons still work)
+  }
+}
 
 async function handleJoinGroup(groupId: string) {
   groupActionLoading.value[groupId] = true
@@ -122,6 +142,10 @@ async function fetchCategoryData() {
     events.value = eventsData.events
     featuredEvents.value = featuredData.featuredEventsForDomain
     curatedCommunities.value = communitiesData.curatedCommunitiesForDomain
+
+    // Initialize membership state from persisted data for authenticated users
+    const groupIds = communitiesData.curatedCommunitiesForDomain.map((c) => c.groupId)
+    await loadMembershipStates(groupIds)
   } catch (err) {
     error.value = err instanceof Error ? err.message : t('category.errorLoad')
     events.value = []
@@ -456,7 +480,11 @@ onMounted(async () => {
                 </p>
               </div>
               <div class="curated-community-actions">
+                <!-- "Explore community" is only meaningful for:
+                     - public groups (always accessible)
+                     - private groups where the current user is an active member -->
                 <RouterLink
+                  v-if="entry.group.visibility === 'PUBLIC' || groupMemberStatus[entry.groupId] === 'active'"
                   :to="`/community/${entry.group.slug}`"
                   class="curated-community-cta"
                 >{{ t('category.exploreGroup') }}</RouterLink>

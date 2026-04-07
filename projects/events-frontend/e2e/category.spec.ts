@@ -6,6 +6,8 @@ import {
   makePublicGroup,
   makePrivateGroup,
   makeContributorUser,
+  makeActiveMembership,
+  makePendingMembership,
   loginAs,
 } from './helpers/mock-api'
 import type { MockDomain, MockDomainCuratedCommunity, MockScheduledFeaturedEvent } from './helpers/mock-api'
@@ -1308,6 +1310,141 @@ test.describe('Hub rank context badge', () => {
     // Click on the community name link
     await page.getByRole('link', { name: 'Navigate Group' }).click()
     await expect(page).toHaveURL(/\/community\/navigate-group/)
+  })
+
+  // ── Membership state persistence (regression tests for blocking issues) ────
+
+  test('existing active member sees Joined badge on page load (not Join button)', async ({ page }) => {
+    const user = makeContributorUser()
+    const domain = makeTechDomain()
+    const group = makePublicGroup({ name: 'Already Joined Group', slug: 'already-joined' })
+    const entry: MockDomainCuratedCommunity = {
+      id: 'cc-existing',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: true,
+      annotation: null,
+      createdAtUtc: new Date().toISOString(),
+    }
+    const membership = makeActiveMembership(group.id, user.id)
+    setupMockApi(page, {
+      users: [user],
+      domains: [domain],
+      events: [],
+      communityGroups: [group],
+      domainCuratedCommunities: [entry],
+      communityMemberships: [membership],
+    })
+
+    await loginAs(page, user)
+    await page.goto('/category/technology')
+
+    // Should show Joined badge, not Join button
+    await expect(page.locator('.community-joined-badge')).toBeVisible()
+    await expect(page.locator('.curated-community-join-btn')).toBeHidden()
+  })
+
+  test('existing pending member sees Pending Approval on page load (not Request Access)', async ({ page }) => {
+    const user = makeContributorUser()
+    const domain = makeTechDomain()
+    const group = makePrivateGroup({ name: 'Pending Group', slug: 'pending-group' })
+    const entry: MockDomainCuratedCommunity = {
+      id: 'cc-pending',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: true,
+      annotation: null,
+      createdAtUtc: new Date().toISOString(),
+    }
+    const membership = makePendingMembership(group.id, user.id)
+    setupMockApi(page, {
+      users: [user],
+      domains: [domain],
+      events: [],
+      communityGroups: [group],
+      domainCuratedCommunities: [entry],
+      communityMemberships: [membership],
+    })
+
+    await loginAs(page, user)
+    await page.goto('/category/technology')
+
+    // Should show pending badge, not Request Access button
+    await expect(page.locator('.community-pending-badge')).toBeVisible()
+    await expect(page.locator('.curated-community-request-btn')).toBeHidden()
+  })
+
+  test('explore community link is shown for public groups', async ({ page }) => {
+    const domain = makeTechDomain()
+    const group = makePublicGroup({ name: 'Open Circle', slug: 'open-circle' })
+    const entry: MockDomainCuratedCommunity = {
+      id: 'cc-pub-explore',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: true,
+      annotation: null,
+      createdAtUtc: new Date().toISOString(),
+    }
+    setupMockApi(page, { domains: [domain], events: [], communityGroups: [group], domainCuratedCommunities: [entry] })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.curated-community-cta')).toBeVisible()
+    await expect(page.locator('.curated-community-cta')).toHaveAttribute('href', '/community/open-circle')
+  })
+
+  test('explore community link is hidden for private groups when user is not a member', async ({ page }) => {
+    const domain = makeTechDomain()
+    const group = makePrivateGroup({ name: 'Hidden Guild', slug: 'hidden-guild' })
+    const entry: MockDomainCuratedCommunity = {
+      id: 'cc-priv-no-explore',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: true,
+      annotation: null,
+      createdAtUtc: new Date().toISOString(),
+    }
+    setupMockApi(page, { domains: [domain], events: [], communityGroups: [group], domainCuratedCommunities: [entry] })
+
+    await page.goto('/category/technology')
+
+    // Explore link must be absent for non-members of a private group
+    await expect(page.locator('.curated-community-cta')).toBeHidden()
+  })
+
+  test('explore community link shown for private group when user is an active member', async ({ page }) => {
+    const user = makeContributorUser()
+    const domain = makeTechDomain()
+    const group = makePrivateGroup({ name: 'Members Only', slug: 'members-only' })
+    const entry: MockDomainCuratedCommunity = {
+      id: 'cc-priv-member-explore',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: true,
+      annotation: null,
+      createdAtUtc: new Date().toISOString(),
+    }
+    const membership = makeActiveMembership(group.id, user.id)
+    setupMockApi(page, {
+      users: [user],
+      domains: [domain],
+      events: [],
+      communityGroups: [group],
+      domainCuratedCommunities: [entry],
+      communityMemberships: [membership],
+    })
+
+    await loginAs(page, user)
+    await page.goto('/category/technology')
+
+    // Active member should see the explore link
+    await expect(page.locator('.curated-community-cta')).toBeVisible()
+    await expect(page.locator('.curated-community-cta')).toHaveAttribute('href', '/community/members-only')
   })
 })
 
