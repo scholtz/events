@@ -457,7 +457,8 @@ export default {
     performanceDescription:
       'Uloženia ukazujú, koľko účastníkov si uložilo vaše zverejnené udalosti. Pridania do kalendára ukazujú, koľko účastníkov si pridalo udalosť. Trendy odrážajú aktivitu za posledných 7 a 30 dní.',
     noEventsTitle: 'Zatiaľ žiadne udalosti',
-    noEventsDescription: 'Odošlite svoju prvú udalosť a začnite sledovať výkonnosť.',
+    noEventsDescription:
+      'Odošlite svoju prvú udalosť a začnite sledovať záujem účastníkov. Kvalitný záznam obsahuje jasný názov, podrobný popis, presný dátum a miesto a správnu komunitnú kategóriu.',
     submitFirstEvent: 'Odoslať prvú udalosť',
     tableEvent: 'Udalosť',
     tableStatus: 'Stav',
@@ -479,9 +480,9 @@ export default {
     noRecentAdds: 'Žiadne nedávne pridania',
     guidanceNoCalendarAdds:
       'Účastníci si ukladajú vaše udalosti, ale žiaden si ich zatiaľ nepridalo do kalendára. Uistite sa, že dátum, čas a miesto sú prominentné a ľahko nájditeľné.',
-    guidanceNoSavesTitle: 'Zatiaľ žiadne uloženia.',
+    guidanceNoSavesTitle: 'Zatiaľ žiadne uloženia — skontrolujte tieto kroky.',
     guidanceNoSaves:
-      'Zdieľajte odkaz na udalosť, vylepšite názov alebo popis, alebo sa uistite, že dátum a miesto sú jasne uvedené.',
+      'Zdieľajte odkaz v relevantných komunitných kanáloch, overte, že názov a popis jasne vysvetľujú, čo účastníci môžu očakávať, skontrolujte, či je udalosť priradená ku kategórii, a uistite sa, že dátum, čas a miesto sú kompletné.',
     firstEventWelcomeTitle: 'Vaša prvá udalosť bola odoslaná!',
     firstEventWelcome:
       'Keď bude zverejnená a účastníci ju začnú ukladať alebo pridávať do kalendára, zobrazia sa tu údaje o zapojení.',
@@ -515,13 +516,15 @@ export default {
     refreshNow: 'Obnoviť',
     analyticsStateEarlyTitle: 'Dáta sa ešte formujú.',
     analyticsStateEarly:
-      'Vaše udalosti boli nedávno zverejnené. Uloženia a pridania do kalendára sa zvyčajne objavia po niekoľkých dňoch — toto je pri nových udalostiach bežné. Skontrolujte to znova po zdieľaní v komunitných kanáloch.',
+      'Vaše udalosti boli nedávno zverejnené — uloženia a pridania do kalendára sa zvyčajne objavia po niekoľkých dňoch. Medzitým: zdieľajte odkaz v komunitných kanáloch, overte, že popis a miesto sú kompletné, a potvrďte, že udalosť je priradená ku vhodnej kategórii.',
     analyticsStateLowSignalTitle: 'Zatiaľ nízke zapojenie.',
     analyticsStateLowSignal:
-      'Vaše zverejnené udalosti majú zatiaľ obmedzený počet uložení. To je bežné pri niche témach alebo udalostiach s obmedzenou distribúciou. Skúste zdieľať odkaz na udalosť, skontrolujte, či sú názov a popis jasné, a overte, či je udalosť priradená ku vhodnej kategórii.',
+      'Obmedzený počet uložení môže byť normálny pre niche témy alebo špecializované skupiny. Pre zlepšenie objaviteľnosti: potvrďte, že udalosť je priradená ku vhodnej kategórii, skontrolujte, či názov a popis jasne vysvetľujú, čo účastníci môžu očakávať, a zdieľajte odkaz v komunite alebo hube zodpovedajúcom tejto téme.',
     analyticsStateNormalTitle: 'Dobré signály zapojenia.',
     analyticsStateNormal:
-      'Vaše udalosti začínajú získavať popularitu. Naďalej zdieľajte v komunitných kanáloch a uistite sa, že detaily udalosti — názov, popis, miesto a dátum — sú úplné a ľahko čitateľné.',
+      'Vaše udalosti získavajú popularitu. Naďalej zdieľajte v komunitných kanáloch, udržiavajte všetky detaily aktuálne a rýchlo reagujte na spätnú väzbu moderátora.',
+    tableMetricLegend:
+      'Uloženia: celkové záložky účastníkov · Dynamika: uloženia za posledných 7 alebo 30 dní · Kalendár: celkový počet pridaní do kalendára · Trend kal.: pridania za posledných 7 alebo 30 dní',
     hubManagementTitle: 'Správa hubu',
     hubManagementDescription:
       'Ste správcom nasledujúcich komunitných hubov. Aktualizujte branding a obsah, aby ste ovplyvnili, ako sa každý hub zobrazuje návštevníkom.',

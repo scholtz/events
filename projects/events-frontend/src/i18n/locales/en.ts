@@ -473,7 +473,8 @@ export default {
     performanceDescription:
       'Saves show how many attendees bookmarked your published events. Calendar adds show how many attendees added an event to their personal calendar. Trends reflect activity in the last 7 and 30 days.',
     noEventsTitle: 'No events yet',
-    noEventsDescription: 'Submit your first event to start tracking performance.',
+    noEventsDescription:
+      'Submit your first event to start tracking attendee interest. A strong listing includes a clear title, a detailed description, accurate date and venue details, and the right community category.',
     submitFirstEvent: 'Submit your first event',
     tableEvent: 'Event',
     tableStatus: 'Status',
@@ -495,9 +496,9 @@ export default {
     noRecentAdds: 'No recent adds',
     guidanceNoCalendarAdds:
       'Attendees are saving your events but none have added them to their calendar yet. Make sure the date, time, and location are prominent and easy to find.',
-    guidanceNoSavesTitle: 'No saves yet.',
+    guidanceNoSavesTitle: 'No saves yet — here is what to check.',
     guidanceNoSaves:
-      'Share the event link, improve the title or description, or make sure the date and venue are clear to attract interest.',
+      'Share the event link in relevant community channels, verify the title and description clearly explain what attendees can expect, confirm the event is assigned to a category, and make sure the date, time, and venue details are complete.',
     firstEventWelcomeTitle: 'Your first event is submitted!',
     firstEventWelcome:
       'Once it is published and attendees start saving or adding it to their calendar, engagement data will appear here.',
@@ -531,13 +532,15 @@ export default {
     refreshNow: 'Refresh',
     analyticsStateEarlyTitle: 'Data is still forming.',
     analyticsStateEarly:
-      'Your events are newly published. Saves and calendar adds typically take a few days to appear — this is normal for recently live events. Check back after sharing in your community channels.',
+      'Your events are newly published — saves and calendar adds typically take a few days to appear. While you wait: share the event link in your community channels, verify your event description and venue details are complete, and confirm the event is assigned to a relevant category.',
     analyticsStateLowSignalTitle: 'Low engagement so far.',
     analyticsStateLowSignal:
-      'Your published events have had limited saves so far. This is common for niche topics or events with limited distribution. Try sharing the event link, checking that your title and description are clear, and verifying that the event is assigned to a relevant category.',
+      'Limited saves can be normal for niche topics or specialized audiences. To improve discoverability: confirm the event is assigned to a relevant category, check that the title and description clearly explain what attendees can expect, and share the link in the community or hub that matches this topic.',
     analyticsStateNormalTitle: 'Good engagement signal.',
     analyticsStateNormal:
-      'Your events are gaining traction. Keep sharing in community channels and make sure your event details — title, description, location, and date — are complete and easy to read.',
+      'Your events are gaining traction. Keep sharing in community channels, ensure all event details stay accurate as the date approaches, and respond to any moderator feedback promptly.',
+    tableMetricLegend:
+      'Saves: total attendee bookmarks · Momentum: saves in the last 7 or 30 days · Calendar: total add-to-calendar actions · Cal Trend: calendar adds in the last 7 or 30 days',
     hubManagementTitle: 'Hub Management',
     hubManagementDescription:
       'You are an administrator of the following community hubs. Update branding and content to shape how each hub appears to visitors.',

@@ -3302,6 +3302,127 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal(1, dashboard.GetProperty("totalCalendarActionsLast30Days").GetInt32());
     }
 
+    [Fact]
+    public async Task MyDashboard_EventAnalytics_ReturnsGuidanceMetadata_LanguageTimezoneAndDomainSlug()
+    {
+        // Verifies that per-event analytics items expose the metadata fields needed by the
+        // frontend recommendation engine: language, timezone, and domainSlug.
+        // When these are missing the frontend prompts the organizer to add them.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var organizerUserId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer = CreateUser("guidance-meta@example.com", "Guidance Meta User");
+            organizerUserId = organizer.Id;
+
+            var domain = CreateDomain("Tech", "tech-guidance-meta");
+            dbContext.Users.Add(organizer);
+            dbContext.Domains.Add(domain);
+
+            var ev = CreateEvent("Guidance Meta Event", "guidance-meta-event", "Full metadata.",
+                "Conference Hall", "Berlin", FirstDayOfNextMonthUtc(), domain, organizer,
+                status: EventStatus.Published);
+            ev.Language = "de";
+            ev.Timezone = "Europe/Berlin";
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, organizerUserId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyDashboard {
+              myDashboard {
+                eventAnalytics {
+                  eventName
+                  status
+                  language
+                  timezone
+                  domainSlug
+                  publishedAtUtc
+                }
+              }
+            }
+            """);
+
+        var analytics = document.RootElement
+            .GetProperty("data").GetProperty("myDashboard")
+            .GetProperty("eventAnalytics").EnumerateArray().ToArray();
+
+        var item = Assert.Single(analytics);
+        Assert.Equal("Guidance Meta Event", item.GetProperty("eventName").GetString());
+        Assert.Equal("PUBLISHED", item.GetProperty("status").GetString());
+        // Guidance metadata fields must be present and correct
+        Assert.Equal("de", item.GetProperty("language").GetString());
+        Assert.Equal("Europe/Berlin", item.GetProperty("timezone").GetString());
+        Assert.Equal("tech-guidance-meta", item.GetProperty("domainSlug").GetString());
+        // publishedAtUtc must be a valid timestamp (needed for "newly published" classification)
+        var publishedAt = item.GetProperty("publishedAtUtc").GetString();
+        Assert.NotNull(publishedAt);
+        Assert.True(DateTime.TryParse(publishedAt, out _), "publishedAtUtc should be a parseable date-time");
+    }
+
+    [Fact]
+    public async Task MyDashboard_EventAnalytics_GuidanceMetadata_IsNullWhenNotSet()
+    {
+        // Verifies that language and timezone are null when the organizer has not set them —
+        // allowing the frontend recommendation engine to prompt them to fill in missing fields.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var organizerUserId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer = CreateUser("guidance-null@example.com", "Guidance Null User");
+            organizerUserId = organizer.Id;
+
+            var domain = CreateDomain("Tech", "tech-no-meta");
+            dbContext.Users.Add(organizer);
+            dbContext.Domains.Add(domain);
+
+            // Event with no language and no timezone set (they default to null)
+            var ev = CreateEvent("No Language Timezone Event", "no-lang-tz-event",
+                "Event missing optional metadata.", "Venue", "Prague",
+                FirstDayOfNextMonthUtc(), domain, organizer,
+                language: null, timezone: null);
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, organizerUserId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyDashboard {
+              myDashboard {
+                eventAnalytics {
+                  eventName
+                  language
+                  timezone
+                  domainSlug
+                }
+              }
+            }
+            """);
+
+        var analytics = document.RootElement
+            .GetProperty("data").GetProperty("myDashboard")
+            .GetProperty("eventAnalytics").EnumerateArray().ToArray();
+
+        var item = Assert.Single(analytics);
+        Assert.Equal("No Language Timezone Event", item.GetProperty("eventName").GetString());
+        // Language and timezone should be null when not set by the organizer
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, item.GetProperty("language").ValueKind);
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, item.GetProperty("timezone").ValueKind);
+        // Domain slug is present (event has a domain)
+        Assert.Equal("tech-no-meta", item.GetProperty("domainSlug").GetString());
+    }
+
     // ── Event detail: location, map, and attendee context ──────────────────
 
     [Fact]

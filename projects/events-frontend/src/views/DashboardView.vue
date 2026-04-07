@@ -780,6 +780,9 @@ function communityRoleLabel(role: string): string {
             <span class="guidance-icon" aria-hidden="true">📅</span>
             <div>{{ t('dashboard.guidanceNoCalendarAdds') }}</div>
           </div>
+
+          <!-- Metric legend: explains what each column represents -->
+          <p class="metric-legend" aria-label="Column key">{{ t('dashboard.tableMetricLegend') }}</p>
         </div>
       </template>
 
@@ -1480,6 +1483,16 @@ tr:hover td {
   font-size: 1.125rem;
   flex-shrink: 0;
   margin-top: 0.05rem;
+}
+
+/* ── Metric legend ── */
+.metric-legend {
+  padding: 0.625rem 1.25rem;
+  font-size: 0.75rem;
+  color: var(--color-text-muted, var(--color-text-secondary));
+  border-top: 1px solid var(--color-border);
+  margin: 0;
+  line-height: 1.5;
 }
 
 /* ── Dashboard-level analytics state banners ── */
