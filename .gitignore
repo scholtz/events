@@ -49,3 +49,4 @@ __screenshots__/
 
 test-results/
 playwright-report/
+/projects/.vs
