@@ -51,6 +51,7 @@ export async function gqlRequestWithMeta<T>(
   const json: GraphQLResponse<T> = await res.json()
 
   if (json.errors && json.errors.length > 0) {
+    console.error('GraphQL errors:', json.errors)
     throw new Error(json.errors[0]!.message)
   }
 
