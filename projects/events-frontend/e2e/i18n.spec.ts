@@ -1128,3 +1128,73 @@ test.describe('Localized hub manage scheduled featured events section', () => {
     ).toBeVisible()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Localized domain context hint (HomeView discovery)
+// ---------------------------------------------------------------------------
+
+test.describe('Localized domain context hint', () => {
+  function makeCryptoDomainForHint() {
+    return {
+      id: 'dom-crypto',
+      name: 'Crypto',
+      slug: 'crypto',
+      subdomain: 'crypto',
+      description: 'Blockchain and crypto events',
+      isActive: true,
+      createdAtUtc: new Date().toISOString(),
+    }
+  }
+
+  test('domain context hint CTA is localized in German', async ({ page }) => {
+    const cryptoDomain = makeCryptoDomainForHint()
+    setupMockApi(page, {
+      domains: [makeTechDomain(), cryptoDomain],
+      events: [
+        makeApprovedEvent({
+          id: 'e-crypto',
+          name: 'Blockchain Meetup',
+          slug: 'blockchain-meetup',
+          domain: { id: cryptoDomain.id, name: cryptoDomain.name, slug: cryptoDomain.slug, subdomain: cryptoDomain.subdomain },
+          domainId: cryptoDomain.id,
+        }),
+      ],
+    })
+
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'de')
+    })
+
+    await page.goto('/?q=crypto')
+
+    await expect(page.locator('.domain-context-hint')).toBeVisible()
+    await expect(page.locator('.domain-context-hint')).toContainText('Crypto-Veranstaltungen')
+    await expect(page.locator('.domain-context-hint-link')).toContainText('erkunden')
+  })
+
+  test('domain context hint CTA is localized in Slovak', async ({ page }) => {
+    const cryptoDomain = makeCryptoDomainForHint()
+    setupMockApi(page, {
+      domains: [makeTechDomain(), cryptoDomain],
+      events: [
+        makeApprovedEvent({
+          id: 'e-crypto',
+          name: 'Blockchain Meetup',
+          slug: 'blockchain-meetup',
+          domain: { id: cryptoDomain.id, name: cryptoDomain.name, slug: cryptoDomain.slug, subdomain: cryptoDomain.subdomain },
+          domainId: cryptoDomain.id,
+        }),
+      ],
+    })
+
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'sk')
+    })
+
+    await page.goto('/?q=crypto')
+
+    await expect(page.locator('.domain-context-hint')).toBeVisible()
+    await expect(page.locator('.domain-context-hint')).toContainText('Crypto')
+    await expect(page.locator('.domain-context-hint-link')).toContainText('Preskúmať hub Crypto')
+  })
+})

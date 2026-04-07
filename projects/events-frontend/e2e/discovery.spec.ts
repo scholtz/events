@@ -3952,3 +3952,143 @@ test.describe('Active filter chips — mobile viewport', () => {
     await expect(page.locator('.filter-chip', { hasText: 'From' })).toBeVisible()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Domain context hint — search-to-hub guidance
+// ---------------------------------------------------------------------------
+
+test.describe('Domain context hint', () => {
+  test('shows domain context hint when keyword search matches a domain name', async ({ page }) => {
+    const cryptoDomain = makeCryptoDomain()
+    setupMockApi(page, {
+      domains: [makeTechDomain(), cryptoDomain],
+      events: [
+        makeApprovedEvent({
+          id: 'e-crypto',
+          name: 'Bitcoin Meetup',
+          slug: 'bitcoin-meetup',
+          domain: { id: cryptoDomain.id, name: cryptoDomain.name, slug: cryptoDomain.slug, subdomain: cryptoDomain.subdomain },
+          domainId: cryptoDomain.id,
+        }),
+      ],
+    })
+    await page.goto('/?q=crypto')
+
+    await expect(page.locator('.domain-context-hint')).toBeVisible()
+    await expect(page.locator('.domain-context-hint')).toContainText('Crypto')
+    await expect(page.locator('.domain-context-hint-link')).toBeVisible()
+  })
+
+  test('domain context hint link navigates to the matching category page', async ({ page }) => {
+    const cryptoDomain = makeCryptoDomain()
+    setupMockApi(page, {
+      domains: [makeTechDomain(), cryptoDomain],
+      events: [
+        makeApprovedEvent({
+          id: 'e-crypto',
+          name: 'Blockchain Summit',
+          slug: 'blockchain-summit',
+          domain: { id: cryptoDomain.id, name: cryptoDomain.name, slug: cryptoDomain.slug, subdomain: cryptoDomain.subdomain },
+          domainId: cryptoDomain.id,
+        }),
+      ],
+    })
+    await page.goto('/?q=crypto')
+
+    await expect(page.locator('.domain-context-hint-link')).toBeVisible()
+    await page.locator('.domain-context-hint-link').click()
+    await expect(page).toHaveURL(/\/category\/crypto/)
+  })
+
+  test('domain context hint is not shown when no results match the search', async ({ page }) => {
+    const cryptoDomain = makeCryptoDomain()
+    setupMockApi(page, {
+      domains: [makeTechDomain(), cryptoDomain],
+      events: [],
+    })
+    await page.goto('/?q=crypto')
+
+    // No results, so hint must not appear (emptyStateDomainHub handles this)
+    await expect(page.locator('.domain-context-hint')).toBeHidden()
+    await expect(page.locator('.empty-state')).toBeVisible()
+  })
+
+  test('domain context hint is not shown when the matched domain is already filtered', async ({
+    page,
+  }) => {
+    const cryptoDomain = makeCryptoDomain()
+    setupMockApi(page, {
+      domains: [makeTechDomain(), cryptoDomain],
+      events: [
+        makeApprovedEvent({
+          id: 'e-crypto',
+          name: 'Blockchain Summit',
+          slug: 'blockchain-summit',
+          domain: { id: cryptoDomain.id, name: cryptoDomain.name, slug: cryptoDomain.slug, subdomain: cryptoDomain.subdomain },
+          domainId: cryptoDomain.id,
+        }),
+      ],
+    })
+    // Domain filter already active — hint is redundant
+    await page.goto('/?q=crypto&domain=crypto')
+
+    await expect(page.locator('.domain-context-hint')).toBeHidden()
+  })
+
+  test('domain context hint is not shown when search text is shorter than 3 characters', async ({
+    page,
+  }) => {
+    const aiDomain = makeAiDomain()
+    setupMockApi(page, {
+      domains: [makeTechDomain(), aiDomain],
+      events: [
+        makeApprovedEvent({ id: 'e-ai', name: 'AI Workshop', slug: 'ai-workshop' }),
+      ],
+    })
+    // "ai" is only 2 chars — below the minimum threshold
+    await page.goto('/?q=ai')
+
+    await expect(page.locator('.domain-context-hint')).toBeHidden()
+  })
+
+  test('domain context hint is not shown on a subdomain hub view', async ({ page }) => {
+    const cryptoDomain = makeCryptoDomain()
+    setupMockApi(page, {
+      domains: [makeTechDomain(), cryptoDomain],
+      events: [
+        makeApprovedEvent({
+          id: 'e-crypto',
+          name: 'Blockchain Summit',
+          slug: 'blockchain-summit',
+          domain: { id: cryptoDomain.id, name: cryptoDomain.name, slug: cryptoDomain.slug, subdomain: cryptoDomain.subdomain },
+          domainId: cryptoDomain.id,
+        }),
+      ],
+    })
+    // On subdomain view, the hint is redundant since the hub context is already prominent
+    await page.goto('/?subdomain=crypto&domain=crypto&q=crypto')
+
+    await expect(page.locator('.domain-context-hint')).toBeHidden()
+  })
+
+  test('domain context hint is visible on mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    const cryptoDomain = makeCryptoDomain()
+    setupMockApi(page, {
+      domains: [makeTechDomain(), cryptoDomain],
+      events: [
+        makeApprovedEvent({
+          id: 'e-crypto',
+          name: 'Crypto Meetup',
+          slug: 'crypto-meetup',
+          domain: { id: cryptoDomain.id, name: cryptoDomain.name, slug: cryptoDomain.slug, subdomain: cryptoDomain.subdomain },
+          domainId: cryptoDomain.id,
+        }),
+      ],
+    })
+    await page.goto('/?q=crypto')
+
+    await expect(page.locator('.domain-context-hint')).toBeVisible()
+    await expect(page.locator('.domain-context-hint-link')).toBeVisible()
+  })
+})

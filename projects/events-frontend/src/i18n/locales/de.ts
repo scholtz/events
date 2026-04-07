@@ -133,6 +133,9 @@ export default {
     savedSearchNoMatches: '„{name}" hat aktuell keine Treffer',
     savedSearchEmpty:
       'Ihre gespeicherte Suche „{name}" hat derzeit keine passenden Veranstaltungen. Dies ist wahrscheinlich vorübergehend — neue Veranstaltungen können bald hinzukommen. Versuchen Sie, die Filter zu erweitern, oder schauen Sie später wieder vorbei.',
+    // Domain context hint: shown when a keyword search matches a category hub
+    domainContextHint: 'Es gibt einen eigenen Hub für {name}-Veranstaltungen.',
+    domainContextHintCta: '{name}-Hub erkunden →',
   },
 
   filters: {
