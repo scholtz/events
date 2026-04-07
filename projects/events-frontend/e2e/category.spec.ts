@@ -1468,3 +1468,213 @@ test.describe('Category landing page: all events in past', () => {
     )
   })
 })
+
+// ---------------------------------------------------------------------------
+// Related hubs — low-signal and empty state discovery guidance
+// ---------------------------------------------------------------------------
+
+test.describe('Category landing page: related hubs', () => {
+  function makeCryptoDomain(): MockDomain {
+    return {
+      id: 'dom-crypto',
+      name: 'Crypto',
+      slug: 'crypto',
+      subdomain: 'crypto',
+      description: 'Blockchain and crypto events',
+      isActive: true,
+      createdAtUtc: new Date().toISOString(),
+    }
+  }
+
+  function makeAiDomain(): MockDomain {
+    return {
+      id: 'dom-ai',
+      name: 'AI & Machine Learning',
+      slug: 'ai',
+      subdomain: 'ai',
+      description: 'Artificial intelligence meetups and talks',
+      isActive: true,
+      createdAtUtc: new Date().toISOString(),
+    }
+  }
+
+  test('related hubs section appears when hub has no events', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain(), makeCryptoDomain(), makeAiDomain()],
+      events: [],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.related-hubs')).toBeVisible()
+  })
+
+  test('related hubs section appears when hub has only 1 event (low-signal)', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain(), makeCryptoDomain()],
+      events: [makeApprovedEvent({ id: 'e-only', name: 'Solo Tech Event', slug: 'solo-tech-event' })],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.related-hubs')).toBeVisible()
+  })
+
+  test('related hubs section appears when hub has 3 events (at threshold)', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain(), makeCryptoDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-1', name: 'Event A', slug: 'event-a' }),
+        makeApprovedEvent({ id: 'e-2', name: 'Event B', slug: 'event-b' }),
+        makeApprovedEvent({ id: 'e-3', name: 'Event C', slug: 'event-c' }),
+      ],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.related-hubs')).toBeVisible()
+  })
+
+  test('related hubs section is NOT shown when hub has 4 or more events', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain(), makeCryptoDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-1', name: 'Event A', slug: 'event-a' }),
+        makeApprovedEvent({ id: 'e-2', name: 'Event B', slug: 'event-b' }),
+        makeApprovedEvent({ id: 'e-3', name: 'Event C', slug: 'event-c' }),
+        makeApprovedEvent({ id: 'e-4', name: 'Event D', slug: 'event-d' }),
+      ],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.related-hubs')).toBeHidden()
+  })
+
+  test('related hubs shows other domains, not the current one', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain(), makeCryptoDomain(), makeAiDomain()],
+      events: [],
+    })
+
+    await page.goto('/category/technology')
+
+    const relatedSection = page.locator('.related-hubs')
+    await expect(relatedSection).toBeVisible()
+    // The current hub (Technology) should NOT appear in related hubs
+    await expect(relatedSection.locator('.related-hub-name', { hasText: 'Technology' })).toBeHidden()
+    // Other hubs should appear
+    await expect(relatedSection.locator('.related-hub-name', { hasText: 'Crypto' })).toBeVisible()
+    await expect(relatedSection.locator('.related-hub-name', { hasText: 'AI & Machine Learning' })).toBeVisible()
+  })
+
+  test('related hub cards link to the correct category page', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain(), makeCryptoDomain()],
+      events: [],
+    })
+
+    await page.goto('/category/technology')
+
+    const cryptoCard = page.locator('.related-hub-card', { hasText: 'Crypto' })
+    await expect(cryptoCard).toBeVisible()
+    await expect(cryptoCard).toHaveAttribute('href', '/category/crypto')
+  })
+
+  test('clicking a related hub card navigates to that hub page', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain(), makeCryptoDomain()],
+      events: [],
+    })
+
+    await page.goto('/category/technology')
+
+    await page.locator('.related-hub-card', { hasText: 'Crypto' }).click()
+
+    await expect(page).toHaveURL('/category/crypto')
+  })
+
+  test('related hubs section shows title and description', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain(), makeCryptoDomain()],
+      events: [],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.related-hubs-title')).toContainText('You might also explore')
+    await expect(page.locator('.related-hubs-desc')).toContainText('related community hubs')
+  })
+
+  test('related hubs shows at most 3 other hubs', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [
+        makeTechDomain(),
+        makeCryptoDomain(),
+        makeAiDomain(),
+        { id: 'dom-web3', name: 'Web3', slug: 'web3', subdomain: 'web3', description: null, isActive: true, createdAtUtc: new Date().toISOString() } as MockDomain,
+        { id: 'dom-defi', name: 'DeFi', slug: 'defi', subdomain: 'defi', description: null, isActive: true, createdAtUtc: new Date().toISOString() } as MockDomain,
+      ],
+      events: [],
+    })
+
+    await page.goto('/category/technology')
+
+    const cards = page.locator('.related-hub-card')
+    await expect(cards).toHaveCount(3)
+  })
+
+  test('mobile viewport: related hubs section is visible and tappable', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    setupMockApi(page, {
+      domains: [makeTechDomain(), makeCryptoDomain()],
+      events: [],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.related-hubs')).toBeVisible()
+    await expect(page.locator('.related-hub-card', { hasText: 'Crypto' })).toBeVisible()
+  })
+
+  test('related hubs is not shown when only one domain exists', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [],
+    })
+
+    await page.goto('/category/technology')
+
+    // The empty state shows but no related hubs (no other domains to suggest)
+    await expect(page.locator('.empty-state')).toBeVisible()
+    await expect(page.locator('.related-hubs')).toBeHidden()
+  })
+
+  test('i18n: related hubs title is localized in Slovak', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'sk')
+    })
+    setupMockApi(page, {
+      domains: [makeTechDomain(), makeCryptoDomain()],
+      events: [],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.related-hubs-title')).toContainText('Možno vás zaujmú aj tieto')
+  })
+
+  test('i18n: related hubs title is localized in German', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'de')
+    })
+    setupMockApi(page, {
+      domains: [makeTechDomain(), makeCryptoDomain()],
+      events: [],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.related-hubs-title')).toContainText('Das könnte Sie auch interessieren')
+  })
+})
