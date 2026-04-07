@@ -18588,8 +18588,10 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
-    public async Task SetDomainCuratedCommunities_PrivateGroup_ReturnsError()
+    public async Task SetDomainCuratedCommunities_PrivateGroup_Allowed()
     {
+        // Private groups can now be curated into a hub so that users can see
+        // and request access to them from the hub page.
         await using var factory = new EventsApiWebApplicationFactory();
         var adminId = Guid.Empty;
         var domainId = Guid.Empty;
@@ -18616,22 +18618,22 @@ public sealed class GraphQlIntegrationTests
         using var client = factory.CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
 
-        var response = await client.PostAsJsonAsync("/graphql", new
-        {
-            query = """
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
                 mutation SetCuratedCommunities($input: SetDomainCuratedCommunitiesInput!) {
-                  setDomainCuratedCommunities(input: $input) { displayOrder }
+                  setDomainCuratedCommunities(input: $input) { displayOrder groupId }
                 }
                 """,
-            variables = new { input = new { domainId, communities = new[] { new { groupId, isEnabled = true, annotation = (string?)null } } } }
-        });
+            new { input = new { domainId, communities = new[] { new { groupId, isEnabled = true, annotation = (string?)null } } } });
 
-        var body = await response.Content.ReadAsStringAsync();
-        Assert.Contains("GROUP_PRIVATE", body);
+        var entries = document.RootElement.GetProperty("data").GetProperty("setDomainCuratedCommunities");
+        Assert.Equal(1, entries.GetArrayLength());
+        Assert.Equal(groupId.ToString(), entries[0].GetProperty("groupId").GetString());
     }
 
     [Fact]
-    public async Task CuratedCommunitiesForDomain_PublicQuery_ReturnsEnabledPublicGroupsOnly()
+    public async Task CuratedCommunitiesForDomain_PublicQuery_ReturnsEnabledActiveGroups()
     {
         await using var factory = new EventsApiWebApplicationFactory();
         var adminId = Guid.Empty;
@@ -18699,6 +18701,64 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal(1, entries.GetArrayLength());
         Assert.Equal("Visible Community", entries[0].GetProperty("group").GetProperty("name").GetString());
         Assert.Equal("Core community", entries[0].GetProperty("annotation").GetString());
+    }
+
+    [Fact]
+    public async Task CuratedCommunitiesForDomain_PrivateGroup_AppearsInPublicQuery()
+    {
+        // Private groups can be curated into a hub and must appear in the public query
+        // so that users can request access directly from the hub page.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var adminId = Guid.Empty;
+        var domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("private-hub-admin@example.com", "Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var domain = CreateDomain("Private Group Hub", "private-group-hub");
+            domainId = domain.Id;
+
+            var privateGroup = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Exclusive Guild",
+                Slug = "exclusive-guild",
+                Summary = "A private active group",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Private,
+            };
+            dbContext.Users.Add(admin);
+            dbContext.Domains.Add(domain);
+            dbContext.CommunityGroups.Add(privateGroup);
+            dbContext.DomainCuratedCommunities.Add(new EventsApi.Data.Entities.DomainCuratedCommunity
+            {
+                DomainId = domain.Id,
+                GroupId = privateGroup.Id,
+                DisplayOrder = 0,
+                IsEnabled = true,
+                Annotation = "Request access to join",
+            });
+        });
+
+        // Public query — no auth header
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query CuratedCommunities($domainSlug: String!) {
+              curatedCommunitiesForDomain(domainSlug: $domainSlug) {
+                group { name visibility }
+                annotation
+              }
+            }
+            """,
+            new { domainSlug = "private-group-hub" });
+
+        var entries = document.RootElement.GetProperty("data").GetProperty("curatedCommunitiesForDomain");
+        Assert.Equal(1, entries.GetArrayLength());
+        Assert.Equal("Exclusive Guild", entries[0].GetProperty("group").GetProperty("name").GetString());
+        Assert.Equal("PRIVATE", entries[0].GetProperty("group").GetProperty("visibility").GetString());
+        Assert.Equal("Request access to join", entries[0].GetProperty("annotation").GetString());
     }
 
     [Fact]

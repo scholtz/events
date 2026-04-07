@@ -8,11 +8,13 @@ import { gqlRequest } from '@/lib/graphql'
 import { safeHexColor } from '@/lib/colorUtils'
 import { useAuthStore } from '@/stores/auth'
 import { useDomainsStore } from '@/stores/domains'
+import { useCommunitiesStore } from '@/stores/communities'
 
 const { t } = useI18n()
 const route = useRoute()
 const authStore = useAuthStore()
 const domainsStore = useDomainsStore()
+const communitiesStore = useCommunitiesStore()
 
 const slug = computed(() => route.params.slug as string)
 
@@ -22,6 +24,60 @@ const featuredEvents = ref<CatalogEvent[]>([])
 const curatedCommunities = ref<DomainCuratedCommunity[]>([])
 const loading = ref(false)
 const error = ref('')
+
+// Per-group join/request state tracking
+// Initialized from persisted memberships on load, then updated reactively after actions.
+type GroupMemberStatus = 'none' | 'active' | 'pending'
+const groupMemberStatus = ref<Record<string, GroupMemberStatus>>({})
+const groupActionLoading = ref<Record<string, boolean>>({})
+const groupActionError = ref<Record<string, string | null>>({})
+
+/** Load persisted membership state for the visible curated groups. */
+async function loadMembershipStates(groupIds: string[]) {
+  if (!authStore.isAuthenticated || groupIds.length === 0) return
+  try {
+    const memberships = await communitiesStore.fetchMyMemberships()
+    const next: Record<string, GroupMemberStatus> = {}
+    for (const m of memberships) {
+      if (groupIds.includes(m.groupId)) {
+        if (m.status === 'ACTIVE') next[m.groupId] = 'active'
+        else if (m.status === 'PENDING') next[m.groupId] = 'pending'
+      }
+    }
+    // Merge: preserve any states that were already set in-session (e.g. user just joined)
+    groupMemberStatus.value = { ...next, ...groupMemberStatus.value }
+  } catch {
+    // Non-critical — fall back to 'none' (action buttons still work)
+  }
+}
+
+async function handleJoinGroup(groupId: string) {
+  groupActionLoading.value[groupId] = true
+  groupActionError.value[groupId] = null
+  try {
+    await communitiesStore.joinGroup(groupId)
+    groupMemberStatus.value[groupId] = 'active'
+  } catch (err) {
+    groupActionError.value[groupId] =
+      err instanceof Error ? err.message : t('community.errorJoin')
+  } finally {
+    groupActionLoading.value[groupId] = false
+  }
+}
+
+async function handleRequestAccess(groupId: string) {
+  groupActionLoading.value[groupId] = true
+  groupActionError.value[groupId] = null
+  try {
+    await communitiesStore.requestMembership(groupId)
+    groupMemberStatus.value[groupId] = 'pending'
+  } catch (err) {
+    groupActionError.value[groupId] =
+      err instanceof Error ? err.message : t('community.errorRequest')
+  } finally {
+    groupActionLoading.value[groupId] = false
+  }
+}
 
 const EVENT_FIELDS = `
   id name slug description eventUrl
@@ -86,6 +142,10 @@ async function fetchCategoryData() {
     events.value = eventsData.events
     featuredEvents.value = featuredData.featuredEventsForDomain
     curatedCommunities.value = communitiesData.curatedCommunitiesForDomain
+
+    // Initialize membership state from persisted data for authenticated users
+    const groupIds = communitiesData.curatedCommunitiesForDomain.map((c) => c.groupId)
+    await loadMembershipStates(groupIds)
   } catch (err) {
     error.value = err instanceof Error ? err.message : t('category.errorLoad')
     events.value = []
@@ -392,21 +452,78 @@ onMounted(async () => {
               class="curated-community-card"
             >
               <div class="curated-community-card-content">
-                <RouterLink
-                  :to="`/community/${entry.group.slug}`"
-                  class="curated-community-name"
-                >{{ entry.group.name }}</RouterLink>
+                <div class="curated-community-header">
+                  <RouterLink
+                    :to="`/community/${entry.group.slug}`"
+                    class="curated-community-name"
+                  >{{ entry.group.name }}</RouterLink>
+                  <span
+                    class="community-visibility-badge"
+                    :class="entry.group.visibility === 'PUBLIC' ? 'visibility-public' : 'visibility-private'"
+                    :aria-label="entry.group.visibility === 'PUBLIC' ? t('community.public') : t('community.private')"
+                  >
+                    {{ entry.group.visibility === 'PUBLIC' ? t('community.public') : t('community.private') }}
+                  </span>
+                </div>
                 <p v-if="entry.group.summary" class="curated-community-summary">
                   {{ entry.group.summary }}
                 </p>
                 <p v-if="entry.annotation" class="curated-community-annotation">
                   {{ entry.annotation }}
                 </p>
+                <p
+                  v-if="groupActionError[entry.groupId]"
+                  class="curated-community-error"
+                  role="alert"
+                >
+                  {{ groupActionError[entry.groupId] }}
+                </p>
               </div>
-              <RouterLink
-                :to="`/community/${entry.group.slug}`"
-                class="curated-community-cta"
-              >{{ t('category.exploreGroup') }}</RouterLink>
+              <div class="curated-community-actions">
+                <!-- "Explore community" is only meaningful for:
+                     - public groups (always accessible)
+                     - private groups where the current user is an active member -->
+                <RouterLink
+                  v-if="entry.group.visibility === 'PUBLIC' || groupMemberStatus[entry.groupId] === 'active'"
+                  :to="`/community/${entry.group.slug}`"
+                  class="curated-community-cta"
+                >{{ t('category.exploreGroup') }}</RouterLink>
+
+                <!-- Authenticated: show join/request/status -->
+                <template v-if="authStore.isAuthenticated">
+                  <span
+                    v-if="groupMemberStatus[entry.groupId] === 'active'"
+                    class="community-joined-badge"
+                  >✓ {{ t('community.joined') }}</span>
+                  <span
+                    v-else-if="groupMemberStatus[entry.groupId] === 'pending'"
+                    class="community-pending-badge"
+                  >{{ t('community.pendingApproval') }}</span>
+                  <button
+                    v-else-if="entry.group.visibility === 'PUBLIC'"
+                    class="btn btn-sm curated-community-join-btn"
+                    :disabled="groupActionLoading[entry.groupId]"
+                    @click="handleJoinGroup(entry.groupId)"
+                  >
+                    {{ groupActionLoading[entry.groupId] ? t('common.loading') : t('community.joinGroup') }}
+                  </button>
+                  <button
+                    v-else
+                    class="btn btn-sm curated-community-request-btn"
+                    :disabled="groupActionLoading[entry.groupId]"
+                    @click="handleRequestAccess(entry.groupId)"
+                  >
+                    {{ groupActionLoading[entry.groupId] ? t('common.loading') : t('community.requestAccess') }}
+                  </button>
+                </template>
+
+                <!-- Anonymous: sign-in prompt -->
+                <RouterLink
+                  v-else
+                  to="/login"
+                  class="curated-community-signin"
+                >{{ t('community.signIn') }}</RouterLink>
+              </div>
             </li>
           </ul>
         </section>
@@ -1117,6 +1234,126 @@ onMounted(async () => {
 }
 
 .curated-community-cta:hover {
+  text-decoration: underline;
+}
+
+/* ── Community card header row (name + visibility badge) ─── */
+.curated-community-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* ── Community visibility badge ──────────────────────────── */
+.community-visibility-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.visibility-public {
+  background: rgba(34, 197, 94, 0.12);
+  color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.25);
+}
+
+.visibility-private {
+  background: rgba(234, 179, 8, 0.12);
+  color: #facc15;
+  border: 1px solid rgba(234, 179, 8, 0.25);
+}
+
+/* ── Community card actions row ──────────────────────────── */
+.curated-community-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.25rem;
+}
+
+/* Join button: compact inline-style for the hub card */
+.curated-community-join-btn {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.75rem;
+  background: var(--category-color, var(--color-primary, #3b82f6));
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-weight: 600;
+  transition: opacity 0.15s;
+}
+
+.curated-community-join-btn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.curated-community-join-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Request access button: secondary style */
+.curated-community-request-btn {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.75rem;
+  background: transparent;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-weight: 500;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
+}
+
+.curated-community-request-btn:hover:not(:disabled) {
+  border-color: var(--color-text-secondary);
+  color: var(--color-text);
+}
+
+.curated-community-request-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Joined / pending state badges */
+.community-joined-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #4ade80;
+}
+
+.community-pending-badge {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+/* Error message below the summary */
+.curated-community-error {
+  font-size: 0.75rem;
+  color: var(--color-error, #f87171);
+  margin: 0;
+}
+
+/* Sign-in link for anonymous users */
+.curated-community-signin {
+  font-size: 0.75rem;
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.curated-community-signin:hover {
   text-decoration: underline;
 }
 

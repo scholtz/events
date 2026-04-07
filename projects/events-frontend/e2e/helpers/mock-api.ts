@@ -1807,7 +1807,8 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
               ...c,
               group: state.communityGroups.find((g) => g.id === c.groupId) ?? null,
             }))
-            .filter((c) => c.group && c.group.visibility === 'PUBLIC' && c.group.isActive)
+            // Both public and private groups may be curated into a hub
+            .filter((c) => c.group && c.group.isActive)
         : []
       await route.fulfill({
         status: 200,
