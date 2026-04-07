@@ -759,7 +759,7 @@ function communityRoleLabel(role: string): string {
           <!-- Guidance for low-data state -->
           <div
             v-if="overview.publishedEvents > 0 && overview.totalInterestedCount === 0"
-            class="low-data-guidance"
+            class="low-data-guidance low-data-guidance--no-saves"
             role="note"
             aria-label="Improvement tip"
           >
@@ -782,7 +782,7 @@ function communityRoleLabel(role: string): string {
           </div>
 
           <!-- Metric legend: explains what each column represents -->
-          <p class="metric-legend" aria-label="Column key">{{ t('dashboard.tableMetricLegend') }}</p>
+          <p class="metric-legend">{{ t('dashboard.tableMetricLegend') }}</p>
         </div>
       </template>
 

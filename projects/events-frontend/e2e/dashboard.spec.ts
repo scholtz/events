@@ -2687,10 +2687,7 @@ test.describe('Organizer analytics clarity and guidance', () => {
     await expect(page.locator('.metric-legend')).toContainText('Momentum')
 
     // "No saves yet" guidance should NOT appear (event has saves)
-    // Note: the calendar-intent guidance may still appear when saves exist but no calendar adds
-    await expect(
-      page.locator('.low-data-guidance:not(.low-data-guidance--calendar)'),
-    ).toHaveCount(0)
+    await expect(page.locator('.low-data-guidance--no-saves')).toHaveCount(0)
   })
 
   test('low-data scenario: shows specific actionable guidance when engagement is low', async ({
@@ -2725,7 +2722,7 @@ test.describe('Organizer analytics clarity and guidance', () => {
     await expect(lowSignalBanner).toContainText('category')
 
     // Low-data guidance note below the table should also appear with specific steps
-    const guidanceNote = page.locator('.low-data-guidance')
+    const guidanceNote = page.locator('.low-data-guidance--no-saves')
     await expect(guidanceNote).toBeVisible()
     await expect(guidanceNote).toContainText('No saves yet')
     await expect(guidanceNote).toContainText('Share the event link')
@@ -2773,7 +2770,7 @@ test.describe('Organizer analytics clarity and guidance', () => {
     await expect(page.locator('.event-recommendation-row.rec--guidance')).toBeVisible()
 
     // Low-data guidance note should appear below the table
-    const guidanceNote = page.locator('.low-data-guidance')
+    const guidanceNote = page.locator('.low-data-guidance--no-saves')
     await expect(guidanceNote).toBeVisible()
 
     // Metric legend visible even in early state

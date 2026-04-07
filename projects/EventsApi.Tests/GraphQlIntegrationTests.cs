@@ -3386,8 +3386,7 @@ public sealed class GraphQlIntegrationTests
             // Event with no language and no timezone set (they default to null)
             var ev = CreateEvent("No Language Timezone Event", "no-lang-tz-event",
                 "Event missing optional metadata.", "Venue", "Prague",
-                FirstDayOfNextMonthUtc(), domain, organizer,
-                language: null, timezone: null);
+                FirstDayOfNextMonthUtc(), domain, organizer);
             dbContext.Events.Add(ev);
         });
 
