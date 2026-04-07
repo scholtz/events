@@ -771,6 +771,10 @@ export default {
     exploreGroup: 'Preskúmať komunitu',
     allEventsInPast: 'Všetky uvedené udalosti sa už uskutočnili.',
     allEventsInPastBrowse: 'Hľadať nadchádzajúce udalosti',
+    // Related hubs: shown on sparse or empty category pages
+    relatedHubsTitle: 'Možno vás zaujmú aj tieto',
+    relatedHubsDesc: 'Objavte nadchádzajúce podujatia v súvisiacich komunitných huboch.',
+    relatedHubCta: 'Preskúmať {name} →',
   },
 
   // ── Hub manage page ────────────────────────────────────────────────────────

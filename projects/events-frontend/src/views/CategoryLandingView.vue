@@ -203,6 +203,22 @@ const lowSignalMessage = computed(() => {
 })
 
 /**
+ * Related domain hubs surfaced when this hub's catalog is sparse (0–3 events).
+ * Returns up to 3 other active domains so users have a broader discovery path
+ * even when the current hub's inventory is thin.
+ */
+const MAX_RELATED_HUBS = 3
+
+const relatedDomains = computed(() => {
+  if (loading.value) return []
+  // Show related hubs only when the catalog is sparse or empty
+  if (events.value.length > LOW_SIGNAL_THRESHOLD) return []
+  return domainsStore.domains
+    .filter((d) => d.slug !== slug.value && d.isActive !== false)
+    .slice(0, MAX_RELATED_HUBS)
+})
+
+/**
  * Subtle rank-context label explaining the current result ordering.
  * Category hubs always use UPCOMING sort (nearest upcoming first).
  * Shown only when there are results to rank.
@@ -470,6 +486,33 @@ onMounted(async () => {
             <RouterLink to="/" class="btn btn-ghost">{{ t('category.browseAll') }}</RouterLink>
           </div>
         </div>
+
+        <!-- Related hubs: shown when this hub's catalog is sparse or empty to guide users toward adjacent communities -->
+        <section
+          v-if="relatedDomains.length"
+          class="related-hubs"
+          aria-labelledby="related-hubs-heading"
+        >
+          <h3 id="related-hubs-heading" class="related-hubs-title">
+            {{ t('category.relatedHubsTitle') }}
+          </h3>
+          <p class="related-hubs-desc">{{ t('category.relatedHubsDesc') }}</p>
+          <div class="related-hub-cards">
+            <RouterLink
+              v-for="hub in relatedDomains"
+              :key="hub.id"
+              :to="`/category/${hub.slug}`"
+              class="related-hub-card"
+            >
+              <div class="related-hub-icon" aria-hidden="true">🏷️</div>
+              <div class="related-hub-info">
+                <strong class="related-hub-name">{{ hub.name }}</strong>
+                <span v-if="hub.description" class="related-hub-desc">{{ hub.description }}</span>
+                <span class="related-hub-cta">{{ t('category.relatedHubCta', { name: hub.name }) }}</span>
+              </div>
+            </RouterLink>
+          </div>
+        </section>
 
         <!-- Organizer submission CTA -->
         <div class="organizer-cta">
@@ -1075,5 +1118,92 @@ onMounted(async () => {
 
 .curated-community-cta:hover {
   text-decoration: underline;
+}
+
+/* ── Related hubs section (low-signal / empty state discovery path) ── */
+.related-hubs {
+  margin-top: 1.5rem;
+  margin-bottom: 1.5rem;
+  padding: 1.25rem 1.5rem;
+  background: var(--color-surface-raised, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
+  border-radius: var(--radius-md);
+}
+
+.related-hubs-title {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0 0 0.375rem;
+  color: var(--color-text);
+}
+
+.related-hubs-desc {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  margin: 0 0 1rem;
+}
+
+.related-hub-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.related-hub-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  padding: 0.875rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.1));
+  background: var(--color-surface, rgba(255, 255, 255, 0.02));
+  text-decoration: none;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.related-hub-card:hover {
+  border-color: var(--category-color, var(--color-primary, #3b82f6));
+  background: var(--color-surface-hover, rgba(255, 255, 255, 0.05));
+}
+
+.related-hub-icon {
+  font-size: 1.125rem;
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+
+.related-hub-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.related-hub-name {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.related-hub-desc {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.related-hub-cta {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--category-color, var(--color-primary, #3b82f6));
+  margin-top: 0.125rem;
 }
 </style>

@@ -771,6 +771,10 @@ export default {
     exploreGroup: 'Community erkunden',
     allEventsInPast: 'Alle aufgeführten Veranstaltungen haben bereits stattgefunden.',
     allEventsInPastBrowse: 'Nach bevorstehenden Veranstaltungen suchen',
+    // Related hubs: shown on sparse or empty category pages
+    relatedHubsTitle: 'Das könnte Sie auch interessieren',
+    relatedHubsDesc: 'Entdecken Sie bevorstehende Veranstaltungen in verwandten Community-Hubs.',
+    relatedHubCta: '{name} erkunden →',
   },
 
   // ── Hub manage page ────────────────────────────────────────────────────────
