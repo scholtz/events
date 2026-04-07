@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { formatDiscoveryChipLabel } from '@/lib/discoveryLabels'
@@ -18,6 +18,43 @@ const savedSearchesStore = useSavedSearchesStore()
 const savedSearchName = ref('')
 const savingSearch = ref(false)
 const filtersExpanded = ref(false)
+
+/**
+ * Keys for filter chips that live in the collapsible "More filters" section.
+ * These are the "advanced" filters not visible in the primary filter row.
+ */
+const ADVANCED_CHIP_KEYS = new Set([
+  'location',
+  'attendanceMode',
+  'dateFrom',
+  'dateTo',
+  'priceType',
+  'priceMin',
+  'priceMax',
+  'sortBy',
+  'language',
+  'timezone',
+])
+
+/**
+ * Number of active filters that are hidden inside the collapsible section.
+ * Shown on the "More filters" toggle button so users know there are active
+ * constraints they cannot see when the panel is collapsed.
+ */
+const advancedActiveCount = computed(() =>
+  eventsStore.activeFilterChips.filter((chip) => ADVANCED_CHIP_KEYS.has(chip.key)).length,
+)
+
+/**
+ * Auto-expand the advanced filter panel on mount when the URL already contains
+ * advanced filter parameters so users immediately see the controls for their
+ * active constraints rather than needing to discover them behind the toggle.
+ */
+onMounted(() => {
+  if (advancedActiveCount.value > 0) {
+    filtersExpanded.value = true
+  }
+})
 const fallbackTimezones = [
   'Europe/Prague',
   'Europe/London',
@@ -178,7 +215,13 @@ function resolveChipLabel(chip: { key: string; label: string }): string {
       <div class="filters-header-actions">
         <button class="btn btn-outline" @click="eventsStore.clearFilters()">{{ t('common.clearAll') }}</button>
         <button class="btn btn-outline toggle-filters-btn" @click="filtersExpanded = !filtersExpanded">
-          {{ filtersExpanded ? t('filters.hideFilters') : t('filters.moreFilters') }}
+          {{
+            filtersExpanded
+              ? t('filters.hideFilters')
+              : advancedActiveCount > 0
+                ? t('filters.moreFiltersActive', { count: advancedActiveCount })
+                : t('filters.moreFilters')
+          }}
         </button>
       </div>
     </div>

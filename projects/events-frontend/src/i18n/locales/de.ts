@@ -191,6 +191,7 @@ export default {
     chipLanguage: 'Sprache: {value}',
     chipTimezone: 'Zeitzone: {value}',
     moreFilters: 'Mehr Filter',
+    moreFiltersActive: 'Mehr Filter ({count} aktiv)',
     hideFilters: 'Filter ausblenden',
     savedSearches: 'Gespeicherte Suchen',
     savedSearchesDescription: 'Speichern Sie eine benannte Filtervorlage zur späteren Verwendung.',

@@ -201,6 +201,7 @@ export default {
     chipLanguage: 'Language: {value}',
     chipTimezone: 'Timezone: {value}',
     moreFilters: 'More filters',
+    moreFiltersActive: 'More filters ({count} active)',
     hideFilters: 'Hide filters',
     savedSearches: 'Saved searches',
     savedSearchesDescription: 'Save a named filter preset and reuse it later.',
