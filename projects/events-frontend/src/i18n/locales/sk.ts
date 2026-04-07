@@ -133,6 +133,9 @@ export default {
     savedSearchNoMatches: '„{name}" momentálne nemá žiadne výsledky',
     savedSearchEmpty:
       'Vaše uložené vyhľadávanie „{name}" momentálne nemá žiadne zodpovedajúce udalosti. Je to pravdepodobne dočasné — čoskoro môžu pribudnúť nové udalosti. Skúste rozšíriť filtre alebo sa vráťte neskôr.',
+    // Domain context hint: shown when a keyword search matches a category hub
+    domainContextHint: 'Pre udalosti {name} existuje dedikovaný hub.',
+    domainContextHintCta: 'Preskúmať hub {name} →',
   },
 
   filters: {

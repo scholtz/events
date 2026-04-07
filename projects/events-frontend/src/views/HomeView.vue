@@ -383,6 +383,36 @@ const fallbackDomainHubs = computed(() => {
 })
 
 /**
+ * Domain that closely matches the current keyword search.
+ * Used to show a contextual hub-exploration hint when the user searches broadly
+ * but a curated category hub exists for that topic.
+ *
+ * Conditions for showing the hint (all must be true):
+ * - A non-empty keyword search is active.
+ * - At least one result is currently visible.
+ * - Not currently on a subdomain view (the hint would be redundant there).
+ * - The matched domain is not already the active domain filter.
+ * - The search text is long enough (≥3 chars) to reduce false positives.
+ */
+const searchMatchedDomain = computed(() => {
+  const search = eventsStore.filters.search?.trim().toLowerCase()
+  if (!search || search.length < 3) return null
+  if (eventsStore.discoveryEvents.length === 0) return null
+  if (isSubdomainView.value) return null
+
+  return (
+    domainsStore.domains.find((d) => {
+      // Skip if this domain is already the active filter
+      if (d.slug === eventsStore.filters.domain) return false
+      return (
+        d.name.toLowerCase().includes(search) ||
+        d.slug.toLowerCase().includes(search)
+      )
+    }) ?? null
+  )
+})
+
+/**
  * Subtle label explaining the current result ordering to help users understand
  * why events appear in this order. Not shown when there are no results.
  */
@@ -687,6 +717,22 @@ watch(
             </p>
             <div v-if="rankContext" class="rank-context-badge" aria-live="polite">
               {{ rankContext.label }}
+            </div>
+            <!-- Domain context hint: shown when a keyword search matches a category hub -->
+            <div
+              v-if="searchMatchedDomain"
+              class="domain-context-hint"
+              role="note"
+            >
+              <span class="domain-context-hint-text">
+                {{ t('home.domainContextHint', { name: searchMatchedDomain.name }) }}
+              </span>
+              <RouterLink
+                :to="`/category/${searchMatchedDomain.slug}`"
+                class="domain-context-hint-link"
+              >
+                {{ t('home.domainContextHintCta', { name: searchMatchedDomain.name }) }}
+              </RouterLink>
             </div>
             <div v-if="allEventsInPast" class="all-in-past-notice" role="status" aria-live="polite">
               <span class="all-in-past-icon" aria-hidden="true">⏳</span>
@@ -1163,6 +1209,39 @@ watch(
   color: var(--color-text-secondary);
   margin-bottom: 0.75rem;
   opacity: 0.8;
+}
+
+/* Domain context hint: shown when keyword search matches a category hub */
+.domain-context-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.875rem;
+  margin-bottom: 0.75rem;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  flex-wrap: wrap;
+}
+
+.domain-context-hint-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.domain-context-hint-link {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.domain-context-hint-link:hover {
+  text-decoration: underline;
 }
 
 /* Low-signal notice shown when only a few results are present */
