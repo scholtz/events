@@ -457,7 +457,8 @@ export default {
     performanceDescription:
       'Speicherungen zeigen, wie viele Teilnehmer Ihre Veranstaltungen gespeichert haben. Kalendereinträge zeigen Hinzufügungen. Trends zeigen Aktivität der letzten 7 und 30 Tage.',
     noEventsTitle: 'Noch keine Veranstaltungen',
-    noEventsDescription: 'Reichen Sie Ihre erste Veranstaltung ein, um die Leistung zu verfolgen.',
+    noEventsDescription:
+      'Reichen Sie Ihre erste Veranstaltung ein, um das Teilnehmerinteresse zu verfolgen. Ein guter Eintrag umfasst einen klaren Titel, eine detaillierte Beschreibung, genaue Datums- und Ortsangaben sowie die richtige Community-Kategorie.',
     submitFirstEvent: 'Erste Veranstaltung einreichen',
     tableEvent: 'Veranstaltung',
     tableStatus: 'Status',
@@ -479,9 +480,9 @@ export default {
     noRecentAdds: 'Keine aktuellen Hinzufügungen',
     guidanceNoCalendarAdds:
       'Teilnehmer speichern Ihre Veranstaltungen, aber noch niemand hat sie zum Kalender hinzugefügt. Stellen Sie sicher, dass Datum, Uhrzeit und Ort gut sichtbar und leicht auffindbar sind.',
-    guidanceNoSavesTitle: 'Noch keine Speicherungen.',
+    guidanceNoSavesTitle: 'Noch keine Speicherungen — folgende Punkte prüfen.',
     guidanceNoSaves:
-      'Teilen Sie den Veranstaltungslink, verbessern Sie Titel oder Beschreibung, oder stellen Sie sicher, dass Datum und Veranstaltungsort klar angegeben sind.',
+      'Teilen Sie den Link in relevanten Community-Kanälen, überprüfen Sie, ob Titel und Beschreibung klar erklären, was Teilnehmer erwarten können, stellen Sie sicher, dass die Veranstaltung einer Kategorie zugeordnet ist, und vergewissern Sie sich, dass Datum, Uhrzeit und Ort vollständig sind.',
     firstEventWelcomeTitle: 'Ihre erste Veranstaltung wurde eingereicht!',
     firstEventWelcome:
       'Sobald sie veröffentlicht ist und Teilnehmer sie speichern oder zum Kalender hinzufügen, werden hier Engagement-Daten angezeigt.',
@@ -515,13 +516,15 @@ export default {
     refreshNow: 'Aktualisieren',
     analyticsStateEarlyTitle: 'Daten werden noch gesammelt.',
     analyticsStateEarly:
-      'Ihre Veranstaltungen wurden kürzlich veröffentlicht. Speicherungen und Kalendereinträge erscheinen typischerweise erst nach einigen Tagen — das ist bei neu veröffentlichten Veranstaltungen normal. Prüfen Sie es erneut, nachdem Sie in Ihren Community-Kanälen geteilt haben.',
+      'Ihre Veranstaltungen wurden kürzlich veröffentlicht — Speicherungen und Kalendereinträge erscheinen typischerweise erst nach einigen Tagen. In der Zwischenzeit: Teilen Sie den Link in Ihren Community-Kanälen, überprüfen Sie ob Beschreibung und Ort vollständig sind, und bestätigen Sie, dass die Veranstaltung einer passenden Kategorie zugeordnet ist.',
     analyticsStateLowSignalTitle: 'Bisher geringe Interaktion.',
     analyticsStateLowSignal:
-      'Ihre veröffentlichten Veranstaltungen haben bisher nur wenige Speicherungen erhalten. Dies ist häufig bei Nischenthemen oder Veranstaltungen mit begrenzter Verbreitung. Versuchen Sie, den Veranstaltungslink zu teilen, prüfen Sie, ob Titel und Beschreibung klar sind, und stellen Sie sicher, dass die Veranstaltung einer passenden Kategorie zugeordnet ist.',
+      'Wenige Speicherungen können bei Nischenthemen oder spezialisierten Zielgruppen normal sein. Um die Auffindbarkeit zu verbessern: Bestätigen Sie die Zuordnung zu einer passenden Kategorie, prüfen Sie, ob Titel und Beschreibung klar erklären, was Teilnehmer erwarten können, und teilen Sie den Link in der Community oder dem Hub, der zu diesem Thema passt.',
     analyticsStateNormalTitle: 'Gutes Engagement-Signal.',
     analyticsStateNormal:
-      'Ihre Veranstaltungen gewinnen an Fahrt. Teilen Sie weiterhin in Community-Kanälen und stellen Sie sicher, dass Ihre Veranstaltungsdetails — Titel, Beschreibung, Ort und Datum — vollständig und leicht lesbar sind.',
+      'Ihre Veranstaltungen gewinnen an Fahrt. Teilen Sie weiterhin in Community-Kanälen, halten Sie alle Veranstaltungsdetails aktuell und reagieren Sie zeitnah auf Moderatorenfeedback.',
+    tableMetricLegend:
+      'Speicherungen: Gesamte Teilnehmer-Lesezeichen · Dynamik: Speicherungen in den letzten 7 oder 30 Tagen · Kalender: Gesamte Kalender-Hinzufügungen · Kal. Trend: Kalendereinträge in den letzten 7 oder 30 Tagen',
     hubManagementTitle: 'Hub-Verwaltung',
     hubManagementDescription:
       'Sie sind Administrator der folgenden Community-Hubs. Aktualisieren Sie Branding und Inhalt, um das Erscheinungsbild jedes Hubs zu gestalten.',

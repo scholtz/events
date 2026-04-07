@@ -2633,3 +2633,194 @@ test.describe('Multi-event organizer attention scan', () => {
     await expect(page.locator('.event-recommendation-row.rec--guidance')).toHaveCount(1)
   })
 })
+
+// ── Organizer analytics clarity: three required E2E scenarios ─────────────────
+
+test.describe('Organizer analytics clarity and guidance', () => {
+  test('healthy engagement scenario: shows trend context, metric legend, and positive banner', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-healthy-clarity',
+      slug: 'healthy-clarity-event',
+      name: 'Healthy Clarity Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    const state = setupMockApi(page, {
+      users: [user],
+      domains: [domain],
+      events: [event],
+    })
+
+    // 5 saves within the last 7 days → normal signal + active trend
+    for (let i = 0; i < 5; i++) {
+      state.favoriteEvents.push({
+        id: `fav-healthy-clarity-${i}`,
+        userId: `user-healthy-${i}`,
+        eventId: event.id,
+        createdAtUtc: new Date(Date.now() - (i + 1) * 24 * 60 * 60 * 1000).toISOString(),
+      })
+    }
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Normal-signal banner should be visible with positive copy
+    const normalBanner = page.locator('.analytics-state-banner--normal')
+    await expect(normalBanner).toBeVisible()
+    await expect(normalBanner).toContainText('Good engagement signal.')
+
+    // Trend badge in Momentum column should show "this week" (active trend)
+    await expect(page.locator('.col-momentum .trend--active')).toBeVisible()
+    await expect(page.locator('.col-momentum .trend--active')).toContainText('this week')
+
+    // KPI card for Total Saves should display all-time total (5)
+    await expect(page.locator('.stat-number--primary')).toContainText('5')
+
+    // Metric legend should be present at the bottom of the table
+    await expect(page.locator('.metric-legend')).toBeVisible()
+    await expect(page.locator('.metric-legend')).toContainText('Saves')
+    await expect(page.locator('.metric-legend')).toContainText('Momentum')
+
+    // "No saves yet" guidance should NOT appear (event has saves)
+    await expect(page.locator('.low-data-guidance--no-saves')).toHaveCount(0)
+  })
+
+  test('low-data scenario: shows specific actionable guidance when engagement is low', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    // Publish the event >14 days ago so it's not "newly published" → low_signal state
+    const event = makeApprovedEvent({
+      id: 'ev-low-data-clarity',
+      slug: 'low-data-clarity-event',
+      name: 'Low Data Clarity Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+      publishedAtUtc: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
+    })
+
+    setupMockApi(page, {
+      users: [user],
+      domains: [domain],
+      events: [event],
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Low-signal analytics state banner should appear with actionable guidance
+    const lowSignalBanner = page.locator('.analytics-state-banner--low-signal')
+    await expect(lowSignalBanner).toBeVisible()
+    await expect(lowSignalBanner).toContainText('Low engagement so far.')
+    // Banner should reference category assignment as a specific action
+    await expect(lowSignalBanner).toContainText('category')
+
+    // Low-data guidance note below the table should also appear with specific steps
+    const guidanceNote = page.locator('.low-data-guidance--no-saves')
+    await expect(guidanceNote).toBeVisible()
+    await expect(guidanceNote).toContainText('No saves yet')
+    await expect(guidanceNote).toContainText('Share the event link')
+    await expect(guidanceNote).toContainText('category')
+
+    // Metric legend should be visible
+    await expect(page.locator('.metric-legend')).toBeVisible()
+
+    // Quiet trend badge (no saves)
+    await expect(page.locator('.col-momentum .trend--quiet')).toBeVisible()
+  })
+
+  test('empty/newly-published scenario: explains low data and offers actionable next steps', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    // Event published just 2 days ago — newly live, no saves → early state
+    const event = makeApprovedEvent({
+      id: 'ev-new-clarity',
+      slug: 'new-clarity-event',
+      name: 'New Clarity Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+      publishedAtUtc: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    })
+
+    setupMockApi(page, {
+      users: [user],
+      domains: [domain],
+      events: [event],
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Early-data banner should explain why saves may be low
+    const earlyBanner = page.locator('.analytics-state-banner--early')
+    await expect(earlyBanner).toBeVisible()
+    await expect(earlyBanner).toContainText('Data is still forming.')
+    // Banner should include at least one specific action (community channels)
+    await expect(earlyBanner).toContainText('community channels')
+
+    // Per-event recommendation row should appear (newly published guidance)
+    await expect(page.locator('.event-recommendation-row.rec--guidance')).toBeVisible()
+
+    // Low-data guidance note should appear below the table
+    const guidanceNote = page.locator('.low-data-guidance--no-saves')
+    await expect(guidanceNote).toBeVisible()
+
+    // Metric legend visible even in early state
+    await expect(page.locator('.metric-legend')).toBeVisible()
+  })
+
+  test('empty state: shows descriptive guidance on what makes a good event listing', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    setupMockApi(page, { users: [user] })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Empty state heading
+    await expect(page.getByRole('heading', { name: 'No events yet' })).toBeVisible()
+
+    // Description should explain what a strong listing looks like
+    const emptyState = page.locator('.empty-state')
+    await expect(emptyState).toContainText('clear title')
+
+    // CTA link
+    await expect(page.getByRole('link', { name: 'Submit your first event' })).toBeVisible()
+  })
+
+  test('metric legend is always visible when the analytics table is shown', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-legend-check',
+      slug: 'legend-check-event',
+      name: 'Legend Check Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Table should be visible
+    await expect(page.locator('.events-table')).toBeVisible()
+
+    // Metric legend should always be shown at the bottom of the table
+    const legend = page.locator('.metric-legend')
+    await expect(legend).toBeVisible()
+    await expect(legend).toContainText('Saves')
+    await expect(legend).toContainText('Momentum')
+    await expect(legend).toContainText('Calendar')
+    await expect(legend).toContainText('Cal Trend')
+  })
+})
