@@ -327,6 +327,15 @@ function rankCueForEvent(event: CatalogEvent): 'upcomingSoon' | 'recentlyAdded' 
   return null
 }
 
+/**
+ * Non-featured events with their pre-computed ranking cues.
+ * Computing the cue once per event (rather than calling rankCueForEvent twice in the template)
+ * avoids redundant Date arithmetic.
+ */
+const nonFeaturedEventsWithCues = computed(() =>
+  nonFeaturedEvents.value.map((event) => ({ event, cue: rankCueForEvent(event) })),
+)
+
 /** True when the authenticated user is a global admin or administers this specific domain hub. */
 const isHubAdmin = computed(
   () =>
@@ -621,22 +630,20 @@ onMounted(async () => {
         </div>
 
         <div v-if="events.length" class="events-grid">
-          <div v-for="event in nonFeaturedEvents" :key="event.id" class="event-card-wrap">
+          <div v-for="{ event, cue } in nonFeaturedEventsWithCues" :key="event.id" class="event-card-wrap">
             <span
-              v-if="rankCueForEvent(event) === 'upcomingSoon'"
+              v-if="cue === 'upcomingSoon'"
               class="rank-cue-badge rank-cue-badge--upcoming"
-              aria-label="Ranking cue"
             >⚡ {{ t('category.rankCueUpcomingSoon') }}</span>
             <span
-              v-else-if="rankCueForEvent(event) === 'recentlyAdded'"
+              v-else-if="cue === 'recentlyAdded'"
               class="rank-cue-badge rank-cue-badge--recent"
-              aria-label="Ranking cue"
             >✨ {{ t('category.rankCueRecentlyAdded') }}</span>
             <EventCard :event="event" />
           </div>
           <!-- If all events are featured, show a note instead of an empty grid -->
           <p
-            v-if="!nonFeaturedEvents.length && featuredEvents.length"
+            v-if="!nonFeaturedEventsWithCues.length && featuredEvents.length"
             class="all-featured-note text-secondary"
           >
             {{ t('category.eventsFound', { count: events.length }) }}
