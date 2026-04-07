@@ -143,7 +143,7 @@ export default {
     savedSearchEmpty:
       'Your saved search "{name}" currently has no matching events. This is likely temporary — new events may be added soon. Try broadening the filters or check back later.',
     // Domain context hint: shown when a keyword search matches a category hub
-    domainContextHint: 'There\'s a dedicated hub for {name} events.',
+    domainContextHint: "There's a dedicated hub for {name} events.",
     domainContextHintCta: 'Explore the {name} hub →',
   },
 

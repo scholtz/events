@@ -1135,7 +1135,7 @@ test.describe('Localized hub manage scheduled featured events section', () => {
 
 test.describe('Localized domain context hint', () => {
   function makeCryptoDomainForHint() {
-    return {
+    const domain = {
       id: 'dom-crypto',
       name: 'Crypto',
       slug: 'crypto',
@@ -1144,10 +1144,12 @@ test.describe('Localized domain context hint', () => {
       isActive: true,
       createdAtUtc: new Date().toISOString(),
     }
+    const domainRef = { id: domain.id, name: domain.name, slug: domain.slug, subdomain: domain.subdomain }
+    return { domain, domainRef }
   }
 
   test('domain context hint CTA is localized in German', async ({ page }) => {
-    const cryptoDomain = makeCryptoDomainForHint()
+    const { domain: cryptoDomain, domainRef } = makeCryptoDomainForHint()
     setupMockApi(page, {
       domains: [makeTechDomain(), cryptoDomain],
       events: [
@@ -1155,7 +1157,7 @@ test.describe('Localized domain context hint', () => {
           id: 'e-crypto',
           name: 'Blockchain Meetup',
           slug: 'blockchain-meetup',
-          domain: { id: cryptoDomain.id, name: cryptoDomain.name, slug: cryptoDomain.slug, subdomain: cryptoDomain.subdomain },
+          domain: domainRef,
           domainId: cryptoDomain.id,
         }),
       ],
@@ -1173,7 +1175,7 @@ test.describe('Localized domain context hint', () => {
   })
 
   test('domain context hint CTA is localized in Slovak', async ({ page }) => {
-    const cryptoDomain = makeCryptoDomainForHint()
+    const { domain: cryptoDomain, domainRef } = makeCryptoDomainForHint()
     setupMockApi(page, {
       domains: [makeTechDomain(), cryptoDomain],
       events: [
@@ -1181,7 +1183,7 @@ test.describe('Localized domain context hint', () => {
           id: 'e-crypto',
           name: 'Blockchain Meetup',
           slug: 'blockchain-meetup',
-          domain: { id: cryptoDomain.id, name: cryptoDomain.name, slug: cryptoDomain.slug, subdomain: cryptoDomain.subdomain },
+          domain: domainRef,
           domainId: cryptoDomain.id,
         }),
       ],
