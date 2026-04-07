@@ -3808,3 +3808,147 @@ test.describe('Subdomain hub low-signal state', () => {
     await expect(page.locator('.low-signal-notice .subdomain-hub-link')).toBeHidden()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Public discovery journey — strong-results experience
+// ---------------------------------------------------------------------------
+
+test.describe('Public discovery journey — strong results', () => {
+  test('user browses ranked events, sees rank context badge, clicks to detail, returns to same list', async ({
+    page,
+  }) => {
+    const now = new Date()
+    const nearFuture = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString()
+    const farFuture = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString()
+    const past = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
+
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        // Past event — should appear last in UPCOMING sort
+        makeApprovedEvent({
+          id: 'e-past',
+          name: 'Concluded Summit',
+          slug: 'concluded-summit',
+          startsAtUtc: past,
+          endsAtUtc: past,
+        }),
+        // Near-future event — should appear first
+        makeApprovedEvent({
+          id: 'e-near',
+          name: 'Imminent Workshop',
+          slug: 'imminent-workshop',
+          startsAtUtc: nearFuture,
+          endsAtUtc: nearFuture,
+          venueName: 'Forum Prague',
+          city: 'Prague',
+          eventUrl: 'https://example.com/imminent',
+        }),
+        // Far-future event — should appear second
+        makeApprovedEvent({
+          id: 'e-far',
+          name: 'Future Conference',
+          slug: 'future-conference',
+          startsAtUtc: farFuture,
+          endsAtUtc: farFuture,
+        }),
+      ],
+    })
+
+    // 1. Visit home: events should be ranked (upcoming first, then past)
+    await page.goto('/')
+
+    const cards = page.locator('.event-card')
+    await expect(cards).toHaveCount(3)
+    await expect(cards.nth(0)).toContainText('Imminent Workshop')
+    await expect(cards.nth(1)).toContainText('Future Conference')
+    await expect(cards.nth(2)).toContainText('Concluded Summit')
+
+    // 2. Rank context badge clearly explains the sort order
+    await expect(page.locator('.rank-context-badge')).toBeVisible()
+    await expect(page.locator('.rank-context-badge')).toContainText('Sorted by upcoming date')
+
+    // 3. Navigate to the nearest upcoming event
+    await page.locator('.event-title-link', { hasText: 'Imminent Workshop' }).click()
+    await expect(page).toHaveURL(/\/event\/imminent-workshop/)
+    await expect(page.getByRole('heading', { name: 'Imminent Workshop' })).toBeVisible()
+
+    // 4. Navigate back — events remain visible
+    await page.goBack()
+    await expect(cards.nth(0)).toContainText('Imminent Workshop')
+    await expect(page.locator('.rank-context-badge')).toBeVisible()
+  })
+
+  test('discovery results show all-in-past notice when every event has already occurred', async ({
+    page,
+  }) => {
+    const past = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString()
+
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-p1', name: 'Past Event Alpha', slug: 'past-alpha', startsAtUtc: past, endsAtUtc: past }),
+        makeApprovedEvent({ id: 'e-p2', name: 'Past Event Beta', slug: 'past-beta', startsAtUtc: past, endsAtUtc: past }),
+      ],
+    })
+
+    await page.goto('/')
+
+    // Both events still visible even though past
+    await expect(page.locator('.event-card', { hasText: 'Past Event Alpha' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Past Event Beta' })).toBeVisible()
+
+    // All-in-past notice guides user toward upcoming events
+    await expect(page.locator('.all-in-past-notice')).toBeVisible()
+    await expect(page.locator('.all-in-past-notice')).toContainText('already taken place')
+
+    // Browse link helps user recover
+    await expect(page.locator('.all-in-past-action')).toBeVisible()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Active filter chips — mobile visibility for language and date constraints
+// ---------------------------------------------------------------------------
+
+test.describe('Active filter chips — mobile viewport', () => {
+  test('language filter chip is visible on mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    setupMockApi(page, {
+      events: [
+        makeApprovedEvent({ id: 'e-en', name: 'English Event', slug: 'english-event', language: 'en' }),
+      ],
+    })
+    // Navigate directly to the filtered URL — the chip should be pre-rendered
+    await page.goto('/?lang=en')
+
+    // Language chip is visible without opening the filter panel
+    await expect(page.locator('.filter-chip', { hasText: 'Language' })).toBeVisible()
+  })
+
+  test('date filter chip is visible on mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    setupMockApi(page, {
+      events: [makeApprovedEvent()],
+    })
+    await page.goto('/?from=2026-01-01')
+
+    // Date-from chip is visible without opening the filter panel
+    await expect(page.locator('.filter-chip', { hasText: 'From' })).toBeVisible()
+  })
+
+  test('multiple active filter chips are all visible on mobile (language + date)', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    setupMockApi(page, {
+      events: [
+        makeApprovedEvent({ id: 'e-lang', name: 'Language Date Event', slug: 'lang-date-event', language: 'sk' }),
+      ],
+    })
+    await page.goto('/?lang=sk&from=2025-01-01')
+
+    await expect(page.locator('.filter-chip', { hasText: 'Language' })).toBeVisible()
+    await expect(page.locator('.filter-chip', { hasText: 'From' })).toBeVisible()
+  })
+})

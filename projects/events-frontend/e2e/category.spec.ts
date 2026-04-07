@@ -1678,3 +1678,97 @@ test.describe('Category landing page: related hubs', () => {
     await expect(page.locator('.related-hubs-title')).toContainText('Das könnte Sie auch interessieren')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Category hub: featured events first, then ranked non-featured events
+// ---------------------------------------------------------------------------
+
+test.describe('Category hub: featured events precede ranked non-featured events', () => {
+  test('featured events appear in starred section; non-featured events follow in upcoming order', async ({
+    page,
+  }) => {
+    const domain = makeTechDomain()
+    const now = new Date()
+    const nearFuture = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString()
+    const farFuture = new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000).toISOString()
+    const past = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString()
+
+    const featuredEvent = makeApprovedEvent({
+      id: 'feat-1',
+      name: 'Featured Keynote',
+      slug: 'featured-keynote',
+      domainId: domain.id,
+      domain: { id: domain.id, name: domain.name, slug: domain.slug, subdomain: domain.subdomain },
+      startsAtUtc: farFuture,
+      endsAtUtc: farFuture,
+    })
+    const nearUpcoming = makeApprovedEvent({
+      id: 'non-feat-near',
+      name: 'Near Upcoming Talk',
+      slug: 'near-upcoming-talk',
+      domainId: domain.id,
+      domain: { id: domain.id, name: domain.name, slug: domain.slug, subdomain: domain.subdomain },
+      startsAtUtc: nearFuture,
+      endsAtUtc: nearFuture,
+    })
+    const pastEvent = makeApprovedEvent({
+      id: 'non-feat-past',
+      name: 'Past Workshop',
+      slug: 'past-workshop',
+      domainId: domain.id,
+      domain: { id: domain.id, name: domain.name, slug: domain.slug, subdomain: domain.subdomain },
+      startsAtUtc: past,
+      endsAtUtc: past,
+    })
+
+    setupMockApi(page, {
+      domains: [domain],
+      events: [featuredEvent, nearUpcoming, pastEvent],
+      featuredEvents: [{ domainSlug: domain.slug, eventId: featuredEvent.id, displayOrder: 0 }],
+    })
+
+    await page.goto('/category/technology')
+
+    // Featured section shows the featured event with its badge
+    await expect(page.locator('.featured-grid .event-card', { hasText: 'Featured Keynote' })).toBeVisible()
+    await expect(page.locator('.featured-badge')).toBeVisible()
+
+    // Non-featured events appear in the main grid in UPCOMING order (nearest first)
+    const mainCards = page.locator('.events-grid .event-card')
+    // Near-upcoming event appears before the past event
+    await expect(mainCards.first()).toContainText('Near Upcoming Talk')
+    await expect(mainCards.nth(1)).toContainText('Past Workshop')
+
+    // Rank context badge confirms ordering is explained
+    await expect(page.locator('.rank-context-badge')).toBeVisible()
+    await expect(page.locator('.rank-context-badge')).toContainText('Sorted by upcoming date')
+  })
+
+  test('all-in-past notice appears on category page when all non-featured events are past', async ({
+    page,
+  }) => {
+    const domain = makeTechDomain()
+    const past = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+
+    setupMockApi(page, {
+      domains: [domain],
+      events: [
+        makeApprovedEvent({
+          id: 'old-1',
+          name: 'Old Tech Event',
+          slug: 'old-tech-event',
+          domainId: domain.id,
+          domain: { id: domain.id, name: domain.name, slug: domain.slug, subdomain: domain.subdomain },
+          startsAtUtc: past,
+          endsAtUtc: past,
+        }),
+      ],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.event-card', { hasText: 'Old Tech Event' })).toBeVisible()
+    await expect(page.locator('.all-in-past-notice')).toBeVisible()
+    await expect(page.locator('.all-in-past-action')).toBeVisible()
+  })
+})
