@@ -781,6 +781,9 @@ export default {
     relatedHubsTitle: 'Das könnte Sie auch interessieren',
     relatedHubsDesc: 'Entdecken Sie bevorstehende Veranstaltungen in verwandten Community-Hubs.',
     relatedHubCta: '{name} erkunden →',
+    // Per-event ranking cue badges
+    rankCueUpcomingSoon: 'Bald bevorstehend',
+    rankCueRecentlyAdded: 'Neu hinzugefügt',
   },
 
   // ── Hub manage page ────────────────────────────────────────────────────────

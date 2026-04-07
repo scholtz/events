@@ -669,7 +669,10 @@ public sealed class Query
     ///    (city, venue name, event URL) rank higher than sparse listings.
     /// 4. Engagement signal — events saved by more attendees surface above zero-save
     ///    events with identical completeness, rewarding well-prepared submissions.
-    /// 5. Alphabetical name as a final deterministic tiebreaker.
+    /// 5. Publication freshness tiebreaker — within the same engagement tier, recently
+    ///    published events (newest PublishedAtUtc) surface above older listings, rewarding
+    ///    organizers who keep content current and signalling timeliness to users.
+    /// 6. Alphabetical name as a final deterministic tiebreaker.
     /// </summary>
     private static IOrderedQueryable<CatalogEvent> BuildUpcomingSort(
         IQueryable<CatalogEvent> query,
@@ -704,10 +707,17 @@ public sealed class Query
             return sorted
                 .ThenByDescending(catalogEvent =>
                     favoriteEventsSource.Count(f => f.EventId == catalogEvent.Id))
+                // Publication freshness: within the same engagement tier, more recently published
+                // events appear first. Applied after engagement so that events with genuine user
+                // interest are not displaced by newer but untested listings.
+                .ThenByDescending(catalogEvent => catalogEvent.PublishedAtUtc)
                 .ThenBy(catalogEvent => catalogEvent.Name);
         }
 
-        return sorted.ThenBy(catalogEvent => catalogEvent.Name);
+        return sorted
+            // Publication freshness tiebreaker (no favorite-events source available)
+            .ThenByDescending(catalogEvent => catalogEvent.PublishedAtUtc)
+            .ThenBy(catalogEvent => catalogEvent.Name);
     }
 
     private static string? NormalizeFilterValue(string? value)
