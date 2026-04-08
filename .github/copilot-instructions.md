@@ -764,3 +764,29 @@ await page.goto('/')
 await page.getByRole('combobox', { name: 'Language' }).selectOption('de')
 await page.getByRole('button', { name: 'Weitere Filter' }).click() // fails — button may not render yet
 ```
+
+## EventFilters auto-expand on URL load
+
+`EventFilters.vue` auto-expands the advanced filter panel on `onMounted` when any **advanced filter** is active (attendanceMode / location / dateFrom / dateTo / priceType / priceMin / priceMax / sortBy / language / timezone). This is triggered by the `advancedActiveCount > 0` condition.
+
+**Impact on E2E tests**: **Never click "More filters" after navigating to a URL that contains any advanced filter parameter.** The panel is already open; clicking the button would close it instead.
+
+```ts
+// ❌ WRONG — panel already open because URL has location= (advanced filter):
+await page.goto('/?location=Prague&price=paid')
+await page.getByRole('button', { name: 'More filters' }).click()  // closes the panel!
+
+// ✅ CORRECT — advanced filters are visible immediately:
+await page.goto('/?location=Prague&price=paid')
+// No click needed — panel is already expanded
+await expect(page.getByLabel('Location')).toHaveValue('Prague')
+```
+
+The button label changes based on panel state and active count:
+- Panel **closed**, no active advanced filters → `"More filters"` 
+- Panel **closed**, N active advanced filters → `"More filters (N active)"`
+- Panel **open** → `"Hide filters"`
+
+URL parameters that trigger auto-expand: `?mode=`, `?location=`, `?from=`, `?to=`, `?price=`, `?priceMin=`, `?priceMax=`, `?sort=`, `?lang=`, `?tz=`.
+
+URL parameters that do NOT trigger auto-expand (primary filters, visible without expanding): `?q=` (search keyword), `?domain=`.
