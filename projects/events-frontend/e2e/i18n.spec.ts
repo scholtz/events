@@ -1200,3 +1200,95 @@ test.describe('Localized domain context hint', () => {
     await expect(page.locator('.domain-context-hint-link')).toContainText('Preskúmať hub Crypto')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Localized results context summary
+// ---------------------------------------------------------------------------
+
+test.describe('Localized results context summary', () => {
+  test('results summary is localized in German when active filter is applied', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-de-online', name: 'Online Event DE', slug: 'online-event-de', attendanceMode: 'ONLINE' }),
+      ],
+    })
+
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'de')
+    })
+
+    await page.goto('/?mode=online')
+
+    // German: "1 Veranstaltung passend zu Modus: Online"
+    const summary = page.locator('.results-summary')
+    await expect(summary).toBeVisible()
+    await expect(summary).toContainText('1 Veranstaltung passend zu')
+    await expect(summary).toContainText('Modus: Online')
+  })
+
+  test('results available count is localized in German when no filters active', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-de-1', name: 'Event Alpha DE', slug: 'event-alpha-de' }),
+        makeApprovedEvent({ id: 'e-de-2', name: 'Event Beta DE', slug: 'event-beta-de' }),
+      ],
+    })
+
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'de')
+    })
+
+    await page.goto('/')
+
+    // German: "2 Veranstaltungen verfügbar"
+    const summary = page.locator('.results-summary')
+    await expect(summary).toBeVisible()
+    await expect(summary).toContainText('2 Veranstaltungen verfügbar')
+  })
+
+  test('all-in-past notice is localized in German', async ({ page }) => {
+    const pastDate = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
+
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-past-de', name: 'Past Event DE', slug: 'past-event-de', startsAtUtc: pastDate, endsAtUtc: pastDate }),
+      ],
+    })
+
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'de')
+    })
+
+    await page.goto('/')
+
+    await expect(page.locator('.all-in-past-notice')).toBeVisible()
+    await expect(page.locator('.all-in-past-notice')).toContainText(
+      'Alle aufgeführten Veranstaltungen haben bereits stattgefunden.',
+    )
+  })
+
+  test('all-in-past notice is localized in Slovak', async ({ page }) => {
+    const pastDate = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
+
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-past-sk', name: 'Past Event SK', slug: 'past-event-sk', startsAtUtc: pastDate, endsAtUtc: pastDate }),
+      ],
+    })
+
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'sk')
+    })
+
+    await page.goto('/')
+
+    await expect(page.locator('.all-in-past-notice')).toBeVisible()
+    await expect(page.locator('.all-in-past-notice')).toContainText(
+      'Všetky uvedené udalosti sa už uskutočnili.',
+    )
+  })
+})
