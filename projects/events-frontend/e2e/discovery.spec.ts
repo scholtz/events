@@ -1043,10 +1043,7 @@ test.describe('Mobile viewport discovery', () => {
     await expect(page.locator('.event-card', { hasText: 'Online Workshop' })).toBeVisible()
     await expect(page.locator('.event-card', { hasText: 'In-Person Meetup' })).toBeHidden()
 
-    // Expand advanced filters to access saved search form
-    await page.getByRole('button', { name: 'More filters' }).click()
-
-    // Save the search
+    // Save the search (panel auto-expanded because of active mode filter)
     await page.getByLabel('Preset name').fill('Online Events')
     await page.getByRole('button', { name: 'Save current search' }).click()
     const savedSearchButton = page.locator('.saved-search-apply', { hasText: 'Online Events' })
@@ -1129,9 +1126,7 @@ test.describe('Date range filter', () => {
     })
     await page.goto('/?from=2026-06-01&to=2026-12-31')
 
-    // Expand advanced filters to reveal date inputs
-    await page.getByRole('button', { name: 'More filters' }).click()
-
+    // Panel auto-expands because date range filters are advanced filters
     await expect(page.getByLabel('From')).toHaveValue('2026-06-01')
     await expect(page.getByLabel('To')).toHaveValue('2026-12-31')
     await expect(page.locator('.filter-chip', { hasText: /from/i })).toBeVisible()
@@ -1760,7 +1755,7 @@ test.describe('Multi-filter saved search full restoration', () => {
     await expect(page.locator('.event-card', { hasText: 'Prague Paid In-Person Event' })).toBeHidden()
 
     // Expand advanced filters to access saved search form
-    await page.getByRole('button', { name: 'More filters' }).click()
+    // (panel is already auto-expanded because advanced filter params are in the URL)
 
     // Verify all filter controls reflect the URL parameters
     await expect(page.getByLabel('Keyword')).toHaveValue('summit')
@@ -4090,5 +4085,267 @@ test.describe('Domain context hint', () => {
 
     await expect(page.locator('.domain-context-hint')).toBeVisible()
     await expect(page.locator('.domain-context-hint-link')).toBeVisible()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Mobile filter usability: active count badge and auto-expand
+// ---------------------------------------------------------------------------
+
+test.describe('Mobile filter panel — active count badge and auto-expand', () => {
+  test('filter panel auto-expands when navigating to URL with advanced filter params', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-online',
+          name: 'Online Webinar',
+          slug: 'online-webinar',
+          attendanceMode: 'ONLINE',
+        }),
+      ],
+    })
+    await page.goto('/?mode=online')
+
+    // The advanced filter section should be auto-expanded so the attendanceMode
+    // select is immediately visible without a user clicking "More filters"
+    await expect(page.locator('select#filter-attendance-mode')).toBeVisible()
+    // Since the panel is expanded, the button shows "Hide filters"
+    await expect(page.getByRole('button', { name: 'Hide filters', exact: true })).toBeVisible()
+  })
+
+  test('"More filters" button shows active count after user collapses the panel', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-online',
+          name: 'Online Webinar',
+          slug: 'online-webinar',
+          attendanceMode: 'ONLINE',
+        }),
+      ],
+    })
+    // attendanceMode is an advanced filter — panel auto-expands on load
+    await page.goto('/?mode=online')
+
+    // Auto-expanded: button says "Hide filters"
+    await expect(page.getByRole('button', { name: 'Hide filters', exact: true })).toBeVisible()
+
+    // User collapses the panel
+    await page.getByRole('button', { name: 'Hide filters', exact: true }).click()
+
+    // Count badge now appears on the collapsed button
+    await expect(
+      page.getByRole('button', { name: /more filters \(1 active\)/i }),
+    ).toBeVisible()
+    // Mode select is hidden after collapse
+    await expect(page.locator('select#filter-attendance-mode')).toBeHidden()
+  })
+
+  test('"More filters" button shows count for multiple advanced filters after collapse', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-online',
+          name: 'Online Webinar',
+          slug: 'online-webinar',
+          attendanceMode: 'ONLINE',
+          city: 'Prague',
+        }),
+      ],
+    })
+    // 2 advanced filters: attendanceMode + location — panel auto-expands
+    await page.goto('/?mode=online&location=Prague')
+
+    // Collapse panel
+    await page.getByRole('button', { name: 'Hide filters', exact: true }).click()
+
+    // Count badge shows 2 active advanced filters
+    await expect(
+      page.getByRole('button', { name: /more filters \(2 active\)/i }),
+    ).toBeVisible()
+  })
+
+  test('filter panel does not auto-expand when only primary filters are active', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-1', name: 'Tech Meetup', slug: 'tech-meetup' }),
+      ],
+    })
+    // domain + search are primary filters, not advanced ones
+    await page.goto('/?domain=technology&q=meetup')
+
+    // Advanced section should remain collapsed — mode select is hidden
+    await expect(page.locator('select#filter-attendance-mode')).toBeHidden()
+    // Button label should show plain "More filters" (no count)
+    await expect(page.getByRole('button', { name: 'More filters', exact: true })).toBeVisible()
+  })
+
+  test('mobile: filter panel auto-expands at mobile viewport with advanced URL params', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-online',
+          name: 'Mobile Online Event',
+          slug: 'mobile-online-event',
+          attendanceMode: 'ONLINE',
+        }),
+      ],
+    })
+    await page.goto('/?mode=online')
+
+    // Attendance mode select must be visible without user pressing "More filters"
+    await expect(page.locator('select#filter-attendance-mode')).toBeVisible()
+    // Event card still rendered
+    await expect(page.locator('.event-card', { hasText: 'Mobile Online Event' })).toBeVisible()
+  })
+
+  test('mobile: "More filters" count badge visible after collapsing the panel', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-online',
+          name: 'Mobile Online Event',
+          slug: 'mobile-online-event',
+          attendanceMode: 'ONLINE',
+        }),
+      ],
+    })
+    // Panel auto-expands on load
+    await page.goto('/?mode=online')
+
+    // Collapse panel to see the count badge
+    await page.getByRole('button', { name: 'Hide filters', exact: true }).click()
+
+    await expect(
+      page.getByRole('button', { name: /more filters \(1 active\)/i }),
+    ).toBeVisible()
+  })
+
+  test('mobile: complete filter flow — auto-expand, count badge, chip clear, restore', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-in-person',
+          name: 'In-Person Workshop',
+          slug: 'in-person-workshop',
+          attendanceMode: 'IN_PERSON',
+        }),
+        makeApprovedEvent({
+          id: 'e-online',
+          name: 'Online Webinar',
+          slug: 'online-webinar',
+          attendanceMode: 'ONLINE',
+        }),
+      ],
+    })
+    await page.goto('/?mode=in-person')
+
+    // Panel is auto-expanded — mode select is visible, button says "Hide filters"
+    await expect(page.locator('select#filter-attendance-mode')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Hide filters', exact: true })).toBeVisible()
+
+    // Only in-person events shown
+    await expect(page.locator('.event-card', { hasText: 'In-Person Workshop' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Online Webinar' })).toBeHidden()
+
+    // Collapse panel — count badge should appear
+    await page.getByRole('button', { name: 'Hide filters', exact: true }).click()
+    await expect(
+      page.getByRole('button', { name: /more filters \(1 active\)/i }),
+    ).toBeVisible()
+
+    // Clear the attendanceMode chip — both events should reappear
+    await page.locator('.filter-chip', { hasText: /mode/i }).click()
+    await expect(page.locator('.event-card', { hasText: 'In-Person Workshop' })).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Online Webinar' })).toBeVisible()
+
+    // After clearing all advanced filters, button reverts to plain "More filters"
+    await expect(page.getByRole('button', { name: 'More filters', exact: true })).toBeVisible()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Desktop: context messaging with multiple active filters
+// ---------------------------------------------------------------------------
+
+test.describe('Desktop: result context messaging', () => {
+  test('results summary shows active filter labels when multiple filters are set', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-tech',
+          name: 'Tech Conference',
+          slug: 'tech-conference',
+          attendanceMode: 'IN_PERSON',
+          city: 'Berlin',
+        }),
+      ],
+    })
+    await page.goto('/?mode=in-person&location=Berlin')
+
+    // Results summary must mention the active filter context
+    const summary = page.locator('.results-summary')
+    await expect(summary).toBeVisible()
+    await expect(summary).toContainText(/1 event matching/i)
+  })
+
+  test('rank context badge is visible with active filters', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({
+          id: 'e-tech',
+          name: 'Tech Conference',
+          slug: 'tech-conference',
+          attendanceMode: 'ONLINE',
+        }),
+      ],
+    })
+    await page.goto('/?mode=online')
+
+    await expect(page.locator('.rank-context-badge')).toBeVisible()
+    await expect(page.locator('.rank-context-badge')).toContainText(/sorted by upcoming/i)
+  })
+
+  test('results summary shows plain count when no advanced filters active', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-1', name: 'Event One', slug: 'event-one' }),
+        makeApprovedEvent({ id: 'e-2', name: 'Event Two', slug: 'event-two' }),
+      ],
+    })
+    await page.goto('/')
+
+    const summary = page.locator('.results-summary')
+    await expect(summary).toBeVisible()
+    await expect(summary).toContainText(/2 events available/i)
   })
 })

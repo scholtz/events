@@ -191,6 +191,7 @@ export default {
     chipLanguage: 'Jazyk: {value}',
     chipTimezone: 'Časové pásmo: {value}',
     moreFilters: 'Viac filtrov',
+    moreFiltersActive: 'Viac filtrov ({count} aktívnych)',
     hideFilters: 'Skryť filtre',
     savedSearches: 'Uložené vyhľadávania',
     savedSearchesDescription: 'Uložte si prednastavený filter a použite ho neskôr.',

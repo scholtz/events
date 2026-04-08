@@ -227,8 +227,8 @@ test.describe('Event filters', () => {
 
     await page.goto('/?location=Prague&price=paid&sort=newest')
 
-    // Expand advanced filters to verify field values and interact with saved searches
-    await page.getByRole('button', { name: 'More filters' }).click()
+    // The filter panel auto-expands because location/price/sort are advanced filters.
+    // No need to click "More filters" — the panel is already open.
 
     await expect(page.getByLabel('Location')).toHaveValue('Prague')
     await expect(page.getByLabel('Price', { exact: true })).toHaveValue('PAID')
