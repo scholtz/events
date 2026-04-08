@@ -527,6 +527,7 @@ export default {
     analyticsStateNormalTitle: 'Gutes Engagement-Signal.',
     analyticsStateNormal:
       'Ihre Veranstaltungen gewinnen an Fahrt. Teilen Sie weiterhin in Community-Kanälen, halten Sie alle Veranstaltungsdetails aktuell und reagieren Sie zeitnah auf Moderatorenfeedback.',
+    analyticsStateBrowseCommunities: 'Community-Hubs entdecken →',
     tableMetricLegend:
       'Speicherungen: Gesamte Teilnehmer-Lesezeichen · Dynamik: Speicherungen in den letzten 7 oder 30 Tagen · Kalender: Gesamte Kalender-Hinzufügungen · Kal. Trend: Kalendereinträge in den letzten 7 oder 30 Tagen',
     hubManagementTitle: 'Hub-Verwaltung',

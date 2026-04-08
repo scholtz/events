@@ -601,6 +601,7 @@ function communityRoleLabel(role: string): string {
           <div>
             <strong>{{ t('dashboard.analyticsStateEarlyTitle') }}</strong>
             <p class="analytics-state-detail">{{ t('dashboard.analyticsStateEarly') }}</p>
+            <RouterLink to="/communities" class="banner-action-link">{{ t('dashboard.analyticsStateBrowseCommunities') }}</RouterLink>
           </div>
         </div>
 
@@ -615,6 +616,7 @@ function communityRoleLabel(role: string): string {
           <div>
             <strong>{{ t('dashboard.analyticsStateLowSignalTitle') }}</strong>
             <p class="analytics-state-detail">{{ t('dashboard.analyticsStateLowSignal') }}</p>
+            <RouterLink to="/communities" class="banner-action-link">{{ t('dashboard.analyticsStateBrowseCommunities') }}</RouterLink>
           </div>
         </div>
 
@@ -1536,6 +1538,19 @@ tr:hover td {
   margin: 0.25rem 0 0;
   color: var(--color-text-secondary);
   line-height: 1.5;
+}
+
+.banner-action-link {
+  display: inline-block;
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.banner-action-link:hover {
+  text-decoration: underline;
 }
 
 /* ── Freshness indicator ── */

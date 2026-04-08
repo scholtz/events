@@ -527,6 +527,7 @@ export default {
     analyticsStateNormalTitle: 'Dobré signály zapojenia.',
     analyticsStateNormal:
       'Vaše udalosti získavajú popularitu. Naďalej zdieľajte v komunitných kanáloch, udržiavajte všetky detaily aktuálne a rýchlo reagujte na spätnú väzbu moderátora.',
+    analyticsStateBrowseCommunities: 'Prehliadať komunitné huby →',
     tableMetricLegend:
       'Uloženia: celkové záložky účastníkov · Dynamika: uloženia za posledných 7 alebo 30 dní · Kalendár: celkový počet pridaní do kalendára · Trend kal.: pridania za posledných 7 alebo 30 dní',
     hubManagementTitle: 'Správa hubu',
