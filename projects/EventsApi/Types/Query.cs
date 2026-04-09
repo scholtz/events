@@ -665,8 +665,12 @@ public sealed class Query
     /// Constructs the default UPCOMING sort with deterministic, documented heuristics:
     /// 1. Upcoming events (starts at or after now) before past events.
     /// 2. Within each bucket: ascending by start date (nearest upcoming first).
-    /// 3. Schedule/venue completeness tiebreaker — events with more filled-in fields
-    ///    (city, venue name, event URL) rank higher than sparse listings.
+    /// 3. Metadata completeness tiebreaker — events with more filled-in contextual fields
+    ///    (city, venue name, event URL, language, timezone) rank higher than sparse listings.
+    ///    Each present field contributes 1 point (max 5); higher completeness ranks first.
+    ///    Language and timezone are included because they help multilingual/distributed
+    ///    audiences immediately identify relevant events, making well-described events more
+    ///    discoverable than sparse ones at the same date.
     /// 4. Engagement signal — events saved by more attendees surface above zero-save
     ///    events with identical completeness, rewarding well-prepared submissions.
     /// 5. Publication freshness tiebreaker — within the same engagement tier, recently
@@ -684,12 +688,16 @@ public sealed class Query
             .OrderBy(catalogEvent => catalogEvent.StartsAtUtc < now ? 1 : 0)
             // Within each group: ascending by start date (nearest upcoming first; oldest past first)
             .ThenBy(catalogEvent => catalogEvent.StartsAtUtc)
-            // Tiebreaker: prefer events with more complete schedule data (venue, city, event URL)
-            // Each present field contributes 1 point (max 3); higher completeness ranks first.
+            // Tiebreaker: prefer events with richer metadata — venue, city, event URL, language,
+            // and timezone each contribute 1 point (max 5). Events with better contextual
+            // information feel more trustworthy and help multilingual/distributed audiences
+            // identify the right event faster.
             .ThenByDescending(catalogEvent =>
                 (string.IsNullOrEmpty(catalogEvent.City) ? 0 : 1) +
                 (string.IsNullOrEmpty(catalogEvent.VenueName) ? 0 : 1) +
-                (string.IsNullOrEmpty(catalogEvent.EventUrl) ? 0 : 1));
+                (string.IsNullOrEmpty(catalogEvent.EventUrl) ? 0 : 1) +
+                (string.IsNullOrEmpty(catalogEvent.Language) ? 0 : 1) +
+                (string.IsNullOrEmpty(catalogEvent.Timezone) ? 0 : 1));
 
         // Engagement signal: events saved by more attendees surface above zero-save events
         // with identical completeness. Privacy-safe: only aggregate counts are used.

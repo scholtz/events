@@ -1593,6 +1593,19 @@ test.describe('Contextual empty-state guidance', () => {
     await expect(page.getByRole('heading', { name: 'No events found' })).toBeVisible()
     await expect(page.locator('.empty-state')).toContainText('active filters')
   })
+
+  test('single language filter shows language-specific hint', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-1', name: 'English Event', slug: 'english-event', language: 'en' })],
+    })
+    // Filter to German — no results since the only event is in English
+    await page.goto('/?lang=de')
+
+    await expect(page.getByRole('heading', { name: 'No events found' })).toBeVisible()
+    await expect(page.locator('.empty-state')).toContainText('de')
+    await expect(page.locator('.empty-state')).toContainText('language')
+  })
 })
 
 // ---------------------------------------------------------------------------
