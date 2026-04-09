@@ -210,7 +210,7 @@ test.describe('Category landing page', () => {
     await expect(page.locator('.results-summary')).toContainText('Technology hub')
   })
 
-  test('Filter & Explore journey: clicking the link from hub page applies domain filter on home', async ({
+  test('navigates to home with domain filter when clicking Filter & Explore link', async ({
     page,
   }) => {
     setupMockApi(page, {
@@ -228,7 +228,7 @@ test.describe('Category landing page', () => {
     await expect(page).toHaveURL(/\?domain=technology/)
   })
 
-  test('results summary is hidden when events section is not rendered (empty state)', async ({
+  test('shows zero-event count in results summary alongside empty state', async ({
     page,
   }) => {
     setupMockApi(page, { domains: [makeTechDomain()], events: [] })
