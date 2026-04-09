@@ -1663,6 +1663,66 @@ test.describe('Hub rank context badge', () => {
 
     await expect(page.locator('.curated-community-event-count')).toContainText('1 upcoming event')
   })
+
+  test('i18n: curated communities section heading is localized in Slovak', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'sk')
+    })
+    const domain = makeTechDomain()
+    const group = makePublicGroup({ name: 'Slovenská skupina', slug: 'slovenska-skupina' })
+    const entry: MockDomainCuratedCommunity = {
+      id: 'cc-sk',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: true,
+      annotation: null,
+      createdAtUtc: new Date().toISOString(),
+    }
+    setupMockApi(page, {
+      domains: [domain],
+      events: [],
+      communityGroups: [group],
+      domainCuratedCommunities: [entry],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(
+      page.getByRole('heading', { name: 'Komunity v tomto hube', exact: true }),
+    ).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Preskúmať komunitu', exact: true })).toBeVisible()
+  })
+
+  test('i18n: curated communities section heading is localized in German', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'de')
+    })
+    const domain = makeTechDomain()
+    const group = makePublicGroup({ name: 'Deutsche Gruppe', slug: 'deutsche-gruppe' })
+    const entry: MockDomainCuratedCommunity = {
+      id: 'cc-de',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: true,
+      annotation: null,
+      createdAtUtc: new Date().toISOString(),
+    }
+    setupMockApi(page, {
+      domains: [domain],
+      events: [],
+      communityGroups: [group],
+      domainCuratedCommunities: [entry],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(
+      page.getByRole('heading', { name: 'Communities in diesem Hub', exact: true }),
+    ).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Community erkunden', exact: true })).toBeVisible()
+  })
 })
 
 // ── Scheduled Featured Events on category landing page ──────────────────────

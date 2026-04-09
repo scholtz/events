@@ -1147,6 +1147,134 @@ test.describe('Hub Manage page (/hub/:slug/manage)', () => {
     ).toBeVisible()
   })
 
+  test('admin can reorder curated communities using move up/down buttons', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    const groupA = makePublicGroup({ id: 'group-a', name: 'Alpha Group', slug: 'alpha-group' })
+    const groupB = makePublicGroup({ id: 'group-b', name: 'Beta Group', slug: 'beta-group' })
+    const entryA: MockDomainCuratedCommunity = {
+      id: 'cc-a',
+      domainId: domain.id,
+      groupId: groupA.id,
+      displayOrder: 0,
+      isEnabled: true,
+      annotation: null,
+      createdAtUtc: new Date().toISOString(),
+    }
+    const entryB: MockDomainCuratedCommunity = {
+      id: 'cc-b',
+      domainId: domain.id,
+      groupId: groupB.id,
+      displayOrder: 1,
+      isEnabled: true,
+      annotation: null,
+      createdAtUtc: new Date().toISOString(),
+    }
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      communityGroups: [groupA, groupB],
+      domainCuratedCommunities: [entryA, entryB],
+    })
+    await loginAs(page, admin)
+
+    await page.goto('/hub/technology/manage')
+
+    const list = page.locator('.hub-curated-community-list')
+    await expect(list).toBeVisible()
+
+    // Initially Alpha is first, Beta is second
+    const items = list.locator('.hub-curated-community-item')
+    await expect(items.nth(0).getByRole('link', { name: 'Alpha Group' })).toBeVisible()
+    await expect(items.nth(1).getByRole('link', { name: 'Beta Group' })).toBeVisible()
+
+    // Move Alpha down (Beta should become first)
+    await items.nth(0).getByRole('button', { name: 'Move Alpha Group down' }).click()
+
+    // Now Beta is first, Alpha is second
+    await expect(items.nth(0).getByRole('link', { name: 'Beta Group' })).toBeVisible()
+    await expect(items.nth(1).getByRole('link', { name: 'Alpha Group' })).toBeVisible()
+
+    // Move Alpha back up
+    await items.nth(1).getByRole('button', { name: 'Move Alpha Group up' }).click()
+
+    // Alpha is first again
+    await expect(items.nth(0).getByRole('link', { name: 'Alpha Group' })).toBeVisible()
+    await expect(items.nth(1).getByRole('link', { name: 'Beta Group' })).toBeVisible()
+  })
+
+  test('admin can disable a curated community entry via checkbox', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    const group = makePublicGroup({ name: 'Toggle Group', slug: 'toggle-group' })
+    const entry: MockDomainCuratedCommunity = {
+      id: 'cc-toggle',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: true,
+      annotation: null,
+      createdAtUtc: new Date().toISOString(),
+    }
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      communityGroups: [group],
+      domainCuratedCommunities: [entry],
+    })
+    await loginAs(page, admin)
+
+    await page.goto('/hub/technology/manage')
+
+    const list = page.locator('.hub-curated-community-list')
+    const item = list.locator('.hub-curated-community-item').first()
+
+    // Initially enabled badge is shown
+    await expect(item.locator('.badge--enabled')).toBeVisible()
+    await expect(item.locator('.badge--disabled')).toBeHidden()
+
+    // Uncheck the enabled checkbox to disable
+    await item.getByLabel('Enabled (show publicly)').uncheck()
+
+    // Disabled badge is now shown
+    await expect(item.locator('.badge--disabled')).toBeVisible()
+    await expect(item.locator('.badge--enabled')).toBeHidden()
+  })
+
+  test('admin can save curated communities and sees success message', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    const group = makePublicGroup({ name: 'Save Test Group', slug: 'save-test-group' })
+    const entry: MockDomainCuratedCommunity = {
+      id: 'cc-save',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: true,
+      annotation: null,
+      createdAtUtc: new Date().toISOString(),
+    }
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      communityGroups: [group],
+      domainCuratedCommunities: [entry],
+    })
+    await loginAs(page, admin)
+
+    await page.goto('/hub/technology/manage')
+
+    // Click Save Curated Communities and wait for the mutation to complete
+    const saveResponse = page.waitForResponse((resp) =>
+      resp.url().includes('/graphql') && resp.request().method() === 'POST',
+    )
+    await page.getByRole('button', { name: 'Save Curated Communities' }).click()
+    await saveResponse
+
+    // Success message should appear
+    await expect(page.getByText('✓ Saved')).toBeVisible()
+  })
+
   test('Curated Community Groups section is localized in Slovak', async ({ page }) => {
     const admin = makeAdminUser()
     const domain = makeTechDomain()
