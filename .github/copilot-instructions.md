@@ -839,3 +839,34 @@ The button label changes based on panel state and active count:
 URL parameters that trigger auto-expand: `?mode=`, `?location=`, `?from=`, `?to=`, `?price=`, `?priceMin=`, `?priceMax=`, `?sort=`, `?lang=`, `?tz=`.
 
 URL parameters that do NOT trigger auto-expand (primary filters, visible without expanding): `?q=` (search keyword), `?domain=`.
+
+## Organizer dashboard recommendation row quality standards
+
+When implementing per-event analytics recommendation rows in `DashboardView.vue`, always follow these standards.
+
+### Every guidance recommendation must include a direct edit action link
+- Recommendation rows for guidance-type recommendations (`publishedNoSaves`, `publishedNewlyPublished`, `publishedApproachingSoon`, `publishedMissingLanguage`, `publishedMissingTimezone`, `publishedMissingDomain`, `publishedMissingVenue`) MUST include a `.rec-edit-link` RouterLink to `/edit/:eventId`.
+- This link must be localized — add the i18n key `dashboard.recommendationEditAction` in EN, SK, and DE.
+- Do NOT add edit links for `rejected`, `draft`, or `pending` recommendation types — these have different action flows already covered by the actions column.
+
+### Navigation test requirement
+Every PR that adds or changes per-event recommendation rows must include an E2E test that:
+1. Renders a guidance-type recommendation (e.g. `publishedMissingVenue`)
+2. Verifies the `.rec-edit-link` is visible
+3. Clicks the link and asserts the URL changes to `/edit/:eventId`
+
+### Venue completeness recommendation
+- `EventAnalyticsItem.hasVenueDetails` (backend bool / frontend boolean) is `true` for ONLINE events or events with a non-empty `VenueName`; `false` for IN_PERSON/HYBRID events missing a venue name.
+- Backend computes this in `GetMyDashboardAsync`: `e.AttendanceMode == AttendanceMode.Online || !string.IsNullOrWhiteSpace(e.VenueName)`
+- Frontend `RecommendationType` includes `publishedMissingVenue` — triggered after domain check when `hasVenueDetails === false` and `totalInterestedCount > 0`.
+
+## Full vertical slice commit requirements
+
+**IMPORTANT**: When making the first code commit for an issue, include actual code changes — not just a plan. The `report_progress` initial plan checklist should be committed together with the first meaningful code change, not as a standalone "Initial plan" commit.
+
+Specifically:
+- The first `report_progress` commit MUST include at least one real code change.
+- Do NOT make a "Initial plan" commit that only contains placeholder text in the PR description with no code.
+- The PR description should describe what IS implemented (present tense), not what WILL be implemented.
+
+This prevents product owners from seeing an empty PR with only planning text before the implementation arrives.

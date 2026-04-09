@@ -3906,6 +3906,54 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task MyDashboard_EventAnalytics_HasVenueDetails_FalseForHybridMissingVenue()
+    {
+        // Verifies that hasVenueDetails is false for a hybrid event whose VenueName is empty.
+        // Hybrid events require a physical venue (participants attend in person), so missing
+        // venue details should trigger the venue-completeness recommendation.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var organizerUserId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer = CreateUser("hybrid-venue@example.com", "Hybrid Venue User");
+            organizerUserId = organizer.Id;
+            var domain = CreateDomain("Tech", "tech-hybrid-venue");
+            dbContext.Users.Add(organizer);
+            dbContext.Domains.Add(domain);
+
+            var ev = CreateEvent("Hybrid No Venue", "hybrid-no-venue",
+                "Hybrid event missing a physical venue.", "", "Prague",
+                FirstDayOfNextMonthUtc(), domain, organizer, status: EventStatus.Published);
+            ev.AttendanceMode = AttendanceMode.Hybrid;
+            ev.VenueName = ""; // hybrid event with no venue → should be false
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, organizerUserId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyDashboard {
+              myDashboard {
+                eventAnalytics { eventName hasVenueDetails }
+              }
+            }
+            """);
+
+        var item = Assert.Single(
+            document.RootElement.GetProperty("data").GetProperty("myDashboard")
+                .GetProperty("eventAnalytics").EnumerateArray());
+
+        Assert.Equal("Hybrid No Venue", item.GetProperty("eventName").GetString());
+        Assert.False(item.GetProperty("hasVenueDetails").GetBoolean(),
+            "Hybrid event with empty venueName should return hasVenueDetails: false");
+    }
+
+    [Fact]
     public async Task EventBySlug_ReturnsAllLocationFields_ForPublishedEvent()
     {
         await using var factory = new EventsApiWebApplicationFactory();

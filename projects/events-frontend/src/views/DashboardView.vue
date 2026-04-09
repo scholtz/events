@@ -753,6 +753,13 @@ function communityRoleLabel(role: string): string {
                       <strong>{{ t('dashboard.adminNotesFeedback') }}</strong>
                       {{ item.adminNotes }}
                     </span>
+                    <!-- Direct edit link for guidance-type recommendations (not rejected/draft/pending) -->
+                    <RouterLink
+                      v-if="['publishedNoSaves', 'publishedNewlyPublished', 'publishedApproachingSoon', 'publishedMissingLanguage', 'publishedMissingTimezone', 'publishedMissingDomain', 'publishedMissingVenue'].includes(eventRecommendationType(item) ?? '')"
+                      :to="`/edit/${item.eventId}`"
+                      class="rec-edit-link"
+                      :aria-label="t('dashboard.editEvent') + ' ' + item.eventName"
+                    >{{ t('dashboard.recommendationEditAction') }}</RouterLink>
                   </td>
                 </tr>
               </template>
@@ -1623,6 +1630,20 @@ tr:hover td {
   color: var(--color-text-secondary);
   font-size: 0.8125rem;
   opacity: 0.85;
+}
+
+.rec-edit-link {
+  display: inline-block;
+  margin-top: 0.25rem;
+  margin-left: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-primary, #6366f1);
+  text-decoration: none;
+}
+
+.rec-edit-link:hover {
+  text-decoration: underline;
 }
 
 .event-recommendation-row.rec--rejected .rec-text {
