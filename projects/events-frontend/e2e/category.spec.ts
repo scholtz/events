@@ -194,6 +194,54 @@ test.describe('Category landing page', () => {
     await expect(page.locator('.results-summary')).toContainText('v hube Technology')
   })
 
+  test('results summary is visible at mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-m1', slug: 'e-m1', name: 'Mobile Event One' }),
+        makeApprovedEvent({ id: 'e-m2', slug: 'e-m2', name: 'Mobile Event Two' }),
+      ],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.results-summary')).toBeVisible()
+    await expect(page.locator('.results-summary')).toContainText('Technology hub')
+  })
+
+  test('Filter & Explore journey: clicking the link from hub page applies domain filter on home', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-j1', slug: 'e-j1', name: 'Tech Journey Event' })],
+    })
+
+    await page.goto('/category/technology')
+
+    // Click "Filter & Explore" — should navigate to /?domain=technology
+    const filterLink = page.getByRole('link', { name: 'Filter & Explore' })
+    await expect(filterLink).toBeVisible()
+    await filterLink.click()
+
+    await expect(page).toHaveURL(/\?domain=technology/)
+  })
+
+  test('results summary is hidden when events section is not rendered (empty state)', async ({
+    page,
+  }) => {
+    setupMockApi(page, { domains: [makeTechDomain()], events: [] })
+
+    await page.goto('/category/technology')
+
+    // Results summary shows "0 events in the Technology hub" — giving factual context
+    // alongside the friendly empty state heading
+    await expect(page.locator('.results-summary')).toBeVisible()
+    await expect(page.locator('.results-summary')).toContainText('0 events in the Technology hub')
+    await expect(page.getByRole('heading', { name: 'No upcoming events' })).toBeVisible()
+  })
+
   test('renders hub overview modules when configured', async ({ page }) => {
     const domain: MockDomain = {
       ...makeTechDomain(),

@@ -244,6 +244,55 @@ Every new filter dimension must:
 7. Have `attendanceMode` (and any new field) in `MockEvent` and `makeApprovedEvent` in the E2E mock helper
 8. Have E2E tests in `discovery.spec.ts` covering: URL direct navigation, chip display, chip removal, and URL update on change
 
+## Discovery transparency and empty-state quality standards
+
+When implementing or modifying discovery context summaries, empty-state guidance, or recovery actions, always follow these standards to prevent shipping incomplete or misleading copy.
+
+### Core principles
+- All explanation strings must be derived **deterministically** from explicit filter state already known to the system. Never invent recommendations or fake AI suggestions.
+- The discovery explanation layer lives in `src/lib/discoveryRecovery.ts` as pure, testable functions (`computeEmptyStateMessage`, `computeLowSignalMessage`, `computeRecoverySuggestion`, `computeSavedSearchEmptyStateMessage`). Do not add inline explanation logic directly in components.
+- Every recovery action must be meaningful: it must change a filter that was actually constraining results, not just redirect to a generic page.
+- Domain-scoped discovery pages must explicitly name the hub in the results summary. Use `category.oneEventFoundInHub` / `category.eventsFoundInHub` i18n keys, not generic "N events found."
+
+### Result-context summary requirements
+- The main discovery page (HomeView) must show a plain-language `.results-summary` that reflects the current filter context: event count + active filter labels (e.g. "1 event matching" with "Location: Prague").
+- Category hub pages (CategoryLandingView) must show a `.results-summary` that names the hub explicitly: "N events in the {name} hub" — not "N events found."
+- The summary must have `role="status"` and `aria-live="polite"` for accessibility.
+- The summary must update reactively when filters change.
+
+### Empty and low-result state requirements
+- When 0 results: show `.empty-state` with a heading and a deterministic explanation paragraph derived from the most restrictive active filter.
+- When 1–3 results: show `.low-signal-notice` with a calming message and one recovery action.
+- When all results are in the past: show `.all-in-past-notice` with a browse-upcoming recovery link.
+- Domain-aware: on subdomain hub views (isSubdomainView), the empty state must show `.subdomain-empty-state` (hub-specific heading and hub-navigation actions) instead of the filter-recovery UI.
+
+### Recovery action requirements
+- Primary: "Clear filters" button clears all active non-forced filters.
+- Secondary (targeted): show at most one secondary action derived from the most restrictive single filter — e.g. "Try online events" for an IN_PERSON filter, "Clear date range" for a date filter, "Show all prices" for a price filter.
+- Domain chips on subdomain views must NOT be shown as clearable (they are forced by the subdomain context).
+- Fallback suggestions (`.fallback-suggestions`) surface related domain hubs when the catalog is empty and a domain is relevant.
+
+### i18n requirements for discovery copy
+- Every new explanation or recovery string must have translations in **English, Slovak, and German** in `src/i18n/locales/en.ts`, `sk.ts`, and `de.ts`.
+- Strings that interpolate filter values (location name, search term, language code) must use i18n params: `t('home.emptyLocation', { location: filters.location })`.
+- Copy should be calm, helpful, and non-blaming: prefer "No upcoming events match this exact combination right now" over "No data found."
+
+### Test requirements for discovery transparency features
+Every PR that changes explanation logic, recovery actions, or results summaries must include:
+1. **Unit tests** in `src/lib/__tests__/discoveryRecovery.test.ts` for each branch of the pure utility functions.
+2. **E2E tests** in `e2e/discovery.spec.ts` or `e2e/category.spec.ts` covering:
+   - Results summary renders correctly in the typical (non-empty) case
+   - Results summary has `role="status"` accessibility attribute
+   - Empty-state message matches expected copy for the constraining filter type
+   - Low-signal notice renders and contains a recovery link
+   - Recovery action correctly clears the target filter
+   - German and Slovak localized copy renders correctly (use `addInitScript(() => localStorage.setItem('app_locale', 'de'))` pattern)
+
+### What NOT to add
+- Do not introduce opaque "personalized" ranking or speculation about why an event is ranked first.
+- Do not expose attendee identities or behavioral profiles in any explanation.
+- Do not add speculative suggestions that can't be derived from filter state.
+
 ## Playwright E2E testing
 
 ### Structure
