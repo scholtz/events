@@ -243,7 +243,8 @@ public sealed class Mutation
             ?? throw CreateError("Event was not found.", "EVENT_NOT_FOUND");
 
         catalogEvent.Status = input.Status;
-        catalogEvent.AdminNotes = input.AdminNotes?.Trim();
+        // Approving an event clears stale rejection notes so organizers don't see outdated feedback.
+        catalogEvent.AdminNotes = input.Status == EventStatus.Published ? null : input.AdminNotes?.Trim();
         catalogEvent.ReviewedByUserId = claimsPrincipal.GetRequiredUserId();
         catalogEvent.UpdatedAtUtc = DateTime.UtcNow;
         catalogEvent.PublishedAtUtc = input.Status == EventStatus.Published ? DateTime.UtcNow : null;

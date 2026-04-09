@@ -429,12 +429,57 @@ async function addDomain() {
   await fetchAdminOverview()
 }
 
-async function handleReviewEvent(eventId: string, status: string) {
+const eventRejectionNotes = ref<Record<string, string>>({})
+const eventRejectionPanelOpen = ref<string | null>(null)
+const eventReviewLoading = ref<string | null>(null)
+
+const rejectionCategories = [
+  { key: 'incompleteInfo' },
+  { key: 'weakDescription' },
+  { key: 'invalidUrl' },
+  { key: 'wrongCategory' },
+  { key: 'pastEvent' },
+  { key: 'duplicate' },
+]
+
+function prefillRejectionCategory(eventId: string, catKey: string) {
+  const label = t(`admin.rejCat_${catKey}`)
+  const current = eventRejectionNotes.value[eventId] ?? ''
+  if (current.startsWith(label + ':')) {
+    eventRejectionNotes.value[eventId] = ''
+  } else {
+    eventRejectionNotes.value[eventId] = `${label}: `
+  }
+}
+
+function pendingEventWarnings(event: CatalogEvent): string[] {
+  const warnings: string[] = []
+  if (!event.description || event.description.trim().length < 50) warnings.push('shortDescription')
+  if (!event.venueName && event.attendanceMode !== 'ONLINE') warnings.push('missingVenue')
+  if (!event.city && event.attendanceMode !== 'ONLINE') warnings.push('missingCity')
+  if (!event.timezone) warnings.push('missingTimezone')
+  if (!event.domain) warnings.push('missingDomain')
+  return warnings
+}
+
+function submissionAge(submittedAtUtc: string): string {
+  const diffMs = Date.now() - new Date(submittedAtUtc).getTime()
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+  if (diffDays === 0) return t('admin.submittedToday')
+  return t('admin.submittedDaysAgo', { days: diffDays })
+}
+
+async function handleReviewEvent(eventId: string, status: string, adminNotes?: string) {
+  eventReviewLoading.value = eventId
   try {
-    await eventsStore.reviewEvent(eventId, status)
+    await eventsStore.reviewEvent(eventId, status, adminNotes)
+    eventRejectionPanelOpen.value = null
+    delete eventRejectionNotes.value[eventId]
     await fetchAdminOverview()
   } catch {
     // Review failed – the events store handles the error state
+  } finally {
+    eventReviewLoading.value = null
   }
 }
 
@@ -534,54 +579,115 @@ async function handleReviewExternalSourceClaim(
             <thead>
               <tr>
                 <th>Event / Submitter</th>
-                <th>Tag</th>
-                <th>Date</th>
-                <th>Status</th>
-                <th>Actions</th>
+                <th>{{ t('admin.queueTag') }}</th>
+                <th>{{ t('admin.queueDate') }}</th>
+                <th>{{ t('admin.queueStatus') }}</th>
+                <th>{{ t('admin.queueActions') }}</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="event in allAdminEvents()" :key="event.id">
-                <td>
-                  <RouterLink :to="`/event/${event.slug}`" class="event-link">
-                    {{ event.name }}
-                  </RouterLink>
-                  <div class="text-secondary">{{ event.submittedBy?.displayName }}</div>
-                </td>
-                <td>
-                  <span class="category-label">
-                    {{ event.domain?.name ?? '—' }}
-                  </span>
-                </td>
-                <td class="date-cell">{{ formatDate(event.startsAtUtc) }}</td>
-                <td>
-                  <span class="badge" :class="statusBadgeClass(event.status)">
-                    {{ statusLabel(event.status) }}
-                  </span>
-                </td>
-                <td class="actions-cell">
-                  <RouterLink
-                    :to="`/edit/${event.id}`"
-                    class="btn btn-primary btn-sm"
-                  >
-                    {{ t('admin.edit') }}
-                  </RouterLink>
-                  <button
-                    v-if="event.status !== 'PUBLISHED'"
-                    class="btn btn-success btn-sm"
-                    @click="handleReviewEvent(event.id, 'PUBLISHED')"
-                  >
-                    {{ t('admin.approve') }}
-                  </button>
-                  <button
-                    v-if="event.status !== 'REJECTED'"
-                    class="btn btn-outline btn-sm"
-                    @click="handleReviewEvent(event.id, 'REJECTED')"
-                  >
-                    {{ t('admin.reject') }}
-                  </button>
-                </td>
-              </tr>
+              <template v-for="event in allAdminEvents()" :key="event.id">
+                <tr :class="{ 'row--pending': event.status === 'PENDING_APPROVAL' }">
+                  <td>
+                    <RouterLink :to="`/event/${event.slug}`" class="event-link">
+                      {{ event.name }}
+                    </RouterLink>
+                    <div class="text-secondary">{{ event.submittedBy?.displayName }}</div>
+                    <div v-if="event.status === 'PENDING_APPROVAL'" class="submission-age text-secondary">
+                      {{ submissionAge(event.submittedAtUtc) }}
+                    </div>
+                    <!-- Readiness warnings for pending events -->
+                    <div v-if="event.status === 'PENDING_APPROVAL'" class="readiness-warnings">
+                      <span
+                        v-for="w in pendingEventWarnings(event)"
+                        :key="w"
+                        class="readiness-chip readiness-chip--warn"
+                        :title="t(`admin.warn_${w}`)"
+                      >{{ t(`admin.warn_${w}`) }}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <span class="category-label">
+                      {{ event.domain?.name ?? '—' }}
+                    </span>
+                    <div
+                      v-if="event.attendanceMode"
+                      class="attendance-badge"
+                      :class="`attendance-badge--${event.attendanceMode.toLowerCase()}`"
+                    >
+                      {{ t(`attendanceMode.${event.attendanceMode}`) }}
+                    </div>
+                  </td>
+                  <td class="date-cell">{{ formatDate(event.startsAtUtc) }}</td>
+                  <td>
+                    <span class="badge" :class="statusBadgeClass(event.status)">
+                      {{ statusLabel(event.status) }}
+                    </span>
+                  </td>
+                  <td class="actions-cell">
+                    <RouterLink
+                      :to="`/edit/${event.id}`"
+                      class="btn btn-primary btn-sm"
+                    >
+                      {{ t('admin.edit') }}
+                    </RouterLink>
+                    <button
+                      v-if="event.status !== 'PUBLISHED'"
+                      class="btn btn-success btn-sm"
+                      :disabled="eventReviewLoading === event.id"
+                      @click="handleReviewEvent(event.id, 'PUBLISHED')"
+                    >
+                      {{ t('admin.approve') }}
+                    </button>
+                    <button
+                      v-if="event.status !== 'REJECTED'"
+                      class="btn btn-outline btn-sm"
+                      :disabled="eventReviewLoading === event.id"
+                      @click="eventRejectionPanelOpen = eventRejectionPanelOpen === event.id ? null : event.id"
+                    >
+                      {{ t('admin.reject') }}
+                    </button>
+                  </td>
+                </tr>
+                <!-- Inline rejection panel -->
+                <tr v-if="eventRejectionPanelOpen === event.id" class="rejection-panel-row">
+                  <td colspan="5">
+                    <div class="rejection-panel">
+                      <p class="rejection-panel-heading">{{ t('admin.rejectionPanelHeading') }}</p>
+                      <div class="rejection-categories">
+                        <button
+                          v-for="cat in rejectionCategories"
+                          :key="cat.key"
+                          class="rejection-category-chip"
+                          :class="{ active: (eventRejectionNotes[event.id] ?? '').startsWith(t(`admin.rejCat_${cat.key}`) + ':') }"
+                          @click="prefillRejectionCategory(event.id, cat.key)"
+                        >
+                          {{ t(`admin.rejCat_${cat.key}`) }}
+                        </button>
+                      </div>
+                      <textarea
+                        :value="eventRejectionNotes[event.id] ?? ''"
+                        class="rejection-note-input"
+                        :placeholder="t('admin.eventRejectionNotePlaceholder')"
+                        :aria-label="t('admin.eventRejectionNotePlaceholder')"
+                        rows="3"
+                        @input="eventRejectionNotes[event.id] = ($event.target as HTMLTextAreaElement).value"
+                      />
+                      <div class="rejection-panel-actions">
+                        <button
+                          class="btn btn-outline btn-sm"
+                          @click="eventRejectionPanelOpen = null"
+                        >{{ t('admin.cancelRejection') }}</button>
+                        <button
+                          class="btn btn-danger btn-sm"
+                          :disabled="eventReviewLoading === event.id"
+                          @click="handleReviewEvent(event.id, 'REJECTED', eventRejectionNotes[event.id]?.trim() || undefined)"
+                        >{{ t('admin.submitRejection') }}</button>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </template>
             </tbody>
           </table>
           <div v-if="!allAdminEvents().length" class="empty-table">
@@ -1875,4 +1981,139 @@ tr:hover td {
 
 .community-row td {
   vertical-align: middle;
+}
+
+.row--pending {
+  background: rgba(251, 191, 36, 0.06);
+}
+
+.submission-age {
+  font-size: 0.75rem;
+  margin-top: 0.125rem;
+}
+
+.readiness-warnings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.25rem;
+}
+
+.readiness-chip {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.readiness-chip--warn {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--color-warning, #f59e0b);
+}
+
+.attendance-badge {
+  display: inline-block;
+  margin-top: 0.25rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  background: rgba(99, 102, 241, 0.12);
+  color: #6366f1;
+}
+
+.attendance-badge--online {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--color-success, #10b981);
+}
+
+.attendance-badge--hybrid {
+  background: rgba(139, 92, 246, 0.12);
+  color: #8b5cf6;
+}
+
+.rejection-panel-row:hover td {
+  background: transparent;
+}
+
+.rejection-panel {
+  padding: 0.75rem 1rem;
+  border-left: 3px solid var(--color-error, #ef4444);
+  background: rgba(239, 68, 68, 0.04);
+  border-radius: 0 0.375rem 0.375rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.rejection-panel-heading {
+  font-weight: 600;
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.rejection-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.rejection-category-chip {
+  padding: 0.25rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 1px solid var(--color-border, #e2e8f0);
+  background: var(--color-surface, #fff);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.rejection-category-chip:hover {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: var(--color-error, #ef4444);
+  color: var(--color-error, #ef4444);
+}
+
+.rejection-category-chip.active {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: var(--color-error, #ef4444);
+  color: var(--color-error, #ef4444);
+}
+
+.rejection-note-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  resize: vertical;
+  font-family: inherit;
+  background: var(--color-surface, #fff);
+  color: var(--color-text, #1a202c);
+}
+
+.rejection-panel-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.btn-danger {
+  background: var(--color-error, #ef4444);
+  color: #fff;
+  border: none;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+.btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }</style>
