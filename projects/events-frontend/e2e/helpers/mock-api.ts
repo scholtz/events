@@ -1804,14 +1804,21 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
     if (query.includes('query') && query.includes('CuratedCommunitiesForDomain')) {
       const domainSlug = variables.domainSlug as string | undefined
       const domain = domainSlug ? state.domains.find((d) => d.slug === domainSlug) : null
+      const now = Date.now()
       const entries = domain
         ? state.domainCuratedCommunities
             .filter((c) => c.domainId === domain.id && c.isEnabled)
             .sort((a, b) => a.displayOrder - b.displayOrder)
-            .map((c) => ({
-              ...c,
-              group: state.communityGroups.find((g) => g.id === c.groupId) ?? null,
-            }))
+            .map((c) => {
+              const group = state.communityGroups.find((g) => g.id === c.groupId) ?? null
+              // Compute upcoming published event count (aggregate only)
+              const upcomingPublishedEventCount = state.communityGroupEvents.filter((cge) => {
+                if (cge.groupId !== c.groupId) return false
+                const ev = state.events.find((e) => e.id === cge.eventId)
+                return ev && ev.status === 'PUBLISHED' && new Date(ev.startsAtUtc).getTime() > now
+              }).length
+              return { ...c, group, upcomingPublishedEventCount }
+            })
             // Both public and private groups may be curated into a hub
             .filter((c) => c.group && c.group.isActive)
         : []

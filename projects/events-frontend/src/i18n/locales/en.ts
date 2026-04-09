@@ -827,6 +827,9 @@ export default {
     curatedCommunities: 'Communities in this hub',
     curatedCommunitiesDescription: 'These community groups actively shape this hub.',
     exploreGroup: 'Explore community',
+    communityNoUpcomingEvents: 'No upcoming events right now',
+    communityOneUpcomingEvent: '1 upcoming event',
+    communityUpcomingEventCount: '{count} upcoming events',
     allEventsInPast: 'All listed events have already taken place.',
     allEventsInPastBrowse: 'Browse for upcoming events',
     // Related hubs: shown on sparse or empty category pages

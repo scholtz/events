@@ -801,6 +801,9 @@ export default {
     curatedCommunities: 'Komunity v tomto hube',
     curatedCommunitiesDescription: 'Tieto komunitné skupiny aktívne formujú tento hub.',
     exploreGroup: 'Preskúmať komunitu',
+    communityNoUpcomingEvents: 'Žiadne nadchádzajúce udalosti',
+    communityOneUpcomingEvent: '1 nadchádzajúca udalosť',
+    communityUpcomingEventCount: '{count} nadchádzajúcich udalostí',
     allEventsInPast: 'Všetky uvedené udalosti sa už uskutočnili.',
     allEventsInPastBrowse: 'Hľadať nadchádzajúce udalosti',
     // Related hubs: shown on sparse or empty category pages

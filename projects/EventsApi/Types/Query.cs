@@ -223,7 +223,7 @@ public sealed class Query
         CancellationToken cancellationToken)
     {
         var normalizedSlug = domainSlug.Trim().ToLowerInvariant();
-        return await dbContext.DomainCuratedCommunities
+        var entries = await dbContext.DomainCuratedCommunities
             .AsNoTracking()
             .Where(dcc => dcc.Domain.Slug == normalizedSlug && dcc.Domain.IsActive)
             .Where(dcc => dcc.IsEnabled)
@@ -231,6 +231,26 @@ public sealed class Query
             .OrderBy(dcc => dcc.DisplayOrder)
             .Include(dcc => dcc.Group)
             .ToListAsync(cancellationToken);
+
+        if (entries.Count > 0)
+        {
+            // Compute upcoming published event counts per group — aggregate only, no PII exposed.
+            var groupIds = entries.Select(e => e.GroupId).ToList();
+            var now = DateTime.UtcNow;
+            var counts = await dbContext.CommunityGroupEvents
+                .AsNoTracking()
+                .Where(cge => groupIds.Contains(cge.GroupId)
+                              && cge.Event.Status == EventStatus.Published
+                              && cge.Event.StartsAtUtc > now)
+                .GroupBy(cge => cge.GroupId)
+                .Select(g => new { GroupId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(g => g.GroupId, g => g.Count, cancellationToken);
+
+            foreach (var entry in entries)
+                entry.UpcomingPublishedEventCount = counts.GetValueOrDefault(entry.GroupId, 0);
+        }
+
+        return entries;
     }
 
     /// <summary>

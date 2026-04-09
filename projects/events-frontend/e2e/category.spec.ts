@@ -1563,6 +1563,106 @@ test.describe('Hub rank context badge', () => {
     await expect(page.locator('.curated-community-cta')).toBeVisible()
     await expect(page.locator('.curated-community-cta')).toHaveAttribute('href', '/community/members-only')
   })
+
+  // ── Upcoming event count display (privacy-safe aggregate) ─────────────────
+
+  test('community card shows upcoming event count when community has upcoming events', async ({
+    page,
+  }) => {
+    const domain = makeTechDomain()
+    const group = makePublicGroup({ name: 'Event Rich Group', slug: 'event-rich-group' })
+    const ev1 = makeApprovedEvent({
+      id: 'ev-count-1',
+      domainId: domain.id,
+      startsAtUtc: new Date(Date.now() + 7 * 86400_000).toISOString(),
+    })
+    const ev2 = makeApprovedEvent({
+      id: 'ev-count-2',
+      domainId: domain.id,
+      startsAtUtc: new Date(Date.now() + 14 * 86400_000).toISOString(),
+    })
+    const entry: MockDomainCuratedCommunity = {
+      id: 'cc-count',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: true,
+      annotation: null,
+      createdAtUtc: new Date().toISOString(),
+    }
+    setupMockApi(page, {
+      domains: [domain],
+      events: [ev1, ev2],
+      communityGroups: [group],
+      domainCuratedCommunities: [entry],
+      communityGroupEvents: [
+        { groupId: group.id, eventId: ev1.id },
+        { groupId: group.id, eventId: ev2.id },
+      ],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.curated-community-event-count')).toContainText('2 upcoming events')
+  })
+
+  test('community card shows no-upcoming-events message when count is zero', async ({ page }) => {
+    const domain = makeTechDomain()
+    const group = makePublicGroup({ name: 'Quiet Group', slug: 'quiet-group' })
+    const entry: MockDomainCuratedCommunity = {
+      id: 'cc-quiet',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: true,
+      annotation: null,
+      createdAtUtc: new Date().toISOString(),
+    }
+    setupMockApi(page, {
+      domains: [domain],
+      events: [],
+      communityGroups: [group],
+      domainCuratedCommunities: [entry],
+      communityGroupEvents: [],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.curated-community-event-count')).toContainText(
+      'No upcoming events right now',
+    )
+    await expect(page.locator('.curated-community-event-count--none')).toBeVisible()
+  })
+
+  test('community card shows singular "1 upcoming event"', async ({ page }) => {
+    const domain = makeTechDomain()
+    const group = makePublicGroup({ name: 'One Event Group', slug: 'one-event-group' })
+    const ev = makeApprovedEvent({
+      id: 'ev-single',
+      domainId: domain.id,
+      startsAtUtc: new Date(Date.now() + 5 * 86400_000).toISOString(),
+    })
+    const entry: MockDomainCuratedCommunity = {
+      id: 'cc-single',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: true,
+      annotation: null,
+      createdAtUtc: new Date().toISOString(),
+    }
+    setupMockApi(page, {
+      domains: [domain],
+      events: [ev],
+      communityGroups: [group],
+      domainCuratedCommunities: [entry],
+      communityGroupEvents: [{ groupId: group.id, eventId: ev.id }],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.curated-community-event-count')).toContainText('1 upcoming event')
+  })
 })
 
 // ── Scheduled Featured Events on category landing page ──────────────────────
