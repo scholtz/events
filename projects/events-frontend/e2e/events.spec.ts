@@ -8,7 +8,9 @@ import {
   makeAdminUser,
   makeApprovedEvent,
   makeContributorUser,
+  makePendingEvent,
   makePublicGroup,
+  makeRejectedEvent,
   makeTechDomain,
   setupMockApi,
 } from './helpers/mock-api'
@@ -1066,8 +1068,130 @@ test.describe('Event detail page', () => {
 
     const row = page.locator('tr', { hasText: 'To Be Rejected' })
     await expect(row).toBeVisible()
+    // Click Reject opens the inline rejection panel
     await row.getByRole('button', { name: 'Reject' }).click()
+    await expect(page.locator('.rejection-panel')).toBeVisible()
+    // Submit the rejection (no note required)
+    await page.locator('.rejection-panel').getByRole('button', { name: /Return for changes/i }).click()
     await expect(row).toContainText('rejected')
+  })
+
+  test('admin can reject event with rejection notes and organizer sees them', async ({ page }) => {
+    const admin = makeAdminUser()
+    const event = makePendingEvent({
+      id: 'ev-reject-notes',
+      name: 'Event To Reject With Notes',
+      slug: 'reject-with-notes',
+      submittedByUserId: admin.id,
+      submittedBy: { displayName: admin.displayName },
+    })
+    setupMockApi(page, {
+      users: [admin],
+      domains: [makeTechDomain()],
+      events: [event],
+    })
+    await loginAs(page, admin)
+    await page.goto('/admin')
+
+    const row = page.locator('tr', { hasText: 'Event To Reject With Notes' })
+    await expect(row).toBeVisible()
+    // Click Reject to open the inline rejection panel
+    await row.getByRole('button', { name: 'Reject' }).click()
+
+    // Rejection panel should appear
+    await expect(page.locator('.rejection-panel')).toBeVisible()
+    // Fill in rejection notes
+    await page.locator('.rejection-panel textarea').fill('Please add a proper venue and lengthen the description.')
+    // Submit rejection
+    await page.locator('.rejection-panel').getByRole('button', { name: /Return for changes/i }).click()
+
+    // Row should now show rejected status
+    await expect(row).toContainText('rejected')
+    // Panel should close
+    await expect(page.locator('.rejection-panel')).toBeHidden()
+  })
+
+  test('admin can select rejection category chip to prefill notes', async ({ page }) => {
+    const admin = makeAdminUser()
+    const event = makePendingEvent({
+      id: 'ev-reject-cat',
+      name: 'Event With Category Rejection',
+      slug: 'category-rejection',
+      submittedByUserId: admin.id,
+      submittedBy: { displayName: admin.displayName },
+    })
+    setupMockApi(page, {
+      users: [admin],
+      domains: [makeTechDomain()],
+      events: [event],
+    })
+    await loginAs(page, admin)
+    await page.goto('/admin')
+
+    const row = page.locator('tr', { hasText: 'Event With Category Rejection' })
+    await row.getByRole('button', { name: 'Reject' }).click()
+    await expect(page.locator('.rejection-panel')).toBeVisible()
+
+    // Click a category chip to prefill
+    await page.locator('.rejection-category-chip', { hasText: 'Incomplete info' }).click()
+    const textarea = page.locator('.rejection-panel textarea')
+    await expect(textarea).toHaveValue(/Incomplete info/)
+
+    // Cancel rejection
+    await page.locator('.rejection-panel').getByRole('button', { name: /Cancel/i }).click()
+    await expect(page.locator('.rejection-panel')).toBeHidden()
+  })
+
+  test('admin approving event clears rejection notes', async ({ page }) => {
+    const admin = makeAdminUser()
+    const event = makeRejectedEvent({
+      id: 'ev-approve-clears',
+      name: 'Previously Rejected Event',
+      slug: 'prev-rejected',
+      submittedByUserId: admin.id,
+      submittedBy: { displayName: admin.displayName },
+      adminNotes: 'Please fix the venue.',
+    })
+    setupMockApi(page, {
+      users: [admin],
+      domains: [makeTechDomain()],
+      events: [event],
+    })
+    await loginAs(page, admin)
+    await page.goto('/admin')
+
+    const row = page.locator('tr', { hasText: 'Previously Rejected Event' })
+    await expect(row).toBeVisible()
+    await row.getByRole('button', { name: 'Approve' }).click()
+    await expect(row).toContainText('published')
+  })
+
+  test('pending events show readiness warnings for missing fields', async ({ page }) => {
+    const admin = makeAdminUser()
+    const event = makePendingEvent({
+      id: 'ev-readiness-warn',
+      name: 'Sparse Pending Event',
+      slug: 'sparse-pending',
+      description: 'Too short.',
+      venueName: '',
+      city: '',
+      timezone: null,
+      submittedByUserId: admin.id,
+      submittedBy: { displayName: admin.displayName },
+      attendanceMode: 'IN_PERSON',
+    })
+    setupMockApi(page, {
+      users: [admin],
+      domains: [makeTechDomain()],
+      events: [event],
+    })
+    await loginAs(page, admin)
+    await page.goto('/admin')
+
+    const row = page.locator('tr', { hasText: 'Sparse Pending Event' })
+    await expect(row).toBeVisible()
+    // Readiness warnings should appear for missing venue, city, timezone, and short description
+    await expect(row.locator('.readiness-chip').first()).toBeVisible()
   })
 
   // ── Timezone display tests ──────────────────────────────────────────────────

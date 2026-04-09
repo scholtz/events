@@ -521,7 +521,12 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       const event = state.events.find((e) => e.id === eventId)
       if (event) {
         event.status = input.status
-        if (input.adminNotes) event.adminNotes = input.adminNotes
+        // Mimic backend: clear notes on approval, store on rejection
+        if (input.status === 'PUBLISHED') {
+          event.adminNotes = null
+        } else if (input.adminNotes) {
+          event.adminNotes = input.adminNotes
+        }
       }
       await route.fulfill({
         status: 200,

@@ -18516,6 +18516,129 @@ public sealed class GraphQlIntegrationTests
     // ── SetDomainCuratedCommunities / hub community curation tests ───────────
 
     [Fact]
+    public async Task ReviewEvent_Approve_ClearsStaleAdminNotes()
+    {
+        // When an admin approves a previously-rejected event, any stale admin notes
+        // (rejection feedback) must be cleared so the organizer does not see stale guidance.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var adminId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("lc-approve-clear@example.com", "ClearNotes Admin", ApplicationUserRole.Admin);
+            adminId = admin.Id;
+            var organizer = CreateUser("lc-approve-clear-org@example.com", "ClearNotes Organizer");
+            var domain = CreateDomain("Tech", "lc-approve-clear-tech");
+            dbContext.Users.AddRange(admin, organizer);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Stale Notes Event",
+                "stale-notes-event",
+                "An event with stale rejection notes that will be approved.",
+                "Venue",
+                "Prague",
+                FirstDayOfNextMonthUtc(),
+                domain,
+                organizer,
+                status: EventStatus.Rejected);
+            ev.AdminNotes = "Please fix the venue details before resubmitting.";
+            ev.PublishedAtUtc = null;
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation ReviewEvent($eventId: UUID!, $input: ReviewEventInput!) {
+              reviewEvent(eventId: $eventId, input: $input) {
+                name
+                status
+                adminNotes
+              }
+            }
+            """,
+            new
+            {
+                eventId,
+                input = new { status = "PUBLISHED", adminNotes = (string?)null }
+            });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("reviewEvent");
+        Assert.Equal("PUBLISHED", result.GetProperty("status").GetString());
+        // Stale rejection notes must be cleared when approving
+        Assert.True(result.GetProperty("adminNotes").ValueKind == System.Text.Json.JsonValueKind.Null,
+            "adminNotes must be null when an event is approved");
+
+        // Verify via DB
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var persisted = await db.Events.FindAsync(eventId);
+        Assert.Null(persisted!.AdminNotes);
+    }
+
+    [Fact]
+    public async Task ReviewEvent_Unauthenticated_ReturnsAuthError()
+    {
+        // reviewEvent is an admin-only mutation. Unauthenticated callers must receive
+        // an authorization error, not a successful response.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer = CreateUser("lc-unauth-review@example.com", "Unauth Organizer");
+            var domain = CreateDomain("Tech", "lc-unauth-tech");
+            dbContext.Users.Add(organizer);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Auth Guard Event",
+                "auth-guard-event",
+                "An event used to verify auth guards on reviewEvent.",
+                "Venue",
+                "Prague",
+                FirstDayOfNextMonthUtc(),
+                domain,
+                organizer,
+                status: EventStatus.PendingApproval);
+            ev.PublishedAtUtc = null;
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        // No authorization header – unauthenticated request
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation ReviewEvent($eventId: UUID!, $input: ReviewEventInput!) {
+                  reviewEvent(eventId: $eventId, input: $input) {
+                    status
+                  }
+                }
+                """,
+            variables = new
+            {
+                eventId,
+                input = new { status = "PUBLISHED", adminNotes = (string?)null }
+            }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors),
+            "Expected errors array for unauthenticated reviewEvent call");
+        Assert.True(errors.GetArrayLength() > 0, "Expected at least one auth error for unauthenticated reviewEvent call");
+    }
+
+
+    [Fact]
     public async Task SetDomainCuratedCommunities_GlobalAdmin_PersistsCommunitiesInOrder()
     {
         await using var factory = new EventsApiWebApplicationFactory();
