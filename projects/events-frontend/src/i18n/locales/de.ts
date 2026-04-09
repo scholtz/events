@@ -123,6 +123,7 @@ export default {
     recoveryShowAllPrices: 'Alle Preise anzeigen',
     recoveryClearDomainTag: 'Tag-Filter entfernen',
     recoveryShowAllLanguages: 'Veranstaltungen in allen Sprachen anzeigen',
+    recoveryClearTimezone: 'Zeitzonenfilter aufheben',
     recoveryBrowseHub: '{name}-Hub erkunden',
     fallbackSuggestionsTitle: 'Das könnte Sie auch interessieren',
     fallbackSuggestionsDesc: 'Erkunden Sie den Hub dieser Kategorie — dort können weitere bevorstehende Veranstaltungen, kuratierte Inhalte oder verwandte Communitys zu finden sein.',

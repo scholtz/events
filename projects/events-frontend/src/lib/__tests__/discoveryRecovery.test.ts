@@ -349,6 +349,17 @@ describe('computeRecoverySuggestionLabel', () => {
     expect(result).toBeNull()
   })
 
+  it('returns recoveryClearTimezone for timezone chip', () => {
+    const chips: Chip[] = [{ key: 'timezone' }]
+    const result = computeRecoverySuggestionLabel(
+      defaultFilters({ timezone: 'Europe/Berlin' }),
+      chips,
+      true,
+      stubT,
+    )
+    expect(result).toBe('home.recoveryClearTimezone')
+  })
+
   it('ignores sortBy chip when computing suggestions', () => {
     const chips: Chip[] = [{ key: 'sortBy' }, { key: 'attendanceMode' }]
     const result = computeRecoverySuggestionLabel(
@@ -483,6 +494,18 @@ describe('computeRecoverySuggestion', () => {
     )
     expect(result?.actionKey).toBe('clearLanguage')
     expect(result?.label).toContain('home.recoveryShowAllLanguages')
+  })
+
+  it('returns actionKey clearTimezone for timezone chip', () => {
+    const chips: Chip[] = [{ key: 'timezone' }]
+    const result = computeRecoverySuggestion(
+      defaultFilters({ timezone: 'America/New_York' }),
+      chips,
+      true,
+      stubT,
+    )
+    expect(result?.actionKey).toBe('clearTimezone')
+    expect(result?.label).toContain('home.recoveryClearTimezone')
   })
 })
 

@@ -314,6 +314,8 @@ const emptyStateRecoveryAction = computed<{ label: string; action: () => void } 
       return { label, action: () => eventsStore.setFilters({ domain: '' }) }
     case 'clearLanguage':
       return { label, action: () => eventsStore.setFilters({ language: '' }) }
+    case 'clearTimezone':
+      return { label, action: () => eventsStore.setFilters({ timezone: '' }) }
     default:
       return null
   }

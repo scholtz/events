@@ -137,6 +137,10 @@ export function computeRecoverySuggestion(
     return { label: t('home.recoveryShowAllLanguages'), actionKey: 'clearLanguage' }
   }
 
+  if (chip.key === 'timezone') {
+    return { label: t('home.recoveryClearTimezone'), actionKey: 'clearTimezone' }
+  }
+
   return null
 }
 

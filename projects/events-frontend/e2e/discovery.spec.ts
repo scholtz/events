@@ -2561,6 +2561,54 @@ test.describe('Timezone filter', () => {
 
     await expect(page).toHaveURL(/tz=Europe\/Prague/)
   })
+
+  test('timezone filter empty state shows secondary recovery action to clear timezone', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      events: [
+        makeApprovedEvent({
+          id: 'e-prague',
+          name: 'Prague Event',
+          slug: 'prague-event',
+          timezone: 'Europe/Prague',
+        }),
+      ],
+    })
+    // Navigate to a timezone filter that matches no events
+    await page.goto('/?tz=Asia%2FTokyo')
+
+    await expect(page.locator('.empty-state')).toBeVisible()
+    await expect(page.locator('.empty-state')).toContainText('Asia/Tokyo')
+    await expect(page.locator('.empty-state')).toContainText('timezone')
+
+    // Secondary recovery action should be present
+    await expect(page.locator('.empty-state .recovery-action')).toBeVisible()
+    await expect(page.locator('.empty-state .recovery-action')).toContainText('Clear timezone filter')
+  })
+
+  test('clicking timezone recovery action restores events', async ({ page }) => {
+    setupMockApi(page, {
+      events: [
+        makeApprovedEvent({
+          id: 'e-prague',
+          name: 'Prague Event',
+          slug: 'prague-event',
+          timezone: 'Europe/Prague',
+        }),
+      ],
+    })
+    await page.goto('/?tz=Asia%2FTokyo')
+
+    await expect(page.locator('.empty-state')).toBeVisible()
+
+    // Click the recovery action to clear the timezone filter
+    await page.locator('.empty-state .recovery-action').click()
+
+    // Event should now be visible
+    await expect(page.locator('.event-card', { hasText: 'Prague Event' })).toBeVisible()
+    await expect(page.locator('.empty-state')).toBeHidden()
+  })
 })
 
 // ---------------------------------------------------------------------------

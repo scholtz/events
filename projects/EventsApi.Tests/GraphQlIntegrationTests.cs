@@ -6959,6 +6959,40 @@ public sealed class GraphQlIntegrationTests
         Assert.Empty(results);
     }
 
+    [Fact]
+    public async Task TimezoneFilter_PreservesUpcomingSortOrderWithinTimezone()
+    {
+        // Verifies that when a timezone filter is applied, the remaining events still
+        // follow the UPCOMING sort order: upcoming events before past events, and within
+        // each bucket ordered by start date (nearest upcoming first).
+        await using var factory = new EventsApiWebApplicationFactory();
+        var near = DateTime.UtcNow.AddDays(3);
+        var far = DateTime.UtcNow.AddDays(10);
+        var past = DateTime.UtcNow.AddDays(-5);
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("tz-sort@example.com", "Tz Sort");
+            var domain = CreateDomain("Tech Events", "tech-events-tz-sort");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+
+            dbContext.Events.AddRange(
+                // Prague/CET events — should be ordered: near → far → past
+                CreateEvent("Prague Near", "prague-near-tz", "Near Prague event.", "Venue A", "Prague", near, domain, user, timezone: "Europe/Prague"),
+                CreateEvent("Prague Past", "prague-past-tz", "Past Prague event.", "Venue B", "Prague", past, domain, user, timezone: "Europe/Prague"),
+                CreateEvent("Prague Far", "prague-far-tz", "Far future Prague event.", "Venue C", "Prague", far, domain, user, timezone: "Europe/Prague"),
+                // New York event — must be excluded from the Prague/CET filter result
+                CreateEvent("New York Event", "new-york-tz-sort", "New York event.", "Venue D", "New York", near, domain, user, timezone: "America/New_York"));
+        });
+
+        using var client = factory.CreateClient();
+        var names = await QueryEventNamesAsync(client, new { timezone = "Europe/Prague", sortBy = "UPCOMING" });
+
+        // New York event excluded; Prague events ordered upcoming-first then ascending date.
+        Assert.DoesNotContain("New York Event", names);
+        Assert.Equal(["Prague Near", "Prague Far", "Prague Past"], names);
+    }
+
     // ── Push subscription tests ──────────────────────────────────────────────
 
     [Fact]

@@ -123,6 +123,7 @@ export default {
     recoveryShowAllPrices: 'Zobraziť všetky ceny',
     recoveryClearDomainTag: 'Odstrániť filter tagu',
     recoveryShowAllLanguages: 'Zobraziť udalosti vo všetkých jazykoch',
+    recoveryClearTimezone: 'Zrušiť filter časovej zóny',
     recoveryBrowseHub: 'Preskúmať hub {name}',
     fallbackSuggestionsTitle: 'Mohlo by vás zaujímať',
     fallbackSuggestionsDesc: 'Preskúmajte hub tejto kategórie — môžu tam byť ďalšie nadchádzajúce udalosti, kurátorský obsah alebo súvisiace komunity.',
