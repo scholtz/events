@@ -131,6 +131,7 @@ export default {
     recoveryShowAllPrices: 'Show all prices',
     recoveryClearDomainTag: 'Remove tag filter',
     recoveryShowAllLanguages: 'Show events in all languages',
+    recoveryClearTimezone: 'Clear timezone filter',
     recoveryBrowseHub: 'Explore {name} hub',
     // Fallback suggestions section (shown below empty state)
     fallbackSuggestionsTitle: 'You might also like',
