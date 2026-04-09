@@ -65,7 +65,7 @@ test.describe('Organizer analytics dashboard', () => {
     await expect(page.getByRole('heading', { name: 'Event Performance' })).toBeVisible()
 
     // Event row in table
-    await expect(page.getByRole('link', { name: 'Analytics Test Event' })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Analytics Test Event', exact: true })).toBeVisible()
 
     // Saves count (2 total)
     await expect(page.locator('td .saves-count', { hasText: '2' }).first()).toBeVisible()
@@ -283,7 +283,7 @@ test.describe('Organizer analytics dashboard', () => {
     await page.waitForURL(/\/dashboard$/)
 
     // Only the organizer's own event should appear in the analytics table
-    await expect(page.getByRole('link', { name: 'My Own Event' })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'My Own Event', exact: true })).toBeVisible()
     await expect(page.getByText("Someone Else's Event")).toBeHidden()
   })
 
@@ -1731,6 +1731,173 @@ test.describe('Per-event recommendations and guidance', () => {
 
     // No recommendation row should appear (has saves AND has language)
     await expect(page.locator('.event-recommendation-row')).toHaveCount(0)
+  })
+
+  test('shows venue-completeness recommendation for in-person event with saves but missing venue', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    // Event with language, timezone, domain — but empty venueName → venue recommendation
+    const event = makeApprovedEvent({
+      id: 'ev-missing-venue',
+      slug: 'missing-venue-event',
+      name: 'Missing Venue Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+      language: 'en',
+      timezone: 'Europe/London',
+      venueName: '', // in-person with no venue name → hasVenueDetails: false
+      attendanceMode: 'IN_PERSON',
+    })
+
+    const state = setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    // Add saves so the no-saves recommendations don't fire
+    state.favoriteEvents.push({
+      id: 'fav-venue-1',
+      userId: 'attendee-venue-1',
+      eventId: event.id,
+      createdAtUtc: new Date().toISOString(),
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Venue-completeness recommendation should appear
+    await expect(page.locator('.event-recommendation-row.rec--guidance')).toBeVisible()
+    await expect(page.locator('.rec-text')).toContainText(/venue/)
+  })
+
+  test('does not show venue recommendation for online event even without venue name', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    // ONLINE event — venue details not required → hasVenueDetails: true
+    const event = makeApprovedEvent({
+      id: 'ev-online-no-venue',
+      slug: 'online-no-venue-event',
+      name: 'Online No Venue Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+      language: 'en',
+      timezone: 'Europe/London',
+      venueName: '',
+      attendanceMode: 'ONLINE',
+    })
+
+    const state = setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    state.favoriteEvents.push({
+      id: 'fav-online-venue-1',
+      userId: 'attendee-online-1',
+      eventId: event.id,
+      createdAtUtc: new Date().toISOString(),
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // No recommendation row should appear — online event doesn't need a venue
+    await expect(page.locator('.event-recommendation-row')).toHaveCount(0)
+  })
+
+  test('guidance recommendation row has direct "Edit event →" link that navigates to edit page', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-rec-nav-1',
+      slug: 'rec-nav-event',
+      name: 'Rec Nav Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+      language: 'en',
+      timezone: 'Europe/London',
+      venueName: '', // triggers publishedMissingVenue recommendation
+      attendanceMode: 'IN_PERSON',
+    })
+
+    const state = setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    state.favoriteEvents.push({
+      id: 'fav-nav-1',
+      userId: 'attendee-nav-1',
+      eventId: event.id,
+      createdAtUtc: new Date().toISOString(),
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // The recommendation row and its edit link should be visible
+    const editLink = page.locator('.event-recommendation-row .rec-edit-link')
+    await expect(editLink).toBeVisible()
+
+    // Click the link and confirm navigation to the edit page
+    await editLink.click()
+    await page.waitForURL(new RegExp(`/edit/${event.id}`))
+  })
+
+  test('guidance recommendation "Edit event →" link is localized in Slovak', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-rec-sk-1',
+      slug: 'rec-sk-event',
+      name: 'Rec SK Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+      language: 'sk',
+      timezone: 'Europe/Bratislava',
+      venueName: '',
+      attendanceMode: 'IN_PERSON',
+    })
+
+    await seedAuthAndLocale(page, user, 'sk')
+    const state = setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    state.favoriteEvents.push({
+      id: 'fav-sk-1',
+      userId: 'attendee-sk-1',
+      eventId: event.id,
+      createdAtUtc: new Date().toISOString(),
+    })
+
+    await page.goto('/dashboard')
+    await page.waitForURL(/\/dashboard$/)
+
+    // Slovak edit action label
+    await expect(page.locator('.rec-edit-link')).toContainText('Upraviť udalosť')
+  })
+
+  test('guidance recommendation "Edit event →" link is localized in German', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-rec-de-1',
+      slug: 'rec-de-event',
+      name: 'Rec DE Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+      language: 'de',
+      timezone: 'Europe/Berlin',
+      venueName: '',
+      attendanceMode: 'IN_PERSON',
+    })
+
+    await seedAuthAndLocale(page, user, 'de')
+    const state = setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    state.favoriteEvents.push({
+      id: 'fav-de-1',
+      userId: 'attendee-de-1',
+      eventId: event.id,
+      createdAtUtc: new Date().toISOString(),
+    })
+
+    await page.goto('/dashboard')
+    await page.waitForURL(/\/dashboard$/)
+
+    // German edit action label
+    await expect(page.locator('.rec-edit-link')).toContainText('Veranstaltung bearbeiten')
   })
 })
 

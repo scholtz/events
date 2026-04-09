@@ -3766,7 +3766,192 @@ public sealed class GraphQlIntegrationTests
             item.GetProperty("adminNotes").GetString());
     }
 
-    // ── Event detail: location, map, and attendee context ──────────────────
+    [Fact]
+    public async Task MyDashboard_EventAnalytics_HasVenueDetails_TrueForInPersonWithVenue()
+    {
+        // Verifies that hasVenueDetails is true for an in-person event that has a non-empty venue name.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var organizerUserId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer = CreateUser("venue-true@example.com", "Venue True User");
+            organizerUserId = organizer.Id;
+            var domain = CreateDomain("Tech", "tech-venue-true");
+            dbContext.Users.Add(organizer);
+            dbContext.Domains.Add(domain);
+
+            var ev = CreateEvent("In-Person With Venue", "in-person-with-venue",
+                "Event with a venue name.", "Conference Hall A", "Prague",
+                FirstDayOfNextMonthUtc(), domain, organizer, status: EventStatus.Published);
+            ev.AttendanceMode = AttendanceMode.InPerson;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, organizerUserId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyDashboard {
+              myDashboard {
+                eventAnalytics { eventName hasVenueDetails }
+              }
+            }
+            """);
+
+        var item = Assert.Single(
+            document.RootElement.GetProperty("data").GetProperty("myDashboard")
+                .GetProperty("eventAnalytics").EnumerateArray());
+
+        Assert.Equal("In-Person With Venue", item.GetProperty("eventName").GetString());
+        Assert.True(item.GetProperty("hasVenueDetails").GetBoolean(),
+            "In-person event with a venueName should return hasVenueDetails: true");
+    }
+
+    [Fact]
+    public async Task MyDashboard_EventAnalytics_HasVenueDetails_FalseForInPersonMissingVenue()
+    {
+        // Verifies that hasVenueDetails is false for an in-person event whose VenueName is empty.
+        // The frontend recommendation engine uses this to surface the venue-completeness guidance.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var organizerUserId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer = CreateUser("venue-false@example.com", "Venue False User");
+            organizerUserId = organizer.Id;
+            var domain = CreateDomain("Tech", "tech-venue-false");
+            dbContext.Users.Add(organizer);
+            dbContext.Domains.Add(domain);
+
+            var ev = CreateEvent("In-Person No Venue", "in-person-no-venue",
+                "Event missing a venue name.", "", "Prague",
+                FirstDayOfNextMonthUtc(), domain, organizer, status: EventStatus.Published);
+            ev.AttendanceMode = AttendanceMode.InPerson;
+            ev.VenueName = ""; // explicitly clear venue
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, organizerUserId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyDashboard {
+              myDashboard {
+                eventAnalytics { eventName hasVenueDetails }
+              }
+            }
+            """);
+
+        var item = Assert.Single(
+            document.RootElement.GetProperty("data").GetProperty("myDashboard")
+                .GetProperty("eventAnalytics").EnumerateArray());
+
+        Assert.Equal("In-Person No Venue", item.GetProperty("eventName").GetString());
+        Assert.False(item.GetProperty("hasVenueDetails").GetBoolean(),
+            "In-person event with empty venueName should return hasVenueDetails: false");
+    }
+
+    [Fact]
+    public async Task MyDashboard_EventAnalytics_HasVenueDetails_TrueForOnlineEvent()
+    {
+        // Verifies that hasVenueDetails is true for online events even when there is no venue name,
+        // because online events do not require physical venue information.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var organizerUserId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer = CreateUser("online-venue@example.com", "Online Venue User");
+            organizerUserId = organizer.Id;
+            var domain = CreateDomain("Tech", "tech-online-venue");
+            dbContext.Users.Add(organizer);
+            dbContext.Domains.Add(domain);
+
+            var ev = CreateEvent("Online Event No Venue", "online-event-no-venue",
+                "Online event with no physical venue.", "", "Remote",
+                FirstDayOfNextMonthUtc(), domain, organizer, status: EventStatus.Published);
+            ev.AttendanceMode = AttendanceMode.Online;
+            ev.VenueName = ""; // no physical venue needed for online events
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, organizerUserId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyDashboard {
+              myDashboard {
+                eventAnalytics { eventName hasVenueDetails }
+              }
+            }
+            """);
+
+        var item = Assert.Single(
+            document.RootElement.GetProperty("data").GetProperty("myDashboard")
+                .GetProperty("eventAnalytics").EnumerateArray());
+
+        Assert.Equal("Online Event No Venue", item.GetProperty("eventName").GetString());
+        Assert.True(item.GetProperty("hasVenueDetails").GetBoolean(),
+            "Online event should return hasVenueDetails: true even without a venue name");
+    }
+
+    [Fact]
+    public async Task MyDashboard_EventAnalytics_HasVenueDetails_FalseForHybridMissingVenue()
+    {
+        // Verifies that hasVenueDetails is false for a hybrid event whose VenueName is empty.
+        // Hybrid events require a physical venue (participants attend in person), so missing
+        // venue details should trigger the venue-completeness recommendation.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var organizerUserId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer = CreateUser("hybrid-venue@example.com", "Hybrid Venue User");
+            organizerUserId = organizer.Id;
+            var domain = CreateDomain("Tech", "tech-hybrid-venue");
+            dbContext.Users.Add(organizer);
+            dbContext.Domains.Add(domain);
+
+            var ev = CreateEvent("Hybrid No Venue", "hybrid-no-venue",
+                "Hybrid event missing a physical venue.", "", "Prague",
+                FirstDayOfNextMonthUtc(), domain, organizer, status: EventStatus.Published);
+            ev.AttendanceMode = AttendanceMode.Hybrid;
+            ev.VenueName = ""; // hybrid event with no venue → should be false
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, organizerUserId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyDashboard {
+              myDashboard {
+                eventAnalytics { eventName hasVenueDetails }
+              }
+            }
+            """);
+
+        var item = Assert.Single(
+            document.RootElement.GetProperty("data").GetProperty("myDashboard")
+                .GetProperty("eventAnalytics").EnumerateArray());
+
+        Assert.Equal("Hybrid No Venue", item.GetProperty("eventName").GetString());
+        Assert.False(item.GetProperty("hasVenueDetails").GetBoolean(),
+            "Hybrid event with empty venueName should return hasVenueDetails: false");
+    }
 
     [Fact]
     public async Task EventBySlug_ReturnsAllLocationFields_ForPublishedEvent()

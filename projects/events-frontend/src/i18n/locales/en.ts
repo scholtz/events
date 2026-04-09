@@ -525,6 +525,9 @@ export default {
       "Your event doesn't have a timezone set. Adding a timezone helps attendees know exactly when the event takes place in their local time. Edit the event to add it.",
     recommendationPublishedMissingDomain:
       "Your event isn't assigned to a category yet. Assigning it to a relevant category helps attendees browsing community hubs discover it. Edit the event to choose a category.",
+    recommendationPublishedMissingVenue:
+      "Your in-person event is missing a venue name. Adding the full venue details helps attendees know where to go. Edit the event to add the venue address.",
+    recommendationEditAction: 'Edit event →',
     adminNotesFeedback: 'Moderator feedback:',
     metricTimeframeAllTime: 'All-time total',
     recentThisWeek: 'this week',

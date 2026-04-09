@@ -509,6 +509,9 @@ export default {
       'Für Ihre Veranstaltung ist keine Zeitzone festgelegt. Das Hinzufügen einer Zeitzone hilft Teilnehmern zu verstehen, wann die Veranstaltung in ihrer Ortszeit stattfindet. Bearbeiten Sie die Veranstaltung, um sie hinzuzufügen.',
     recommendationPublishedMissingDomain:
       'Ihre Veranstaltung ist noch keiner Kategorie zugeordnet. Die Zuweisung zu einer passenden Kategorie hilft Teilnehmern, die Community-Hubs durchsuchen, diese Veranstaltung zu entdecken. Bearbeiten Sie die Veranstaltung, um eine Kategorie auszuwählen.',
+    recommendationPublishedMissingVenue:
+      'Ihre Präsenzveranstaltung hat keinen Veranstaltungsort angegeben. Durch das Hinzufügen vollständiger Veranstaltungsortdetails wissen die Teilnehmer, wohin sie sich begeben müssen. Bearbeiten Sie die Veranstaltung, um die Veranstaltungsortadresse hinzuzufügen.',
+    recommendationEditAction: 'Veranstaltung bearbeiten →',
     adminNotesFeedback: 'Moderatorenfeedback:',
     metricTimeframeAllTime: 'Gesamtzahl aller Zeiten',
     recentThisWeek: 'diese Woche',

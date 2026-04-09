@@ -47,6 +47,7 @@ function makeItem(overrides: Partial<EventAnalyticsItem> = {}): EventAnalyticsIt
     language: 'en',
     timezone: 'Europe/London',
     publishedAtUtc: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), // published 30 days ago
+    hasVenueDetails: true,
     ...overrides,
   }
 }
@@ -311,6 +312,79 @@ describe('eventRecommendationType', () => {
           now,
         ),
       ).toBe('publishedMissingDomain')
+    })
+
+    it('returns "publishedMissingVenue" when event has saves, language, timezone, domain but no venue details', () => {
+      expect(
+        eventRecommendationType(
+          makeItem({
+            status: 'PUBLISHED',
+            totalInterestedCount: 3,
+            language: 'en',
+            timezone: 'Europe/London',
+            domainSlug: 'tech',
+            hasVenueDetails: false,
+          }),
+          now,
+        ),
+      ).toBe('publishedMissingVenue')
+    })
+
+    it('does NOT return "publishedMissingVenue" when event has NO saves even if venue details are missing', () => {
+      // The venue recommendation only fires after the no-saves checks.
+      // When there are no saves, the no-saves recommendation takes priority.
+      expect(
+        eventRecommendationType(
+          makeItem({
+            status: 'PUBLISHED',
+            totalInterestedCount: 0,
+            language: 'en',
+            timezone: 'Europe/London',
+            domainSlug: 'tech',
+            hasVenueDetails: false,
+            publishedAtUtc: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+          }),
+          now,
+        ),
+      ).toBe('publishedNoSaves')
+    })
+
+    it('returns "publishedMissingVenue" even when hasVenueDetails:false on a conceptually-online event — frontend defers ONLINE exemption to backend', () => {
+      // The frontend logic only checks the `hasVenueDetails` bool; it does not know about
+      // attendance mode. The backend is responsible for returning hasVenueDetails:true for
+      // ONLINE events so the frontend never triggers this branch for them.
+      // This test makes that separation explicit: if the backend ever returned false for an
+      // online event (which it should not), the frontend would still surface the recommendation.
+      expect(
+        eventRecommendationType(
+          makeItem({
+            status: 'PUBLISHED',
+            totalInterestedCount: 3,
+            language: 'en',
+            timezone: 'Europe/London',
+            domainSlug: 'tech',
+            hasVenueDetails: false,
+          }),
+          now,
+        ),
+      ).toBe('publishedMissingVenue')
+    })
+
+    it('returns null when all metadata including venue details are present (hasVenueDetails: true)', () => {
+      // This is the happy-path: all metadata present including venue → no recommendation.
+      expect(
+        eventRecommendationType(
+          makeItem({
+            status: 'PUBLISHED',
+            totalInterestedCount: 3,
+            language: 'en',
+            timezone: 'Europe/London',
+            domainSlug: 'tech',
+            hasVenueDetails: true,
+          }),
+          now,
+        ),
+      ).toBeNull()
     })
 
     it('returns null when event has saves, language, timezone, and domain (no recommendation needed)', () => {
