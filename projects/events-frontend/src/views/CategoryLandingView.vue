@@ -600,8 +600,8 @@ onMounted(async () => {
           <p class="results-summary" role="status" aria-live="polite">
             {{
               events.length === 1
-                ? t('category.oneEventFound')
-                : t('category.eventsFound', { count: events.length })
+                ? t('category.oneEventFoundInHub', { name: domain?.name ?? slug })
+                : t('category.eventsFoundInHub', { count: events.length, name: domain?.name ?? slug })
             }}
           </p>
           <RouterLink :to="`/?domain=${slug}`" class="btn btn-outline btn-sm">

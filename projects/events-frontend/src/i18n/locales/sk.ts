@@ -777,6 +777,9 @@ export default {
     eventCount: '{count} udalostí',
     oneEventFound: 'Nájdená 1 udalosť',
     eventsFound: 'Nájdených {count} udalostí',
+    // Hub-scoped results summary — explicitly names the curated domain so users understand the scope
+    oneEventFoundInHub: '1 udalosť v hube {name}',
+    eventsFoundInHub: '{count} udalostí v hube {name}',
     filterAndExplore: 'Filtrovať a prehľadávať',
     noEvents: 'Žiadne nadchádzajúce udalosti',
     noEventsDescription: 'V kategórii {name} zatiaľ nie sú žiadne nadchádzajúce udalosti. Skúste to neskôr.',
