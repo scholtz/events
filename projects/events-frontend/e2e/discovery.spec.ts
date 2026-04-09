@@ -2109,7 +2109,7 @@ test.describe('Category landing page — error and SEO', () => {
     })
     await page.goto('/category/technology')
 
-    await expect(page.getByText('1 event found')).toBeVisible()
+    await expect(page.locator('.results-summary')).toContainText('1 event in the Technology hub')
   })
 
   test('events found count shows plural for multiple results', async ({ page }) => {
@@ -2123,7 +2123,7 @@ test.describe('Category landing page — error and SEO', () => {
     })
     await page.goto('/category/technology')
 
-    await expect(page.getByText('2 events found')).toBeVisible()
+    await expect(page.locator('.results-summary')).toContainText('2 events in the Technology hub')
   })
 })
 
