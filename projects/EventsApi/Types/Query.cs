@@ -235,14 +235,20 @@ public sealed class Query
         if (entries.Count > 0)
         {
             // Compute upcoming published event counts per group — aggregate only, no PII exposed.
+            // Query is written as an explicit join starting from Events (not via a navigation property
+            // on CommunityGroupEvent) so EF Core translates it into a clean parameterised SQL JOIN
+            // with no risk of lazy-loading or N+1 issues.
             var groupIds = entries.Select(e => e.GroupId).ToList();
             var now = DateTime.UtcNow;
-            var counts = await dbContext.CommunityGroupEvents
+            var counts = await dbContext.Events
                 .AsNoTracking()
-                .Where(cge => groupIds.Contains(cge.GroupId)
-                              && cge.Event.Status == EventStatus.Published
-                              && cge.Event.StartsAtUtc > now)
-                .GroupBy(cge => cge.GroupId)
+                .Where(e => e.Status == EventStatus.Published && e.StartsAtUtc > now)
+                .Join(
+                    dbContext.CommunityGroupEvents.Where(cge => groupIds.Contains(cge.GroupId)),
+                    e => e.Id,
+                    cge => cge.EventId,
+                    (e, cge) => cge.GroupId)
+                .GroupBy(groupId => groupId)
                 .Select(g => new { GroupId = g.Key, Count = g.Count() })
                 .ToDictionaryAsync(g => g.GroupId, g => g.Count, cancellationToken);
 

@@ -19392,6 +19392,55 @@ public sealed class GraphQlIntegrationTests
         Assert.DoesNotContain("count-cc-admin@example.com", json);
         Assert.DoesNotContain("\"userId\"", json);
     }
+
+    [Fact]
+    public async Task CuratedCommunitiesForDomain_UpcomingPublishedEventCount_ZeroWhenNoCommunityGroupEvents()
+    {
+        // Regression guard: a group that is curated but has no CommunityGroupEvent rows at all
+        // must return 0 — not null and not an exception — proving the join path handles empty sets.
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("zero-cc-admin@example.com", "Zero Admin", ApplicationUserRole.Admin);
+            var domain = CreateDomain("Zero CC Hub", "zero-cc-hub");
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Zero Events Group",
+                Slug = "zero-events-group",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Public,
+            };
+
+            dbContext.Users.Add(admin);
+            dbContext.Domains.Add(domain);
+            dbContext.CommunityGroups.Add(group);
+            // Deliberately no CommunityGroupEvent rows seeded
+            dbContext.DomainCuratedCommunities.Add(new EventsApi.Data.Entities.DomainCuratedCommunity
+            {
+                DomainId = domain.Id,
+                GroupId = group.Id,
+                DisplayOrder = 0,
+                IsEnabled = true,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query CuratedCommunities($domainSlug: String!) {
+              curatedCommunitiesForDomain(domainSlug: $domainSlug) {
+                upcomingPublishedEventCount
+                group { name }
+              }
+            }
+            """,
+            new { domainSlug = "zero-cc-hub" });
+
+        var entries = document.RootElement.GetProperty("data").GetProperty("curatedCommunitiesForDomain");
+        Assert.Equal(1, entries.GetArrayLength());
+        Assert.Equal(0, entries[0].GetProperty("upcomingPublishedEventCount").GetInt32());
+    }
 }
 
 
