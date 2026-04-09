@@ -848,6 +848,7 @@ When implementing per-event analytics recommendation rows in `DashboardView.vue`
 - Recommendation rows for guidance-type recommendations (`publishedNoSaves`, `publishedNewlyPublished`, `publishedApproachingSoon`, `publishedMissingLanguage`, `publishedMissingTimezone`, `publishedMissingDomain`, `publishedMissingVenue`) MUST include a `.rec-edit-link` RouterLink to `/edit/:eventId`.
 - This link must be localized — add the i18n key `dashboard.recommendationEditAction` in EN, SK, and DE.
 - Do NOT add edit links for `rejected`, `draft`, or `pending` recommendation types — these have different action flows already covered by the actions column.
+- **CRITICAL aria-label pitfall**: the `.rec-edit-link` has `aria-label="Edit {eventName}"`. This means `getByRole('link', { name: 'EventName' })` (without `exact: true`) will ALSO match the rec-edit-link because Playwright's `getByRole` uses substring matching by default. **Always use `{ exact: true }` when selecting the event-name link in tests** (e.g., `getByRole('link', { name: 'My Event Name', exact: true })`). Failing to do so causes "strict mode violation: resolved to 2 elements" errors.
 
 ### Navigation test requirement
 Every PR that adds or changes per-event recommendation rows must include an E2E test that:

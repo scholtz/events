@@ -65,7 +65,7 @@ test.describe('Organizer analytics dashboard', () => {
     await expect(page.getByRole('heading', { name: 'Event Performance' })).toBeVisible()
 
     // Event row in table
-    await expect(page.getByRole('link', { name: 'Analytics Test Event' })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Analytics Test Event', exact: true })).toBeVisible()
 
     // Saves count (2 total)
     await expect(page.locator('td .saves-count', { hasText: '2' }).first()).toBeVisible()
@@ -283,7 +283,7 @@ test.describe('Organizer analytics dashboard', () => {
     await page.waitForURL(/\/dashboard$/)
 
     // Only the organizer's own event should appear in the analytics table
-    await expect(page.getByRole('link', { name: 'My Own Event' })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'My Own Event', exact: true })).toBeVisible()
     await expect(page.getByText("Someone Else's Event")).toBeHidden()
   })
 
