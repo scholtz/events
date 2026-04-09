@@ -1288,6 +1288,8 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
           language: e.language,
           timezone: e.timezone,
           publishedAtUtc: e.publishedAtUtc,
+          // Online-only events don't need a venue; in-person/hybrid events need a non-empty venueName
+          hasVenueDetails: e.attendanceMode === 'ONLINE' || (e.venueName?.trim() ?? '').length > 0,
         }
       })
 

@@ -40,7 +40,13 @@ public sealed record EventAnalyticsItem(
     /// Used by the frontend to distinguish newly-published events (not yet enough time to accumulate
     /// saves) from events that have been live for a while with no engagement.
     /// </summary>
-    DateTime? PublishedAtUtc);
+    DateTime? PublishedAtUtc,
+    /// <summary>
+    /// True when the event either does not require physical venue details (online-only events)
+    /// or has a non-empty VenueName. False for in-person/hybrid events missing a venue name,
+    /// which triggers a venue-completeness recommendation in the organizer dashboard.
+    /// </summary>
+    bool HasVenueDetails);
 
 public sealed record DashboardOverview(
     int TotalSubmittedEvents,

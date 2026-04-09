@@ -547,7 +547,11 @@ public sealed class Query
                     DomainSlug: e.Domain?.Slug,
                     Language: e.Language,
                     Timezone: e.Timezone,
-                    PublishedAtUtc: e.PublishedAtUtc);
+                    PublishedAtUtc: e.PublishedAtUtc,
+                    // Online-only events don't need a physical venue; in-person/hybrid events
+                    // must have a non-empty VenueName for the venue-completeness recommendation.
+                    HasVenueDetails: e.AttendanceMode == AttendanceMode.Online
+                        || !string.IsNullOrWhiteSpace(e.VenueName));
             })
             .ToList();
 

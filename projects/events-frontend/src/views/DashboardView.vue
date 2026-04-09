@@ -411,6 +411,7 @@ function eventRecommendation(item: EventAnalyticsItem): string | null {
     case 'publishedMissingLanguage': return t('dashboard.recommendationPublishedMissingLanguage')
     case 'publishedMissingTimezone': return t('dashboard.recommendationPublishedMissingTimezone')
     case 'publishedMissingDomain': return t('dashboard.recommendationPublishedMissingDomain')
+    case 'publishedMissingVenue': return t('dashboard.recommendationPublishedMissingVenue')
     default: return null
   }
 }

@@ -177,6 +177,12 @@ export interface EventAnalyticsItem {
    * events that have been live for a while with no engagement.
    */
   publishedAtUtc: string | null
+  /**
+   * True when the event does not require physical venue details (ONLINE attendance mode) or
+   * has a non-empty venueName. False for IN_PERSON/HYBRID events missing a venue name,
+   * which triggers the venue-completeness recommendation in the organizer dashboard.
+   */
+  hasVenueDetails: boolean
 }
 
 /** Lightweight community group summary for global admin oversight */

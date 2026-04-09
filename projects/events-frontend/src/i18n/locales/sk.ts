@@ -509,6 +509,8 @@ export default {
       'Vaša udalosť nemá nastavenú časovú zónu. Pridanie časovej zóny pomáha účastníkom vedieť presne, kedy sa udalosť koná v ich miestnom čase. Upravte udalosť a pridajte ju.',
     recommendationPublishedMissingDomain:
       'Vaša udalosť zatiaľ nie je priradená ku kategórii. Priradenie ku vhodnej kategórii pomáha účastníkom prehliadajúcim komunitné huby ju objaviť. Upravte udalosť a vyberte kategóriu.',
+    recommendationPublishedMissingVenue:
+      'Vaša prezenčná udalosť nemá zadaný názov miesta konania. Doplnením úplných údajov o mieste konania pomôžete účastníkom nájsť, kam sa majú dostaviť. Upravte udalosť a doplňte adresu miesta konania.',
     adminNotesFeedback: 'Spätná väzba moderátora:',
     metricTimeframeAllTime: 'Celkový počet za všetky časy',
     recentThisWeek: 'tento týždeň',

@@ -1732,6 +1732,74 @@ test.describe('Per-event recommendations and guidance', () => {
     // No recommendation row should appear (has saves AND has language)
     await expect(page.locator('.event-recommendation-row')).toHaveCount(0)
   })
+
+  test('shows venue-completeness recommendation for in-person event with saves but missing venue', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    // Event with language, timezone, domain — but empty venueName → venue recommendation
+    const event = makeApprovedEvent({
+      id: 'ev-missing-venue',
+      slug: 'missing-venue-event',
+      name: 'Missing Venue Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+      language: 'en',
+      timezone: 'Europe/London',
+      venueName: '', // in-person with no venue name → hasVenueDetails: false
+      attendanceMode: 'IN_PERSON',
+    })
+
+    const state = setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    // Add saves so the no-saves recommendations don't fire
+    state.favoriteEvents.push({
+      id: 'fav-venue-1',
+      userId: 'attendee-venue-1',
+      eventId: event.id,
+      createdAtUtc: new Date().toISOString(),
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // Venue-completeness recommendation should appear
+    await expect(page.locator('.event-recommendation-row.rec--guidance')).toBeVisible()
+    await expect(page.locator('.rec-text')).toContainText(/venue/)
+  })
+
+  test('does not show venue recommendation for online event even without venue name', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    // ONLINE event — venue details not required → hasVenueDetails: true
+    const event = makeApprovedEvent({
+      id: 'ev-online-no-venue',
+      slug: 'online-no-venue-event',
+      name: 'Online No Venue Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+      language: 'en',
+      timezone: 'Europe/London',
+      venueName: '',
+      attendanceMode: 'ONLINE',
+    })
+
+    const state = setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    state.favoriteEvents.push({
+      id: 'fav-online-venue-1',
+      userId: 'attendee-online-1',
+      eventId: event.id,
+      createdAtUtc: new Date().toISOString(),
+    })
+
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    // No recommendation row should appear — online event doesn't need a venue
+    await expect(page.locator('.event-recommendation-row')).toHaveCount(0)
+  })
 })
 
 // ── My Communities section ────────────────────────────────────────────────────

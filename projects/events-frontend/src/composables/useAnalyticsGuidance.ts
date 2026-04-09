@@ -72,6 +72,7 @@ export type RecommendationType =
   | 'publishedMissingLanguage'
   | 'publishedMissingTimezone'
   | 'publishedMissingDomain'
+  | 'publishedMissingVenue'
   | null
 
 /**
@@ -113,7 +114,8 @@ export function daysSincePublished(publishedAtUtc: string | null, now: Date = ne
  * 7. PUBLISHED + has saves + no language set → language-tag improvement hint
  * 8. PUBLISHED + has saves + has language + no timezone → timezone improvement hint
  * 9. PUBLISHED + has saves + has language + has timezone + no domain → category assignment hint
- * 10. Otherwise → no recommendation
+ * 10. PUBLISHED + has saves + all metadata present + missing venue (in-person/hybrid) → venue completeness hint
+ * 11. Otherwise → no recommendation
  *
  * @param item Analytics item for the event
  * @param now  Reference instant (defaults to `new Date()` for testability)
@@ -121,7 +123,14 @@ export function daysSincePublished(publishedAtUtc: string | null, now: Date = ne
 export function eventRecommendationType(
   item: Pick<
     EventAnalyticsItem,
-    'status' | 'totalInterestedCount' | 'startsAtUtc' | 'language' | 'timezone' | 'domainSlug' | 'publishedAtUtc'
+    | 'status'
+    | 'totalInterestedCount'
+    | 'startsAtUtc'
+    | 'language'
+    | 'timezone'
+    | 'domainSlug'
+    | 'publishedAtUtc'
+    | 'hasVenueDetails'
   >,
   now: Date = new Date(),
 ): RecommendationType {
@@ -139,6 +148,7 @@ export function eventRecommendationType(
     if (!item.language) return 'publishedMissingLanguage'
     if (!item.timezone) return 'publishedMissingTimezone'
     if (!item.domainSlug) return 'publishedMissingDomain'
+    if (!item.hasVenueDetails) return 'publishedMissingVenue'
   }
   return null
 }
@@ -154,7 +164,14 @@ export function eventRecommendationType(
 export function eventRecommendationVariant(
   item: Pick<
     EventAnalyticsItem,
-    'status' | 'totalInterestedCount' | 'startsAtUtc' | 'language' | 'timezone' | 'domainSlug' | 'publishedAtUtc'
+    | 'status'
+    | 'totalInterestedCount'
+    | 'startsAtUtc'
+    | 'language'
+    | 'timezone'
+    | 'domainSlug'
+    | 'publishedAtUtc'
+    | 'hasVenueDetails'
   >,
   now: Date = new Date(),
 ): RecommendationVariant {

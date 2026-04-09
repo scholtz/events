@@ -47,6 +47,7 @@ function makeItem(overrides: Partial<EventAnalyticsItem> = {}): EventAnalyticsIt
     language: 'en',
     timezone: 'Europe/London',
     publishedAtUtc: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), // published 30 days ago
+    hasVenueDetails: true,
     ...overrides,
   }
 }
@@ -311,6 +312,41 @@ describe('eventRecommendationType', () => {
           now,
         ),
       ).toBe('publishedMissingDomain')
+    })
+
+    it('returns "publishedMissingVenue" when event has saves, language, timezone, domain but no venue details', () => {
+      expect(
+        eventRecommendationType(
+          makeItem({
+            status: 'PUBLISHED',
+            totalInterestedCount: 3,
+            language: 'en',
+            timezone: 'Europe/London',
+            domainSlug: 'tech',
+            hasVenueDetails: false,
+          }),
+          now,
+        ),
+      ).toBe('publishedMissingVenue')
+    })
+
+    it('returns null for online event even when hasVenueDetails is false (venue not required)', () => {
+      // Online events return hasVenueDetails: true from the backend,
+      // so the frontend never shows a venue recommendation for them.
+      // This test confirms null when all metadata is present and hasVenueDetails is true.
+      expect(
+        eventRecommendationType(
+          makeItem({
+            status: 'PUBLISHED',
+            totalInterestedCount: 3,
+            language: 'en',
+            timezone: 'Europe/London',
+            domainSlug: 'tech',
+            hasVenueDetails: true, // online event or event with valid venue
+          }),
+          now,
+        ),
+      ).toBeNull()
     })
 
     it('returns null when event has saves, language, timezone, and domain (no recommendation needed)', () => {
