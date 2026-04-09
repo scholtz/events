@@ -559,6 +559,176 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task EventsQuery_UpcomingSort_LanguageMetadataContributesToCompletenessScore()
+    {
+        // When two events start at the same time and have the same core fields (city, venue,
+        // event URL), the event with a language tag set should rank higher than one without.
+        // Language is a quality signal that helps multilingual audiences find relevant events.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var sameStartTime = DateTime.UtcNow.AddDays(7);
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("lang-completeness@example.com", "Lang Tester");
+            var tech = CreateDomain("Tech", "tech");
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(tech);
+
+            // Event with language set (higher completeness score)
+            var withLanguage = CreateEvent(
+                "Described Event",
+                "described-event",
+                "Event with explicit language tag.",
+                "Venue A",
+                "Prague",
+                sameStartTime,
+                tech,
+                user,
+                language: "en");
+
+            // Event without language (lower completeness score — same start time)
+            var withoutLanguage = CreateEvent(
+                "Sparse Event",
+                "sparse-event",
+                "Event with no language tag.",
+                "Venue B",
+                "Prague",
+                sameStartTime,
+                tech,
+                user);
+            // Ensure language and timezone are null
+            withoutLanguage.Language = null;
+            withoutLanguage.Timezone = null;
+
+            dbContext.Events.AddRange(withLanguage, withoutLanguage);
+        });
+
+        using var client = factory.CreateClient();
+
+        var names = await QueryEventNamesAsync(client, new { sortBy = "UPCOMING" });
+
+        // Event with language tag must appear before the one without
+        Assert.Equal(["Described Event", "Sparse Event"], names);
+    }
+
+    [Fact]
+    public async Task EventsQuery_UpcomingSort_TimezoneMetadataContributesToCompletenessScore()
+    {
+        // When two events start at the same time and have the same core fields (city, venue,
+        // event URL), the event with a timezone set should rank higher than one without.
+        // Timezone is a quality signal especially valuable for online and hybrid events.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var sameStartTime = DateTime.UtcNow.AddDays(7);
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("tz-completeness@example.com", "Tz Tester");
+            var tech = CreateDomain("Tech", "tech");
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(tech);
+
+            // Event with timezone set (higher completeness score)
+            var withTimezone = CreateEvent(
+                "Timezone Event",
+                "timezone-event",
+                "Event with explicit timezone.",
+                "Venue A",
+                "Prague",
+                sameStartTime,
+                tech,
+                user,
+                timezone: "Europe/Prague");
+
+            // Event without timezone (lower completeness score — same start time)
+            var withoutTimezone = CreateEvent(
+                "No Timezone Event",
+                "no-timezone-event",
+                "Event with no timezone.",
+                "Venue B",
+                "Prague",
+                sameStartTime,
+                tech,
+                user);
+            withoutTimezone.Language = null;
+            withoutTimezone.Timezone = null;
+
+            dbContext.Events.AddRange(withTimezone, withoutTimezone);
+        });
+
+        using var client = factory.CreateClient();
+
+        var names = await QueryEventNamesAsync(client, new { sortBy = "UPCOMING" });
+
+        // Event with timezone must appear before the one without
+        Assert.Equal(["Timezone Event", "No Timezone Event"], names);
+    }
+
+    [Fact]
+    public async Task EventsQuery_UpcomingSort_LanguageAndTimezoneTogetherMaximizeCompletenessScore()
+    {
+        // Events with both language AND timezone set outrank events with only one or neither.
+        // This verifies the combined effect of the two new completeness signals.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var sameStartTime = DateTime.UtcNow.AddDays(7);
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("full-completeness@example.com", "Full Tester");
+            var tech = CreateDomain("Tech", "tech");
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(tech);
+
+            // Event with both language and timezone — maximum metadata completeness
+            var fullMetadata = CreateEvent(
+                "Full Metadata Event",
+                "full-metadata-event",
+                "Event with language and timezone set.",
+                "Venue A",
+                "Prague",
+                sameStartTime,
+                tech,
+                user,
+                timezone: "Europe/Prague",
+                language: "en");
+
+            // Event with only language set
+            var languageOnly = CreateEvent(
+                "Language Only Event",
+                "language-only-event",
+                "Event with only language set.",
+                "Venue B",
+                "Prague",
+                sameStartTime,
+                tech,
+                user,
+                language: "en");
+            languageOnly.Timezone = null;
+
+            // Event with neither language nor timezone
+            var sparseEvent = CreateEvent(
+                "Sparse Metadata Event",
+                "sparse-metadata-event",
+                "Event with minimal metadata.",
+                "Venue C",
+                "Prague",
+                sameStartTime,
+                tech,
+                user);
+            sparseEvent.Language = null;
+            sparseEvent.Timezone = null;
+
+            dbContext.Events.AddRange(fullMetadata, languageOnly, sparseEvent);
+        });
+
+        using var client = factory.CreateClient();
+
+        var names = await QueryEventNamesAsync(client, new { sortBy = "UPCOMING" });
+
+        // Full metadata > language-only > sparse
+        Assert.Equal(["Full Metadata Event", "Language Only Event", "Sparse Metadata Event"], names);
+    }
+
+    [Fact]
     public async Task EventsQuery_UpcomingSort_EngagementSignalRanksPopularEventsFirst()
     {
         // When two upcoming events have the same start date and equal completeness,
