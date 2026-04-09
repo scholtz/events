@@ -125,6 +125,75 @@ test.describe('Category landing page', () => {
     await expect(page.getByText('2 upcoming events')).toBeVisible()
   })
 
+  test('results summary names the hub explicitly for a single event', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-single', slug: 'e-single', name: 'Solo Event' })],
+    })
+
+    await page.goto('/category/technology')
+
+    // Hub-scoped summary: "1 event in the Technology hub"
+    await expect(page.locator('.results-summary')).toContainText('1 event in the Technology hub')
+  })
+
+  test('results summary names the hub explicitly for multiple events', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-a', slug: 'e-a', name: 'Event A' }),
+        makeApprovedEvent({ id: 'e-b', slug: 'e-b', name: 'Event B' }),
+        makeApprovedEvent({ id: 'e-c', slug: 'e-c', name: 'Event C' }),
+      ],
+    })
+
+    await page.goto('/category/technology')
+
+    // Hub-scoped summary: "3 events in the Technology hub"
+    await expect(page.locator('.results-summary')).toContainText('3 events in the Technology hub')
+  })
+
+  test('results summary has role status for accessibility', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-acc', slug: 'e-acc' })],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.results-summary')).toHaveAttribute('role', 'status')
+  })
+
+  test('results summary hub name is localized in German', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-de', slug: 'e-de', name: 'Tech Event DE' })],
+    })
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'de')
+    })
+
+    await page.goto('/category/technology')
+
+    // German: "1 Veranstaltung im Technology-Hub"
+    await expect(page.locator('.results-summary')).toContainText('im Technology-Hub')
+  })
+
+  test('results summary hub name is localized in Slovak', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-sk', slug: 'e-sk', name: 'Tech Event SK' })],
+    })
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'sk')
+    })
+
+    await page.goto('/category/technology')
+
+    // Slovak: "1 udalosť v hube Technology"
+    await expect(page.locator('.results-summary')).toContainText('v hube Technology')
+  })
+
   test('renders hub overview modules when configured', async ({ page }) => {
     const domain: MockDomain = {
       ...makeTechDomain(),

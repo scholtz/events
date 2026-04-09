@@ -777,6 +777,9 @@ export default {
     eventCount: '{count} Veranstaltungen',
     oneEventFound: '1 Veranstaltung gefunden',
     eventsFound: '{count} Veranstaltungen gefunden',
+    // Hub-scoped results summary — explicitly names the curated domain so users understand the scope
+    oneEventFoundInHub: '1 Veranstaltung im {name}-Hub',
+    eventsFoundInHub: '{count} Veranstaltungen im {name}-Hub',
     filterAndExplore: 'Filtern & Erkunden',
     noEvents: 'Keine bevorstehenden Veranstaltungen',
     noEventsDescription: 'In der Kategorie {name} gibt es noch keine bevorstehenden Veranstaltungen. Schauen Sie bald wieder vorbei.',

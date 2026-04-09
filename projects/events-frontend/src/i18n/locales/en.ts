@@ -803,6 +803,9 @@ export default {
     eventCount: '{count} events',
     oneEventFound: '1 event found',
     eventsFound: '{count} events found',
+    // Hub-scoped results summary — explicitly names the curated domain so users understand the scope
+    oneEventFoundInHub: '1 event in the {name} hub',
+    eventsFoundInHub: '{count} events in the {name} hub',
     filterAndExplore: 'Filter & Explore',
     noEvents: 'No upcoming events',
     noEventsDescription: 'There are no upcoming events in the {name} category yet. Check back soon.',
