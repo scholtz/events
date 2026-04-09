@@ -2036,6 +2036,125 @@ test.describe('Dashboard analytics state banners', () => {
     await expect(page.locator('.analytics-state-banner--low-signal')).toBeVisible()
     await expect(page.locator('.analytics-state-banner--early')).toHaveCount(0)
   })
+
+  test('early-data banner includes a "Browse community hubs" action link to /communities', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-early-link',
+      slug: 'early-link-event',
+      name: 'Early Link Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+      publishedAtUtc: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    const banner = page.locator('.analytics-state-banner--early')
+    await expect(banner).toBeVisible()
+
+    // Community hubs link must be visible and point to /communities
+    const link = banner.getByRole('link', { name: /community hub/i })
+    await expect(link).toBeVisible()
+    await expect(link).toHaveAttribute('href', /\/communities/)
+  })
+
+  test('low-signal banner includes a "Browse community hubs" action link to /communities', async ({
+    page,
+  }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-lowsig-link',
+      slug: 'lowsig-link-event',
+      name: 'Low Signal Link Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    const banner = page.locator('.analytics-state-banner--low-signal')
+    await expect(banner).toBeVisible()
+
+    // Community hubs link must be visible and point to /communities
+    const link = banner.getByRole('link', { name: /community hub/i })
+    await expect(link).toBeVisible()
+    await expect(link).toHaveAttribute('href', /\/communities/)
+  })
+
+  test('early-data banner community hubs link is visible on mobile viewport', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-early-mobile-link',
+      slug: 'early-mobile-link-event',
+      name: 'Early Mobile Link Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+      publishedAtUtc: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    })
+
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    await page.setViewportSize({ width: 390, height: 844 })
+    await loginAs(page, user)
+    await page.waitForURL(/\/dashboard$/)
+
+    const link = page.locator('.analytics-state-banner--early .banner-action-link')
+    await expect(link).toBeVisible()
+  })
+
+  test('early-data banner community link shows localized text in Slovak', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-early-sk-link',
+      slug: 'early-sk-link-event',
+      name: 'Early SK Link Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+      publishedAtUtc: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    })
+
+    await seedAuthAndLocale(page, user, 'sk')
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    await page.goto('/dashboard')
+    await page.waitForURL(/\/dashboard$/)
+
+    const banner = page.locator('.analytics-state-banner--early')
+    await expect(banner).toBeVisible()
+    // Slovak translation for the community hubs link
+    await expect(banner.locator('.banner-action-link')).toContainText('komunitné huby')
+  })
+
+  test('low-signal banner community link shows localized text in German', async ({ page }) => {
+    const user = makeAdminUser()
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      id: 'ev-lowsig-de-link',
+      slug: 'lowsig-de-link-event',
+      name: 'Low Signal DE Link Event',
+      submittedByUserId: user.id,
+      submittedBy: { displayName: user.displayName },
+    })
+
+    await seedAuthAndLocale(page, user, 'de')
+    setupMockApi(page, { users: [user], domains: [domain], events: [event] })
+    await page.goto('/dashboard')
+    await page.waitForURL(/\/dashboard$/)
+
+    const banner = page.locator('.analytics-state-banner--low-signal')
+    await expect(banner).toBeVisible()
+    // German translation for the community hubs link
+    await expect(banner.locator('.banner-action-link')).toContainText('Community-Hubs')
+  })
 })
 
 // ── Aggregate trend KPI display ───────────────────────────────────────────────

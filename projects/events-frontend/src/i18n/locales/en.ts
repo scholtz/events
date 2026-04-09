@@ -543,6 +543,7 @@ export default {
     analyticsStateNormalTitle: 'Good engagement signal.',
     analyticsStateNormal:
       'Your events are gaining traction. Keep sharing in community channels, ensure all event details stay accurate as the date approaches, and respond to any moderator feedback promptly.',
+    analyticsStateBrowseCommunities: 'Browse community hubs →',
     tableMetricLegend:
       'Saves: total attendee bookmarks · Momentum: saves in the last 7 or 30 days · Calendar: total add-to-calendar actions · Cal Trend: calendar adds in the last 7 or 30 days',
     hubManagementTitle: 'Hub Management',

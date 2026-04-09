@@ -3475,6 +3475,127 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal("tech-no-meta", item.GetProperty("domainSlug").GetString());
     }
 
+    [Fact]
+    public async Task MyDashboard_EventAnalytics_StartsAtUtc_IsReturnedAndParseable()
+    {
+        // Verifies that startsAtUtc is returned in per-event analytics items.
+        // The frontend uses this to compute "days until start" and show urgency recommendations
+        // for events starting within 7 days that have no saves yet.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var organizerUserId = Guid.Empty;
+        var nextMonth = FirstDayOfNextMonthUtc();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer = CreateUser("starts-at-utc@example.com", "StartsAt User");
+            organizerUserId = organizer.Id;
+            var domain = CreateDomain("Tech", "tech-starts-at");
+            dbContext.Users.Add(organizer);
+            dbContext.Domains.Add(domain);
+
+            var ev = CreateEvent("StartsAt Event", "starts-at-event", "Desc.",
+                "Venue", "Berlin", nextMonth, domain, organizer, status: EventStatus.Published);
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, organizerUserId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyDashboard {
+              myDashboard {
+                eventAnalytics {
+                  eventName
+                  startsAtUtc
+                }
+              }
+            }
+            """);
+
+        var analytics = document.RootElement
+            .GetProperty("data").GetProperty("myDashboard")
+            .GetProperty("eventAnalytics").EnumerateArray().ToArray();
+
+        var item = Assert.Single(analytics);
+        Assert.Equal("StartsAt Event", item.GetProperty("eventName").GetString());
+
+        // startsAtUtc must be a non-null, parseable UTC timestamp
+        var startsAtStr = item.GetProperty("startsAtUtc").GetString();
+        Assert.NotNull(startsAtStr);
+        Assert.True(DateTime.TryParse(startsAtStr, out var parsed),
+            "startsAtUtc should be a valid date-time string");
+        // The stored value should match what we seeded (same day, within the same month)
+        Assert.Equal(nextMonth.Month, parsed.Month);
+        Assert.Equal(nextMonth.Year, parsed.Year);
+    }
+
+    [Fact]
+    public async Task MyDashboard_EventAnalytics_AdminNotes_IsReturnedForRejectedEvents()
+    {
+        // Verifies that adminNotes are returned for rejected events in the dashboard analytics.
+        // The frontend displays these inline in the per-event recommendation row so organizers
+        // understand exactly what needs to change before resubmitting.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var organizerUserId = Guid.Empty;
+        var adminUserId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer = CreateUser("admin-notes-dash@example.com", "AdminNotes Organizer");
+            var admin = CreateUser("reviewer-notes-dash@example.com", "AdminNotes Reviewer");
+            admin.Role = ApplicationUserRole.Admin;
+            organizerUserId = organizer.Id;
+            adminUserId = admin.Id;
+
+            var domain = CreateDomain("Tech", "tech-admin-notes-dash");
+            dbContext.Users.AddRange(organizer, admin);
+            dbContext.Domains.Add(domain);
+
+            var ev = CreateEvent("Admin Notes Dash Event", "admin-notes-dash-event",
+                "Event for testing admin notes in dashboard.", "Venue", "Prague",
+                FirstDayOfNextMonthUtc(), domain, organizer, status: EventStatus.Published);
+            // Manually mark as rejected with admin notes
+            ev.Status = EventStatus.Rejected;
+            ev.AdminNotes = "Please add a more detailed description and confirm the venue address.";
+            ev.ReviewedBy = admin;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, organizerUserId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyDashboard {
+              myDashboard {
+                eventAnalytics {
+                  eventName
+                  status
+                  adminNotes
+                }
+              }
+            }
+            """);
+
+        var analytics = document.RootElement
+            .GetProperty("data").GetProperty("myDashboard")
+            .GetProperty("eventAnalytics").EnumerateArray().ToArray();
+
+        var item = Assert.Single(analytics);
+        Assert.Equal("Admin Notes Dash Event", item.GetProperty("eventName").GetString());
+        Assert.Equal("REJECTED", item.GetProperty("status").GetString());
+        // adminNotes must be returned so the frontend can display them inline in the
+        // per-event recommendation row, helping the organizer understand what to fix
+        Assert.Equal(
+            "Please add a more detailed description and confirm the venue address.",
+            item.GetProperty("adminNotes").GetString());
+    }
+
     // ── Event detail: location, map, and attendee context ──────────────────
 
     [Fact]
