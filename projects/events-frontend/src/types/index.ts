@@ -283,6 +283,12 @@ export interface DomainCuratedCommunity {
   isEnabled: boolean
   annotation: string | null
   createdAtUtc: string
+  /**
+   * Count of upcoming published events linked to this community.
+   * Aggregate-only — no attendee identities exposed. Computed at query time.
+   * Present only in the public `curatedCommunitiesForDomain` query; not in the admin query.
+   */
+  upcomingPublishedEventCount?: number
 }
 
 /** Matches backend CommunityMembership entity */

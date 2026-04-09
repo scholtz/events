@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations.Schema;
 using HotChocolate;
 
 namespace EventsApi.Data.Entities;
@@ -37,4 +38,12 @@ public sealed class DomainCuratedCommunity
     public string? Annotation { get; set; }
 
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// Count of upcoming published events associated with this community group.
+    /// Computed at query time from the CommunityGroupEvents table; not persisted.
+    /// Aggregate-only — no attendee identities are exposed.
+    /// </summary>
+    [NotMapped]
+    public int UpcomingPublishedEventCount { get; set; }
 }

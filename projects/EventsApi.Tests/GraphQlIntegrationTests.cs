@@ -19315,6 +19315,132 @@ public sealed class GraphQlIntegrationTests
         var entries = publicDoc.RootElement.GetProperty("data").GetProperty("curatedCommunitiesForDomain");
         Assert.Equal(0, entries.GetArrayLength());
     }
+
+    [Fact]
+    public async Task CuratedCommunitiesForDomain_UpcomingPublishedEventCount_IsAggregateAndPrivacySafe()
+    {
+        // Verify that upcomingPublishedEventCount reflects only upcoming published events
+        // and exposes no attendee PII — only an aggregate integer.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var domainId = Guid.Empty;
+        var groupId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("count-cc-admin@example.com", "Admin", ApplicationUserRole.Admin);
+            var domain = CreateDomain("Count CC Hub", "count-cc-hub");
+            domainId = domain.Id;
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Counting Group",
+                Slug = "counting-group",
+                Summary = "Group for counting test",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Public,
+            };
+            groupId = group.Id;
+
+            // 2 upcoming published events
+            var ev1 = CreateEvent("Upcoming A", "upcoming-a", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(5), domain, admin);
+            var ev2 = CreateEvent("Upcoming B", "upcoming-b", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(10), domain, admin);
+            // 1 past published event (must NOT count)
+            var evPast = CreateEvent("Past X", "past-x", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(-5), domain, admin);
+            // 1 upcoming draft event (must NOT count)
+            var evDraft = CreateEvent("Draft Y", "draft-y", "Desc", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(3), domain, admin, status: EventStatus.Draft);
+
+            dbContext.Users.Add(admin);
+            dbContext.Domains.Add(domain);
+            dbContext.CommunityGroups.Add(group);
+            dbContext.Events.AddRange(ev1, ev2, evPast, evDraft);
+            dbContext.CommunityGroupEvents.AddRange(
+                new EventsApi.Data.Entities.CommunityGroupEvent { GroupId = group.Id, EventId = ev1.Id },
+                new EventsApi.Data.Entities.CommunityGroupEvent { GroupId = group.Id, EventId = ev2.Id },
+                new EventsApi.Data.Entities.CommunityGroupEvent { GroupId = group.Id, EventId = evPast.Id },
+                new EventsApi.Data.Entities.CommunityGroupEvent { GroupId = group.Id, EventId = evDraft.Id });
+            dbContext.DomainCuratedCommunities.Add(new EventsApi.Data.Entities.DomainCuratedCommunity
+            {
+                DomainId = domain.Id,
+                GroupId = group.Id,
+                DisplayOrder = 0,
+                IsEnabled = true,
+            });
+        });
+
+        // Public query — no auth header
+        using var client = factory.CreateClient();
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query CuratedCommunities($domainSlug: String!) {
+              curatedCommunitiesForDomain(domainSlug: $domainSlug) {
+                upcomingPublishedEventCount
+                group { name }
+              }
+            }
+            """,
+            new { domainSlug = "count-cc-hub" });
+
+        var json = document.RootElement.GetRawText();
+        var entries = document.RootElement.GetProperty("data").GetProperty("curatedCommunitiesForDomain");
+        Assert.Equal(1, entries.GetArrayLength());
+        Assert.Equal(2, entries[0].GetProperty("upcomingPublishedEventCount").GetInt32());
+
+        // Privacy safety: no attendee emails, displayNames, or IDs must leak
+        Assert.DoesNotContain("count-cc-admin@example.com", json);
+        Assert.DoesNotContain("\"userId\"", json);
+    }
+
+    [Fact]
+    public async Task CuratedCommunitiesForDomain_UpcomingPublishedEventCount_ZeroWhenNoCommunityGroupEvents()
+    {
+        // Regression guard: a group that is curated but has no CommunityGroupEvent rows at all
+        // must return 0 — not null and not an exception — proving the join path handles empty sets.
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("zero-cc-admin@example.com", "Zero Admin", ApplicationUserRole.Admin);
+            var domain = CreateDomain("Zero CC Hub", "zero-cc-hub");
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Zero Events Group",
+                Slug = "zero-events-group",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Public,
+            };
+
+            dbContext.Users.Add(admin);
+            dbContext.Domains.Add(domain);
+            dbContext.CommunityGroups.Add(group);
+            // Deliberately no CommunityGroupEvent rows seeded
+            dbContext.DomainCuratedCommunities.Add(new EventsApi.Data.Entities.DomainCuratedCommunity
+            {
+                DomainId = domain.Id,
+                GroupId = group.Id,
+                DisplayOrder = 0,
+                IsEnabled = true,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query CuratedCommunities($domainSlug: String!) {
+              curatedCommunitiesForDomain(domainSlug: $domainSlug) {
+                upcomingPublishedEventCount
+                group { name }
+              }
+            }
+            """,
+            new { domainSlug = "zero-cc-hub" });
+
+        var entries = document.RootElement.GetProperty("data").GetProperty("curatedCommunitiesForDomain");
+        Assert.Equal(1, entries.GetArrayLength());
+        Assert.Equal(0, entries[0].GetProperty("upcomingPublishedEventCount").GetInt32());
+    }
 }
 
 

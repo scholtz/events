@@ -132,7 +132,7 @@ async function fetchCategoryData() {
       gqlRequest<{ curatedCommunitiesForDomain: DomainCuratedCommunity[] }>(
         `query CuratedCommunitiesForDomain($domainSlug: String!) {
           curatedCommunitiesForDomain(domainSlug: $domainSlug) {
-            id groupId displayOrder isEnabled annotation
+            id groupId displayOrder isEnabled annotation upcomingPublishedEventCount
             group { id name slug summary visibility isActive createdAtUtc createdByUserId }
           }
         }`,
@@ -519,6 +519,21 @@ onMounted(async () => {
                 </p>
                 <p v-if="entry.annotation" class="curated-community-annotation">
                   {{ entry.annotation }}
+                </p>
+                <!-- Aggregate upcoming event count: privacy-safe, derived from published public events only -->
+                <p
+                  v-if="entry.upcomingPublishedEventCount !== undefined"
+                  class="curated-community-event-count"
+                  :class="{ 'curated-community-event-count--none': entry.upcomingPublishedEventCount === 0 }"
+                >
+                  <span class="curated-community-event-count-icon" aria-hidden="true">📅</span>
+                  {{
+                    entry.upcomingPublishedEventCount === 0
+                      ? t('category.communityNoUpcomingEvents')
+                      : entry.upcomingPublishedEventCount === 1
+                        ? t('category.communityOneUpcomingEvent')
+                        : t('category.communityUpcomingEventCount', { count: entry.upcomingPublishedEventCount })
+                  }}
                 </p>
                 <p
                   v-if="groupActionError[entry.groupId]"
@@ -1317,6 +1332,24 @@ onMounted(async () => {
   margin: 0;
   font-style: italic;
   line-height: 1.5;
+}
+
+.curated-community-event-count {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.curated-community-event-count--none {
+  color: var(--color-text-muted, rgba(255, 255, 255, 0.4));
+  font-style: italic;
+}
+
+.curated-community-event-count-icon {
+  font-size: 0.75rem;
 }
 
 .curated-community-cta {

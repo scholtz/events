@@ -223,7 +223,7 @@ public sealed class Query
         CancellationToken cancellationToken)
     {
         var normalizedSlug = domainSlug.Trim().ToLowerInvariant();
-        return await dbContext.DomainCuratedCommunities
+        var entries = await dbContext.DomainCuratedCommunities
             .AsNoTracking()
             .Where(dcc => dcc.Domain.Slug == normalizedSlug && dcc.Domain.IsActive)
             .Where(dcc => dcc.IsEnabled)
@@ -231,6 +231,32 @@ public sealed class Query
             .OrderBy(dcc => dcc.DisplayOrder)
             .Include(dcc => dcc.Group)
             .ToListAsync(cancellationToken);
+
+        if (entries.Count > 0)
+        {
+            // Compute upcoming published event counts per group — aggregate only, no PII exposed.
+            // Query is written as an explicit join starting from Events (not via a navigation property
+            // on CommunityGroupEvent) so EF Core translates it into a clean parameterised SQL JOIN
+            // with no risk of lazy-loading or N+1 issues.
+            var groupIds = entries.Select(e => e.GroupId).ToList();
+            var now = DateTime.UtcNow;
+            var counts = await dbContext.Events
+                .AsNoTracking()
+                .Where(e => e.Status == EventStatus.Published && e.StartsAtUtc > now)
+                .Join(
+                    dbContext.CommunityGroupEvents.Where(cge => groupIds.Contains(cge.GroupId)),
+                    e => e.Id,
+                    cge => cge.EventId,
+                    (e, cge) => cge.GroupId)
+                .GroupBy(groupId => groupId)
+                .Select(g => new { GroupId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(g => g.GroupId, g => g.Count, cancellationToken);
+
+            foreach (var entry in entries)
+                entry.UpcomingPublishedEventCount = counts.GetValueOrDefault(entry.GroupId, 0);
+        }
+
+        return entries;
     }
 
     /// <summary>

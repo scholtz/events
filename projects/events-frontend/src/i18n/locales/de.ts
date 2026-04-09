@@ -801,6 +801,9 @@ export default {
     curatedCommunities: 'Communities in diesem Hub',
     curatedCommunitiesDescription: 'Diese Community-Gruppen prägen aktiv diesen Hub.',
     exploreGroup: 'Community erkunden',
+    communityNoUpcomingEvents: 'Keine bevorstehenden Veranstaltungen',
+    communityOneUpcomingEvent: '1 bevorstehende Veranstaltung',
+    communityUpcomingEventCount: '{count} bevorstehende Veranstaltungen',
     allEventsInPast: 'Alle aufgeführten Veranstaltungen haben bereits stattgefunden.',
     allEventsInPastBrowse: 'Nach bevorstehenden Veranstaltungen suchen',
     // Related hubs: shown on sparse or empty category pages
