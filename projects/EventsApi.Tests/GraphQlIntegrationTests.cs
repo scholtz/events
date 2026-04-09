@@ -19085,7 +19085,7 @@ public sealed class GraphQlIntegrationTests
                     domainId,
                     communities = new[]
                     {
-                        new { groupId = group1Id, isEnabled = true, annotation = "Key builders community" },
+                        new { groupId = group1Id, isEnabled = true, annotation = (string?)"Key builders community" },
                         new { groupId = group2Id, isEnabled = true, annotation = (string?)null },
                     }
                 }
