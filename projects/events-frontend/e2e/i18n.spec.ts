@@ -1292,3 +1292,77 @@ test.describe('Localized results context summary', () => {
     )
   })
 })
+
+test.describe('Localized timezone schedule labels on event detail', () => {
+  // These tests verify that the new eventDetail.endsAt and eventDetail.localTime
+  // i18n keys are properly translated in Slovak and German.
+
+  test('event detail "Until" end-time is localized in Slovak', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-sk-endsAt',
+      name: 'SK Ends At Event',
+      slug: 'sk-ends-at-event',
+      startsAtUtc: '2026-06-15T10:00:00.000Z',
+      endsAtUtc: '2026-06-15T14:00:00.000Z',
+      timezone: 'Europe/Prague',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'sk')
+    })
+
+    await page.goto(`/event/${event.slug}`)
+    await expect(page.getByRole('heading', { name: 'SK Ends At Event' })).toBeVisible()
+
+    // Slovak: "Do {date}, {time}" — verify prefix + a date-like string follows
+    await expect(page.locator('.info-section').first()).toContainText(/Do \w/)
+    // Also confirm the end-time section is present with a month name in SK locale
+    await expect(page.locator('.info-section').first()).toContainText(/Do .*(január|február|marec|apríl|máj|jún|júl|august|september|október|november|december)/i)
+  })
+
+  test('event detail "Until" end-time is localized in German', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-de-endsAt',
+      name: 'DE Ends At Event',
+      slug: 'de-ends-at-event',
+      startsAtUtc: '2026-06-15T10:00:00.000Z',
+      endsAtUtc: '2026-06-15T14:00:00.000Z',
+      timezone: 'Europe/Berlin',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'de')
+    })
+
+    await page.goto(`/event/${event.slug}`)
+    await expect(page.getByRole('heading', { name: 'DE Ends At Event' })).toBeVisible()
+
+    // German: "Bis {date}, {time}" — verify prefix + a date-like string follows
+    await expect(page.locator('.info-section').first()).toContainText(/Bis \w/)
+    // Also confirm the end-time section is present with a month name in DE locale
+    await expect(page.locator('.info-section').first()).toContainText(/Bis .*(Januar|Februar|März|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember)/i)
+  })
+
+  test('event detail timezone label is visible on mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+
+    const event = makeApprovedEvent({
+      id: 'ev-mobile-tz',
+      name: 'Mobile Timezone Event',
+      slug: 'mobile-timezone-event',
+      startsAtUtc: '2026-06-15T16:00:00.000Z',
+      endsAtUtc: '2026-06-15T20:00:00.000Z',
+      timezone: 'Europe/Prague',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await expect(page.getByRole('heading', { name: 'Mobile Timezone Event' })).toBeVisible()
+    // Timezone label must be visible on mobile
+    await expect(page.locator('.timezone-label')).toBeVisible()
+    // Time must be in Prague timezone (18:00), not 16:00 UTC
+    await expect(page.locator('.info-section').first()).toContainText(/6:00\s*PM|18:00/)
+  })
+})
