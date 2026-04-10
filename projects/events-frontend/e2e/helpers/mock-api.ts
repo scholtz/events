@@ -2586,6 +2586,30 @@ export async function loginAs(page: Page, user: MockUser): Promise<void> {
   await page.waitForURL(/\/dashboard$/)
 }
 
+/**
+ * Authenticate directly via localStorage without navigating through the login form.
+ * Use this in tests that need an authenticated session but are NOT testing the auth
+ * flow itself. Avoids the race condition where navigating from /dashboard to another
+ * page can happen before the dashboard store finishes its data fetch.
+ *
+ * After calling this, navigate directly to the target page (e.g. page.goto('/portfolio')).
+ * The app will call checkAuth() on mount, which verifies the token via the Me query.
+ */
+export async function setAuthUser(page: Page, user: MockUser): Promise<void> {
+  // Navigate to the root page first so we have a browsing context for localStorage
+  await page.goto('/')
+  await page.evaluate(
+    ({ token, expires }: { token: string; expires: string }) => {
+      localStorage.setItem('auth_token', token)
+      localStorage.setItem('auth_expires', expires)
+    },
+    {
+      token: `token-${user.id}`,
+      expires: new Date(Date.now() + 7_200_000).toISOString(),
+    },
+  )
+}
+
 function filterEventsForDiscovery(events: MockEvent[], filter?: Record<string, unknown>) {
   const normalizedSearch = String(filter?.searchText || '')
     .trim()
