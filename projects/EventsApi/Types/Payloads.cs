@@ -244,3 +244,39 @@ public sealed record ExternalEventPreview(
     /// Display this text next to the disabled row to help the admin understand the issue.
     /// </summary>
     string? ImportBlockReason);
+
+/// <summary>
+/// Public payload representing a single event discussion entry.
+/// Private moderation metadata (e.g. moderator identity) is intentionally excluded.
+/// </summary>
+public sealed record DiscussionEntryPayload(
+    Guid Id,
+    Guid EventId,
+
+    /// <summary>Safe display name of the author, copied at post time.</summary>
+    string AuthorDisplayName,
+
+    /// <summary>
+    /// Role badge for the author: ATTENDEE, ORGANIZER, or ADMIN.
+    /// Used by the frontend to visually distinguish trusted responses.
+    /// </summary>
+    string AuthorRole,
+
+    /// <summary>Body text of the question or reply.</summary>
+    string Body,
+
+    /// <summary>
+    /// Non-null when this entry is a reply to another entry.
+    /// Only one level of nesting is supported.
+    /// </summary>
+    Guid? ParentEntryId,
+
+    /// <summary>
+    /// True when the entry has been hidden by an organizer or admin.
+    /// Hidden entries are still returned so conversations don't appear broken,
+    /// but the UI replaces the body with a "removed" notice.
+    /// </summary>
+    bool IsHidden,
+
+    DateTime CreatedAtUtc,
+    DateTime UpdatedAtUtc);

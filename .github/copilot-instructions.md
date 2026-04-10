@@ -382,6 +382,12 @@ Common pitfall: `"MyManagedDomains".includes("Domains")` is `true`, so a `Domain
 
 After adding a new handler, verify ordering by searching for all `query.includes(...)` calls and ensuring no earlier handler is a substring of your new operation name.
 
+**Critical pitfall – `edit` tool `old_str` must include surrounding context**: When using the `edit` tool to insert content BEFORE an existing line in mock-api.ts (or any large file), the `old_str` must include enough unique surrounding context to guarantee only one match. If `old_str` is just a single `if` statement opening brace, it may match prematurely and strip the following lines from `new_str`. **Always include the next 2–3 lines** after the insertion point in `old_str`, then reproduce those lines in `new_str` after the new content. Failure to do so causes `ReferenceError: slug is not defined`-style bugs that break every test using that handler.
+
+**Critical pitfall – new UI headings must not contain the substring "date" (case-insensitive)**: Existing Playwright tests use `getByRole('heading', { name: /Date/i })` to find date-related headings. Any heading containing the word "update", "updated", or similar will accidentally match because these contain "upDATE". Use "Answers" (not "Updates") in section headings for Q&A features.
+
+**Critical pitfall – multiple sign-in links break existing tests**: The event detail page already renders one or more `<a href="/login">Sign in</a>` links in the attendee section. Adding extra "Sign in" `<RouterLink>` elements in new sections (e.g., the discussion section) creates strict mode violations in existing tests that use `page.getByRole('link', { name: /Sign in/ })` without scope. For unauthenticated notices in new sections, use plain text instead of a link (e.g., `<p>{{ t('discussion.signInToAsk') }}</p>` where the i18n string contains the full instruction without a link).
+
 ### Grep-filtered Playwright runs
 - When asked to run a filtered subset with `--grep`, **always** run the same command with `--list` first and confirm the expected tests are selected before executing the real run.
 - Do not claim that `npm run test:e2e -- --grep=...` or Playwright ignored the grep filter unless you have reproduced it locally. In this repo, `npm run test:e2e -- --project=chromium --grep="a|b|c" --list` correctly limits the selection.

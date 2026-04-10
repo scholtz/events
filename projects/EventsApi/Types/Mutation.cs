@@ -2300,4 +2300,161 @@ public sealed class Mutation
             ExternalSourceType.Luma => "https://lu.ma/{calendar-slug}",
             _ => "an unsupported source type"
         };
+
+    // ── Event discussion mutations ────────────────────────────────────────────
+
+    private const int MaxDiscussionBodyLength = 2000;
+
+    /// <summary>
+    /// Posts a new top-level question on an event's discussion thread.
+    /// Requires authentication. The event must be published.
+    /// Rate guard: users may post at most 10 questions per published event.
+    /// </summary>
+    [Authorize]
+    public async Task<DiscussionEntryPayload> PostEventQuestionAsync(
+        PostEventQuestionInput input,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var body = input.Body?.Trim() ?? string.Empty;
+        if (string.IsNullOrEmpty(body))
+            throw CreateError("Question body cannot be empty.", "INVALID_DISCUSSION_BODY");
+        if (body.Length > MaxDiscussionBodyLength)
+            throw CreateError($"Question body must not exceed {MaxDiscussionBodyLength} characters.", "DISCUSSION_BODY_TOO_LONG");
+
+        var currentUserId = claimsPrincipal.GetRequiredUserId();
+
+        var ev = await dbContext.Events
+            .AsNoTracking()
+            .SingleOrDefaultAsync(e => e.Id == input.EventId && e.Status == EventStatus.Published, cancellationToken)
+            ?? throw CreateError("Event not found or not published.", "EVENT_NOT_FOUND");
+
+        // Rate guard: max 10 top-level questions per user per event
+        var existingCount = await dbContext.EventDiscussionEntries
+            .CountAsync(
+                e => e.EventId == input.EventId && e.AuthorId == currentUserId && e.ParentEntryId == null,
+                cancellationToken);
+        if (existingCount >= 10)
+            throw CreateError("You have reached the posting limit for this event.", "POSTING_LIMIT_REACHED");
+
+        var author = await dbContext.Users
+            .AsNoTracking()
+            .SingleAsync(u => u.Id == currentUserId, cancellationToken);
+
+        // Determine the author's role badge
+        var authorRole = author.Role == ApplicationUserRole.Admin
+            ? "ADMIN"
+            : ev.SubmittedByUserId == currentUserId
+                ? "ORGANIZER"
+                : "ATTENDEE";
+
+        var entry = new EventDiscussionEntry
+        {
+            EventId = input.EventId,
+            AuthorId = currentUserId,
+            AuthorDisplayName = author.DisplayName,
+            AuthorRole = authorRole,
+            Body = body,
+        };
+
+        dbContext.EventDiscussionEntries.Add(entry);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return ToDiscussionPayload(entry);
+    }
+
+    /// <summary>
+    /// Posts a reply to an existing discussion entry.
+    /// Only the event organizer or a platform admin may reply.
+    /// The entry must be a top-level question (no nested replies to replies).
+    /// </summary>
+    [Authorize]
+    public async Task<DiscussionEntryPayload> ReplyToDiscussionEntryAsync(
+        ReplyToDiscussionEntryInput input,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var body = input.Body?.Trim() ?? string.Empty;
+        if (string.IsNullOrEmpty(body))
+            throw CreateError("Reply body cannot be empty.", "INVALID_DISCUSSION_BODY");
+        if (body.Length > MaxDiscussionBodyLength)
+            throw CreateError($"Reply body must not exceed {MaxDiscussionBodyLength} characters.", "DISCUSSION_BODY_TOO_LONG");
+
+        var currentUserId = claimsPrincipal.GetRequiredUserId();
+
+        var parent = await dbContext.EventDiscussionEntries
+            .Include(e => e.Event)
+            .SingleOrDefaultAsync(e => e.Id == input.EntryId, cancellationToken)
+            ?? throw CreateError("Discussion entry not found.", "ENTRY_NOT_FOUND");
+
+        // Only allow one level of nesting
+        if (parent.ParentEntryId is not null)
+            throw CreateError("Replies to replies are not supported.", "NESTED_REPLY_NOT_SUPPORTED");
+
+        var ev = parent.Event;
+
+        // Only the event organizer or a global admin may reply
+        var isAdmin = claimsPrincipal.IsAdmin();
+        var isOrganizer = ev.SubmittedByUserId == currentUserId;
+        if (!isAdmin && !isOrganizer)
+            throw CreateError("Only the event organizer or a platform admin may reply.", "FORBIDDEN");
+
+        var author = await dbContext.Users
+            .AsNoTracking()
+            .SingleAsync(u => u.Id == currentUserId, cancellationToken);
+
+        var authorRole = isAdmin ? "ADMIN" : "ORGANIZER";
+
+        var reply = new EventDiscussionEntry
+        {
+            EventId = ev.Id,
+            AuthorId = currentUserId,
+            AuthorDisplayName = author.DisplayName,
+            AuthorRole = authorRole,
+            Body = body,
+            ParentEntryId = parent.Id,
+        };
+
+        dbContext.EventDiscussionEntries.Add(reply);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return ToDiscussionPayload(reply);
+    }
+
+    /// <summary>
+    /// Hides (soft-deletes) a discussion entry.
+    /// Only the event organizer or a global admin may hide entries.
+    /// The entry's body is preserved for audit purposes but flagged as hidden.
+    /// </summary>
+    [Authorize]
+    public async Task<DiscussionEntryPayload> HideDiscussionEntryAsync(
+        Guid entryId,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var currentUserId = claimsPrincipal.GetRequiredUserId();
+
+        var entry = await dbContext.EventDiscussionEntries
+            .Include(e => e.Event)
+            .SingleOrDefaultAsync(e => e.Id == entryId, cancellationToken)
+            ?? throw CreateError("Discussion entry not found.", "ENTRY_NOT_FOUND");
+
+        var isAdmin = claimsPrincipal.IsAdmin();
+        var isOrganizer = entry.Event.SubmittedByUserId == currentUserId;
+        if (!isAdmin && !isOrganizer)
+            throw CreateError("Only the event organizer or a platform admin may hide entries.", "FORBIDDEN");
+
+        entry.IsHidden = true;
+        entry.UpdatedAtUtc = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return ToDiscussionPayload(entry);
+    }
+
+    private static DiscussionEntryPayload ToDiscussionPayload(EventDiscussionEntry e) =>
+        new(e.Id, e.EventId, e.AuthorDisplayName, e.AuthorRole, e.Body,
+            e.ParentEntryId, e.IsHidden, e.CreatedAtUtc, e.UpdatedAtUtc);
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useAuthStore } from '@/stores/auth'
@@ -147,11 +147,19 @@ function actionCueClass(item: EventAnalyticsItem): string {
   return 'cue--muted'
 }
 
-onMounted(async () => {
-  if (auth.isAuthenticated && !dashboardStore.overview) {
-    await dashboardStore.fetchDashboard()
-  }
-})
+// Fetch dashboard data whenever the user becomes authenticated.
+// Using watch with immediate:true handles two cases:
+//  1. Auth is already set when the component mounts (e.g. via loginAs flow)
+//  2. Auth completes asynchronously after mount (e.g. checkAuth from App.vue onMounted)
+watch(
+  () => auth.isAuthenticated,
+  async (isAuthenticated) => {
+    if (isAuthenticated && !dashboardStore.overview && !dashboardStore.loading) {
+      await dashboardStore.fetchDashboard()
+    }
+  },
+  { immediate: true },
+)
 </script>
 
 <template>

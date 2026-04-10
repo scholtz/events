@@ -19912,6 +19912,759 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal(1, entries.GetArrayLength());
         Assert.Equal(0, entries[0].GetProperty("upcomingPublishedEventCount").GetInt32());
     }
+
+    // ── Event discussion integration tests ────────────────────────────────────
+
+    [Fact]
+    public async Task EventDiscussion_ReturnsEmptyList_ForEventWithNoEntries()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("disc-empty@example.com", "Empty Disc User");
+            var domain = CreateDomain("DiscEmptyHub", "disc-empty-hub");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.Add(CreateEvent(
+                "Empty Disc Event", "empty-disc-event", "No discussion yet.", "Venue", "Prague",
+                FirstDayOfNextMonthUtc(), domain, user));
+        });
+
+        using var client = factory.CreateClient();
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query EventDiscussion($slug: String!) {
+              eventDiscussion(eventSlug: $slug) { id body }
+            }
+            """,
+            new { slug = "empty-disc-event" });
+
+        var entries = document.RootElement.GetProperty("data").GetProperty("eventDiscussion");
+        Assert.Equal(0, entries.GetArrayLength());
+    }
+
+    [Fact]
+    public async Task EventDiscussion_ReturnsNothing_ForNonPublishedEvent()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("disc-pending@example.com", "Pending Disc User");
+            var domain = CreateDomain("DiscPendingHub", "disc-pending-hub");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.Add(CreateEvent(
+                "Pending Disc Event", "pending-disc-event", "Pending event.", "Venue", "Prague",
+                FirstDayOfNextMonthUtc(), domain, user, status: EventStatus.PendingApproval));
+        });
+
+        using var client = factory.CreateClient();
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query EventDiscussion($slug: String!) {
+              eventDiscussion(eventSlug: $slug) { id body }
+            }
+            """,
+            new { slug = "pending-disc-event" });
+
+        var entries = document.RootElement.GetProperty("data").GetProperty("eventDiscussion");
+        Assert.Equal(0, entries.GetArrayLength());
+    }
+
+    [Fact]
+    public async Task EventDiscussion_UnauthenticatedAccessAllowed_ReturnsEntries()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("disc-unauth@example.com", "Unauth Disc User");
+            userId = user.Id;
+            var domain = CreateDomain("DiscUnauthHub", "disc-unauth-hub");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Unauth Disc Event", "unauth-disc-event", "Public event.", "Venue", "Prague",
+                FirstDayOfNextMonthUtc(), domain, user);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+            dbContext.EventDiscussionEntries.Add(new EventsApi.Data.Entities.EventDiscussionEntry
+            {
+                EventId = eventId,
+                AuthorId = userId,
+                AuthorDisplayName = "Unauth Disc User",
+                AuthorRole = "ATTENDEE",
+                Body = "Is the venue wheelchair accessible?",
+            });
+        });
+
+        // No auth header — anonymous request
+        using var client = factory.CreateClient();
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query EventDiscussion($slug: String!) {
+              eventDiscussion(eventSlug: $slug) { id body authorRole isHidden }
+            }
+            """,
+            new { slug = "unauth-disc-event" });
+
+        var entries = document.RootElement.GetProperty("data").GetProperty("eventDiscussion");
+        Assert.Equal(1, entries.GetArrayLength());
+        Assert.Equal("Is the venue wheelchair accessible?", entries[0].GetProperty("body").GetString());
+        Assert.Equal("ATTENDEE", entries[0].GetProperty("authorRole").GetString());
+        Assert.False(entries[0].GetProperty("isHidden").GetBoolean());
+    }
+
+    [Fact]
+    public async Task PostEventQuestion_Authenticated_CreatesEntry()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("disc-poster@example.com", "Disc Poster");
+            userId = user.Id;
+            var domain = CreateDomain("DiscPostHub", "disc-post-hub");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Post Disc Event", "post-disc-event", "Event for posting test.", "Venue", "Prague",
+                FirstDayOfNextMonthUtc(), domain, user);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation PostQuestion($input: PostEventQuestionInput!) {
+              postEventQuestion(input: $input) {
+                id eventId authorDisplayName authorRole body parentEntryId isHidden
+              }
+            }
+            """,
+            new { input = new { eventId, body = "Will there be parking?" } });
+
+        var entry = document.RootElement.GetProperty("data").GetProperty("postEventQuestion");
+        Assert.Equal(eventId.ToString(), entry.GetProperty("eventId").GetString());
+        Assert.Equal("Disc Poster", entry.GetProperty("authorDisplayName").GetString());
+        Assert.Equal("ORGANIZER", entry.GetProperty("authorRole").GetString()); // poster is the organizer
+        Assert.Equal("Will there be parking?", entry.GetProperty("body").GetString());
+        Assert.Equal(JsonValueKind.Null, entry.GetProperty("parentEntryId").ValueKind);
+        Assert.False(entry.GetProperty("isHidden").GetBoolean());
+    }
+
+    [Fact]
+    public async Task PostEventQuestion_AsAttendee_GetsAttendeeRole()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var organizerId = Guid.Empty;
+        var attendeeId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer = CreateUser("disc-org2@example.com", "Disc Organizer 2");
+            var attendee = CreateUser("disc-att@example.com", "Disc Attendee");
+            organizerId = organizer.Id;
+            attendeeId = attendee.Id;
+            var domain = CreateDomain("DiscAttHub", "disc-att-hub");
+            dbContext.Users.AddRange(organizer, attendee);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Att Disc Event", "att-disc-event", "Event for attendee role test.", "Venue", "Prague",
+                FirstDayOfNextMonthUtc(), domain, organizer);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, attendeeId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation PostQuestion($input: PostEventQuestionInput!) {
+              postEventQuestion(input: $input) { authorRole }
+            }
+            """,
+            new { input = new { eventId, body = "What is the dress code?" } });
+
+        var entry = document.RootElement.GetProperty("data").GetProperty("postEventQuestion");
+        Assert.Equal("ATTENDEE", entry.GetProperty("authorRole").GetString());
+    }
+
+    [Fact]
+    public async Task PostEventQuestion_Unauthenticated_ReturnsAuthError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("disc-unauth-post@example.com", "Unauth Post User");
+            var domain = CreateDomain("DiscUnauthPostHub", "disc-unauth-post-hub");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.Add(CreateEvent(
+                "Unauth Post Event", "unauth-post-event", "Desc.", "Venue", "Prague",
+                FirstDayOfNextMonthUtc(), domain, user));
+        });
+
+        using var client = factory.CreateClient();
+        // No auth header
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation PostQuestion($input: PostEventQuestionInput!) {
+                  postEventQuestion(input: $input) { id }
+                }
+                """,
+            variables = new { input = new { eventId = Guid.NewGuid(), body = "test" } }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        var errorText = errors.ToString();
+        Assert.True(
+            errorText.Contains("AUTH_NOT_AUTHORIZED", StringComparison.OrdinalIgnoreCase) ||
+            errorText.Contains("not authorized", StringComparison.OrdinalIgnoreCase) ||
+            errorText.Contains("unauthorized", StringComparison.OrdinalIgnoreCase),
+            $"Expected auth error but got: {errorText}");
+    }
+
+    [Fact]
+    public async Task PostEventQuestion_EmptyBody_ReturnsValidationError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("disc-empty-body@example.com", "Empty Body User");
+            userId = user.Id;
+            var domain = CreateDomain("DiscEmptyBodyHub", "disc-empty-body-hub");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Empty Body Event", "empty-body-event", "Desc.", "Venue", "Prague",
+                FirstDayOfNextMonthUtc(), domain, user);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation PostQuestion($input: PostEventQuestionInput!) {
+                  postEventQuestion(input: $input) { id }
+                }
+                """,
+            variables = new { input = new { eventId, body = "   " } }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors),
+            "Expected validation error for empty body");
+        Assert.Contains("INVALID_DISCUSSION_BODY", errors.ToString());
+    }
+
+    [Fact]
+    public async Task PostEventQuestion_TooLongBody_ReturnsValidationError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("disc-long-body@example.com", "Long Body User");
+            userId = user.Id;
+            var domain = CreateDomain("DiscLongBodyHub", "disc-long-body-hub");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Long Body Event", "long-body-event", "Desc.", "Venue", "Prague",
+                FirstDayOfNextMonthUtc(), domain, user);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        var tooLong = new string('x', 2001);
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation PostQuestion($input: PostEventQuestionInput!) {
+                  postEventQuestion(input: $input) { id }
+                }
+                """,
+            variables = new { input = new { eventId, body = tooLong } }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors),
+            "Expected validation error for too-long body");
+        Assert.Contains("DISCUSSION_BODY_TOO_LONG", errors.ToString());
+    }
+
+    [Fact]
+    public async Task ReplyToDiscussionEntry_AsOrganizer_Success()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var organizerId = Guid.Empty;
+        var attendeeId = Guid.Empty;
+        var eventId = Guid.Empty;
+        var entryId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer = CreateUser("disc-reply-org@example.com", "Reply Organizer");
+            var attendee = CreateUser("disc-reply-att@example.com", "Reply Attendee");
+            organizerId = organizer.Id;
+            attendeeId = attendee.Id;
+            var domain = CreateDomain("DiscReplyHub", "disc-reply-hub");
+            dbContext.Users.AddRange(organizer, attendee);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Reply Disc Event", "reply-disc-event", "Desc.", "Venue", "Prague",
+                FirstDayOfNextMonthUtc(), domain, organizer);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+
+            var question = new EventsApi.Data.Entities.EventDiscussionEntry
+            {
+                EventId = eventId,
+                AuthorId = attendeeId,
+                AuthorDisplayName = "Reply Attendee",
+                AuthorRole = "ATTENDEE",
+                Body = "Does the conference have a code of conduct?",
+            };
+            entryId = question.Id;
+            dbContext.EventDiscussionEntries.Add(question);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, organizerId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation Reply($input: ReplyToDiscussionEntryInput!) {
+              replyToDiscussionEntry(input: $input) {
+                authorRole parentEntryId body
+              }
+            }
+            """,
+            new { input = new { entryId, body = "Yes, please see our CoC at events.example.com/coc" } });
+
+        var reply = document.RootElement.GetProperty("data").GetProperty("replyToDiscussionEntry");
+        Assert.Equal("ORGANIZER", reply.GetProperty("authorRole").GetString());
+        Assert.Equal(entryId.ToString(), reply.GetProperty("parentEntryId").GetString());
+    }
+
+    [Fact]
+    public async Task ReplyToDiscussionEntry_AsAdmin_ReturnsAdminRole()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var adminId = Guid.Empty;
+        var organizerId = Guid.Empty;
+        var eventId = Guid.Empty;
+        var entryId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var admin = CreateUser("disc-admin-reply@example.com", "Admin Reply User", ApplicationUserRole.Admin);
+            var organizer = CreateUser("disc-org-reply@example.com", "Org Reply User");
+            adminId = admin.Id;
+            organizerId = organizer.Id;
+            var domain = CreateDomain("DiscAdminReplyHub", "disc-admin-reply-hub");
+            dbContext.Users.AddRange(admin, organizer);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Admin Reply Event", "admin-reply-event", "Desc.", "Venue", "Prague",
+                FirstDayOfNextMonthUtc(), domain, organizer);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+
+            var question = new EventsApi.Data.Entities.EventDiscussionEntry
+            {
+                EventId = eventId,
+                AuthorId = organizerId,
+                AuthorDisplayName = "Org Reply User",
+                AuthorRole = "ORGANIZER",
+                Body = "Admin please respond.",
+            };
+            entryId = question.Id;
+            dbContext.EventDiscussionEntries.Add(question);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, adminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation Reply($input: ReplyToDiscussionEntryInput!) {
+              replyToDiscussionEntry(input: $input) { authorRole parentEntryId }
+            }
+            """,
+            new { input = new { entryId, body = "We will look into it." } });
+
+        var reply = document.RootElement.GetProperty("data").GetProperty("replyToDiscussionEntry");
+        Assert.Equal("ADMIN", reply.GetProperty("authorRole").GetString());
+        Assert.Equal(entryId.ToString(), reply.GetProperty("parentEntryId").GetString());
+    }
+
+    [Fact]
+    public async Task ReplyToDiscussionEntry_AsRegularAttendee_ReturnsForbidden()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var organizerId = Guid.Empty;
+        var attendeeId = Guid.Empty;
+        var eventId = Guid.Empty;
+        var entryId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer = CreateUser("disc-forbidden-org@example.com", "Forbidden Org");
+            var attendee = CreateUser("disc-forbidden-att@example.com", "Forbidden Attendee");
+            organizerId = organizer.Id;
+            attendeeId = attendee.Id;
+            var domain = CreateDomain("DiscForbiddenHub", "disc-forbidden-hub");
+            dbContext.Users.AddRange(organizer, attendee);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Forbidden Reply Event", "forbidden-reply-event", "Desc.", "Venue", "Prague",
+                FirstDayOfNextMonthUtc(), domain, organizer);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+
+            var question = new EventsApi.Data.Entities.EventDiscussionEntry
+            {
+                EventId = eventId,
+                AuthorId = attendeeId,
+                AuthorDisplayName = "Forbidden Attendee",
+                AuthorRole = "ATTENDEE",
+                Body = "Can I get a refund?",
+            };
+            entryId = question.Id;
+            dbContext.EventDiscussionEntries.Add(question);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, attendeeId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation Reply($input: ReplyToDiscussionEntryInput!) {
+                  replyToDiscussionEntry(input: $input) { id }
+                }
+                """,
+            variables = new { input = new { entryId, body = "Trying to reply as attendee." } }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors),
+            "Expected FORBIDDEN error for attendee reply");
+        Assert.Contains("FORBIDDEN", errors.ToString());
+    }
+
+    [Fact]
+    public async Task HideDiscussionEntry_AsOrganizer_SetsIsHiddenTrue()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var organizerId = Guid.Empty;
+        var attendeeId = Guid.Empty;
+        var eventId = Guid.Empty;
+        var entryId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer = CreateUser("disc-hide-org@example.com", "Hide Org");
+            var attendee = CreateUser("disc-hide-att@example.com", "Hide Attendee");
+            organizerId = organizer.Id;
+            attendeeId = attendee.Id;
+            var domain = CreateDomain("DiscHideHub", "disc-hide-hub");
+            dbContext.Users.AddRange(organizer, attendee);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Hide Disc Event", "hide-disc-event", "Desc.", "Venue", "Prague",
+                FirstDayOfNextMonthUtc(), domain, organizer);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+
+            var question = new EventsApi.Data.Entities.EventDiscussionEntry
+            {
+                EventId = eventId,
+                AuthorId = attendeeId,
+                AuthorDisplayName = "Hide Attendee",
+                AuthorRole = "ATTENDEE",
+                Body = "This is spam content.",
+            };
+            entryId = question.Id;
+            dbContext.EventDiscussionEntries.Add(question);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, organizerId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation Hide($entryId: UUID!) {
+              hideDiscussionEntry(entryId: $entryId) { id isHidden }
+            }
+            """,
+            new { entryId });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("hideDiscussionEntry");
+        Assert.Equal(entryId.ToString(), result.GetProperty("id").GetString());
+        Assert.True(result.GetProperty("isHidden").GetBoolean());
+    }
+
+    [Fact]
+    public async Task HideDiscussionEntry_AsAttendee_ReturnsForbidden()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var organizerId = Guid.Empty;
+        var attendeeId = Guid.Empty;
+        var eventId = Guid.Empty;
+        var entryId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var organizer = CreateUser("disc-hide-att-org@example.com", "Hide Att Org");
+            var attendee = CreateUser("disc-hide-att2@example.com", "Hide Attendee 2");
+            organizerId = organizer.Id;
+            attendeeId = attendee.Id;
+            var domain = CreateDomain("DiscHideAttHub", "disc-hide-att-hub");
+            dbContext.Users.AddRange(organizer, attendee);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Hide Att Event", "hide-att-event", "Desc.", "Venue", "Prague",
+                FirstDayOfNextMonthUtc(), domain, organizer);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+
+            var question = new EventsApi.Data.Entities.EventDiscussionEntry
+            {
+                EventId = eventId,
+                AuthorId = attendeeId,
+                AuthorDisplayName = "Hide Attendee 2",
+                AuthorRole = "ATTENDEE",
+                Body = "Some question.",
+            };
+            entryId = question.Id;
+            dbContext.EventDiscussionEntries.Add(question);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, attendeeId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation Hide($entryId: UUID!) {
+                  hideDiscussionEntry(entryId: $entryId) { id }
+                }
+                """,
+            variables = new { entryId }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors),
+            "Expected FORBIDDEN error for attendee hide attempt");
+        Assert.Contains("FORBIDDEN", errors.ToString());
+    }
+
+    [Fact]
+    public async Task EventDiscussion_HiddenEntries_IncludedInPublicResponse()
+    {
+        // Hidden entries must still appear in the public list (body replaced by UI notice)
+        // so conversations don't appear broken.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("disc-hidden-pub@example.com", "Hidden Pub User");
+            userId = user.Id;
+            var domain = CreateDomain("DiscHiddenPubHub", "disc-hidden-pub-hub");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Hidden Pub Event", "hidden-pub-event", "Desc.", "Venue", "Prague",
+                FirstDayOfNextMonthUtc(), domain, user);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+            dbContext.EventDiscussionEntries.Add(new EventsApi.Data.Entities.EventDiscussionEntry
+            {
+                EventId = eventId,
+                AuthorId = userId,
+                AuthorDisplayName = "Hidden Pub User",
+                AuthorRole = "ATTENDEE",
+                Body = "Hidden spam content",
+                IsHidden = true,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query EventDiscussion($slug: String!) {
+              eventDiscussion(eventSlug: $slug) { id isHidden body }
+            }
+            """,
+            new { slug = "hidden-pub-event" });
+
+        var entries = document.RootElement.GetProperty("data").GetProperty("eventDiscussion");
+        // Hidden entry must still be present
+        Assert.Equal(1, entries.GetArrayLength());
+        Assert.True(entries[0].GetProperty("isHidden").GetBoolean());
+        // Body is returned (frontend decides how to display hidden entries)
+        Assert.NotEmpty(entries[0].GetProperty("body").GetString()!);
+    }
+
+    [Fact]
+    public async Task EventDiscussion_PrivacySafe_NoAttendeeEmailsOrIdsExposed()
+    {
+        // The public discussion payload must not expose author email addresses or author IDs.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("disc-privacy@secret.com", "Privacy Test User");
+            userId = user.Id;
+            var domain = CreateDomain("DiscPrivacyHub", "disc-privacy-hub");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Privacy Disc Event", "privacy-disc-event", "Desc.", "Venue", "Prague",
+                FirstDayOfNextMonthUtc(), domain, user);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+            dbContext.EventDiscussionEntries.Add(new EventsApi.Data.Entities.EventDiscussionEntry
+            {
+                EventId = eventId,
+                AuthorId = userId,
+                AuthorDisplayName = "Privacy Test User",
+                AuthorRole = "ATTENDEE",
+                Body = "Is the venue accessible?",
+            });
+        });
+
+        using var client = factory.CreateClient();
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                query EventDiscussion($slug: String!) {
+                  eventDiscussion(eventSlug: $slug) { id body authorDisplayName authorRole isHidden }
+                }
+                """,
+            variables = new { slug = "privacy-disc-event" }
+        });
+
+        var json = await response.Content.ReadAsStringAsync();
+        // Email must not appear in any field
+        Assert.DoesNotContain("disc-privacy@secret.com", json);
+        // AuthorId must not appear (it's intentionally excluded from the payload)
+        Assert.DoesNotContain("\"authorId\"", json);
+        // Author display name is intentionally public
+        Assert.Contains("Privacy Test User", json);
+    }
+
+    [Fact]
+    public async Task EventDiscussion_ChronologicalOrder_TopLevelThenReplies()
+    {
+        // Entries are returned in chronological order (oldest first).
+        await using var factory = new EventsApiWebApplicationFactory();
+        var userId = Guid.Empty;
+        var eventId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("disc-order@example.com", "Order Test User");
+            userId = user.Id;
+            var domain = CreateDomain("DiscOrderHub", "disc-order-hub");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Order Disc Event", "order-disc-event", "Desc.", "Venue", "Prague",
+                FirstDayOfNextMonthUtc(), domain, user);
+            eventId = ev.Id;
+            dbContext.Events.Add(ev);
+
+            var entry1 = new EventsApi.Data.Entities.EventDiscussionEntry
+            {
+                EventId = eventId,
+                AuthorId = userId,
+                AuthorDisplayName = "Order Test User",
+                AuthorRole = "ATTENDEE",
+                Body = "First question",
+                CreatedAtUtc = DateTime.UtcNow.AddMinutes(-10),
+                UpdatedAtUtc = DateTime.UtcNow.AddMinutes(-10),
+            };
+            var entry2 = new EventsApi.Data.Entities.EventDiscussionEntry
+            {
+                EventId = eventId,
+                AuthorId = userId,
+                AuthorDisplayName = "Order Test User",
+                AuthorRole = "ATTENDEE",
+                Body = "Second question",
+                CreatedAtUtc = DateTime.UtcNow.AddMinutes(-5),
+                UpdatedAtUtc = DateTime.UtcNow.AddMinutes(-5),
+            };
+            dbContext.EventDiscussionEntries.AddRange(entry1, entry2);
+        });
+
+        using var client = factory.CreateClient();
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query EventDiscussion($slug: String!) {
+              eventDiscussion(eventSlug: $slug) { body }
+            }
+            """,
+            new { slug = "order-disc-event" });
+
+        var entries = document.RootElement.GetProperty("data").GetProperty("eventDiscussion")
+            .EnumerateArray().Select(e => e.GetProperty("body").GetString()!).ToArray();
+        Assert.Equal(["First question", "Second question"], entries);
+    }
 }
 
 

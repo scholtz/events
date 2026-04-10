@@ -449,3 +449,21 @@ export interface UpdateScheduledFeaturedEventInput {
   isEnabled: boolean
   displayLabel?: string | null
 }
+
+/** Role badge for a discussion entry author. */
+export type DiscussionAuthorRole = 'ATTENDEE' | 'ORGANIZER' | 'ADMIN'
+
+/** Matches backend DiscussionEntryPayload. */
+export interface DiscussionEntry {
+  id: string
+  eventId: string
+  authorDisplayName: string
+  authorRole: DiscussionAuthorRole
+  body: string
+  /** Non-null when this is a reply to another entry. */
+  parentEntryId: string | null
+  /** True when an organizer or admin has hidden this entry. */
+  isHidden: boolean
+  createdAtUtc: string
+  updatedAtUtc: string
+}

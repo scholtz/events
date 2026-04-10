@@ -240,6 +240,18 @@ export type MockExternalEventPreview = {
   importBlockReason: string | null
 }
 
+export type MockDiscussionEntry = {
+  id: string
+  eventId: string
+  authorDisplayName: string
+  authorRole: 'ATTENDEE' | 'ORGANIZER' | 'ADMIN'
+  body: string
+  parentEntryId: string | null
+  isHidden: boolean
+  createdAtUtc: string
+  updatedAtUtc: string
+}
+
 export type MockState = {
   users: MockUser[]
   domains: MockDomain[]
@@ -268,6 +280,7 @@ export type MockState = {
   vapidPublicKey: string
   currentUserId: string | null
   currentToken: string | null
+  discussionEntries: MockDiscussionEntry[]
 }
 
 /**
@@ -299,6 +312,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
     vapidPublicKey: initial?.vapidPublicKey ?? 'SGVsbG9QbGF5d3JpZ2h0S2V5',
     currentUserId: initial?.currentUserId ?? null,
     currentToken: initial?.currentToken ?? null,
+    discussionEntries: initial?.discussionEntries ?? [],
   }
 
   const getActiveUserId = () => state.currentUserId ?? state.users[0]?.id ?? ''
@@ -1675,8 +1689,108 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       return
     }
 
+    if (query.includes('query') && query.includes('EventDiscussion')) {
+      const slug = variables.slug as string
+      const ev = state.events.find((e) => e.slug === slug && e.status === 'PUBLISHED')
+      const entries = ev
+        ? state.discussionEntries.filter((d) => d.eventId === ev.id)
+        : []
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { eventDiscussion: entries } }),
+      })
+      return
+    }
+
+    if (query.includes('mutation') && query.includes('PostEventQuestion')) {
+      if (!state.currentUserId) {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ errors: [{ message: 'Not authorized', extensions: { code: 'AUTH_NOT_AUTHORIZED' } }] }) })
+        return
+      }
+      const input = variables.input || {}
+      const ev = state.events.find((e) => e.id === input.eventId)
+      const author = state.users.find((u) => u.id === state.currentUserId)
+      const isOrganizer = ev?.submittedByUserId === state.currentUserId
+      const authorRole = author?.role === 'ADMIN' ? 'ADMIN' : isOrganizer ? 'ORGANIZER' : 'ATTENDEE'
+      const entry: MockDiscussionEntry = {
+        id: `disc-${Date.now()}`,
+        eventId: input.eventId,
+        authorDisplayName: author?.displayName ?? 'User',
+        authorRole,
+        body: input.body,
+        parentEntryId: null,
+        isHidden: false,
+        createdAtUtc: new Date().toISOString(),
+        updatedAtUtc: new Date().toISOString(),
+      }
+      state.discussionEntries.push(entry)
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { postEventQuestion: entry } }) })
+      return
+    }
+
+    if (query.includes('mutation') && query.includes('ReplyToDiscussionEntry')) {
+      if (!state.currentUserId) {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ errors: [{ message: 'Not authorized', extensions: { code: 'AUTH_NOT_AUTHORIZED' } }] }) })
+        return
+      }
+      const input = variables.input || {}
+      const parent = state.discussionEntries.find((d) => d.id === input.entryId)
+      if (!parent) {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ errors: [{ message: 'Entry not found', extensions: { code: 'ENTRY_NOT_FOUND' } }] }) })
+        return
+      }
+      const ev = state.events.find((e) => e.id === parent.eventId)
+      const author = state.users.find((u) => u.id === state.currentUserId)
+      const isAdmin = author?.role === 'ADMIN'
+      const isOrganizer = ev?.submittedByUserId === state.currentUserId
+      if (!isAdmin && !isOrganizer) {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ errors: [{ message: 'Forbidden', extensions: { code: 'FORBIDDEN' } }] }) })
+        return
+      }
+      const reply: MockDiscussionEntry = {
+        id: `disc-reply-${Date.now()}`,
+        eventId: parent.eventId,
+        authorDisplayName: author?.displayName ?? 'User',
+        authorRole: isAdmin ? 'ADMIN' : 'ORGANIZER',
+        body: input.body,
+        parentEntryId: parent.id,
+        isHidden: false,
+        createdAtUtc: new Date().toISOString(),
+        updatedAtUtc: new Date().toISOString(),
+      }
+      state.discussionEntries.push(reply)
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { replyToDiscussionEntry: reply } }) })
+      return
+    }
+
+    if (query.includes('mutation') && query.includes('HideDiscussionEntry')) {
+      if (!state.currentUserId) {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ errors: [{ message: 'Not authorized', extensions: { code: 'AUTH_NOT_AUTHORIZED' } }] }) })
+        return
+      }
+      const entryId = variables.entryId as string
+      const entry = state.discussionEntries.find((d) => d.id === entryId)
+      if (!entry) {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ errors: [{ message: 'Entry not found', extensions: { code: 'ENTRY_NOT_FOUND' } }] }) })
+        return
+      }
+      const ev = state.events.find((e) => e.id === entry.eventId)
+      const author = state.users.find((u) => u.id === state.currentUserId)
+      const isAdmin = author?.role === 'ADMIN'
+      const isOrganizer = ev?.submittedByUserId === state.currentUserId
+      if (!isAdmin && !isOrganizer) {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ errors: [{ message: 'Forbidden', extensions: { code: 'FORBIDDEN' } }] }) })
+        return
+      }
+      entry.isHidden = true
+      entry.updatedAtUtc = new Date().toISOString()
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { hideDiscussionEntry: entry } }) })
+      return
+    }
+
     if (query.includes('query') && query.includes('EventBySlug')) {
-      const slug = variables.slug
+      const slug = variables.slug as string
       const found = state.events.find((e) => e.slug === slug && e.status === 'PUBLISHED') ?? null
       if (found) {
         const interestedCount = state.favoriteEvents.filter((f) => f.eventId === found.id).length
@@ -2470,6 +2584,28 @@ export async function loginAs(page: Page, user: MockUser): Promise<void> {
   await page.getByLabel('Password').fill(user.password)
   await page.getByRole('button', { name: 'Sign In' }).click()
   await page.waitForURL(/\/dashboard$/)
+}
+
+/**
+ * Authenticate directly via localStorage without navigating through the login form.
+ * Uses page.addInitScript so the token is injected before every subsequent page load.
+ * Call BEFORE page.goto() — the token will be present from the first navigation.
+ *
+ * Use this in tests that need an authenticated session but are NOT testing the auth
+ * flow itself. Avoids the race condition where navigating from /dashboard to another
+ * page can happen before the dashboard store finishes its data fetch.
+ */
+export async function setAuthUser(page: Page, user: MockUser): Promise<void> {
+  await page.addInitScript(
+    ({ token, expires }: { token: string; expires: string }) => {
+      localStorage.setItem('auth_token', token)
+      localStorage.setItem('auth_expires', expires)
+    },
+    {
+      token: `token-${user.id}`,
+      expires: new Date(Date.now() + 7_200_000).toISOString(),
+    },
+  )
 }
 
 function filterEventsForDiscovery(events: MockEvent[], filter?: Record<string, unknown>) {

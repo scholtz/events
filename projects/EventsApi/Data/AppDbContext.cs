@@ -24,6 +24,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<CommunityGroupEvent> CommunityGroupEvents => Set<CommunityGroupEvent>();
     public DbSet<ExternalSourceClaim> ExternalSourceClaims => Set<ExternalSourceClaim>();
     public DbSet<EventTag> EventTags => Set<EventTag>();
+    public DbSet<EventDiscussionEntry> EventDiscussionEntries => Set<EventDiscussionEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -378,6 +379,31 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasOne(esc => esc.CreatedBy)
                 .WithMany()
                 .HasForeignKey(esc => esc.CreatedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<EventDiscussionEntry>(entity =>
+        {
+            entity.Property(e => e.AuthorDisplayName).HasMaxLength(200);
+            entity.Property(e => e.AuthorRole).HasMaxLength(16);
+            entity.Property(e => e.Body).HasMaxLength(2000);
+
+            entity.HasIndex(e => e.EventId);
+            entity.HasIndex(e => e.CreatedAtUtc);
+
+            entity.HasOne(e => e.Event)
+                .WithMany()
+                .HasForeignKey(e => e.EventId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Author)
+                .WithMany()
+                .HasForeignKey(e => e.AuthorId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.ParentEntry)
+                .WithMany()
+                .HasForeignKey(e => e.ParentEntryId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
     }
