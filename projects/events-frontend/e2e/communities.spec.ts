@@ -1427,3 +1427,169 @@ test.describe('External sources – full admin sync workflow', () => {
     expect(state.externalSourceClaims.find((c) => c.id === claim.id)?.isAutoSyncEnabled).toBe(true)
   })
 })
+
+// ── Related hubs: ecosystem context section ───────────────────────────────────
+
+test.describe('Community detail – related hubs section', () => {
+  test('shows related hubs section when community belongs to one hub', async ({ page }) => {
+    const group = makePublicGroup()
+    const domain = makeTechDomain()
+    const state = setupMockApi(page)
+    state.communityGroups.push(group)
+    state.domains.push(domain)
+    state.domainCuratedCommunities.push({
+      id: 'dcc-1',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: true,
+      annotation: null,
+      createdAtUtc: new Date().toISOString(),
+    })
+
+    await page.goto('/community/prague-crypto-circle')
+    await expect(page.locator('.related-hubs-section')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Part of these hubs' })).toBeVisible()
+    await expect(page.locator('.related-hub-card', { hasText: 'Technology' })).toBeVisible()
+    await expect(page.locator('.related-hub-cta').first()).toContainText('Explore hub')
+  })
+
+  test('clicking a related hub card navigates to the category page', async ({ page }) => {
+    const group = makePublicGroup()
+    const domain = makeTechDomain()
+    const state = setupMockApi(page)
+    state.communityGroups.push(group)
+    state.domains.push(domain)
+    state.domainCuratedCommunities.push({
+      id: 'dcc-1',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: true,
+      annotation: null,
+      createdAtUtc: new Date().toISOString(),
+    })
+
+    await page.goto('/community/prague-crypto-circle')
+    await page.locator('.related-hub-card', { hasText: 'Technology' }).click()
+    await expect(page).toHaveURL(/\/category\/technology/)
+  })
+
+  test('shows no related hubs section when community has no hub associations', async ({ page }) => {
+    const state = setupMockApi(page)
+    state.communityGroups.push(makePublicGroup())
+
+    await page.goto('/community/prague-crypto-circle')
+    await expect(page.locator('.related-hubs-section')).toBeHidden()
+  })
+
+  test('shows multiple related hubs in deterministic order (max 3)', async ({ page }) => {
+    const group = makePublicGroup()
+    const state = setupMockApi(page)
+    state.communityGroups.push(group)
+
+    const hub1 = { ...makeTechDomain(), id: 'dom-1', name: 'Alpha Hub', slug: 'alpha-hub' }
+    const hub2 = { ...makeTechDomain(), id: 'dom-2', name: 'Beta Hub', slug: 'beta-hub' }
+    const hub3 = { ...makeTechDomain(), id: 'dom-3', name: 'Gamma Hub', slug: 'gamma-hub' }
+    state.domains.push(hub1, hub2, hub3)
+
+    state.domainCuratedCommunities.push(
+      { id: 'dcc-1', domainId: hub1.id, groupId: group.id, displayOrder: 0, isEnabled: true, annotation: null, createdAtUtc: new Date().toISOString() },
+      { id: 'dcc-2', domainId: hub2.id, groupId: group.id, displayOrder: 1, isEnabled: true, annotation: null, createdAtUtc: new Date().toISOString() },
+      { id: 'dcc-3', domainId: hub3.id, groupId: group.id, displayOrder: 2, isEnabled: true, annotation: null, createdAtUtc: new Date().toISOString() },
+    )
+
+    await page.goto('/community/prague-crypto-circle')
+    const cards = page.locator('.related-hub-card')
+    await expect(cards).toHaveCount(3)
+    await expect(cards.nth(0)).toContainText('Alpha Hub')
+    await expect(cards.nth(1)).toContainText('Beta Hub')
+    await expect(cards.nth(2)).toContainText('Gamma Hub')
+  })
+
+  test('ignores disabled curated community entries', async ({ page }) => {
+    const group = makePublicGroup()
+    const domain = makeTechDomain()
+    const state = setupMockApi(page)
+    state.communityGroups.push(group)
+    state.domains.push(domain)
+    state.domainCuratedCommunities.push({
+      id: 'dcc-disabled',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: false,
+      annotation: null,
+      createdAtUtc: new Date().toISOString(),
+    })
+
+    await page.goto('/community/prague-crypto-circle')
+    await expect(page.locator('.related-hubs-section')).toBeHidden()
+  })
+
+  test('related hubs section is visible on mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    const group = makePublicGroup()
+    const domain = makeTechDomain()
+    const state = setupMockApi(page)
+    state.communityGroups.push(group)
+    state.domains.push(domain)
+    state.domainCuratedCommunities.push({
+      id: 'dcc-1',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: true,
+      annotation: null,
+      createdAtUtc: new Date().toISOString(),
+    })
+
+    await page.goto('/community/prague-crypto-circle')
+    await expect(page.locator('.related-hubs-section')).toBeVisible()
+    await expect(page.locator('.related-hub-card', { hasText: 'Technology' })).toBeVisible()
+  })
+
+  test('Slovak locale: related hubs heading is localized', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('app_locale', 'sk'))
+    const group = makePublicGroup()
+    const domain = makeTechDomain()
+    const state = setupMockApi(page)
+    state.communityGroups.push(group)
+    state.domains.push(domain)
+    state.domainCuratedCommunities.push({
+      id: 'dcc-1',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: true,
+      annotation: null,
+      createdAtUtc: new Date().toISOString(),
+    })
+
+    await page.goto('/community/prague-crypto-circle')
+    await expect(page.getByRole('heading', { name: 'Súčasť týchto hubov' })).toBeVisible()
+    await expect(page.locator('.related-hub-cta').first()).toContainText('Preskúmať hub')
+  })
+
+  test('German locale: related hubs heading is localized', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('app_locale', 'de'))
+    const group = makePublicGroup()
+    const domain = makeTechDomain()
+    const state = setupMockApi(page)
+    state.communityGroups.push(group)
+    state.domains.push(domain)
+    state.domainCuratedCommunities.push({
+      id: 'dcc-1',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: true,
+      annotation: null,
+      createdAtUtc: new Date().toISOString(),
+    })
+
+    await page.goto('/community/prague-crypto-circle')
+    await expect(page.getByRole('heading', { name: 'Teil dieser Hubs' })).toBeVisible()
+    await expect(page.locator('.related-hub-cta').first()).toContainText('Hub erkunden')
+  })
+})

@@ -1369,6 +1369,24 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
         : state.events.filter(
             (e) => e.status === 'PUBLISHED',
           )
+      // Compute related hubs: domains that have curated this community (enabled entries, active domains)
+      const relatedHubs = state.domainCuratedCommunities
+        .filter((dcc) => dcc.groupId === group.id && dcc.isEnabled)
+        .sort((a, b) => a.displayOrder - b.displayOrder)
+        .slice(0, 3)
+        .map((dcc) => {
+          const domain = state.domains.find((d) => d.id === dcc.domainId)
+          if (!domain || domain.isActive === false) return null
+          return {
+            id: domain.id,
+            name: domain.name,
+            slug: domain.slug,
+            description: domain.description ?? null,
+            logoUrl: null,
+            primaryColor: null,
+          }
+        })
+        .filter(Boolean)
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -1379,6 +1397,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
               memberCount,
               myMembership: myMembership ? membershipWithUser(myMembership, state) : null,
               events: groupEvents,
+              relatedHubs,
             },
           },
         }),

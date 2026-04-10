@@ -969,7 +969,25 @@ public sealed class Query
                 .FirstOrDefaultAsync(cm => cm.GroupId == group.Id && cm.UserId == userId, cancellationToken);
         }
 
-        return new CommunityGroupDetail(group, events, memberCount, myMembership);
+        // Related hubs: find domain hubs that have explicitly curated this community.
+        // Max 3 results, ordered by DisplayOrder for deterministic output.
+        // Only active, enabled entries for active domains are returned — no private metadata exposed.
+        const int MaxRelatedHubs = 3;
+        var relatedHubEntries = await dbContext.DomainCuratedCommunities
+            .AsNoTracking()
+            .Where(dcc => dcc.GroupId == group.Id && dcc.IsEnabled && dcc.Domain.IsActive)
+            .OrderBy(dcc => dcc.DisplayOrder)
+            .Take(MaxRelatedHubs)
+            .Select(dcc => new RelatedHubEntry(
+                dcc.Domain.Id.ToString(),
+                dcc.Domain.Name,
+                dcc.Domain.Slug,
+                dcc.Domain.Description,
+                dcc.Domain.LogoUrl,
+                dcc.Domain.PrimaryColor))
+            .ToListAsync(cancellationToken);
+
+        return new CommunityGroupDetail(group, events, memberCount, myMembership, relatedHubEntries);
     }
 
     /// <summary>

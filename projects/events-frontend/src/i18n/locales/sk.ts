@@ -1058,5 +1058,9 @@ export default {
     removeSourceConfirmNo: 'Zrušiť',
     claimRejectedNote: 'Zamietnuté: {note}',
     claimRejectedNoNote: 'Tento nárok bol zamietnutý správcom platformy.',
+    // Related hubs: ecosystem context shown on community detail pages
+    relatedHubsHeading: 'Súčasť týchto hubov',
+    relatedHubsDesc: 'Táto komunita prispieva udalosťami do nasledujúcich kurátorských domén.',
+    relatedHubCta: 'Preskúmať hub →',
   },
 }

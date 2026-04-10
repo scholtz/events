@@ -1087,5 +1087,9 @@ export default {
     removeSourceConfirmNo: 'Cancel',
     claimRejectedNote: 'Rejected: {note}',
     claimRejectedNoNote: 'This claim was rejected by the platform administrator.',
+    // Related hubs: ecosystem context shown on community detail pages
+    relatedHubsHeading: 'Part of these hubs',
+    relatedHubsDesc: 'This community contributes events to the following curated domain ecosystems.',
+    relatedHubCta: 'Explore hub →',
   },
 }

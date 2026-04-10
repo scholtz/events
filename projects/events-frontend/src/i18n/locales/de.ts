@@ -1058,5 +1058,9 @@ export default {
     removeSourceConfirmNo: 'Abbrechen',
     claimRejectedNote: 'Abgelehnt: {note}',
     claimRejectedNoNote: 'Dieser Anspruch wurde vom Plattformadministrator abgelehnt.',
+    // Related hubs: ecosystem context shown on community detail pages
+    relatedHubsHeading: 'Teil dieser Hubs',
+    relatedHubsDesc: 'Diese Community trägt Veranstaltungen zu den folgenden kuratierten Domänen-Ökosystemen bei.',
+    relatedHubCta: 'Hub erkunden →',
   },
 }

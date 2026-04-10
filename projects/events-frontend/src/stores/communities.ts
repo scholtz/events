@@ -83,6 +83,7 @@ export const useCommunitiesStore = defineStore('communities', () => {
             domain { id name slug subdomain description logoUrl primaryColor }
             submittedBy { displayName }
           }
+          relatedHubs { id name slug description logoUrl primaryColor }
         }
       }`,
       { slug },

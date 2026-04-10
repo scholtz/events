@@ -461,6 +461,39 @@ function memberCountText(count: number): string {
           <p v-if="group!.summary" class="group-summary">{{ group!.summary }}</p>
         </div>
 
+        <!-- Related hubs: ecosystem context section -->
+        <section
+          v-if="detail.relatedHubs && detail.relatedHubs.length"
+          class="related-hubs-section"
+          aria-labelledby="related-hubs-heading"
+        >
+          <h2 id="related-hubs-heading" class="related-hubs-title">
+            {{ t('community.relatedHubsHeading') }}
+          </h2>
+          <p class="related-hubs-desc">{{ t('community.relatedHubsDesc') }}</p>
+          <div class="related-hub-cards">
+            <RouterLink
+              v-for="hub in detail.relatedHubs"
+              :key="hub.id"
+              :to="`/category/${hub.slug}`"
+              class="related-hub-card"
+            >
+              <img
+                v-if="hub.logoUrl"
+                :src="hub.logoUrl"
+                :alt="hub.name"
+                class="related-hub-logo"
+              />
+              <div v-else class="related-hub-icon" aria-hidden="true">🏷️</div>
+              <div class="related-hub-info">
+                <strong class="related-hub-name">{{ hub.name }}</strong>
+                <span v-if="hub.description" class="related-hub-description">{{ hub.description }}</span>
+                <span class="related-hub-cta">{{ t('community.relatedHubCta') }}</span>
+              </div>
+            </RouterLink>
+          </div>
+        </section>
+
         <!-- Membership actions -->
         <div class="membership-section">
           <div v-if="actionError" class="error-banner">{{ actionError }}</div>
@@ -1622,5 +1655,104 @@ function memberCountText(count: number): string {
   padding: 2rem;
   color: var(--color-text-secondary);
   font-size: 0.9rem;
+}
+
+/* ── Related hubs / ecosystem context section ─────────────────────────────── */
+.related-hubs-section {
+  margin-bottom: 1.5rem;
+  padding: 1.25rem 1.5rem;
+  background: var(--color-surface-raised, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
+  border-radius: var(--radius-md);
+}
+
+.related-hubs-title {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0 0 0.25rem;
+}
+
+.related-hubs-desc {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+  margin: 0 0 1rem;
+}
+
+.related-hub-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.related-hub-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s;
+}
+
+.related-hub-card:hover {
+  border-color: var(--color-primary);
+}
+
+.related-hub-logo {
+  width: 2rem;
+  height: 2rem;
+  object-fit: contain;
+  border-radius: var(--radius-xs, 4px);
+  flex-shrink: 0;
+}
+
+.related-hub-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.related-hub-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.related-hub-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.related-hub-description {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.related-hub-cta {
+  font-size: 0.8rem;
+  color: var(--color-primary);
+  font-weight: 500;
+}
+
+@media (min-width: 480px) {
+  .related-hub-cards {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .related-hub-card {
+    flex: 1 1 calc(50% - 0.375rem);
+    max-width: calc(50% - 0.375rem);
+  }
 }
 </style>
