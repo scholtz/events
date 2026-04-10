@@ -280,6 +280,8 @@ export default {
     hubContextExplore: '{name} Veranstaltungen erkunden →',
     communityGroupsHeading: 'Organisiert von',
     editEvent: 'Veranstaltung bearbeiten',
+    endsAt: 'Bis {date}, {time}',
+    localTime: 'Ihre Ortszeit: {time}',
   },
 
   login: {

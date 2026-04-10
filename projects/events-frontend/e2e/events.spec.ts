@@ -1261,6 +1261,58 @@ test.describe('Event detail page', () => {
     expect(href).not.toContain('ctz=')
   })
 
+  test('event detail page shows time in event canonical timezone when timezone is set', async ({
+    page,
+  }) => {
+    // Event at 16:00 UTC on 2026-06-15 in Europe/Prague (= 18:00 CEST)
+    const event = makeApprovedEvent({
+      id: 'ev-tz-canonical',
+      name: 'Prague Canonical Timezone Event',
+      slug: 'prague-canonical-tz-event',
+      startsAtUtc: '2026-06-15T16:00:00.000Z',
+      timezone: 'Europe/Prague',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    // The Date & Time section should show 18:00 (Prague time), not 16:00 UTC.
+    // We match both 12-hour ("6:00 PM") and 24-hour ("18:00") formats.
+    await expect(page.locator('.info-section').first()).toContainText(/6:00\s*PM|18:00/i)
+  })
+
+  test('event detail page shows "Until" end-time using localized key', async ({ page }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-tz-ends',
+      name: 'Event With End Time',
+      slug: 'event-with-end-time',
+      startsAtUtc: '2026-06-15T16:00:00.000Z',
+      endsAtUtc: '2026-06-15T19:00:00.000Z',
+      timezone: 'Europe/Prague',
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    // The "Until" text should be localized (comes from eventDetail.endsAt i18n key)
+    await expect(page.locator('.info-section').first()).toContainText(/Until/i)
+  })
+
+  test('event detail page does NOT show local-time label when timezone is null', async ({
+    page,
+  }) => {
+    const event = makeApprovedEvent({
+      id: 'ev-no-tz-local',
+      name: 'No Timezone Local Time Event',
+      slug: 'no-tz-local-event',
+      timezone: null,
+    })
+    setupMockApi(page, { domains: [makeTechDomain()], events: [event] })
+    await page.goto(`/event/${event.slug}`)
+
+    await expect(page.getByRole('heading', { name: 'No Timezone Local Time Event' })).toBeVisible()
+    // No local-time-label should appear when event has no timezone
+    await expect(page.locator('.local-time-label')).toBeHidden()
+  })
+
   // ── Calendar analytics instrumentation tests ────────────────────────────────
 
   test('clicking Google Calendar emits analytics and closes menu', async ({ page }) => {
