@@ -153,9 +153,9 @@ function actionCueClass(item: EventAnalyticsItem): string {
 //  2. Auth completes asynchronously after mount (e.g. checkAuth from App.vue onMounted)
 watch(
   () => auth.isAuthenticated,
-  (isAuthenticated) => {
+  async (isAuthenticated) => {
     if (isAuthenticated && !dashboardStore.overview && !dashboardStore.loading) {
-      dashboardStore.fetchDashboard()
+      await dashboardStore.fetchDashboard()
     }
   },
   { immediate: true },
