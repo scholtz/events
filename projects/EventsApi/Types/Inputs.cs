@@ -478,3 +478,28 @@ public sealed class UpdateScheduledFeaturedEventInput
     /// </summary>
     public string? DisplayLabel { get; init; }
 }
+
+
+/// <summary>
+/// Input for posting a new top-level question on an event discussion thread.
+/// </summary>
+public sealed class PostEventQuestionInput
+{
+    public Guid EventId { get; init; }
+
+    /// <summary>
+    /// Question body text. Must be non-empty and at most 2 000 characters.
+    /// </summary>
+    public required string Body { get; init; }
+}
+
+/// <summary>
+/// Input for posting an organizer or admin reply to an existing discussion entry.
+/// </summary>
+public sealed class ReplyToDiscussionEntryInput
+{
+    public Guid EntryId { get; init; }
+
+    /// <summary>Reply body text. Must be non-empty and at most 2 000 characters.</summary>
+    public required string Body { get; init; }
+}

@@ -7,6 +7,7 @@ import { useEventsStore } from '@/stores/events'
 import { useFavoritesStore } from '@/stores/favorites'
 import { useAuthStore } from '@/stores/auth'
 import { useRemindersStore } from '@/stores/reminders'
+import { useDiscussionStore } from '@/stores/discussion'
 import { buildGoogleCalendarUrl, buildOutlookCalendarUrl, downloadIcs, eventToCalendarInput, validateCalendarInput } from '@/composables/useCalendar'
 import { useCalendarAnalytics } from '@/composables/useCalendarAnalytics'
 import { buildSubdomainUrl, formatSubdomainHost } from '@/composables/useSubdomain'
@@ -20,6 +21,7 @@ const eventsStore = useEventsStore()
 const favoritesStore = useFavoritesStore()
 const authStore = useAuthStore()
 const remindersStore = useRemindersStore()
+const discussionStore = useDiscussionStore()
 const { isOffline } = usePwa()
 
 const slug = computed(() => route.params.id as string)
@@ -97,8 +99,13 @@ onMounted(async () => {
   if (authStore.isAuthenticated) {
     await remindersStore.fetchReminders()
   }
+  // Load discussion for this event slug (published events only)
+  await discussionStore.fetchDiscussion(slug.value)
 })
-watch(slug, loadDetail)
+watch(slug, async (newSlug) => {
+  loadDetail()
+  await discussionStore.fetchDiscussion(newSlug)
+})
 
 const isFavorited = computed(() => event.value ? favoritesStore.isFavorited(event.value.id) : false)
 const favoriting = ref(false)
@@ -385,6 +392,119 @@ function domainHostDisplay(event: {
   if (!subdomain) return event.domain?.name ?? 'Event'
 
   return formatSubdomainHost(subdomain)
+}
+
+// ── Discussion section ────────────────────────────────────────────────────────
+
+const discussionEntries = computed(() => discussionStore.getEntries(slug.value))
+const discussionLoading = computed(() => discussionStore.loading)
+const discussionError = computed(() => discussionStore.error)
+const discussionPosting = computed(() => discussionStore.posting)
+const discussionPostError = computed(() => discussionStore.postError)
+
+/** Whether the current user can reply or hide entries (organizer or admin). */
+const canModerateDiscussion = computed(() => {
+  if (!authStore.isAuthenticated || !event.value) return false
+  if (authStore.isAdmin) return true
+  return event.value.submittedByUserId === authStore.currentUser?.id
+})
+
+const discussionNewBody = ref('')
+const discussionValidationError = ref<string | null>(null)
+const discussionReplyingToId = ref<string | null>(null)
+const discussionReplyBody = ref('')
+const discussionReplyValidationError = ref<string | null>(null)
+const discussionHidingId = ref<string | null>(null)
+const discussionHideError = ref<string | null>(null)
+
+function formatDiscussionTime(dateStr: string): string {
+  const date = new Date(dateStr)
+  const diffSec = Math.floor((Date.now() - date.getTime()) / 1000)
+  if (diffSec < 60) return t('discussion.justNow')
+  return date.toLocaleDateString(locale.value, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+async function handlePostQuestion() {
+  const body = discussionNewBody.value.trim()
+  if (!body) {
+    discussionValidationError.value = t('discussion.validationEmpty')
+    return
+  }
+  if (body.length > 2000) {
+    discussionValidationError.value = t('discussion.validationTooLong')
+    return
+  }
+  discussionValidationError.value = null
+  if (!event.value) return
+  try {
+    const entry = await discussionStore.postQuestion(event.value.id, body)
+    discussionStore.addEntry(slug.value, entry)
+    discussionNewBody.value = ''
+  } catch {
+    // postError shown via discussionPostError computed
+  }
+}
+
+async function handlePostReply(parentId: string) {
+  const body = discussionReplyBody.value.trim()
+  if (!body) {
+    discussionReplyValidationError.value = t('discussion.validationEmpty')
+    return
+  }
+  if (body.length > 2000) {
+    discussionReplyValidationError.value = t('discussion.validationTooLong')
+    return
+  }
+  discussionReplyValidationError.value = null
+  try {
+    const entry = await discussionStore.replyToEntry(parentId, body)
+    discussionStore.addEntry(slug.value, entry)
+    discussionReplyBody.value = ''
+    discussionReplyingToId.value = null
+  } catch {
+    // postError shown via discussionPostError computed
+  }
+}
+
+async function handleHideEntry(entryId: string) {
+  discussionHidingId.value = entryId
+  discussionHideError.value = null
+  try {
+    const updated = await discussionStore.hideEntry(entryId)
+    discussionStore.updateEntry(slug.value, updated)
+  } catch {
+    discussionHideError.value = t('discussion.hideError')
+  } finally {
+    discussionHidingId.value = null
+  }
+}
+
+function startReply(entryId: string) {
+  discussionReplyingToId.value = entryId
+  discussionReplyBody.value = ''
+  discussionReplyValidationError.value = null
+}
+
+function cancelReply() {
+  discussionReplyingToId.value = null
+  discussionReplyBody.value = ''
+  discussionReplyValidationError.value = null
+}
+
+/** Top-level entries only (no parent). Replies are shown beneath their parent. */
+const topLevelEntries = computed(() =>
+  discussionEntries.value.filter((e) => e.parentEntryId === null),
+)
+
+/** Get all replies for a given parent entry id. */
+function repliesFor(parentId: string) {
+  return discussionEntries.value.filter((e) => e.parentEntryId === parentId)
 }
 </script>
 
@@ -760,6 +880,196 @@ function domainHostDisplay(event: {
             </li>
           </ul>
         </div>
+
+        <!-- Discussion section -->
+        <section class="discussion-section card" aria-label="Event discussion">
+          <h2 class="discussion-heading">{{ t('discussion.heading') }}</h2>
+          <p class="discussion-description">{{ t('discussion.description') }}</p>
+
+          <!-- Load error -->
+          <div v-if="discussionError" class="discussion-load-error" role="alert">
+            <p>{{ t('discussion.loadError') }}</p>
+            <button class="btn btn-sm btn-outline" @click="discussionStore.fetchDiscussion(slug)">
+              {{ t('common.tryAgain') }}
+            </button>
+          </div>
+
+          <template v-else>
+            <!-- Loading state -->
+            <div v-if="discussionLoading" class="discussion-loading" aria-live="polite">
+              <div class="skeleton-line"></div>
+              <div class="skeleton-line skeleton-short"></div>
+            </div>
+
+            <!-- Entry list -->
+            <template v-else>
+              <!-- Hide error -->
+              <p v-if="discussionHideError" class="discussion-error" role="alert">{{ discussionHideError }}</p>
+
+              <ol v-if="topLevelEntries.length > 0" class="discussion-list" aria-label="Discussion entries">
+                <li
+                  v-for="entry in topLevelEntries"
+                  :key="entry.id"
+                  class="discussion-entry"
+                  :class="{ 'discussion-entry--hidden': entry.isHidden }"
+                >
+                  <!-- Hidden entry notice -->
+                  <p v-if="entry.isHidden" class="discussion-hidden-notice">
+                    <span aria-hidden="true">🚫</span> {{ t('discussion.hidden') }}
+                  </p>
+
+                  <!-- Normal entry -->
+                  <template v-else>
+                    <div class="discussion-entry-header">
+                      <span class="discussion-author">{{ entry.authorDisplayName }}</span>
+                      <span
+                        v-if="entry.authorRole === 'ORGANIZER'"
+                        class="discussion-badge discussion-badge--organizer"
+                      >{{ t('discussion.badgeOrganizer') }}</span>
+                      <span
+                        v-else-if="entry.authorRole === 'ADMIN'"
+                        class="discussion-badge discussion-badge--admin"
+                      >{{ t('discussion.badgeAdmin') }}</span>
+                      <time
+                        class="discussion-time"
+                        :datetime="entry.createdAtUtc"
+                      >{{ formatDiscussionTime(entry.createdAtUtc) }}</time>
+                    </div>
+                    <p class="discussion-body">{{ entry.body }}</p>
+
+                    <!-- Actions: reply (organizer/admin) and hide (organizer/admin) -->
+                    <div v-if="canModerateDiscussion" class="discussion-actions">
+                      <button
+                        v-if="discussionReplyingToId !== entry.id"
+                        class="btn btn-sm btn-outline discussion-reply-btn"
+                        @click="startReply(entry.id)"
+                      >{{ t('discussion.reply') }}</button>
+                      <button
+                        class="btn btn-sm btn-outline discussion-hide-btn"
+                        :disabled="discussionHidingId === entry.id"
+                        @click="handleHideEntry(entry.id)"
+                      >{{ discussionHidingId === entry.id ? t('discussion.hiding') : t('discussion.hide') }}</button>
+                    </div>
+
+                    <!-- Inline reply composer -->
+                    <div v-if="discussionReplyingToId === entry.id" class="discussion-reply-composer">
+                      <label :for="`reply-${entry.id}`" class="visually-hidden">{{ t('discussion.replyPlaceholder') }}</label>
+                      <textarea
+                        :id="`reply-${entry.id}`"
+                        v-model="discussionReplyBody"
+                        :placeholder="t('discussion.replyPlaceholder')"
+                        :disabled="discussionPosting"
+                        class="discussion-textarea"
+                        maxlength="2000"
+                        rows="3"
+                      ></textarea>
+                      <p v-if="discussionReplyValidationError" class="discussion-error" role="alert">
+                        {{ discussionReplyValidationError }}
+                      </p>
+                      <p v-if="discussionPostError" class="discussion-error" role="alert">
+                        {{ t('discussion.postError') }}
+                      </p>
+                      <div class="discussion-composer-actions">
+                        <button
+                          class="btn btn-primary btn-sm"
+                          :disabled="discussionPosting"
+                          @click="handlePostReply(entry.id)"
+                        >{{ discussionPosting ? t('discussion.posting') : t('discussion.postReply') }}</button>
+                        <button
+                          class="btn btn-outline btn-sm"
+                          :disabled="discussionPosting"
+                          @click="cancelReply"
+                        >{{ t('discussion.cancel') }}</button>
+                      </div>
+                    </div>
+                  </template>
+
+                  <!-- Replies to this entry -->
+                  <ol
+                    v-if="repliesFor(entry.id).length > 0"
+                    class="discussion-replies"
+                    aria-label="Replies"
+                  >
+                    <li
+                      v-for="reply in repliesFor(entry.id)"
+                      :key="reply.id"
+                      class="discussion-entry discussion-entry--reply"
+                      :class="{ 'discussion-entry--hidden': reply.isHidden }"
+                    >
+                      <p v-if="reply.isHidden" class="discussion-hidden-notice">
+                        <span aria-hidden="true">🚫</span> {{ t('discussion.hidden') }}
+                      </p>
+                      <template v-else>
+                        <div class="discussion-entry-header">
+                          <span class="discussion-author">{{ reply.authorDisplayName }}</span>
+                          <span
+                            v-if="reply.authorRole === 'ORGANIZER'"
+                            class="discussion-badge discussion-badge--organizer"
+                          >{{ t('discussion.badgeOrganizer') }}</span>
+                          <span
+                            v-else-if="reply.authorRole === 'ADMIN'"
+                            class="discussion-badge discussion-badge--admin"
+                          >{{ t('discussion.badgeAdmin') }}</span>
+                          <time class="discussion-time" :datetime="reply.createdAtUtc">{{ formatDiscussionTime(reply.createdAtUtc) }}</time>
+                        </div>
+                        <p class="discussion-body">{{ reply.body }}</p>
+                        <!-- Organizer/admin can also hide replies -->
+                        <div v-if="canModerateDiscussion" class="discussion-actions">
+                          <button
+                            class="btn btn-sm btn-outline discussion-hide-btn"
+                            :disabled="discussionHidingId === reply.id"
+                            @click="handleHideEntry(reply.id)"
+                          >{{ discussionHidingId === reply.id ? t('discussion.hiding') : t('discussion.hide') }}</button>
+                        </div>
+                      </template>
+                    </li>
+                  </ol>
+                </li>
+              </ol>
+
+              <!-- Empty state -->
+              <div v-else class="discussion-empty">
+                <p v-if="authStore.isAuthenticated">{{ t('discussion.emptySignedIn') }}</p>
+                <p v-else>
+                  {{ t('discussion.empty') }}
+                  <RouterLink to="/login" class="link-subtle">{{ t('common.signInLower') }}</RouterLink>
+                  {{ t('discussion.signInToAsk') }}
+                </p>
+              </div>
+            </template>
+
+            <!-- Question composer for authenticated users -->
+            <div v-if="authStore.isAuthenticated" class="discussion-composer">
+              <label for="discussion-new-body" class="visually-hidden">{{ t('discussion.askPlaceholder') }}</label>
+              <textarea
+                id="discussion-new-body"
+                v-model="discussionNewBody"
+                :placeholder="t('discussion.askPlaceholder')"
+                :disabled="discussionPosting"
+                class="discussion-textarea"
+                maxlength="2000"
+                rows="4"
+              ></textarea>
+              <p v-if="discussionValidationError" class="discussion-error" role="alert">
+                {{ discussionValidationError }}
+              </p>
+              <p v-if="discussionPostError && !discussionReplyingToId" class="discussion-error" role="alert">
+                {{ t('discussion.postError') }}
+              </p>
+              <button
+                class="btn btn-primary discussion-submit-btn"
+                :disabled="discussionPosting"
+                @click="handlePostQuestion"
+              >{{ discussionPosting ? t('discussion.posting') : t('discussion.postQuestion') }}</button>
+            </div>
+
+            <!-- Sign-in CTA for unauthenticated users -->
+            <div v-else class="discussion-signin-cta">
+              <RouterLink to="/login" class="btn btn-outline btn-sm">{{ t('common.signInLower') }}</RouterLink>
+              <span>{{ t('discussion.signInToAsk') }}</span>
+            </div>
+          </template>
+        </section>
       </div>
     </template>
 
@@ -1424,5 +1734,206 @@ function domainHostDisplay(event: {
   .calendar-menu {
     min-width: 180px;
   }
+}
+
+/* ── Discussion section ─────────────────────────────────────────────────────── */
+
+.discussion-section {
+  margin-top: 1.5rem;
+  padding: 1.5rem;
+}
+
+.discussion-heading {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0 0 0.25rem;
+}
+
+.discussion-description {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  margin: 0 0 1.25rem;
+}
+
+.discussion-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.discussion-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.discussion-entry {
+  background: var(--color-bg-secondary, #f9f9f9);
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+}
+
+.discussion-entry--reply {
+  margin-top: 0.5rem;
+  border-left: 3px solid var(--color-primary, #2563eb);
+  background: var(--color-bg, #fff);
+}
+
+.discussion-entry--hidden {
+  opacity: 0.6;
+}
+
+.discussion-entry-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.375rem;
+}
+
+.discussion-author {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.discussion-badge {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  text-transform: uppercase;
+}
+
+.discussion-badge--organizer {
+  background: var(--color-primary, #2563eb);
+  color: #fff;
+}
+
+.discussion-badge--admin {
+  background: #7c3aed;
+  color: #fff;
+}
+
+.discussion-time {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  margin-left: auto;
+}
+
+.discussion-body {
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  margin: 0;
+  word-break: break-word;
+}
+
+.discussion-hidden-notice {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  font-style: italic;
+  margin: 0;
+}
+
+.discussion-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.discussion-replies {
+  list-style: none;
+  padding: 0;
+  margin: 0.75rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.discussion-reply-composer {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.discussion-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.discussion-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 0.375rem;
+  font-size: 0.9375rem;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.5;
+  background: var(--color-bg, #fff);
+  color: var(--color-text);
+}
+
+.discussion-textarea:focus {
+  outline: 2px solid var(--color-primary, #2563eb);
+  outline-offset: 1px;
+}
+
+.discussion-composer-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.discussion-submit-btn {
+  align-self: flex-start;
+}
+
+.discussion-error {
+  color: var(--color-danger, #dc2626);
+  font-size: 0.8125rem;
+  margin: 0;
+}
+
+.discussion-load-error {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.discussion-empty {
+  color: var(--color-text-secondary);
+  font-size: 0.9375rem;
+  margin-bottom: 1rem;
+}
+
+.discussion-signin-cta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 </style>

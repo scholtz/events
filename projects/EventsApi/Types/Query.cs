@@ -1307,4 +1307,46 @@ public sealed class Query
             Recommendations: recommendations);
     }
 
+    /// <summary>
+    /// Returns all discussion entries for a published event in chronological order.
+    /// Hidden entries are included (body replaced by a removal notice on the client side).
+    /// Accessible without authentication — private moderation data is intentionally excluded.
+    /// </summary>
+    public async Task<IReadOnlyList<DiscussionEntryPayload>> GetEventDiscussionAsync(
+        string eventSlug,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var normalizedSlug = eventSlug.Trim().ToLowerInvariant();
+
+        // Only return discussion for published events — non-published events have null responses
+        var eventExists = await dbContext.Events
+            .AsNoTracking()
+            .AnyAsync(
+                e => e.Slug == normalizedSlug && e.Status == EventStatus.Published,
+                cancellationToken);
+
+        if (!eventExists)
+            return [];
+
+        var entries = await dbContext.EventDiscussionEntries
+            .AsNoTracking()
+            .Where(e => e.Event.Slug == normalizedSlug)
+            .OrderBy(e => e.CreatedAtUtc)
+            .ToListAsync(cancellationToken);
+
+        return entries
+            .Select(e => new DiscussionEntryPayload(
+                e.Id,
+                e.EventId,
+                e.AuthorDisplayName,
+                e.AuthorRole,
+                e.Body,
+                e.ParentEntryId,
+                e.IsHidden,
+                e.CreatedAtUtc,
+                e.UpdatedAtUtc))
+            .ToList();
+    }
+
 }

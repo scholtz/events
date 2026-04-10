@@ -567,6 +567,32 @@ public sealed class AppDbInitializer(
                 """,
                 cancellationToken);
         }
+
+        // ── EventDiscussionEntries table ──────────────────────────────────────
+        if (!await TableExistsAsync("EventDiscussionEntries", cancellationToken))
+        {
+            await _dbContext.Database.ExecuteSqlRawAsync(
+                """
+                CREATE TABLE "EventDiscussionEntries" (
+                    "Id" TEXT NOT NULL CONSTRAINT "PK_EventDiscussionEntries" PRIMARY KEY,
+                    "EventId" TEXT NOT NULL,
+                    "AuthorId" TEXT NOT NULL,
+                    "AuthorDisplayName" TEXT NOT NULL,
+                    "AuthorRole" TEXT NOT NULL DEFAULT 'ATTENDEE',
+                    "Body" TEXT NOT NULL,
+                    "ParentEntryId" TEXT NULL,
+                    "IsHidden" INTEGER NOT NULL DEFAULT 0,
+                    "CreatedAtUtc" TEXT NOT NULL,
+                    "UpdatedAtUtc" TEXT NOT NULL,
+                    CONSTRAINT "FK_EventDiscussionEntries_Events_EventId" FOREIGN KEY ("EventId") REFERENCES "Events" ("Id") ON DELETE CASCADE,
+                    CONSTRAINT "FK_EventDiscussionEntries_Users_AuthorId" FOREIGN KEY ("AuthorId") REFERENCES "Users" ("Id") ON DELETE CASCADE,
+                    CONSTRAINT "FK_EventDiscussionEntries_EventDiscussionEntries_ParentEntryId" FOREIGN KEY ("ParentEntryId") REFERENCES "EventDiscussionEntries" ("Id") ON DELETE RESTRICT
+                );
+                CREATE INDEX "IX_EventDiscussionEntries_EventId" ON "EventDiscussionEntries" ("EventId");
+                CREATE INDEX "IX_EventDiscussionEntries_CreatedAtUtc" ON "EventDiscussionEntries" ("CreatedAtUtc");
+                """,
+                cancellationToken);
+        }
     }
 
     private async Task EnsureSavedSearchColumnAsync(string columnName, CancellationToken cancellationToken)
