@@ -186,11 +186,24 @@ public sealed record SyncResult(
 
     /// <summary>Human-readable summary suitable for display in the admin UI.</summary>
     string Summary);
+/// <summary>
+/// A domain hub that has explicitly curated this community via a DomainCuratedCommunity entry.
+/// Contains only public presentation fields — no private membership or moderation data.
+/// </summary>
+public sealed record RelatedHubEntry(
+    string Id,
+    string Name,
+    string Slug,
+    string? Description,
+    string? LogoUrl,
+    string? PrimaryColor);
+
 public sealed record CommunityGroupDetail(
     CommunityGroup Group,
     IReadOnlyList<CatalogEvent> Events,
     int MemberCount,
-    CommunityMembership? MyMembership);
+    CommunityMembership? MyMembership,
+    IReadOnlyList<RelatedHubEntry> RelatedHubs);
 
 /// <summary>
 /// A candidate event returned by previewExternalEvents, enriched with duplicate-detection

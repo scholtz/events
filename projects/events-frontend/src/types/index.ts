@@ -310,12 +310,23 @@ export interface CommunityMembership {
   reviewedAtUtc: string | null
 }
 
+/** Matches backend RelatedHubEntry payload — a hub that has curated this community */
+export interface RelatedHubEntry {
+  id: string
+  name: string
+  slug: string
+  description: string | null
+  logoUrl: string | null
+  primaryColor: string | null
+}
+
 /** Matches backend CommunityGroupDetail payload */
 export interface CommunityGroupDetail {
   group: CommunityGroup
   events: CatalogEvent[]
   memberCount: number
   myMembership: CommunityMembership | null
+  relatedHubs: RelatedHubEntry[]
 }
 
 // ── External source claims ────────────────────────────────────────────────────

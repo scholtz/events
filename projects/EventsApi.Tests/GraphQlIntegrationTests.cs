@@ -10034,6 +10034,258 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task CommunityGroupBySlug_WithRelatedHubs_ReturnsHubs()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("cg-hubs@example.com", "HubUser");
+            dbContext.Users.Add(user);
+
+            var domain = CreateDomain("Crypto Hub", "crypto-hub");
+            dbContext.Domains.Add(domain);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Hub Community",
+                Slug = "hub-community",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Public,
+                CreatedByUserId = user.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.DomainCuratedCommunities.Add(new EventsApi.Data.Entities.DomainCuratedCommunity
+            {
+                Domain = domain,
+                Group = group,
+                DisplayOrder = 0,
+                IsEnabled = true,
+            });
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query GetGroup($slug: String!) {
+              communityGroupBySlug(slug: $slug) {
+                group { name }
+                relatedHubs { id name slug description }
+              }
+            }
+            """,
+            new { slug = "hub-community" });
+
+        var detail = document.RootElement.GetProperty("data").GetProperty("communityGroupBySlug");
+        Assert.False(detail.ValueKind == JsonValueKind.Null);
+        var hubs = detail.GetProperty("relatedHubs");
+        Assert.Equal(1, hubs.GetArrayLength());
+        Assert.Equal("Crypto Hub", hubs[0].GetProperty("name").GetString());
+        Assert.Equal("crypto-hub", hubs[0].GetProperty("slug").GetString());
+    }
+
+    [Fact]
+    public async Task CommunityGroupBySlug_NoRelatedHubs_ReturnsEmptyList()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("cg-nohubs@example.com", "NoHubUser");
+            dbContext.Users.Add(user);
+            dbContext.CommunityGroups.Add(new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Standalone Group",
+                Slug = "standalone-group",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Public,
+                CreatedByUserId = user.Id,
+            });
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query GetGroup($slug: String!) {
+              communityGroupBySlug(slug: $slug) {
+                group { name }
+                relatedHubs { id name slug }
+              }
+            }
+            """,
+            new { slug = "standalone-group" });
+
+        var detail = document.RootElement.GetProperty("data").GetProperty("communityGroupBySlug");
+        Assert.False(detail.ValueKind == JsonValueKind.Null);
+        var hubs = detail.GetProperty("relatedHubs");
+        Assert.Equal(0, hubs.GetArrayLength());
+    }
+
+    [Fact]
+    public async Task CommunityGroupBySlug_DisabledCuratedEntry_ExcludedFromRelatedHubs()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("cg-disabled@example.com", "DisabledUser");
+            dbContext.Users.Add(user);
+
+            var domain = CreateDomain("Hidden Hub", "hidden-hub");
+            dbContext.Domains.Add(domain);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Community With Disabled Entry",
+                Slug = "disabled-entry-community",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Public,
+                CreatedByUserId = user.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.DomainCuratedCommunities.Add(new EventsApi.Data.Entities.DomainCuratedCommunity
+            {
+                Domain = domain,
+                Group = group,
+                DisplayOrder = 0,
+                IsEnabled = false, // disabled — should not appear
+            });
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query GetGroup($slug: String!) {
+              communityGroupBySlug(slug: $slug) {
+                relatedHubs { id name slug }
+              }
+            }
+            """,
+            new { slug = "disabled-entry-community" });
+
+        var detail = document.RootElement.GetProperty("data").GetProperty("communityGroupBySlug");
+        Assert.False(detail.ValueKind == JsonValueKind.Null);
+        Assert.Equal(0, detail.GetProperty("relatedHubs").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task CommunityGroupBySlug_MultipleHubs_ReturnsBoundedAndOrdered()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("cg-multihub@example.com", "MultiHubUser");
+            dbContext.Users.Add(user);
+
+            var domainA = CreateDomain("Alpha Hub", "alpha-hub");
+            var domainB = CreateDomain("Beta Hub", "beta-hub");
+            var domainC = CreateDomain("Gamma Hub", "gamma-hub");
+            var domainD = CreateDomain("Delta Hub", "delta-hub");
+            dbContext.Domains.AddRange(domainA, domainB, domainC, domainD);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Multi Hub Community",
+                Slug = "multi-hub-community",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Public,
+                CreatedByUserId = user.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.DomainCuratedCommunities.AddRange(
+                new EventsApi.Data.Entities.DomainCuratedCommunity { Domain = domainA, Group = group, DisplayOrder = 0, IsEnabled = true },
+                new EventsApi.Data.Entities.DomainCuratedCommunity { Domain = domainB, Group = group, DisplayOrder = 1, IsEnabled = true },
+                new EventsApi.Data.Entities.DomainCuratedCommunity { Domain = domainC, Group = group, DisplayOrder = 2, IsEnabled = true },
+                new EventsApi.Data.Entities.DomainCuratedCommunity { Domain = domainD, Group = group, DisplayOrder = 3, IsEnabled = true }
+            );
+        });
+
+        using var client = factory.CreateClient();
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query GetGroup($slug: String!) {
+              communityGroupBySlug(slug: $slug) {
+                relatedHubs { name slug }
+              }
+            }
+            """,
+            new { slug = "multi-hub-community" });
+
+        var detail = document.RootElement.GetProperty("data").GetProperty("communityGroupBySlug");
+        var hubs = detail.GetProperty("relatedHubs");
+        // Max 3 returned
+        Assert.Equal(3, hubs.GetArrayLength());
+        // Ordered by DisplayOrder
+        Assert.Equal("Alpha Hub", hubs[0].GetProperty("name").GetString());
+        Assert.Equal("Beta Hub", hubs[1].GetProperty("name").GetString());
+        Assert.Equal("Gamma Hub", hubs[2].GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task CommunityGroupBySlug_RelatedHubs_NoPrivateDataExposed()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("cg-privacy@example.com", "PrivacyUser");
+            dbContext.Users.Add(user);
+
+            var domain = CreateDomain("Public Hub", "public-hub");
+            dbContext.Domains.Add(domain);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Privacy Community",
+                Slug = "privacy-community",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Public,
+                CreatedByUserId = user.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.DomainCuratedCommunities.Add(new EventsApi.Data.Entities.DomainCuratedCommunity
+            {
+                Domain = domain,
+                Group = group,
+                DisplayOrder = 0,
+                IsEnabled = true,
+            });
+        });
+
+        using var client = factory.CreateClient(); // unauthenticated
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query GetGroup($slug: String!) {
+              communityGroupBySlug(slug: $slug) {
+                relatedHubs { id name slug description logoUrl primaryColor }
+              }
+            }
+            """,
+            new { slug = "privacy-community" });
+
+        var rawJson = document.RootElement.GetRawText();
+        // No private fields in the payload
+        Assert.DoesNotContain("email", rawJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("userId", rawJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("membership", rawJson, StringComparison.OrdinalIgnoreCase);
+
+        var detail = document.RootElement.GetProperty("data").GetProperty("communityGroupBySlug");
+        var hubs = detail.GetProperty("relatedHubs");
+        Assert.Equal(1, hubs.GetArrayLength());
+        Assert.Equal("Public Hub", hubs[0].GetProperty("name").GetString());
+    }
+
+    [Fact]
     public async Task AssociateEventWithGroup_ByEventOwnerGroupAdmin_Succeeds()
     {
         await using var factory = new EventsApiWebApplicationFactory();
