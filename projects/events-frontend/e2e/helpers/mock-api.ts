@@ -1790,6 +1790,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
     }
 
     if (query.includes('query') && query.includes('EventBySlug')) {
+      const slug = variables.slug as string
       const found = state.events.find((e) => e.slug === slug && e.status === 'PUBLISHED') ?? null
       if (found) {
         const interestedCount = state.favoriteEvents.filter((f) => f.eventId === found.id).length

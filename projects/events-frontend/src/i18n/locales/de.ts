@@ -1066,11 +1066,11 @@ export default {
 
   // ── Event discussion ────────────────────────────────────────────────────────
   discussion: {
-    heading: 'Fragen & Aktualisierungen',
+    heading: 'Fragen & Antworten',
     description: 'Haben Sie eine praktische Frage zu dieser Veranstaltung? Stellen Sie sie hier und der Organisator wird antworten.',
-    empty: 'Noch keine Fragen.',
+    empty: 'Noch keine Fragen. Melden Sie sich an, um die erste Frage zu stellen.',
     emptySignedIn: 'Seien Sie die Erste oder der Erste, der eine Frage stellt.',
-    signInToAsk: 'um eine Frage zu stellen.',
+    signInToAsk: 'Anmelden, um eine Frage zu stellen.',
     askPlaceholder: 'Eine Frage zu dieser Veranstaltung stellen…',
     replyPlaceholder: 'Ihre Antwort eingeben…',
     postQuestion: 'Frage senden',

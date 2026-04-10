@@ -1095,11 +1095,11 @@ export default {
 
   // ── Event discussion ────────────────────────────────────────────────────────
   discussion: {
-    heading: 'Questions & Updates',
+    heading: 'Questions & Answers',
     description: 'Have a practical question about this event? Ask here and the organizer will reply.',
-    empty: 'No questions yet.',
+    empty: 'No questions yet. Sign in to be the first to ask.',
     emptySignedIn: 'Be the first to ask a question.',
-    signInToAsk: 'to ask a question.',
+    signInToAsk: 'Sign in to ask a question.',
     askPlaceholder: 'Ask a question about this event…',
     replyPlaceholder: 'Write your reply…',
     postQuestion: 'Post question',

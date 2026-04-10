@@ -1030,11 +1030,7 @@ function repliesFor(parentId: string) {
               <!-- Empty state -->
               <div v-else class="discussion-empty">
                 <p v-if="authStore.isAuthenticated">{{ t('discussion.emptySignedIn') }}</p>
-                <p v-else>
-                  {{ t('discussion.empty') }}
-                  <RouterLink to="/login" class="link-subtle">{{ t('common.signInLower') }}</RouterLink>
-                  {{ t('discussion.signInToAsk') }}
-                </p>
+                <p v-else>{{ t('discussion.empty') }}</p>
               </div>
             </template>
 
@@ -1063,11 +1059,8 @@ function repliesFor(parentId: string) {
               >{{ discussionPosting ? t('discussion.posting') : t('discussion.postQuestion') }}</button>
             </div>
 
-            <!-- Sign-in CTA for unauthenticated users -->
-            <div v-else class="discussion-signin-cta">
-              <RouterLink to="/login" class="btn btn-outline btn-sm">{{ t('common.signInLower') }}</RouterLink>
-              <span>{{ t('discussion.signInToAsk') }}</span>
-            </div>
+            <!-- Sign-in notice for unauthenticated users (plain text – no link to avoid ambiguity with page-level sign-in CTAs) -->
+            <p v-else class="discussion-signin-cta">{{ t('discussion.signInToAsk') }}</p>
           </template>
         </section>
       </div>

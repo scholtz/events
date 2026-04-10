@@ -1066,11 +1066,11 @@ export default {
 
   // ── Event discussion ────────────────────────────────────────────────────────
   discussion: {
-    heading: 'Otázky & aktualizácie',
+    heading: 'Otázky & odpovede',
     description: 'Máte praktickú otázku o tejto udalosti? Spýtajte sa tu a organizátor odpovie.',
-    empty: 'Zatiaľ žiadne otázky.',
+    empty: 'Zatiaľ žiadne otázky. Prihláste sa a položte prvú otázku.',
     emptySignedIn: 'Buďte prví, kto položí otázku.',
-    signInToAsk: 'na položenie otázky.',
+    signInToAsk: 'Prihláste sa pre položenie otázky.',
     askPlaceholder: 'Opýtajte sa na niečo ohľadom tejto udalosti…',
     replyPlaceholder: 'Napíšte svoju odpoveď…',
     postQuestion: 'Odoslať otázku',
