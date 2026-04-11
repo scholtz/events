@@ -124,7 +124,13 @@ public sealed class Query
             query = query.Where(catalogEvent => catalogEvent.Timezone != null && catalogEvent.Timezone.ToLower() == timezone);
         }
 
-        return await ApplySorting(query, filter?.SortBy, normalizedSearchText, dbContext.FavoriteEvents).ToListAsync(cancellationToken);
+        return await ApplySorting(
+            query,
+            filter?.SortBy,
+            normalizedSearchText,
+            dbContext.FavoriteEvents,
+            domainSlugFilter: NormalizeFilterValue(filter?.DomainSlug),
+            domainSubdomainFilter: NormalizeFilterValue(filter?.DomainSubdomain)).ToListAsync(cancellationToken);
     }
 
     public async Task<CatalogEvent?> GetEventBySlugAsync(
@@ -672,7 +678,9 @@ public sealed class Query
         EventSortOption? sortBy,
         string? normalizedSearchText,
         IQueryable<FavoriteEvent>? favoriteEventsSource = null,
-        DateTime? utcNow = null)
+        DateTime? utcNow = null,
+        string? domainSlugFilter = null,
+        string? domainSubdomainFilter = null)
     {
         var now = utcNow ?? DateTime.UtcNow;
         return sortBy switch
@@ -687,7 +695,7 @@ public sealed class Query
                 // Within the same match tier: upcoming events appear before past events
                 .ThenBy(catalogEvent => catalogEvent.StartsAtUtc < now ? 1 : 0)
                 .ThenBy(catalogEvent => catalogEvent.StartsAtUtc),
-            _ => BuildUpcomingSort(query, now, favoriteEventsSource),
+            _ => BuildUpcomingSort(query, now, favoriteEventsSource, domainSlugFilter, domainSubdomainFilter),
         };
     }
 
@@ -695,29 +703,52 @@ public sealed class Query
     /// Constructs the default UPCOMING sort with deterministic, documented heuristics:
     /// 1. Upcoming events (starts at or after now) before past events.
     /// 2. Within each bucket: ascending by start date (nearest upcoming first).
-    /// 3. Metadata completeness tiebreaker — events with more filled-in contextual fields
+    /// 3. Domain-fit tiebreaker (only active when a domain slug/subdomain filter is set) —
+    ///    events whose PRIMARY domain matches the hub filter rank ahead of events that appear
+    ///    in this hub only via a secondary EventTag. This makes domain hub pages feel more
+    ///    curated toward their own community.
+    /// 4. Metadata completeness tiebreaker — events with more filled-in contextual fields
     ///    (city, venue name, event URL, language, timezone) rank higher than sparse listings.
     ///    Each present field contributes 1 point (max 5); higher completeness ranks first.
     ///    Language and timezone are included because they help multilingual/distributed
     ///    audiences immediately identify relevant events, making well-described events more
     ///    discoverable than sparse ones at the same date.
-    /// 4. Engagement signal — events saved by more attendees surface above zero-save
+    /// 5. Engagement signal — events saved by more attendees surface above zero-save
     ///    events with identical completeness, rewarding well-prepared submissions.
-    /// 5. Publication freshness tiebreaker — within the same engagement tier, recently
+    /// 6. Publication freshness tiebreaker — within the same engagement tier, recently
     ///    published events (newest PublishedAtUtc) surface above older listings, rewarding
     ///    organizers who keep content current and signalling timeliness to users.
-    /// 6. Alphabetical name as a final deterministic tiebreaker.
+    /// 7. Alphabetical name as a final deterministic tiebreaker.
     /// </summary>
     private static IOrderedQueryable<CatalogEvent> BuildUpcomingSort(
         IQueryable<CatalogEvent> query,
         DateTime now,
-        IQueryable<FavoriteEvent>? favoriteEventsSource)
+        IQueryable<FavoriteEvent>? favoriteEventsSource,
+        string? domainSlugFilter = null,
+        string? domainSubdomainFilter = null)
     {
         var sorted = query
             // Upcoming events (starts today or later) before past events
             .OrderBy(catalogEvent => catalogEvent.StartsAtUtc < now ? 1 : 0)
             // Within each group: ascending by start date (nearest upcoming first; oldest past first)
-            .ThenBy(catalogEvent => catalogEvent.StartsAtUtc)
+            .ThenBy(catalogEvent => catalogEvent.StartsAtUtc);
+
+        // Domain-fit tiebreaker: when browsing a specific hub, events whose PRIMARY domain is
+        // this hub rank above events that only appear here via a secondary EventTag. This
+        // preserves the curated, community-centric feel of each hub page. When no domain filter
+        // is active the expression evaluates to 0 for every event, so ordering is unchanged.
+        if (!string.IsNullOrEmpty(domainSlugFilter))
+        {
+            sorted = sorted.ThenByDescending(catalogEvent =>
+                catalogEvent.Domain.Slug == domainSlugFilter ? 1 : 0);
+        }
+        else if (!string.IsNullOrEmpty(domainSubdomainFilter))
+        {
+            sorted = sorted.ThenByDescending(catalogEvent =>
+                catalogEvent.Domain.Subdomain == domainSubdomainFilter ? 1 : 0);
+        }
+
+        sorted = sorted
             // Tiebreaker: prefer events with richer metadata — venue, city, event URL, language,
             // and timezone each contribute 1 point (max 5). Events with better contextual
             // information feel more trustworthy and help multilingual/distributed audiences

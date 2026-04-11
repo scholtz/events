@@ -2686,7 +2686,7 @@ function filterEventsForDiscovery(events: MockEvent[], filter?: Record<string, u
 
       return true
     })
-    .sort((left, right) => sortDiscoveryEvents(left, right, sortBy, normalizedSearch))
+    .sort((left, right) => sortDiscoveryEvents(left, right, sortBy, normalizedSearch, domainSlug))
 }
 
 function sortDiscoveryEvents(
@@ -2694,6 +2694,7 @@ function sortDiscoveryEvents(
   right: MockEvent,
   sortBy: string,
   normalizedSearch: string,
+  domainSlug: string = '',
 ) {
   if (sortBy === 'NEWEST') {
     return right.submittedAtUtc.localeCompare(left.submittedAtUtc)
@@ -2716,6 +2717,15 @@ function sortDiscoveryEvents(
   const rightIsPast = right.startsAtUtc < now
   if (leftIsPast !== rightIsPast) {
     return leftIsPast ? 1 : -1
+  }
+
+  // Domain-fit tiebreaker: when a domain slug filter is active, events whose PRIMARY domain
+  // matches the hub rank ahead of events that appear only via a secondary EventTag.
+  // Mirrors the BuildUpcomingSort domain-fit tiebreaker in the backend.
+  if (domainSlug) {
+    const leftIsPrimary = left.domain.slug === domainSlug ? 1 : 0
+    const rightIsPrimary = right.domain.slug === domainSlug ? 1 : 0
+    if (leftIsPrimary !== rightIsPrimary) return rightIsPrimary - leftIsPrimary
   }
 
   return left.startsAtUtc.localeCompare(right.startsAtUtc)

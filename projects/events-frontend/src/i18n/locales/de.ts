@@ -820,6 +820,9 @@ export default {
     // Per-event ranking cue badges
     rankCueUpcomingSoon: 'Bald bevorstehend',
     rankCueRecentlyAdded: 'Neu hinzugefügt',
+    // Hub-specific low-signal guidance
+    fewResultsOne: 'Dieser Hub wächst noch – momentan ist nur 1 Veranstaltung verfügbar. Erkunden Sie verwandte Hubs weiter unten.',
+    fewResultsMany: 'Dieser Hub wächst noch – momentan sind nur {count} Veranstaltungen verfügbar. Erkunden Sie verwandte Hubs weiter unten.',
   },
 
   // ── Hub manage page ────────────────────────────────────────────────────────
