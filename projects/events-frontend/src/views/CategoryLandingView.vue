@@ -197,16 +197,20 @@ async function fetchCategoryData() {
   }
 }
 
-onMounted(fetchCategoryData)
-
-watch(slug, () => {
-  // Slug changed: reset to initial state before fetching new category
+function resetCategoryState() {
   hasFetchedOnce.value = false
   events.value = []
   featuredEvents.value = []
   curatedCommunities.value = []
   domain.value = null
   error.value = ''
+}
+
+onMounted(fetchCategoryData)
+
+watch(slug, () => {
+  // Slug changed: reset to initial state before fetching new category
+  resetCategoryState()
   fetchCategoryData()
 })
 
@@ -697,6 +701,7 @@ onMounted(async () => {
           v-else-if="categoryTrustState === 'refresh-failed'"
           role="status"
           aria-live="polite"
+          aria-label="Refresh failed, showing cached results"
           class="cached-results-notice"
         >
           <span aria-hidden="true">⚠️</span>
