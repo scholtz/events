@@ -3499,6 +3499,22 @@ test.describe('Empty state recovery — mobile viewport', () => {
     await expect(page.locator('.event-card', { hasText: 'Mobile Tech Event' })).toBeVisible()
     await expect(page.locator('.empty-state')).toBeHidden()
   })
+
+  test('price-range empty state recovery button is visible at mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-mob-price', name: 'Budget Event', slug: 'budget-event', isFree: false, priceAmount: 10 })],
+    })
+    // minPrice higher than event price → empty state
+    await page.goto('/?minPrice=500')
+
+    await expect(page.locator('.empty-state')).toBeVisible()
+    await expect(page.locator('.empty-state')).toContainText('price range')
+    await expect(
+      page.locator('.empty-state .recovery-action', { hasText: 'Show all prices' }),
+    ).toBeVisible()
+  })
 })
 
 // ---------------------------------------------------------------------------
