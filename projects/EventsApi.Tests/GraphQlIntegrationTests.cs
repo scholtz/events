@@ -14725,6 +14725,209 @@ public sealed class GraphQlIntegrationTests
         Assert.DoesNotContain("Attendee Name", body);
     }
 
+    [Fact]
+    public async Task IcsEndpoint_EventWithTimezone_UsesTzidDtstart()
+    {
+        // When an event has an IANA timezone, the ICS DTSTART must use TZID= floating
+        // local time (not UTC Z-suffix) so calendar clients display the correct wall-clock time.
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("ics-tz@example.com", "ICS TZ User");
+            var domain = CreateDomain("Tech", "tech-ics-tz");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            // 2026-06-15 16:00 UTC = 18:00 CEST in Europe/Prague
+            var ev = CreateEvent(
+                "Prague TZ Event", "prague-tz-ics-event", "Timezone test.",
+                "Prague Hall", "Prague",
+                new DateTime(2026, 6, 15, 16, 0, 0, DateTimeKind.Utc), domain, user,
+                timezone: "Europe/Prague");
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        var body = await (await client.GetAsync("/ics/prague-tz-ics-event")).Content.ReadAsStringAsync();
+
+        // Must use TZID= floating local time (18:00, not 16:00 UTC)
+        Assert.Contains("DTSTART;TZID=Europe/Prague:20260615T180000", body);
+        // DTEND: CreateEvent defaults to startsAt + 4 hours = 20:00 UTC = 22:00 CEST
+        Assert.Contains("DTEND;TZID=Europe/Prague:20260615T220000", body);
+        // X-WR-TIMEZONE extension must be present for broader client compatibility
+        Assert.Contains("X-WR-TIMEZONE:Europe/Prague", body);
+        // Must NOT use UTC Z-suffix for DTSTART when timezone is set
+        Assert.DoesNotContain("DTSTART:20260615T", body);
+    }
+
+    [Fact]
+    public async Task IcsEndpoint_EventWithoutTimezone_UsesUtcZSuffix()
+    {
+        // Events with no timezone stored must emit UTC Z-suffix DTSTART/DTEND so
+        // calendar clients anchor the time correctly.
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("ics-notz@example.com", "ICS No TZ User");
+            var domain = CreateDomain("Tech", "tech-ics-notz");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "No TZ Event", "no-tz-ics-event", "No timezone test.",
+                "Venue", "Berlin",
+                new DateTime(2026, 8, 20, 10, 0, 0, DateTimeKind.Utc), domain, user);
+            // Timezone stays null (CreateEvent default)
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        var body = await (await client.GetAsync("/ics/no-tz-ics-event")).Content.ReadAsStringAsync();
+
+        // UTC Z-suffix expected when no timezone is set
+        Assert.Contains("DTSTART:20260820T100000Z", body);
+        // DTEND: CreateEvent defaults to startsAt + 4 hours = 14:00 UTC
+        Assert.Contains("DTEND:20260820T140000Z", body);
+        // No TZID= parameter expected
+        Assert.DoesNotContain("DTSTART;TZID=", body);
+        // No X-WR-TIMEZONE expected
+        Assert.DoesNotContain("X-WR-TIMEZONE", body);
+    }
+
+    [Fact]
+    public async Task IcsEndpoint_EventWithTimezone_DstAwareConversion()
+    {
+        // DST-sensitive date: Europe/Prague is UTC+1 (CET) in winter,
+        // UTC+2 (CEST) in summer. 2026-01-15 14:00 UTC = 15:00 CET (winter).
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("ics-dst@example.com", "ICS DST User");
+            var domain = CreateDomain("Tech", "tech-ics-dst");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Winter TZ Event", "winter-tz-ics-event", "DST test.",
+                "Prague Venue", "Prague",
+                new DateTime(2026, 1, 15, 14, 0, 0, DateTimeKind.Utc), domain, user,
+                timezone: "Europe/Prague");
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        var body = await (await client.GetAsync("/ics/winter-tz-ics-event")).Content.ReadAsStringAsync();
+
+        // 14:00 UTC in winter = 15:00 CET (UTC+1), not 16:00 CEST
+        Assert.Contains("DTSTART;TZID=Europe/Prague:20260115T150000", body);
+        Assert.Contains("X-WR-TIMEZONE:Europe/Prague", body);
+    }
+
+    [Fact]
+    public async Task IcsEndpoint_EventWithTimezone_MidnightBoundary()
+    {
+        // Midnight boundary: 2026-07-31 22:30 UTC = 2026-08-01 00:30 CEST.
+        // The ICS must reflect the next-day date in local time, not the UTC date.
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("ics-midnight@example.com", "ICS Midnight User");
+            var domain = CreateDomain("Tech", "tech-ics-midnight");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Midnight Boundary Event", "midnight-boundary-ics-event", "Crosses midnight.",
+                "Venue", "Prague",
+                new DateTime(2026, 7, 31, 22, 30, 0, DateTimeKind.Utc), domain, user,
+                timezone: "Europe/Prague");
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        var body = await (await client.GetAsync("/ics/midnight-boundary-ics-event")).Content.ReadAsStringAsync();
+
+        // 2026-07-31 22:30 UTC = 2026-08-01 00:30 CEST (next day in Prague)
+        Assert.Contains("DTSTART;TZID=Europe/Prague:20260801T003000", body);
+    }
+
+    [Fact]
+    public async Task IcsEndpoint_EventBySlug_TimezoneExposedInGraphQlPayload()
+    {
+        // The GraphQL eventBySlug query must expose the timezone field so the frontend
+        // can render canonical-timezone times and format the local-time secondary label.
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("gql-tz@example.com", "GQL TZ User");
+            var domain = CreateDomain("Tech", "tech-gql-tz");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "GQL TZ Event", "gql-tz-event", "GraphQL timezone test.",
+                "Venue", "New York",
+                FirstDayOfNextMonthUtc(), domain, user,
+                timezone: "America/New_York");
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query {
+              eventBySlug(slug: "gql-tz-event") {
+                timezone
+                startsAtUtc
+                endsAtUtc
+              }
+            }
+            """);
+
+        var ev = document.RootElement.GetProperty("data").GetProperty("eventBySlug");
+        Assert.Equal("America/New_York", ev.GetProperty("timezone").GetString());
+        // startsAtUtc and endsAtUtc must be present and non-null
+        Assert.NotNull(ev.GetProperty("startsAtUtc").GetString());
+        Assert.NotNull(ev.GetProperty("endsAtUtc").GetString());
+    }
+
+    [Fact]
+    public async Task IcsEndpoint_EventsListQuery_TimezoneExposedPerEvent()
+    {
+        // The events list query must expose timezone per event so discovery cards and
+        // list rows can format times in the event's canonical timezone.
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("list-tz@example.com", "List TZ User");
+            var domain = CreateDomain("Tech", "tech-list-tz");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.AddRange(
+                CreateEvent("TZ Event 1", "list-tz-event-1", "With timezone.", "Venue", "Tokyo",
+                    FirstDayOfNextMonthUtc(), domain, user, timezone: "Asia/Tokyo"),
+                CreateEvent("TZ Event 2", "list-tz-event-2", "No timezone.", "Venue", "Berlin",
+                    FirstDayOfNextMonthUtc().AddHours(2), domain, user));
+        });
+
+        using var client = factory.CreateClient();
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query {
+              events {
+                name
+                timezone
+                startsAtUtc
+              }
+            }
+            """);
+
+        var events = document.RootElement.GetProperty("data").GetProperty("events").EnumerateArray().ToList();
+        Assert.True(events.Count >= 2);
+        var tzEvent = events.Single(e => e.GetProperty("name").GetString() == "TZ Event 1");
+        var noTzEvent = events.Single(e => e.GetProperty("name").GetString() == "TZ Event 2");
+        Assert.Equal("Asia/Tokyo", tzEvent.GetProperty("timezone").GetString());
+        Assert.True(noTzEvent.GetProperty("timezone").ValueKind == System.Text.Json.JsonValueKind.Null
+            || noTzEvent.GetProperty("timezone").GetString() == null);
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════
     // ── Scheduled Featured Events ──────────────────────────────────────────────
     // ═══════════════════════════════════════════════════════════════════════════

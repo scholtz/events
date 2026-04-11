@@ -292,6 +292,8 @@ export default {
     hubContextExplore: 'Explore {name} Events →',
     communityGroupsHeading: 'Organized by',
     editEvent: 'Edit Event',
+    endsAt: 'Until {date}, {time}',
+    localTime: 'Your local time: {time}',
   },
 
   // ── Login ──────────────────────────────────────────────────────────────────

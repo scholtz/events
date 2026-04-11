@@ -27,21 +27,6 @@ function domainUrl(event: CatalogEvent): string {
   return `/category/${slug}`
 }
 
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString(locale.value, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
-}
-
-function formatTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleTimeString(locale.value, {
-    hour: 'numeric',
-    minute: '2-digit',
-  })
-}
-
 const locationSummary = computed(() => {
   if (props.event.venueName && props.event.city) return `${props.event.venueName}, ${props.event.city}`
   return props.event.venueName || props.event.city || t('eventCard.locationTbd')
@@ -68,6 +53,25 @@ const eventTimezone = computed(() => {
   if (mode !== 'ONLINE' && mode !== 'HYBRID') return null
   return props.event.timezone ?? null
 })
+
+function formatDate(dateStr: string): string {
+  const tz = eventTimezone.value ?? undefined
+  return new Date(dateStr).toLocaleDateString(locale.value, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    ...(tz ? { timeZone: tz } : {}),
+  })
+}
+
+function formatTime(dateStr: string): string {
+  const tz = eventTimezone.value ?? undefined
+  return new Date(dateStr).toLocaleTimeString(locale.value, {
+    hour: 'numeric',
+    minute: '2-digit',
+    ...(tz ? { timeZone: tz } : {}),
+  })
+}
 
 const isFavorited = computed(() => favoritesStore.isFavorited(props.event.id))
 

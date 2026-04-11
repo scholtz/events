@@ -280,6 +280,8 @@ export default {
     hubContextExplore: 'Preskúmať udalosti {name} →',
     communityGroupsHeading: 'Organizuje',
     editEvent: 'Upraviť udalosť',
+    endsAt: 'Do {date}, {time}',
+    localTime: 'Váš miestny čas: {time}',
   },
 
   login: {

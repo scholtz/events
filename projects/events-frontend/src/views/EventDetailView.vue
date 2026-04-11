@@ -24,6 +24,13 @@ const remindersStore = useRemindersStore()
 const discussionStore = useDiscussionStore()
 const { isOffline } = usePwa()
 
+/**
+ * The viewer's IANA timezone resolved from the browser once at component
+ * instantiation time.  Timezone cannot change within a page session, so this
+ * is safe to capture once.
+ */
+const viewerTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+
 const slug = computed(() => route.params.id as string)
 
 // Start with cached version from store, then refresh with full detail (including interestedCount)
@@ -130,22 +137,69 @@ async function handleFavoriteToggle() {
   }
 }
 
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString(locale.value, {
+/**
+ * Format a UTC ISO date string using the provided IANA timezone (or the
+ * viewer's local timezone when none is supplied).  The event's canonical
+ * timezone is preferred so that attendees see the "official" local time at
+ * the venue rather than their own local equivalent.
+ */
+function formatDate(dateStr: string, timezone?: string | null): string {
+  const opts: Intl.DateTimeFormatOptions = {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
     year: 'numeric',
-  })
+  }
+  if (timezone) opts.timeZone = timezone
+  return new Date(dateStr).toLocaleDateString(locale.value, opts)
 }
 
-function formatTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleTimeString(locale.value, {
+function formatTime(dateStr: string, timezone?: string | null): string {
+  const opts: Intl.DateTimeFormatOptions = {
     hour: 'numeric',
     minute: '2-digit',
     timeZoneName: 'short',
-  })
+  }
+  if (timezone) opts.timeZone = timezone
+  return new Date(dateStr).toLocaleTimeString(locale.value, opts)
 }
+
+/**
+ * Returns the viewer's local start time formatted in their own timezone, or
+ * null when the viewer is already in the event's canonical timezone (or the
+ * event has no timezone set) — avoiding a redundant secondary line.
+ */
+const viewerLocalStartTime = computed<string | null>(() => {
+  if (!event.value?.startsAtUtc || !event.value.timezone) return null
+  const eventTz = event.value.timezone
+  try {
+    // Use 'en-US' locale deliberately for the comparison step only: it
+    // produces a consistent 12-hour format on all platforms so the
+    // equality check is reliable regardless of the user's display locale.
+    const compOpts: Intl.DateTimeFormatOptions = {
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short',
+    }
+    const eventFormatted = new Intl.DateTimeFormat('en-US', {
+      ...compOpts,
+      timeZone: eventTz,
+    }).format(new Date(event.value.startsAtUtc))
+    const viewerFormatted = new Intl.DateTimeFormat('en-US', {
+      ...compOpts,
+      timeZone: viewerTimezone,
+    }).format(new Date(event.value.startsAtUtc))
+    if (eventFormatted === viewerFormatted) return null
+    // Return the viewer's local representation in their display locale
+    return new Date(event.value.startsAtUtc).toLocaleTimeString(locale.value, {
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short',
+    })
+  } catch {
+    return null
+  }
+})
 
 function mapUrl(lat: number, lng: number): string {
   const safeLat = Math.min(90, Math.max(-90, lat))
@@ -589,14 +643,18 @@ function repliesFor(parentId: string) {
                 <span class="info-icon" aria-hidden="true">📅</span>
                 {{ t('eventDetail.dateAndTime') }}
               </h3>
-              <p>{{ formatDate(event.startsAtUtc) }}</p>
-              <p class="text-secondary">{{ formatTime(event.startsAtUtc) }}</p>
+              <p>{{ formatDate(event.startsAtUtc, event.timezone) }}</p>
+              <p class="text-secondary">{{ formatTime(event.startsAtUtc, event.timezone) }}</p>
               <template v-if="event.endsAtUtc">
-                <p class="text-secondary">Until {{ formatDate(event.endsAtUtc) }}, {{ formatTime(event.endsAtUtc) }}</p>
+                <p class="text-secondary">{{ t('eventDetail.endsAt', { date: formatDate(event.endsAtUtc, event.timezone), time: formatTime(event.endsAtUtc, event.timezone) }) }}</p>
               </template>
               <p v-if="event.timezone" class="timezone-label text-secondary">
                 <span aria-hidden="true">🌐</span>
                 {{ formatTimezoneLabel(event.timezone) }}
+              </p>
+              <p v-if="viewerLocalStartTime" class="local-time-label text-secondary">
+                <span aria-hidden="true">⏰</span>
+                {{ t('eventDetail.localTime', { time: viewerLocalStartTime }) }}
               </p>
               <p v-if="event.language" class="language-label text-secondary">
                 <span aria-hidden="true">🗣</span>
