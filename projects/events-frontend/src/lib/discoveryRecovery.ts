@@ -148,11 +148,8 @@ export function computeRecoverySuggestion(
     return { label: t('home.recoveryTryOnline'), actionKey: 'tryOnlineFromLocation' }
   }
 
-  if (chip.key === 'priceType') {
-    return { label: t('home.recoveryShowAllPrices'), actionKey: 'clearPrice' }
-  }
-
-  if (chip.key === 'priceMin' || chip.key === 'priceMax') {
+  // All price-related chip types (priceType, priceMin, priceMax) share the same recovery.
+  if (chip.key === 'priceType' || chip.key === 'priceMin' || chip.key === 'priceMax') {
     return { label: t('home.recoveryShowAllPrices'), actionKey: 'clearPrice' }
   }
 
