@@ -551,3 +551,322 @@ test.describe('Cross-event navigation – freshness isolation', () => {
   })
 })
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Offline / stale-data freshness model – category landing page
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('Category landing freshness – offline with cached events', () => {
+  test('shows cached-results notice on category page when offline with events loaded', async ({
+    page,
+  }) => {
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({ name: 'Category Cached Event', slug: 'cat-cached-event' })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    // Navigate to the category page while online.
+    await page.goto(`/category/${domain.slug}`)
+    await expect(page.locator('.event-card', { hasText: 'Category Cached Event' })).toBeVisible()
+
+    // The cached-results notice must NOT be visible while online.
+    await expect(page.locator('.cached-results-notice')).toBeHidden()
+
+    // Go offline — notice should appear.
+    await page.context().setOffline(true)
+    await expect(page.locator('.cached-results-notice')).toBeVisible()
+
+    // The event list must still be visible (cached data is preserved).
+    await expect(page.locator('.event-card', { hasText: 'Category Cached Event' })).toBeVisible()
+
+    await page.context().setOffline(false)
+  })
+
+  test('category cached-results notice disappears when connectivity is restored', async ({
+    page,
+  }) => {
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      name: 'Category Reconnect Event',
+      slug: 'cat-reconnect-event',
+    })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    await page.goto(`/category/${domain.slug}`)
+    await expect(page.locator('.event-card', { hasText: 'Category Reconnect Event' })).toBeVisible()
+
+    await page.context().setOffline(true)
+    await expect(page.locator('.cached-results-notice')).toBeVisible()
+
+    await page.context().setOffline(false)
+    await expect(page.locator('.cached-results-notice')).toBeHidden()
+  })
+
+  test('category cached-results notice is accessible via ARIA', async ({ page }) => {
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({ name: 'Category ARIA Event', slug: 'cat-aria-event' })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    await page.goto(`/category/${domain.slug}`)
+    await expect(page.locator('.event-card', { hasText: 'Category ARIA Event' })).toBeVisible()
+
+    await page.context().setOffline(true)
+    const notice = page.locator('.cached-results-notice')
+    await expect(notice).toBeVisible()
+    await expect(notice).toHaveAttribute('role', 'status')
+    await expect(notice).toHaveAttribute('aria-live', 'polite')
+
+    await page.context().setOffline(false)
+  })
+})
+
+test.describe('Category landing freshness – SW cache hit', () => {
+  test('shows cached-results notice when CategoryEvents response carries X-PWA-Cache: HIT', async ({
+    page,
+  }) => {
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      name: 'Category SW Cache Event',
+      slug: 'cat-sw-cache-event',
+    })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    // Register the cache-header interceptor BEFORE navigating.
+    await page.route('**/graphql', async (route, request) => {
+      const body = request.postData() ?? ''
+      if (body.includes('CategoryEvents')) {
+        await route.fulfill({
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-PWA-Cache': 'HIT',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Expose-Headers': 'X-PWA-Cache',
+          },
+          body: JSON.stringify({ data: { events: [event] } }),
+        })
+        return
+      }
+      await route.fallback()
+    })
+
+    await page.goto(`/category/${domain.slug}`)
+    await expect(page.locator('.event-card', { hasText: 'Category SW Cache Event' })).toBeVisible()
+
+    // Online but SW served from cache — notice must be visible.
+    await expect(page.locator('.cached-results-notice')).toBeVisible()
+  })
+})
+
+test.describe('Category landing freshness – mobile viewport', () => {
+  test('cached-results notice is visible on mobile when offline on category page', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      name: 'Category Mobile Event',
+      slug: 'cat-mobile-event',
+    })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    await page.goto(`/category/${domain.slug}`)
+    await expect(page.locator('.event-card', { hasText: 'Category Mobile Event' })).toBeVisible()
+
+    await page.context().setOffline(true)
+    await expect(page.locator('.cached-results-notice')).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Category Mobile Event' })).toBeVisible()
+
+    await page.context().setOffline(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Category landing freshness – refreshing and refresh-failed trust states
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('Category landing freshness – refreshing trust state', () => {
+  test('shows refreshing-notice while background re-fetch is in flight after reconnect', async ({
+    page,
+  }) => {
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      name: 'Category Refresh Event',
+      slug: 'cat-refresh-event',
+    })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    // Load the category page with events (initial success).
+    await page.goto(`/category/${domain.slug}`)
+    await expect(page.locator('.event-card', { hasText: 'Category Refresh Event' })).toBeVisible()
+
+    // Install a stalling interceptor for CategoryEvents BEFORE triggering reconnect.
+    // The route never calls fulfillment so the fetch hangs indefinitely, letting us
+    // observe the "refreshing" trust state deterministically.
+    let stallCategoryFetch = true
+    await page.route('**/graphql', async (route, request) => {
+      const body = request.postData() ?? ''
+      if (stallCategoryFetch && body.includes('CategoryEvents')) {
+        // Hang the request — do NOT call route.fulfill/abort/fallback
+        return
+      }
+      await route.fallback()
+    })
+
+    // Go offline → cached-offline
+    await page.context().setOffline(true)
+    await expect(page.locator('.cached-results-notice')).toBeVisible()
+
+    // Come back online → auto-refresh triggers → loading=true with hasCachedData=true → "refreshing"
+    await page.context().setOffline(false)
+    await expect(page.locator('.refreshing-notice')).toBeVisible()
+
+    // Old events must remain visible while refreshing
+    await expect(page.locator('.event-card', { hasText: 'Category Refresh Event' })).toBeVisible()
+
+    // Release the stall so the test can clean up cleanly
+    stallCategoryFetch = false
+  })
+
+  test('refreshing-notice is accessible via ARIA', async ({ page }) => {
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({ name: 'Category ARIA Refresh', slug: 'cat-aria-refresh' })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    await page.goto(`/category/${domain.slug}`)
+    await expect(page.locator('.event-card', { hasText: 'Category ARIA Refresh' })).toBeVisible()
+
+    let stallCategoryFetch = true
+    await page.route('**/graphql', async (route, request) => {
+      const body = request.postData() ?? ''
+      if (stallCategoryFetch && body.includes('CategoryEvents')) {
+        return
+      }
+      await route.fallback()
+    })
+
+    await page.context().setOffline(true)
+    await page.context().setOffline(false)
+    const notice = page.locator('.refreshing-notice')
+    await expect(notice).toBeVisible()
+    await expect(notice).toHaveAttribute('role', 'status')
+    await expect(notice).toHaveAttribute('aria-live', 'polite')
+
+    stallCategoryFetch = false
+  })
+})
+
+test.describe('Category landing freshness – refresh-failed trust state', () => {
+  test('shows cached-results notice with retry button after refresh fails with stale events', async ({
+    page,
+  }) => {
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      name: 'Category Fail Event',
+      slug: 'cat-fail-event',
+    })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    // Load category (initial success).
+    await page.goto(`/category/${domain.slug}`)
+    await expect(page.locator('.event-card', { hasText: 'Category Fail Event' })).toBeVisible()
+
+    // Install a failing interceptor for CategoryEvents.
+    let failCategoryFetch = false
+    await page.route('**/graphql', async (route, request) => {
+      const body = request.postData() ?? ''
+      if (failCategoryFetch && body.includes('CategoryEvents')) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Server error' }] }),
+        })
+        return
+      }
+      await route.fallback()
+    })
+
+    // Enable the failing interceptor and trigger auto-refresh via offline→online.
+    failCategoryFetch = true
+    await page.context().setOffline(true)
+    await page.context().setOffline(false)
+
+    // The refresh fails: trust state = refresh-failed.
+    // Old events must be preserved and the cached-results notice must appear.
+    await expect(page.locator('.cached-results-notice')).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Category Fail Event' })).toBeVisible()
+
+    // A "Try again" button must be present so the user can retry.
+    await expect(page.locator('.cached-results-notice').getByRole('button', { name: /try again/i })).toBeVisible()
+  })
+
+  test('stale events remain visible in the refresh-failed state at mobile viewport', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({ name: 'Category Mobile Fail', slug: 'cat-mobile-fail' })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    await page.goto(`/category/${domain.slug}`)
+    await expect(page.locator('.event-card', { hasText: 'Category Mobile Fail' })).toBeVisible()
+
+    let failCategoryFetch = false
+    await page.route('**/graphql', async (route, request) => {
+      const body = request.postData() ?? ''
+      if (failCategoryFetch && body.includes('CategoryEvents')) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Server error' }] }),
+        })
+        return
+      }
+      await route.fallback()
+    })
+
+    failCategoryFetch = true
+    await page.context().setOffline(true)
+    await page.context().setOffline(false)
+
+    await expect(page.locator('.cached-results-notice')).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Category Mobile Fail' })).toBeVisible()
+  })
+})
+
+test.describe('Category landing freshness – unavailable trust state', () => {
+  test('shows offline error heading when initial fetch fails and app goes offline', async ({
+    page,
+  }) => {
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({ name: 'Cat Unavail Event', slug: 'cat-unavail-event' })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    // Block CategoryEvents so the initial events fetch fails (domain still loads).
+    await page.route('**/graphql', async (route, request) => {
+      const body = request.postData() ?? ''
+      if (body.includes('CategoryEvents')) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Load error' }] }),
+        })
+        return
+      }
+      await route.fallback()
+    })
+
+    await page.goto(`/category/${domain.slug}`)
+    // Initial load fails → error state, no events
+    await expect(page.locator('.error-state')).toBeVisible()
+    await expect(page.locator('.error-state')).toContainText('Unable to load category')
+
+    // Go offline → error heading becomes offline-specific
+    await page.context().setOffline(true)
+    await expect(page.locator('.error-state h2')).toContainText("You're offline")
+
+    // "Try again" button must remain for recovery when reconnected
+    await expect(page.locator('.error-state').getByRole('button', { name: /try again/i })).toBeVisible()
+
+    await page.context().setOffline(false)
+  })
+})
+
