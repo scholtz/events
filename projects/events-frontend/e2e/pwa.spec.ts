@@ -551,3 +551,131 @@ test.describe('Cross-event navigation – freshness isolation', () => {
   })
 })
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Offline / stale-data freshness model – category landing page
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('Category landing freshness – offline with cached events', () => {
+  test('shows cached-results notice on category page when offline with events loaded', async ({
+    page,
+  }) => {
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({ name: 'Category Cached Event', slug: 'cat-cached-event' })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    // Navigate to the category page while online.
+    await page.goto(`/category/${domain.slug}`)
+    await expect(page.locator('.event-card', { hasText: 'Category Cached Event' })).toBeVisible()
+
+    // The cached-results notice must NOT be visible while online.
+    await expect(page.locator('.cached-results-notice')).toBeHidden()
+
+    // Go offline — notice should appear.
+    await page.context().setOffline(true)
+    await expect(page.locator('.cached-results-notice')).toBeVisible()
+
+    // The event list must still be visible (cached data is preserved).
+    await expect(page.locator('.event-card', { hasText: 'Category Cached Event' })).toBeVisible()
+
+    await page.context().setOffline(false)
+  })
+
+  test('category cached-results notice disappears when connectivity is restored', async ({
+    page,
+  }) => {
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      name: 'Category Reconnect Event',
+      slug: 'cat-reconnect-event',
+    })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    await page.goto(`/category/${domain.slug}`)
+    await expect(page.locator('.event-card', { hasText: 'Category Reconnect Event' })).toBeVisible()
+
+    await page.context().setOffline(true)
+    await expect(page.locator('.cached-results-notice')).toBeVisible()
+
+    await page.context().setOffline(false)
+    await expect(page.locator('.cached-results-notice')).toBeHidden()
+  })
+
+  test('category cached-results notice is accessible via ARIA', async ({ page }) => {
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({ name: 'Category ARIA Event', slug: 'cat-aria-event' })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    await page.goto(`/category/${domain.slug}`)
+    await expect(page.locator('.event-card', { hasText: 'Category ARIA Event' })).toBeVisible()
+
+    await page.context().setOffline(true)
+    const notice = page.locator('.cached-results-notice')
+    await expect(notice).toBeVisible()
+    await expect(notice).toHaveAttribute('role', 'status')
+    await expect(notice).toHaveAttribute('aria-live', 'polite')
+
+    await page.context().setOffline(false)
+  })
+})
+
+test.describe('Category landing freshness – SW cache hit', () => {
+  test('shows cached-results notice when CategoryEvents response carries X-PWA-Cache: HIT', async ({
+    page,
+  }) => {
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      name: 'Category SW Cache Event',
+      slug: 'cat-sw-cache-event',
+    })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    // Register the cache-header interceptor BEFORE navigating.
+    await page.route('**/graphql', async (route, request) => {
+      const body = request.postData() ?? ''
+      if (body.includes('CategoryEvents')) {
+        await route.fulfill({
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-PWA-Cache': 'HIT',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Expose-Headers': 'X-PWA-Cache',
+          },
+          body: JSON.stringify({ data: { events: [event] } }),
+        })
+        return
+      }
+      await route.fallback()
+    })
+
+    await page.goto(`/category/${domain.slug}`)
+    await expect(page.locator('.event-card', { hasText: 'Category SW Cache Event' })).toBeVisible()
+
+    // Online but SW served from cache — notice must be visible.
+    await expect(page.locator('.cached-results-notice')).toBeVisible()
+  })
+})
+
+test.describe('Category landing freshness – mobile viewport', () => {
+  test('cached-results notice is visible on mobile when offline on category page', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    const domain = makeTechDomain()
+    const event = makeApprovedEvent({
+      name: 'Category Mobile Event',
+      slug: 'cat-mobile-event',
+    })
+    setupMockApi(page, { domains: [domain], events: [event] })
+
+    await page.goto(`/category/${domain.slug}`)
+    await expect(page.locator('.event-card', { hasText: 'Category Mobile Event' })).toBeVisible()
+
+    await page.context().setOffline(true)
+    await expect(page.locator('.cached-results-notice')).toBeVisible()
+    await expect(page.locator('.event-card', { hasText: 'Category Mobile Event' })).toBeVisible()
+
+    await page.context().setOffline(false)
+  })
+})
+

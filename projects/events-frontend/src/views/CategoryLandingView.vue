@@ -4,17 +4,19 @@ import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import EventCard from '@/components/events/EventCard.vue'
 import type { CatalogEvent, DomainCuratedCommunity, EventDomain } from '@/types'
-import { gqlRequest } from '@/lib/graphql'
+import { gqlRequest, gqlRequestWithMeta } from '@/lib/graphql'
 import { safeHexColor } from '@/lib/colorUtils'
 import { useAuthStore } from '@/stores/auth'
 import { useDomainsStore } from '@/stores/domains'
 import { useCommunitiesStore } from '@/stores/communities'
+import { usePwa } from '@/composables/usePwa'
 
 const { t } = useI18n()
 const route = useRoute()
 const authStore = useAuthStore()
 const domainsStore = useDomainsStore()
 const communitiesStore = useCommunitiesStore()
+const { isOffline } = usePwa()
 
 const slug = computed(() => route.params.slug as string)
 
@@ -24,6 +26,23 @@ const featuredEvents = ref<CatalogEvent[]>([])
 const curatedCommunities = ref<DomainCuratedCommunity[]>([])
 const loading = ref(false)
 const error = ref('')
+
+/**
+ * Data source for the last successful CategoryEvents fetch.
+ * 'live' – response came from the network.
+ * 'cache' – response was served from the service-worker IDB cache (X-PWA-Cache: HIT).
+ * null – no successful fetch yet.
+ */
+const categoryDataSource = ref<'live' | 'cache' | null>(null)
+
+/**
+ * Whether to show a cached-data notice above the category event grid.
+ * True when the app is offline (stale data being shown) or when the SW
+ * served the category events from IDB cache.
+ */
+const showCachedNotice = computed(
+  () => (isOffline.value && events.value.length > 0) || categoryDataSource.value === 'cache',
+)
 
 // Per-group join/request state tracking
 // Initialized from persisted memberships on load, then updated reactively after actions.
@@ -116,8 +135,8 @@ async function fetchCategoryData() {
     }
 
     // Fetch events and featured events in parallel
-    const [eventsData, featuredData, communitiesData] = await Promise.all([
-      gqlRequest<{ events: CatalogEvent[] }>(
+    const [eventsResult, featuredData, communitiesData] = await Promise.all([
+      gqlRequestWithMeta<{ events: CatalogEvent[] }>(
         `query CategoryEvents($filter: EventFilterInput) {
           events(filter: $filter) { ${EVENT_FIELDS} }
         }`,
@@ -139,7 +158,8 @@ async function fetchCategoryData() {
         { domainSlug: slug.value },
       ).catch(() => ({ curatedCommunitiesForDomain: [] })),
     ])
-    events.value = eventsData.events
+    events.value = eventsResult.data.events
+    categoryDataSource.value = eventsResult.meta.fromCache ? 'cache' : 'live'
     featuredEvents.value = featuredData.featuredEventsForDomain
     curatedCommunities.value = communitiesData.curatedCommunitiesForDomain
 
@@ -151,6 +171,7 @@ async function fetchCategoryData() {
     events.value = []
     featuredEvents.value = []
     curatedCommunities.value = []
+    categoryDataSource.value = null
   } finally {
     loading.value = false
   }
@@ -611,6 +632,12 @@ onMounted(async () => {
           </div>
         </section>
 
+        <!-- Offline or SW-cache notice: shown when events may be stale -->
+        <div v-if="showCachedNotice" role="status" aria-live="polite" class="cached-results-notice">
+          <span aria-hidden="true">📡</span>
+          <span>{{ t('home.cachedResultsNotice') }}</span>
+        </div>
+
         <div class="category-filters-row">
           <p class="results-summary" role="status" aria-live="polite">
             {{
@@ -847,6 +874,20 @@ onMounted(async () => {
   font-size: 0.875rem;
   color: var(--color-text-secondary);
   margin: 0;
+}
+
+/* Offline or SW-cache notice: shown above the event grid when data may be stale */
+.cached-results-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem 0.875rem;
+  margin-bottom: 0.75rem;
+  background: rgba(59, 130, 246, 0.07);
+  color: var(--color-text-secondary);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
 }
 
 /* Subtle label explaining current sort order on this hub */
