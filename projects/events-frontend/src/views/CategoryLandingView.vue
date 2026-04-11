@@ -10,6 +10,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useDomainsStore } from '@/stores/domains'
 import { useCommunitiesStore } from '@/stores/communities'
 import { usePwa } from '@/composables/usePwa'
+import { computeDiscoveryTrustState } from '@/lib/discoveryTrustState'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -36,12 +37,25 @@ const error = ref('')
 const categoryDataSource = ref<'live' | 'cache' | null>(null)
 
 /**
- * Whether to show a cached-data notice above the category event grid.
- * True when the app is offline (stale data being shown) or when the SW
- * served the category events from IDB cache.
+ * True once the first CategoryEvents fetch has succeeded.
+ * Prevents clearing stale events when a background re-fetch fails.
  */
-const showCachedNotice = computed(
-  () => (isOffline.value && events.value.length > 0) || categoryDataSource.value === 'cache',
+const hasFetchedOnce = ref(false)
+
+/**
+ * Named trust state for the category event list.
+ * Driven by computeDiscoveryTrustState which maps the full combination of
+ * network / cache / fetch-lifecycle inputs to one of six states:
+ *   fresh | cached-offline | cached-sw | refreshing | refresh-failed | unavailable
+ */
+const categoryTrustState = computed(() =>
+  computeDiscoveryTrustState({
+    isOffline: isOffline.value,
+    isLoading: loading.value,
+    hasError: !!error.value,
+    dataSource: categoryDataSource.value,
+    hasCachedData: events.value.length > 0,
+  }),
 )
 
 // Per-group join/request state tracking
@@ -162,16 +176,22 @@ async function fetchCategoryData() {
     categoryDataSource.value = eventsResult.meta.fromCache ? 'cache' : 'live'
     featuredEvents.value = featuredData.featuredEventsForDomain
     curatedCommunities.value = communitiesData.curatedCommunitiesForDomain
+    hasFetchedOnce.value = true
 
     // Initialize membership state from persisted data for authenticated users
     const groupIds = communitiesData.curatedCommunitiesForDomain.map((c) => c.groupId)
     await loadMembershipStates(groupIds)
   } catch (err) {
     error.value = err instanceof Error ? err.message : t('category.errorLoad')
-    events.value = []
-    featuredEvents.value = []
-    curatedCommunities.value = []
     categoryDataSource.value = null
+    if (!hasFetchedOnce.value) {
+      // Initial load failed: clear everything so the error state is shown
+      events.value = []
+      featuredEvents.value = []
+      curatedCommunities.value = []
+    }
+    // On background re-fetch failure: preserve existing events so the user
+    // can still browse while we show the refresh-failed trust notice.
   } finally {
     loading.value = false
   }
@@ -179,7 +199,25 @@ async function fetchCategoryData() {
 
 onMounted(fetchCategoryData)
 
-watch(slug, fetchCategoryData)
+watch(slug, () => {
+  // Slug changed: reset to initial state before fetching new category
+  hasFetchedOnce.value = false
+  events.value = []
+  featuredEvents.value = []
+  curatedCommunities.value = []
+  domain.value = null
+  error.value = ''
+  fetchCategoryData()
+})
+
+// Auto-refresh when connectivity is restored and we already have cached events.
+// This allows the page to show a "refreshing" then "fresh" (or "refresh-failed")
+// state naturally after coming back online.
+watch(isOffline, (offline, wasOffline) => {
+  if (!offline && wasOffline && hasFetchedOnce.value) {
+    fetchCategoryData()
+  }
+})
 
 // Update document title for SEO
 const pageTitle = computed(() =>
@@ -440,34 +478,35 @@ onMounted(async () => {
     </section>
 
     <div class="container category-body">
-      <!-- Error state -->
-      <div v-if="error" class="results-state card error-state" role="alert">
-        <div class="state-icon" aria-hidden="true">⚠️</div>
+      <!-- Error state: initial load failed with no cached data (unavailable) -->
+      <div v-if="error && !events.length" class="results-state card error-state" role="alert">
+        <div class="state-icon" aria-hidden="true">{{ isOffline ? '📡' : '⚠️' }}</div>
         <div>
-          <h2>{{ t('category.errorLoad') }}</h2>
-          <p>{{ error }}</p>
+          <h2>{{ isOffline ? t('home.errorOffline') : t('category.errorLoad') }}</h2>
+          <p v-if="isOffline">{{ t('home.errorOfflineDescription') }}</p>
+          <p v-else>{{ error }}</p>
         </div>
         <button class="btn btn-primary" @click="fetchCategoryData">{{ t('common.tryAgain') }}</button>
       </div>
 
       <!-- Not found state -->
-      <div v-else-if="!loading && !domain" class="results-state card empty-state">
+      <div v-else-if="!loading && !error && !domain" class="results-state card empty-state">
         <div class="empty-icon">🔍</div>
         <h2>{{ t('category.notFound') }}</h2>
         <p>{{ t('category.notFoundDescription', { slug }) }}</p>
         <RouterLink to="/" class="btn btn-primary">{{ t('category.browseAll') }}</RouterLink>
       </div>
 
-      <!-- Loading state -->
-      <div v-else-if="loading" class="results-state card loading-state" aria-live="polite">
+      <!-- Loading state: initial load, no cached data yet -->
+      <div v-else-if="loading && !events.length" class="results-state card loading-state" aria-live="polite">
         <div class="loading-spinner" aria-hidden="true"></div>
         <div>
           <h2>{{ t('common.loading') }}</h2>
         </div>
       </div>
 
-      <!-- Events section -->
-      <template v-else>
+      <!-- Events section: domain loaded, possibly with trust-state notices -->
+      <template v-else-if="domain">
         <!-- Hub overview modules (About & What belongs here) -->
         <div v-if="domain?.overviewContent || domain?.whatBelongsHere" class="hub-overview-modules">
           <div v-if="domain.overviewContent" class="hub-module card">
@@ -632,10 +671,37 @@ onMounted(async () => {
           </div>
         </section>
 
-        <!-- Offline or SW-cache notice: shown when events may be stale -->
-        <div v-if="showCachedNotice" role="status" aria-live="polite" class="cached-results-notice">
+        <!-- Trust-state notices: driven by the full freshness model -->
+        <!-- cached-offline / cached-sw: stale data while offline or served from SW IDB cache -->
+        <div
+          v-if="categoryTrustState === 'cached-offline' || categoryTrustState === 'cached-sw'"
+          role="status"
+          aria-live="polite"
+          class="cached-results-notice"
+        >
           <span aria-hidden="true">📡</span>
           <span>{{ t('home.cachedResultsNotice') }}</span>
+        </div>
+        <!-- refreshing: background re-fetch in progress, stale results still visible -->
+        <div
+          v-else-if="categoryTrustState === 'refreshing'"
+          role="status"
+          aria-live="polite"
+          class="refreshing-notice"
+        >
+          <span class="refreshing-spinner" aria-hidden="true"></span>
+          <span>{{ t('home.refreshingResults') }}</span>
+        </div>
+        <!-- refresh-failed: re-fetch failed, old events preserved -->
+        <div
+          v-else-if="categoryTrustState === 'refresh-failed'"
+          role="status"
+          aria-live="polite"
+          class="cached-results-notice"
+        >
+          <span aria-hidden="true">⚠️</span>
+          <span>{{ t('home.cachedResultsNotice') }}</span>
+          <button class="btn btn-sm" @click="fetchCategoryData">{{ t('common.tryAgain') }}</button>
         </div>
 
         <div class="category-filters-row">
@@ -888,6 +954,30 @@ onMounted(async () => {
   border: 1px solid rgba(59, 130, 246, 0.2);
   border-radius: 0.5rem;
   font-size: 0.8125rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* Background refresh in progress: shown when a re-fetch is triggered with stale data still visible */
+.refreshing-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  margin-bottom: 0.75rem;
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+}
+
+.refreshing-spinner {
+  display: inline-block;
+  width: 0.875rem;
+  height: 0.875rem;
+  border-radius: 999px;
+  border: 2px solid rgba(19, 127, 236, 0.2);
+  border-top-color: var(--color-primary);
+  animation: spin 0.9s linear infinite;
+  flex-shrink: 0;
 }
 
 /* Subtle label explaining current sort order on this hub */
