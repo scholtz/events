@@ -92,6 +92,7 @@ export default {
     emptyModeHybrid: 'Momentálne nie sú k dispozícii hybridné udalosti. Skúste iný režim.',
     emptyPriceFree: 'Nie sú k dispozícii bezplatné udalosti. Odstráňte cenový filter.',
     emptyPricePaid: 'Nie sú k dispozícii platené udalosti. Odstráňte cenový filter.',
+    emptyPriceRange: 'V tomto cenovom rozsahu sa nenašli žiadne udalosti. Skúste odstrániť filter cenového rozsahu.',
     emptyDate: 'V tomto časovom rozsahu nie sú žiadne udalosti. Skúste upraviť dátumy.',
     emptyDomain: 'V tejto kategórii nie sú žiadne udalosti. Odstráňte filter tagu.',
     emptyTimezone:

@@ -92,6 +92,7 @@ export default {
     emptyModeHybrid: 'Derzeit keine hybriden Veranstaltungen verfügbar. Versuchen Sie einen anderen Modus.',
     emptyPriceFree: 'Keine kostenlosen Veranstaltungen verfügbar. Entfernen Sie den Preisfilter.',
     emptyPricePaid: 'Keine kostenpflichtigen Veranstaltungen verfügbar. Entfernen Sie den Preisfilter.',
+    emptyPriceRange: 'Keine Veranstaltungen in diesem Preisbereich gefunden. Versuchen Sie, den Preisbereichsfilter zu entfernen.',
     emptyDate: 'Keine Veranstaltungen in diesem Zeitraum. Passen Sie die Datumsfilter an.',
     emptyDomain: 'Keine Veranstaltungen in dieser Kategorie. Entfernen Sie den Tag-Filter.',
     emptyTimezone:

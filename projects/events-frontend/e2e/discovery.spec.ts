@@ -3016,6 +3016,67 @@ test.describe('Empty state recovery actions', () => {
     await expect(page.locator('.empty-state .recovery-action')).toBeHidden()
     await expect(page.locator('.empty-state').getByRole('link', { name: 'Submit an Event', exact: true })).toBeVisible()
   })
+
+  test('price range empty state shows "Show all prices" recovery button (minPrice)', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-1', name: 'Budget Event', slug: 'budget-event', isFree: false, priceAmount: 10 })],
+    })
+    // Set a minimum price higher than any event price → no results
+    await page.goto('/?minPrice=500')
+
+    await expect(page.locator('.empty-state')).toBeVisible()
+    await expect(page.locator('.empty-state')).toContainText('price range')
+    await expect(
+      page.locator('.empty-state .recovery-action', { hasText: 'Show all prices' }),
+    ).toBeVisible()
+  })
+
+  test('price range empty state shows "Show all prices" recovery button (maxPrice)', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-1', name: 'Expensive Event', slug: 'expensive-event', isFree: false, priceAmount: 500 })],
+    })
+    // Set maximum price lower than any event price → no results
+    await page.goto('/?maxPrice=1')
+
+    await expect(page.locator('.empty-state')).toBeVisible()
+    await expect(page.locator('.empty-state')).toContainText('price range')
+    await expect(
+      page.locator('.empty-state .recovery-action', { hasText: 'Show all prices' }),
+    ).toBeVisible()
+  })
+
+  test('clicking price range recovery clears the filter and shows events', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-1', name: 'Priced Event', slug: 'priced-event', isFree: false, priceAmount: 50 })],
+    })
+    await page.goto('/?minPrice=500')
+
+    await expect(page.locator('.empty-state')).toBeVisible()
+    await page.locator('.empty-state .recovery-action', { hasText: 'Show all prices' }).click()
+
+    await expect(page.locator('.event-card', { hasText: 'Priced Event' })).toBeVisible()
+    await expect(page.locator('.empty-state')).toBeHidden()
+  })
+
+  test('dateFrom+dateTo combined shows date-specific empty state (not generic multi-filter)', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent()],
+    })
+    // Both date chips active — should show date-specific guidance, not "2 active filters"
+    await page.goto('/?from=2000-01-01&to=2000-01-31')
+
+    await expect(page.locator('.empty-state')).toBeVisible()
+    await expect(page.locator('.empty-state')).toContainText('date range')
+    // Should NOT say "2 active filters" — that would be confusing for date ranges
+    await expect(page.locator('.empty-state')).not.toContainText('2 active filters')
+    await expect(
+      page.locator('.empty-state .recovery-action', { hasText: 'Clear date range' }),
+    ).toBeVisible()
+  })
 })
 
 // ---------------------------------------------------------------------------

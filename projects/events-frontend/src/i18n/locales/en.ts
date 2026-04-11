@@ -96,6 +96,7 @@ export default {
     emptyModeHybrid: 'No hybrid events available right now. Try a different attendance mode.',
     emptyPriceFree: 'No free events available. Remove the price filter to see all events.',
     emptyPricePaid: 'No paid events available. Remove the price filter to see all events.',
+    emptyPriceRange: 'No events found in this price range. Try removing the price range filter to see more.',
     emptyDate: 'No events in this date range. Try adjusting or removing the date filters.',
     emptyDomain: 'No events in this category. Remove the tag filter to see all categories.',
     emptyTimezone:
