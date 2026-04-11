@@ -166,6 +166,52 @@ describe('computeEmptyStateMessage', () => {
     expect(result).toBe('home.emptyDate')
   })
 
+  it('returns date message when both dateFrom and dateTo chips are active (not emptyMultiple)', () => {
+    const chips: Chip[] = [{ key: 'dateFrom' }, { key: 'dateTo' }]
+    const result = computeEmptyStateMessage(
+      defaultFilters({ dateFrom: '2026-01-01', dateTo: '2026-01-31' }),
+      chips,
+      true,
+      stubT,
+    )
+    // Both date chips → treated as a single date constraint, NOT "2 active filters"
+    expect(result).toBe('home.emptyDate')
+  })
+
+  it('returns priceRange message for priceMin chip', () => {
+    const chips: Chip[] = [{ key: 'priceMin' }]
+    const result = computeEmptyStateMessage(
+      defaultFilters({ priceMin: '50' }),
+      chips,
+      true,
+      stubT,
+    )
+    expect(result).toBe('home.emptyPriceRange')
+  })
+
+  it('returns priceRange message for priceMax chip', () => {
+    const chips: Chip[] = [{ key: 'priceMax' }]
+    const result = computeEmptyStateMessage(
+      defaultFilters({ priceMax: '100' }),
+      chips,
+      true,
+      stubT,
+    )
+    expect(result).toBe('home.emptyPriceRange')
+  })
+
+  it('returns priceRange message when both priceMin and priceMax chips are active (not emptyMultiple)', () => {
+    const chips: Chip[] = [{ key: 'priceMin' }, { key: 'priceMax' }]
+    const result = computeEmptyStateMessage(
+      defaultFilters({ priceMin: '50', priceMax: '200' }),
+      chips,
+      true,
+      stubT,
+    )
+    // Both price-range chips → treated as a single price-range constraint, NOT "2 active filters"
+    expect(result).toBe('home.emptyPriceRange')
+  })
+
   it('returns domain message for domain chip', () => {
     const chips: Chip[] = [{ key: 'domain' }]
     const result = computeEmptyStateMessage(
@@ -338,6 +384,39 @@ describe('computeRecoverySuggestionLabel', () => {
     expect(result).toBeNull()
   })
 
+  it('returns recoveryShowAllPrices for priceMin chip', () => {
+    const chips: Chip[] = [{ key: 'priceMin' }]
+    const result = computeRecoverySuggestionLabel(
+      defaultFilters({ priceMin: '50' }),
+      chips,
+      true,
+      stubT,
+    )
+    expect(result).toBe('home.recoveryShowAllPrices')
+  })
+
+  it('returns recoveryShowAllPrices for priceMax chip', () => {
+    const chips: Chip[] = [{ key: 'priceMax' }]
+    const result = computeRecoverySuggestionLabel(
+      defaultFilters({ priceMax: '200' }),
+      chips,
+      true,
+      stubT,
+    )
+    expect(result).toBe('home.recoveryShowAllPrices')
+  })
+
+  it('returns recoveryShowAllPrices when both priceMin and priceMax chips are active', () => {
+    const chips: Chip[] = [{ key: 'priceMin' }, { key: 'priceMax' }]
+    const result = computeRecoverySuggestionLabel(
+      defaultFilters({ priceMin: '50', priceMax: '200' }),
+      chips,
+      true,
+      stubT,
+    )
+    expect(result).toBe('home.recoveryShowAllPrices')
+  })
+
   it('returns null for search chip (no obvious secondary action)', () => {
     const chips: Chip[] = [{ key: 'search' }]
     const result = computeRecoverySuggestionLabel(
@@ -494,6 +573,42 @@ describe('computeRecoverySuggestion', () => {
     )
     expect(result?.actionKey).toBe('clearLanguage')
     expect(result?.label).toContain('home.recoveryShowAllLanguages')
+  })
+
+  it('returns actionKey clearPrice for priceMin chip', () => {
+    const chips: Chip[] = [{ key: 'priceMin' }]
+    const result = computeRecoverySuggestion(
+      defaultFilters({ priceMin: '50' }),
+      chips,
+      true,
+      stubT,
+    )
+    expect(result?.actionKey).toBe('clearPrice')
+    expect(result?.label).toBe('home.recoveryShowAllPrices')
+  })
+
+  it('returns actionKey clearPrice for priceMax chip', () => {
+    const chips: Chip[] = [{ key: 'priceMax' }]
+    const result = computeRecoverySuggestion(
+      defaultFilters({ priceMax: '200' }),
+      chips,
+      true,
+      stubT,
+    )
+    expect(result?.actionKey).toBe('clearPrice')
+    expect(result?.label).toBe('home.recoveryShowAllPrices')
+  })
+
+  it('returns actionKey clearPrice when both priceMin and priceMax chips are active', () => {
+    const chips: Chip[] = [{ key: 'priceMin' }, { key: 'priceMax' }]
+    const result = computeRecoverySuggestion(
+      defaultFilters({ priceMin: '50', priceMax: '200' }),
+      chips,
+      true,
+      stubT,
+    )
+    expect(result?.actionKey).toBe('clearPrice')
+    expect(result?.label).toBe('home.recoveryShowAllPrices')
   })
 
   it('returns actionKey clearTimezone for timezone chip', () => {

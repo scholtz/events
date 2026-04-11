@@ -38,6 +38,20 @@ export function computeEmptyStateMessage(
   const activeChips = chips.filter((c) => c.key !== 'sortBy')
   const filterCount = activeChips.length
 
+  // When every active chip is a date chip (e.g. dateFrom + dateTo together),
+  // treat this as a single date constraint rather than a generic multi-filter state.
+  const dateKeys = new Set(['dateFrom', 'dateTo'])
+  if (filterCount > 0 && activeChips.every((c) => dateKeys.has(c.key))) {
+    return t('home.emptyDate')
+  }
+
+  // When every active chip is a price-range chip (priceMin / priceMax),
+  // treat this as a price-range constraint.
+  const priceRangeKeys = new Set(['priceMin', 'priceMax'])
+  if (filterCount > 0 && activeChips.every((c) => priceRangeKeys.has(c.key))) {
+    return t('home.emptyPriceRange')
+  }
+
   if (filterCount === 1) {
     const chip = activeChips[0]
     if (!chip) return t('home.emptyGeneric')
@@ -55,6 +69,9 @@ export function computeEmptyStateMessage(
     }
     if (chip.key === 'priceType') {
       return filters.priceType === 'FREE' ? t('home.emptyPriceFree') : t('home.emptyPricePaid')
+    }
+    if (chip.key === 'priceMin' || chip.key === 'priceMax') {
+      return t('home.emptyPriceRange')
     }
     if (chip.key === 'dateFrom' || chip.key === 'dateTo') {
       return t('home.emptyDate')
@@ -108,6 +125,12 @@ export function computeRecoverySuggestion(
     return { label: t('home.recoveryClearDates'), actionKey: 'clearDates' }
   }
 
+  // All chips are price-range chips (priceMin / priceMax) → "Show all prices"
+  const priceRangeKeys = new Set(['priceMin', 'priceMax'])
+  if (activeChips.every((c) => priceRangeKeys.has(c.key))) {
+    return { label: t('home.recoveryShowAllPrices'), actionKey: 'clearPrice' }
+  }
+
   if (activeChips.length !== 1) return null
   const chip = activeChips[0]
   if (!chip) return null
@@ -125,7 +148,8 @@ export function computeRecoverySuggestion(
     return { label: t('home.recoveryTryOnline'), actionKey: 'tryOnlineFromLocation' }
   }
 
-  if (chip.key === 'priceType') {
+  // All price-related chip types (priceType, priceMin, priceMax) share the same recovery.
+  if (chip.key === 'priceType' || chip.key === 'priceMin' || chip.key === 'priceMax') {
     return { label: t('home.recoveryShowAllPrices'), actionKey: 'clearPrice' }
   }
 

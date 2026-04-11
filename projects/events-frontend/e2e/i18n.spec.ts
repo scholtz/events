@@ -834,6 +834,35 @@ test.describe('Localized discovery empty states and recovery', () => {
 
     await expect(page.locator('.fallback-suggestions-title', { hasText: 'Prehľadávať kategórie udalostí' })).toBeVisible()
   })
+
+  test('price-range empty-state body message is localized in German', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-price-de', name: 'Cheap Event', slug: 'cheap-event', isFree: false, priceAmount: 10 })],
+    })
+    await page.addInitScript(() => { localStorage.setItem('app_locale', 'de') })
+
+    // Set a minimum price higher than the event's price → empty state
+    await page.goto('/?minPrice=500')
+
+    await expect(page.getByRole('heading', { name: 'Keine Veranstaltungen gefunden' })).toBeVisible()
+    await expect(page.locator('.empty-state')).toContainText('Preisbereich')
+    await expect(page.locator('.recovery-action', { hasText: 'Alle Preise anzeigen' })).toBeVisible()
+  })
+
+  test('price-range empty-state recovery action is localized in Slovak', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-price-sk', name: 'Cheap Event SK', slug: 'cheap-event-sk', isFree: false, priceAmount: 10 })],
+    })
+    await page.addInitScript(() => { localStorage.setItem('app_locale', 'sk') })
+
+    await page.goto('/?minPrice=500')
+
+    await expect(page.getByRole('heading', { name: 'Nenašli sa žiadne udalosti' })).toBeVisible()
+    await expect(page.locator('.empty-state')).toContainText('cenovom rozsahu')
+    await expect(page.locator('.recovery-action', { hasText: 'Zobraziť všetky ceny' })).toBeVisible()
+  })
 })
 
 // ---------------------------------------------------------------------------

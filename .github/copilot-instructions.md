@@ -787,6 +787,21 @@ When implementing or modifying discovery empty-state behavior (`HomeView.vue`, `
 - Empty-state messages must distinguish between: (a) no-filter empty catalog, (b) single-filter over-filtering (gives a targeted recovery action), and (c) multi-filter over-filtering (gives a generic clear-all action).
 - Low-signal notice (1–3 results) must appear on both the main discovery page and category hub pages.
 
+### Filter chip types and their empty-state handling
+The active filter chips come from `eventsStore.activeFilterChips`. Each chip has a `key` matching these patterns:
+- `search` → `emptySearch` message
+- `location` → `emptyLocation` message + `tryOnlineFromLocation` recovery
+- `attendanceMode` → `emptyModeInPerson`/`emptyModeOnline`/`emptyModeHybrid` + opposite mode recovery
+- `priceType` → `emptyPriceFree`/`emptyPricePaid` + `clearPrice` recovery
+- `priceMin` or `priceMax` → `emptyPriceRange` message + `clearPrice` recovery. These chips are treated as a combined "price range" constraint. A mix of `priceMin`+`priceMax` is collapsed to a single recovery action — NOT counted as "2 active filters".
+- `dateFrom` or `dateTo` → `emptyDate` message + `clearDates` recovery. A mix of `dateFrom`+`dateTo` is collapsed to a single date constraint — NOT counted as "2 active filters".
+- `domain` → `emptyDomain` + `clearDomain` recovery
+- `language` → `emptyLanguage` + `clearLanguage` recovery
+- `timezone` → `emptyTimezone` + `clearTimezone` recovery
+- Multiple distinct chip types → `emptyMultiple` (generic clear-all, no secondary action)
+
+When adding new filter types, follow the same pattern: add to `computeEmptyStateMessage` + `computeRecoverySuggestion` + i18n + unit tests + E2E tests (EN/SK/DE/mobile).
+
 ### Link text and Playwright strict mode
 **CRITICAL**: When you add any new link or button to a shared layout area (nav, low-signal notice, fallback suggestions, empty state), check whether its **visible text is a substring of any existing breadcrumb, heading, or nav link** before writing tests.
 
