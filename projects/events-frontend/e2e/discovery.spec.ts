@@ -2743,6 +2743,9 @@ test.describe('Rank context badge', () => {
 
     await expect(page.locator('.rank-context-badge')).toBeVisible()
     await expect(page.locator('.rank-context-badge')).toContainText('Ranked by date, quality & engagement')
+  })
+
+  test('NEWEST sort shows "Newest additions first" context', async ({ page }) => {
     setupMockApi(page, {
       domains: [makeTechDomain()],
       events: [makeApprovedEvent()],
@@ -3997,6 +4000,8 @@ test.describe('Public discovery journey — strong results', () => {
     // 2. Rank context badge clearly explains the sort order
     await expect(page.locator('.rank-context-badge')).toBeVisible()
     await expect(page.locator('.rank-context-badge')).toContainText('Ranked by date, quality & engagement')
+
+    // 3. Navigate to the nearest upcoming event
     await page.locator('.event-title-link', { hasText: 'Imminent Workshop' }).click()
     await expect(page).toHaveURL(/\/event\/imminent-workshop/)
     await expect(page.getByRole('heading', { name: 'Imminent Workshop' })).toBeVisible()
