@@ -1,5 +1,11 @@
 import { expect, test } from '@playwright/test'
-import { makeApprovedEvent, makeTechDomain, setupMockApi } from './helpers/mock-api'
+import {
+  makeApprovedEvent,
+  makeTechDomain,
+  makePublicGroup,
+  setupMockApi,
+} from './helpers/mock-api'
+import type { MockDomainCuratedCommunity } from './helpers/mock-api'
 
 // ---------------------------------------------------------------------------
 // Subdomain hub header — HomeView.vue branded header for category subdomains
@@ -645,5 +651,138 @@ test.describe('Subdomain hub: scheduled featured events', () => {
 
     await expect(page.locator('.subdomain-featured-section')).toBeVisible()
     await expect(page.locator('.subdomain-featured-heading')).toContainText('Práve v popredí')
+  })
+})
+
+// ── Subdomain hub: curated community groups ──────────────────────────────────
+
+test.describe('Subdomain hub: curated community groups', () => {
+  test('shows curated communities section when hub has curated groups', async ({ page }) => {
+    const domain = makeTechDomain()
+    const group = makePublicGroup({ name: 'Prague Builders', slug: 'prague-builders', summary: 'Key builders group' })
+    const entry: MockDomainCuratedCommunity = {
+      id: 'cc-sub-1',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: true,
+      annotation: 'Core organizers of the Prague tech scene',
+      createdAtUtc: new Date().toISOString(),
+    }
+    setupMockApi(page, {
+      domains: [domain],
+      events: [],
+      communityGroups: [group],
+      domainCuratedCommunities: [entry],
+    })
+
+    await page.goto('/?subdomain=tech')
+
+    await expect(page.locator('.subdomain-curated-communities')).toBeVisible()
+    await expect(
+      page.getByRole('heading', { name: 'Communities in this hub', exact: true }),
+    ).toBeVisible()
+    await expect(
+      page.getByRole('link', { name: 'Prague Builders', exact: true }),
+    ).toHaveAttribute('href', '/community/prague-builders')
+    await expect(page.getByText('Key builders group')).toBeVisible()
+    await expect(page.getByText('Core organizers of the Prague tech scene')).toBeVisible()
+  })
+
+  test('curated communities section not shown when hub has no curated groups', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [],
+      communityGroups: [],
+      domainCuratedCommunities: [],
+    })
+
+    await page.goto('/?subdomain=tech')
+
+    await expect(page.locator('.subdomain-curated-communities')).toBeHidden()
+  })
+
+  test('i18n: curated communities heading is localized in Slovak on subdomain hub', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'sk')
+    })
+    const domain = makeTechDomain()
+    const group = makePublicGroup({ name: 'Slovenská skupina', slug: 'slovenska-skupina' })
+    const entry: MockDomainCuratedCommunity = {
+      id: 'cc-sub-sk',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: true,
+      annotation: null,
+      createdAtUtc: new Date().toISOString(),
+    }
+    setupMockApi(page, {
+      domains: [domain],
+      events: [],
+      communityGroups: [group],
+      domainCuratedCommunities: [entry],
+    })
+
+    await page.goto('/?subdomain=tech')
+
+    await expect(
+      page.getByRole('heading', { name: 'Komunity v tomto hube', exact: true }),
+    ).toBeVisible()
+  })
+
+  test('i18n: curated communities heading is localized in German on subdomain hub', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'de')
+    })
+    const domain = makeTechDomain()
+    const group = makePublicGroup({ name: 'Deutsche Gruppe', slug: 'deutsche-gruppe' })
+    const entry: MockDomainCuratedCommunity = {
+      id: 'cc-sub-de',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: true,
+      annotation: null,
+      createdAtUtc: new Date().toISOString(),
+    }
+    setupMockApi(page, {
+      domains: [domain],
+      events: [],
+      communityGroups: [group],
+      domainCuratedCommunities: [entry],
+    })
+
+    await page.goto('/?subdomain=tech')
+
+    await expect(
+      page.getByRole('heading', { name: 'Communities in diesem Hub', exact: true }),
+    ).toBeVisible()
+  })
+
+  test('mobile viewport: curated community cards remain visible on subdomain hub', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    const domain = makeTechDomain()
+    const group = makePublicGroup({ name: 'Mobile Group', slug: 'mobile-group' })
+    const entry: MockDomainCuratedCommunity = {
+      id: 'cc-sub-mobile',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: true,
+      annotation: null,
+      createdAtUtc: new Date().toISOString(),
+    }
+    setupMockApi(page, {
+      domains: [domain],
+      events: [],
+      communityGroups: [group],
+      domainCuratedCommunities: [entry],
+    })
+
+    await page.goto('/?subdomain=tech')
+
+    await expect(page.locator('.subdomain-curated-communities')).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Mobile Group', exact: true })).toBeVisible()
   })
 })

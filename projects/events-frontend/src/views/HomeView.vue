@@ -26,7 +26,7 @@ import EventCard from '@/components/events/EventCard.vue'
 import EventFilters from '@/components/events/EventFilters.vue'
 import { safeHexColor } from '@/lib/colorUtils'
 import { gqlRequest } from '@/lib/graphql'
-import type { CatalogEvent } from '@/types'
+import type { CatalogEvent, DomainCuratedCommunity } from '@/types'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -85,13 +85,36 @@ async function fetchSubdomainFeaturedEvents(domainSlug: string) {
   }
 }
 
+// ── Subdomain curated communities ────────────────────────────────────────────
+/** Curated community groups for the current subdomain hub. */
+const subdomainCuratedCommunities = ref<DomainCuratedCommunity[]>([])
+
+async function fetchSubdomainCuratedCommunities(domainSlug: string) {
+  try {
+    const data = await gqlRequest<{ curatedCommunitiesForDomain: DomainCuratedCommunity[] }>(
+      `query CuratedCommunitiesForDomain($domainSlug: String!) {
+        curatedCommunitiesForDomain(domainSlug: $domainSlug) {
+          id groupId displayOrder isEnabled annotation upcomingPublishedEventCount
+          group { id name slug summary visibility isActive createdAtUtc createdByUserId }
+        }
+      }`,
+      { domainSlug },
+    )
+    subdomainCuratedCommunities.value = data.curatedCommunitiesForDomain
+  } catch {
+    subdomainCuratedCommunities.value = []
+  }
+}
+
 watch(
   activeDomain,
   (domain) => {
     if (domain) {
       fetchSubdomainFeaturedEvents(domain.slug)
+      fetchSubdomainCuratedCommunities(domain.slug)
     } else {
       subdomainFeaturedEvents.value = []
+      subdomainCuratedCommunities.value = []
     }
   },
   { immediate: true },
@@ -616,6 +639,36 @@ watch(
           </div>
         </div>
       </div>
+      <!-- Curated community groups for this subdomain hub -->
+      <div
+        v-if="subdomainCuratedCommunities.length"
+        class="subdomain-curated-communities container"
+        aria-labelledby="subdomain-communities-heading"
+      >
+        <h2 id="subdomain-communities-heading" class="subdomain-curated-communities-heading">
+          <span aria-hidden="true">🤝</span>
+          {{ t('category.curatedCommunities') }}
+        </h2>
+        <p class="subdomain-curated-communities-desc">{{ t('category.curatedCommunitiesDescription') }}</p>
+        <ul class="subdomain-curated-communities-list" :aria-label="t('category.curatedCommunities')">
+          <li
+            v-for="entry in subdomainCuratedCommunities"
+            :key="entry.groupId"
+            class="subdomain-curated-community-card"
+          >
+            <RouterLink
+              :to="`/community/${entry.group.slug}`"
+              class="subdomain-curated-community-name"
+            >{{ entry.group.name }}</RouterLink>
+            <p v-if="entry.group.summary" class="subdomain-curated-community-summary">
+              {{ entry.group.summary }}
+            </p>
+            <p v-if="entry.annotation" class="subdomain-curated-community-annotation">
+              {{ entry.annotation }}
+            </p>
+          </li>
+        </ul>
+      </div>
     </section>
     <section v-else class="hero">
       <div class="hero-video-wrapper" aria-hidden="true">
@@ -1120,6 +1173,69 @@ watch(
   border-radius: var(--radius-sm, 4px);
   z-index: 1;
   pointer-events: none;
+}
+
+/* ── Subdomain curated community groups ──────────────────────── */
+.subdomain-curated-communities {
+  padding: 1.25rem 1rem 0;
+}
+
+.subdomain-curated-communities-heading {
+  font-size: 1.125rem;
+  font-weight: 700;
+  margin: 0 0 0.375rem;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--color-text);
+}
+
+.subdomain-curated-communities-desc {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  margin: 0 0 0.875rem;
+}
+
+.subdomain-curated-communities-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.subdomain-curated-community-card {
+  background: var(--color-surface-raised, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
+  border-radius: var(--radius-md, 8px);
+  padding: 0.875rem 1rem;
+}
+
+.subdomain-curated-community-name {
+  font-weight: 600;
+  color: var(--color-primary, #137fec);
+  text-decoration: none;
+  font-size: 0.9375rem;
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.subdomain-curated-community-name:hover {
+  text-decoration: underline;
+}
+
+.subdomain-curated-community-summary {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  margin: 0 0 0.25rem;
+}
+
+.subdomain-curated-community-annotation {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted, #9ca3af);
+  font-style: italic;
+  margin: 0;
 }
 
 .hero-content {
