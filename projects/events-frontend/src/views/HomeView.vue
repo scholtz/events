@@ -650,7 +650,7 @@ watch(
           {{ t('category.curatedCommunities') }}
         </h2>
         <p class="subdomain-curated-communities-desc">{{ t('category.curatedCommunitiesDescription') }}</p>
-        <ul class="subdomain-curated-communities-list" aria-label="Curated communities in this hub">
+        <ul class="subdomain-curated-communities-list" :aria-label="t('category.curatedCommunities')">
           <li
             v-for="entry in subdomainCuratedCommunities"
             :key="entry.groupId"
