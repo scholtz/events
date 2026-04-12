@@ -820,6 +820,9 @@ export default {
     // Per-event ranking cue badges
     rankCueUpcomingSoon: 'Čoskoro',
     rankCueRecentlyAdded: 'Nedávno pridané',
+    // Hub-specific low-signal guidance
+    fewResultsOne: 'Tento hub stále rastie — momentálne je dostupná len 1 udalosť. Pozrite si súvisiace huby nižšie.',
+    fewResultsMany: 'Tento hub stále rastie — momentálne sú dostupné len {count} udalosti. Pozrite si súvisiace huby nižšie.',
   },
 
   // ── Hub manage page ────────────────────────────────────────────────────────

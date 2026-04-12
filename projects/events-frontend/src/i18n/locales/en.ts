@@ -846,6 +846,9 @@ export default {
     // Per-event ranking cue badges: subtle labels explaining why an event surfaces where it does
     rankCueUpcomingSoon: 'Upcoming soon',
     rankCueRecentlyAdded: 'Recently added',
+    // Hub-specific low-signal guidance: shown when this hub has very few events (1–3)
+    fewResultsOne: 'This hub is still growing — only 1 event is available right now. Explore related hubs below for more.',
+    fewResultsMany: 'This hub is still growing — only {count} events are available right now. Explore related hubs below for more.',
   },
 
   // ── Hub manage page ────────────────────────────────────────────────────────

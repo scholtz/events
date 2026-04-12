@@ -899,10 +899,45 @@ test.describe('Localized category hub quiet state', () => {
     await page.getByRole('combobox', { name: 'Language' }).selectOption('de')
 
     await expect(page.locator('.low-signal-notice')).toBeVisible()
-    await expect(page.locator('.low-signal-notice')).toContainText('Bisher nur 1 Veranstaltung')
+    // Uses category.fewResultsOne (hub-specific copy) — not the generic home.fewResultsOne
+    await expect(page.locator('.low-signal-notice')).toContainText('Dieser Hub wächst noch')
     await expect(
       page.locator('.low-signal-notice .low-signal-action', { hasText: 'Alle Veranstaltungen anzeigen' }),
     ).toBeVisible()
+  })
+
+  test('category hub low-signal notice is localized in Slovak', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-hub-sk', name: 'Hub Slovak Event', slug: 'hub-slovak-event' })],
+    })
+    await page.goto('/category/technology')
+
+    await page.getByRole('combobox', { name: 'Language' }).selectOption('sk')
+
+    await expect(page.locator('.low-signal-notice')).toBeVisible()
+    // Uses category.fewResultsOne (hub-specific copy) — not the generic home.fewResultsOne
+    await expect(page.locator('.low-signal-notice')).toContainText('Tento hub stále rastie')
+    await expect(
+      page.locator('.low-signal-notice .low-signal-action', { hasText: 'Zobraziť všetky udalosti' }),
+    ).toBeVisible()
+  })
+
+  test('category hub low-signal notice with 2 events is localized in German', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-hub-de-1', name: 'German Hub Event 1', slug: 'german-hub-event-1' }),
+        makeApprovedEvent({ id: 'e-hub-de-2', name: 'German Hub Event 2', slug: 'german-hub-event-2' }),
+      ],
+    })
+    await page.goto('/category/technology')
+
+    await page.getByRole('combobox', { name: 'Language' }).selectOption('de')
+
+    await expect(page.locator('.low-signal-notice')).toBeVisible()
+    // Plural form: category.fewResultsMany interpolates {count}
+    await expect(page.locator('.low-signal-notice')).toContainText('nur 2 Veranstaltungen')
   })
 })
 

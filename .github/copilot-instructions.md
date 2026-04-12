@@ -892,3 +892,31 @@ Specifically:
 - The PR description should describe what IS implemented (present tense), not what WILL be implemented.
 
 This prevents product owners from seeing an empty PR with only planning text before the implementation arrives.
+
+## i18n key migration quality standards
+
+When **changing which i18n key a component uses** (e.g., switching from `home.fewResultsOne` to `category.fewResultsOne` in CategoryLandingView):
+
+1. **Before making the change**, search `e2e/i18n.spec.ts` for the old translated text strings (in EN, SK, and DE) to find every existing E2E test that asserts the localized content.
+   - Use `grep -n` to find exact text like `'Bisher nur 1 Veranstaltung'` or `'Zatiaľ len 1 udalosť'`
+   - These tests MUST be updated alongside the component change — failing to do so causes CI failures
+
+2. **Update i18n tests in the same commit** as the component/translation change:
+   - Replace the expected text with the new translation
+   - If the new key has distinct, richer copy (e.g., hub-specific vs. filter-oriented), the test should verify the new copy is contextually correct
+
+3. **Do NOT only add new tests** for the new key without updating/removing the old ones — both old and new tests will run in CI, and the old test will still reference the old expected string
+
+4. **Run `i18n.spec.ts` locally** after any i18n key rename or translation copy change before committing:
+   ```bash
+   CI=true npx playwright test e2e/i18n.spec.ts --project=chromium
+   ```
+
+### Root cause prevention
+The failure pattern is: change a Vue component to use Key B instead of Key A → add new translation for Key B → forget that `i18n.spec.ts` already tests the component using Key A's translation text → CI fails.
+
+**Checklist before committing any i18n key change:**
+- [ ] Grepped `i18n.spec.ts` for the OLD translated text (all locales) 
+- [ ] Updated or removed tests using the old text
+- [ ] Added new tests for the new text if coverage was missing
+- [ ] Ran `i18n.spec.ts` locally to confirm all tests pass

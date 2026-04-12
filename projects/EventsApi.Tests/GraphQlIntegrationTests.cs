@@ -914,6 +914,165 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task EventsQuery_UpcomingSort_DomainFitTiebreakerPrefersPrimaryDomainOverSecondaryTag()
+    {
+        // When filtering to a specific domain hub, events whose PRIMARY domain matches the hub
+        // should rank ahead of events that appear in the hub only via a secondary EventTag.
+        // This ensures hub pages feel curated toward their own community rather than mixing
+        // primary-domain and cross-tagged events indiscriminately.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var sameStartTime = DateTime.UtcNow.AddDays(7);
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("domfit@example.com", "Domain Fit Tester");
+            var crypto = CreateDomain("Crypto", "crypto");
+            var tech = CreateDomain("Tech", "tech");
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.AddRange(crypto, tech);
+
+            // Event A: PRIMARY domain = crypto — should rank first in crypto hub
+            var primaryCrypto = CreateEvent(
+                "Primary Crypto Talk",
+                "primary-crypto-talk",
+                "A crypto event whose primary community is crypto.",
+                string.Empty, // sparse: no venue or city
+                string.Empty,
+                sameStartTime,
+                crypto,
+                user);
+            primaryCrypto.EventUrl = string.Empty;
+
+            // Event B: PRIMARY domain = tech, but tagged with crypto — should rank second
+            var taggedCrypto = CreateEvent(
+                "Tagged Tech Talk",
+                "tagged-tech-talk",
+                "A tech event tagged with crypto via a secondary EventTag.",
+                "Tech HQ",  // richer metadata (city + venueName set)
+                "Prague",
+                sameStartTime,
+                tech,
+                user);
+            taggedCrypto.EventUrl = "https://tech.example.com";
+            // Attach crypto as a secondary tag so it appears in the crypto hub
+            var cryptoTag = new EventTag { EventId = taggedCrypto.Id, DomainId = crypto.Id };
+
+            dbContext.Events.AddRange(primaryCrypto, taggedCrypto);
+            dbContext.EventTags.Add(cryptoTag);
+        });
+
+        using var client = factory.CreateClient();
+
+        var names = await QueryEventNamesAsync(client, new { domainSlug = "crypto", sortBy = "UPCOMING" });
+
+        // Primary-domain event must rank first even though the tagged event has better metadata
+        Assert.Equal(["Primary Crypto Talk", "Tagged Tech Talk"], names);
+    }
+
+    [Fact]
+    public async Task EventsQuery_UpcomingSort_DomainFitTiebreaker_SubdomainFilterAlsoPrioritizesPrimaryDomain()
+    {
+        // When filtering by subdomain (hub/community URL), the same domain-fit tiebreaker
+        // should apply: primary-domain events rank ahead of secondary-tagged ones.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var sameStartTime = DateTime.UtcNow.AddDays(5);
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("subdomain-fit@example.com", "Subdomain Fit Tester");
+            var aiDomain = CreateDomain("AI", "ai");
+            aiDomain.Subdomain = "ai";
+            var mlDomain = CreateDomain("ML", "ml");
+            mlDomain.Subdomain = "ml";
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.AddRange(aiDomain, mlDomain);
+
+            // Primary AI event — should appear first on the ai subdomain
+            var primaryAi = CreateEvent(
+                "Primary AI Summit",
+                "primary-ai-summit",
+                "An AI event in its primary category.",
+                string.Empty,
+                string.Empty,
+                sameStartTime,
+                aiDomain,
+                user);
+
+            // ML event with AI as secondary tag — should appear second
+            var taggedMl = CreateEvent(
+                "ML Conference With AI Tag",
+                "ml-conference-with-ai-tag",
+                "An ML conference also tagged with AI.",
+                "ML Campus",
+                "Berlin",
+                sameStartTime,
+                mlDomain,
+                user);
+            taggedMl.EventUrl = "https://mlconf.example.com";
+            var aiTag = new EventTag { EventId = taggedMl.Id, DomainId = aiDomain.Id };
+
+            dbContext.Events.AddRange(primaryAi, taggedMl);
+            dbContext.EventTags.Add(aiTag);
+        });
+
+        using var client = factory.CreateClient();
+
+        var names = await QueryEventNamesAsync(client, new { domainSubdomain = "ai", sortBy = "UPCOMING" });
+
+        Assert.Equal(["Primary AI Summit", "ML Conference With AI Tag"], names);
+    }
+
+    [Fact]
+    public async Task EventsQuery_UpcomingSort_DomainFitTiebreaker_NoFilterLeavesOrderUnchanged()
+    {
+        // Without a domain filter, the domain-fit tiebreaker must have no effect on ordering.
+        // Events should be ranked purely by date, completeness, engagement, and freshness.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var soon = DateTime.UtcNow.AddDays(3);
+        var later = DateTime.UtcNow.AddDays(10);
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("no-filter@example.com", "No Filter Tester");
+            var crypto = CreateDomain("Crypto", "crypto");
+            var tech = CreateDomain("Tech", "tech");
+
+            dbContext.Users.AddRange(user);
+            dbContext.Domains.AddRange(crypto, tech);
+
+            // Earlier event: tech domain — should appear first (sooner date)
+            var techEvent = CreateEvent(
+                "Tech Meetup Soon",
+                "tech-meetup-soon",
+                "An upcoming tech meetup.",
+                "Tech HQ",
+                "Prague",
+                soon,
+                tech,
+                user);
+
+            // Later event: crypto domain — should appear second
+            var cryptoEvent = CreateEvent(
+                "Crypto Summit Later",
+                "crypto-summit-later",
+                "A later crypto summit.",
+                "Crypto Hall",
+                "Vienna",
+                later,
+                crypto,
+                user);
+
+            dbContext.Events.AddRange(techEvent, cryptoEvent);
+        });
+
+        using var client = factory.CreateClient();
+
+        // Without a domain filter, ordering is purely by date (no domain-fit effect)
+        var names = await QueryEventNamesAsync(client, new { sortBy = "UPCOMING" });
+
+        Assert.Equal(["Tech Meetup Soon", "Crypto Summit Later"], names);
+    }
+
+    [Fact]
     public async Task EventsQuery_UpcomingSort_MixedAttendanceModePreservesCorrectOrder()
     {
         // Verifies that the default UPCOMING sort correctly orders events regardless of

@@ -2720,3 +2720,210 @@ test.describe('Category hub: per-event ranking cue badges', () => {
     await expect(eventCardWraps).toHaveCount(3)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Category hub: domain-fit ranking — primary domain before secondary-tagged events
+// ---------------------------------------------------------------------------
+
+test.describe('Category hub: domain-fit ranking', () => {
+  test('primary-domain event appears before secondary-tagged event on hub page', async ({
+    page,
+  }) => {
+    const sameStart = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+    const techDomain = makeTechDomain()
+    const cryptoDomain = { ...makeTechDomain(), id: 'dom-crypto', name: 'Crypto', slug: 'crypto', subdomain: 'crypto' }
+
+    // Event A: primary domain = technology (sparse metadata)
+    const primaryEvent = makeApprovedEvent({
+      id: 'e-primary',
+      name: 'Primary Tech Talk',
+      slug: 'primary-tech-talk',
+      startsAtUtc: sameStart,
+      endsAtUtc: sameStart,
+      venueName: '',
+      city: '',
+      eventUrl: '',
+    })
+
+    // Event B: primary domain = crypto, but tagged with technology (rich metadata)
+    const taggedEvent = makeApprovedEvent({
+      id: 'e-tagged',
+      name: 'Tagged Crypto Talk',
+      slug: 'tagged-crypto-talk',
+      startsAtUtc: sameStart,
+      endsAtUtc: sameStart,
+      domainId: cryptoDomain.id,
+      domain: { id: cryptoDomain.id, name: cryptoDomain.name, slug: cryptoDomain.slug, subdomain: cryptoDomain.subdomain },
+      venueName: 'Crypto HQ',
+      city: 'Prague',
+      eventUrl: 'https://crypto.example.com',
+      eventTags: [{ id: 'tag-1', domain: { id: techDomain.id, name: techDomain.name, slug: techDomain.slug, subdomain: techDomain.subdomain } }],
+    })
+
+    setupMockApi(page, {
+      domains: [techDomain, cryptoDomain],
+      events: [taggedEvent, primaryEvent], // intentionally reversed to verify sort
+    })
+
+    await page.goto('/category/technology')
+
+    const cards = page.locator('.event-card')
+    await expect(cards).toHaveCount(2)
+    // Primary-domain event must appear first despite having less metadata
+    await expect(cards.nth(0)).toContainText('Primary Tech Talk')
+    await expect(cards.nth(1)).toContainText('Tagged Crypto Talk')
+  })
+
+  test('without domain filter, events are ranked purely by date regardless of domain', async ({
+    page,
+  }) => {
+    const soon = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString()
+    const later = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+    const techDomain = makeTechDomain()
+    const cryptoDomain = { ...makeTechDomain(), id: 'dom-crypto', name: 'Crypto', slug: 'crypto', subdomain: 'crypto' }
+
+    setupMockApi(page, {
+      domains: [techDomain, cryptoDomain],
+      events: [
+        makeApprovedEvent({
+          id: 'e-tech-soon',
+          name: 'Tech Meetup Soon',
+          slug: 'tech-meetup-soon',
+          startsAtUtc: soon,
+          endsAtUtc: soon,
+          domainId: techDomain.id,
+          domain: { id: techDomain.id, name: techDomain.name, slug: techDomain.slug, subdomain: techDomain.subdomain },
+        }),
+        makeApprovedEvent({
+          id: 'e-crypto-later',
+          name: 'Crypto Summit Later',
+          slug: 'crypto-summit-later',
+          startsAtUtc: later,
+          endsAtUtc: later,
+          domainId: cryptoDomain.id,
+          domain: { id: cryptoDomain.id, name: cryptoDomain.name, slug: cryptoDomain.slug, subdomain: cryptoDomain.subdomain },
+        }),
+      ],
+    })
+
+    // Visit tech hub — only tech event visible, correct order
+    await page.goto('/category/technology')
+    await expect(page.locator('.event-card')).toHaveCount(1)
+    await expect(page.locator('.event-card').nth(0)).toContainText('Tech Meetup Soon')
+  })
+
+  test('mobile viewport: primary domain event appears first on hub page', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    const sameStart = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString()
+    const techDomain = makeTechDomain()
+    const cryptoDomain = { ...makeTechDomain(), id: 'dom-crypto2', name: 'Crypto', slug: 'crypto2', subdomain: 'crypto2' }
+
+    const primaryEvent = makeApprovedEvent({
+      id: 'e-primary-m',
+      name: 'Mobile Primary Tech',
+      slug: 'mobile-primary-tech',
+      startsAtUtc: sameStart,
+      endsAtUtc: sameStart,
+      venueName: '',
+      city: '',
+      eventUrl: '',
+    })
+    const taggedEvent = makeApprovedEvent({
+      id: 'e-tagged-m',
+      name: 'Mobile Tagged Crypto',
+      slug: 'mobile-tagged-crypto',
+      startsAtUtc: sameStart,
+      endsAtUtc: sameStart,
+      domainId: cryptoDomain.id,
+      domain: { id: cryptoDomain.id, name: cryptoDomain.name, slug: cryptoDomain.slug, subdomain: cryptoDomain.subdomain },
+      venueName: 'Crypto Hall',
+      city: 'Brno',
+      eventUrl: 'https://crypto2.example.com',
+      eventTags: [{ id: 'tag-2', domain: { id: techDomain.id, name: techDomain.name, slug: techDomain.slug, subdomain: techDomain.subdomain } }],
+    })
+
+    setupMockApi(page, {
+      domains: [techDomain, cryptoDomain],
+      events: [taggedEvent, primaryEvent],
+    })
+
+    await page.goto('/category/technology')
+    const cards = page.locator('.event-card')
+    await expect(cards).toHaveCount(2)
+    await expect(cards.nth(0)).toContainText('Mobile Primary Tech')
+    await expect(cards.nth(1)).toContainText('Mobile Tagged Crypto')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Category hub: hub-specific low-signal copy
+// ---------------------------------------------------------------------------
+
+test.describe('Category hub: hub-specific low-signal copy', () => {
+  test('hub low-signal notice shows hub-specific message (not generic filter message)', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-solo', name: 'Solo Tech Event', slug: 'solo-tech-event' })],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.low-signal-notice')).toBeVisible()
+    // Hub-specific message should mention "hub" — not "filters"
+    await expect(page.locator('.low-signal-notice')).toContainText('hub')
+    await expect(page.locator('.low-signal-notice')).not.toContainText('filter')
+  })
+
+  test('hub low-signal notice with 2 events shows plural hub-specific message', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [
+        makeApprovedEvent({ id: 'e-a', name: 'Event Alpha', slug: 'event-alpha' }),
+        makeApprovedEvent({ id: 'e-b', name: 'Event Beta', slug: 'event-beta' }),
+      ],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.low-signal-notice')).toBeVisible()
+    await expect(page.locator('.low-signal-notice')).toContainText('2')
+    await expect(page.locator('.low-signal-notice')).toContainText('hub')
+  })
+
+  test('i18n: hub low-signal notice is localized in Slovak', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('app_locale', 'sk'))
+
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-sk', name: 'Slovak Hub Event', slug: 'slovak-hub-event' })],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.low-signal-notice')).toBeVisible()
+    // Slovak text should include "hub" (lowercase, as in the Slovak translation)
+    await expect(page.locator('.low-signal-notice')).toContainText('hub')
+    // Should NOT contain English-only phrasing
+    await expect(page.locator('.low-signal-notice')).not.toContainText('still growing')
+  })
+
+  test('i18n: hub low-signal notice is localized in German', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('app_locale', 'de'))
+
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-de', name: 'German Hub Event', slug: 'german-hub-event' })],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.low-signal-notice')).toBeVisible()
+    // German text should include Hub
+    await expect(page.locator('.low-signal-notice')).toContainText('Hub')
+    await expect(page.locator('.low-signal-notice')).not.toContainText('still growing')
+  })
+})

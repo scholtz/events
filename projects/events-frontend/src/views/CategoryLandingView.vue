@@ -321,8 +321,8 @@ const lowSignalMessage = computed(() => {
   const count = events.value.length
   if (count === 0 || count > LOW_SIGNAL_THRESHOLD) return null
   return count === 1
-    ? t('home.fewResultsOne')
-    : t('home.fewResultsMany', { count })
+    ? t('category.fewResultsOne')
+    : t('category.fewResultsMany', { count })
 })
 
 /**
