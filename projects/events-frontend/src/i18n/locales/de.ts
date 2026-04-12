@@ -113,7 +113,7 @@ export default {
       'Bisher nur {count} Veranstaltungen — das ist ein Nischen- oder Wachstumsbereich. Filter erweitern oder später wiederkommen.',
     lowSignalClearFilters: 'Filter löschen',
     lowSignalBrowseAll: 'Alle Veranstaltungen anzeigen',
-    rankContextUpcoming: 'Nach Datum sortiert',
+    rankContextUpcoming: 'Nach Datum, Qualität und Engagement',
     rankContextNewest: 'Neueste zuerst',
     rankContextRelevance: 'Beste Treffer für „{search}"',
     allEventsInPast: 'Alle aufgeführten Veranstaltungen haben bereits stattgefunden.',

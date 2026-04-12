@@ -982,7 +982,7 @@ test.describe('Hub navigation journey', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('Hub rank context badge', () => {
-  test('shows "Sorted by upcoming date" rank context badge when events are present', async ({
+  test('shows "Ranked by date, quality & engagement" rank context badge when events are present', async ({
     page,
   }) => {
     setupMockApi(page, {
@@ -996,7 +996,7 @@ test.describe('Hub rank context badge', () => {
     await page.goto('/category/technology')
 
     await expect(page.locator('.rank-context-badge')).toBeVisible()
-    await expect(page.locator('.rank-context-badge')).toContainText('Sorted by upcoming date')
+    await expect(page.locator('.rank-context-badge')).toContainText('Ranked by date, quality & engagement')
   })
 
   test('rank context badge is not shown when hub has no events', async ({ page }) => {
@@ -1032,7 +1032,7 @@ test.describe('Hub rank context badge', () => {
     await page.goto('/category/technology')
 
     // German translation of home.rankContextUpcoming
-    await expect(page.locator('.rank-context-badge')).toContainText('Nach Datum sortiert')
+    await expect(page.locator('.rank-context-badge')).toContainText('Nach Datum, Qualität und Engagement')
   })
 
   test('i18n: rank context badge is localized in Slovak', async ({ page }) => {
@@ -1048,7 +1048,7 @@ test.describe('Hub rank context badge', () => {
     await page.goto('/category/technology')
 
     // Slovak translation of home.rankContextUpcoming
-    await expect(page.locator('.rank-context-badge')).toContainText('Zoradené podľa dátumu')
+    await expect(page.locator('.rank-context-badge')).toContainText('Zoradené: dátum, kvalita, záujem')
   })
 
   // ── Curated Community Groups on category page ─────────────────────────────
@@ -2437,7 +2437,7 @@ test.describe('Category hub: featured events precede ranked non-featured events'
 
     // Rank context badge confirms ordering is explained
     await expect(page.locator('.rank-context-badge')).toBeVisible()
-    await expect(page.locator('.rank-context-badge')).toContainText('Sorted by upcoming date')
+    await expect(page.locator('.rank-context-badge')).toContainText('Ranked by date, quality & engagement')
   })
 
   test('all-in-past notice appears on category page when all non-featured events are past', async ({

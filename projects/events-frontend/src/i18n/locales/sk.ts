@@ -113,7 +113,7 @@ export default {
       'Zatiaľ len {count} udalosti — táto oblasť je úzka alebo vznikajúca. Rozšírte filtre alebo sa vráťte neskôr.',
     lowSignalClearFilters: 'Vymazať filtre',
     lowSignalBrowseAll: 'Zobraziť všetky udalosti',
-    rankContextUpcoming: 'Zoradené podľa dátumu',
+    rankContextUpcoming: 'Zoradené: dátum, kvalita, záujem',
     rankContextNewest: 'Najnovšie príspevky',
     rankContextRelevance: 'Najlepšie zhody pre „{search}"',
     allEventsInPast: 'Všetky uvedené udalosti sa už uskutočnili.',
