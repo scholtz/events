@@ -119,7 +119,7 @@ export default {
     lowSignalClearFilters: 'Clear filters',
     lowSignalBrowseAll: 'Browse all events',
     // Rank context: subtle label explaining why results appear in this order
-    rankContextUpcoming: 'Sorted by upcoming date',
+    rankContextUpcoming: 'Ranked by date, quality & engagement',
     rankContextNewest: 'Newest additions first',
     rankContextRelevance: 'Best matches for "{search}"',
     // All-events-in-past notice: shown when results exist but every event has already taken place

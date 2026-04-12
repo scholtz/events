@@ -1132,6 +1132,58 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task EventsQuery_UpcomingSort_AlphabeticalNameBreaksAllOtherTies()
+    {
+        // Verifies that when two events are identical across all other ranking factors
+        // (same start date, same metadata completeness, same engagement, same publication
+        // freshness), the final tiebreaker is alphabetical order by name.
+        // This guarantees deterministic, reproducible ordering for the discovery page.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var sameDate = DateTime.UtcNow.AddDays(7);
+        // Shared publication timestamp — ensures the publication-freshness tiebreaker
+        // does not bias the result before we reach the alphabetical tiebreaker.
+        var publishedAt = DateTime.UtcNow.AddHours(-2);
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("alpha-sort@example.com", "Alpha Sorter");
+            var domain = CreateDomain("Tiebreak Domain", "tiebreak");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+
+            // All three events are identical in every ranking dimension:
+            //   - same start date               → upcoming-bucket and date-sort tie
+            //   - same completeness score (5/5) → city + venueName + eventUrl + language + timezone
+            //   - zero favorites                → engagement signal tie
+            //   - same PublishedAtUtc override  → publication-freshness tie
+            // Only the event Name differs → alphabetical tiebreaker must determine the order.
+            CatalogEvent Make(string name, string slug)
+            {
+                var ev = CreateEvent(
+                    name, slug, $"Description for {name}.",
+                    "Convention Hall", "Prague",
+                    sameDate, domain, user,
+                    language: "en", timezone: "Europe/Prague");
+                // Override the default DateTime.UtcNow from CreateEvent so all three events
+                // share the same publication freshness and the tiebreaker cannot affect order.
+                ev.PublishedAtUtc = publishedAt;
+                return ev;
+            };
+
+            dbContext.Events.AddRange(
+                Make("Zebra Summit", "zebra-summit"),
+                Make("Alpha Conference", "alpha-conference"),
+                Make("Middle Meetup", "middle-meetup"));
+        });
+
+        using var client = factory.CreateClient();
+        var names = await QueryEventNamesAsync(client, new { sortBy = "UPCOMING" });
+
+        // Alphabetical order is the final deterministic tiebreaker
+        Assert.Equal(["Alpha Conference", "Middle Meetup", "Zebra Summit"], names);
+    }
+
+    [Fact]
     public async Task EventsQuery_LanguageFilter_PreservesUpcomingSortWithinLanguage()
     {
         // Verifies that when a language filter is applied, the remaining events still

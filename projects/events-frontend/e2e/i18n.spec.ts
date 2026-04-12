@@ -946,7 +946,7 @@ test.describe('Localized category hub quiet state', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('Localized rank context badge', () => {
-  test('rank context badge shows "Nach Datum sortiert" in German (UPCOMING sort)', async ({
+  test('rank context badge shows "Nach Datum, Qualität und Engagement" in German (UPCOMING sort)', async ({
     page,
   }) => {
     setupMockApi(page, {
@@ -963,10 +963,10 @@ test.describe('Localized rank context badge', () => {
     await page.goto('/')
 
     await expect(page.locator('.rank-context-badge')).toBeVisible()
-    await expect(page.locator('.rank-context-badge')).toContainText('Nach Datum sortiert')
+    await expect(page.locator('.rank-context-badge')).toContainText('Nach Datum, Qualität und Engagement')
   })
 
-  test('rank context badge shows "Zoradené podľa dátumu" in Slovak (UPCOMING sort)', async ({
+  test('rank context badge shows "Zoradené: dátum, kvalita, záujem" in Slovak (UPCOMING sort)', async ({
     page,
   }) => {
     setupMockApi(page, {
@@ -983,7 +983,7 @@ test.describe('Localized rank context badge', () => {
     await page.goto('/')
 
     await expect(page.locator('.rank-context-badge')).toBeVisible()
-    await expect(page.locator('.rank-context-badge')).toContainText('Zoradené podľa dátumu')
+    await expect(page.locator('.rank-context-badge')).toContainText('Zoradené: dátum, kvalita, záujem')
   })
 
   test('rank context badge shows "Neueste zuerst" in German when NEWEST sort is active', async ({

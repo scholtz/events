@@ -2734,7 +2734,7 @@ test.describe('Default sort — upcoming before past', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('Rank context badge', () => {
-  test('default UPCOMING sort shows "Sorted by upcoming date" context', async ({ page }) => {
+  test('default UPCOMING sort shows "Ranked by date, quality & engagement" context', async ({ page }) => {
     setupMockApi(page, {
       domains: [makeTechDomain()],
       events: [makeApprovedEvent()],
@@ -2742,7 +2742,7 @@ test.describe('Rank context badge', () => {
     await page.goto('/')
 
     await expect(page.locator('.rank-context-badge')).toBeVisible()
-    await expect(page.locator('.rank-context-badge')).toContainText('Sorted by upcoming date')
+    await expect(page.locator('.rank-context-badge')).toContainText('Ranked by date, quality & engagement')
   })
 
   test('NEWEST sort shows "Newest additions first" context', async ({ page }) => {
@@ -3999,7 +3999,7 @@ test.describe('Public discovery journey — strong results', () => {
 
     // 2. Rank context badge clearly explains the sort order
     await expect(page.locator('.rank-context-badge')).toBeVisible()
-    await expect(page.locator('.rank-context-badge')).toContainText('Sorted by upcoming date')
+    await expect(page.locator('.rank-context-badge')).toContainText('Ranked by date, quality & engagement')
 
     // 3. Navigate to the nearest upcoming event
     await page.locator('.event-title-link', { hasText: 'Imminent Workshop' }).click()
@@ -4469,7 +4469,7 @@ test.describe('Desktop: result context messaging', () => {
     await page.goto('/?mode=online')
 
     await expect(page.locator('.rank-context-badge')).toBeVisible()
-    await expect(page.locator('.rank-context-badge')).toContainText(/sorted by upcoming/i)
+    await expect(page.locator('.rank-context-badge')).toContainText(/ranked by date/i)
   })
 
   test('results summary shows plain count when no advanced filters active', async ({ page }) => {
@@ -4485,5 +4485,70 @@ test.describe('Desktop: result context messaging', () => {
     const summary = page.locator('.results-summary')
     await expect(summary).toBeVisible()
     await expect(summary).toContainText(/2 events available/i)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Rank context badge — multi-factor copy validation
+// ---------------------------------------------------------------------------
+
+test.describe('Rank context badge — multi-factor copy', () => {
+  test('rank context badge explicitly mentions quality and engagement, not just date', async ({
+    page,
+  }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-1', name: 'Tech Event', slug: 'tech-event' })],
+    })
+    await page.goto('/')
+
+    const badge = page.locator('.rank-context-badge')
+    await expect(badge).toBeVisible()
+    // The badge must communicate multi-factor ranking (not just "date"), so users
+    // understand that quality and engagement contribute to the curated order.
+    await expect(badge).toContainText(/quality/i)
+    await expect(badge).toContainText(/engagement/i)
+  })
+
+  test('rank context badge for UPCOMING sort conveys date as primary factor', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-1', name: 'Tech Event', slug: 'tech-event' })],
+    })
+    await page.goto('/')
+
+    await expect(page.locator('.rank-context-badge')).toContainText(/date/i)
+  })
+
+  test('rank context badge mentions quality in Slovak locale', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-1', name: 'Tech Event', slug: 'tech-event' })],
+    })
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'sk')
+    })
+    await page.goto('/')
+
+    const badge = page.locator('.rank-context-badge')
+    await expect(badge).toBeVisible()
+    // Slovak: 'Zoradené: dátum, kvalita, záujem'
+    await expect(badge).toContainText('kvalita')
+  })
+
+  test('rank context badge mentions quality in German locale', async ({ page }) => {
+    setupMockApi(page, {
+      domains: [makeTechDomain()],
+      events: [makeApprovedEvent({ id: 'e-1', name: 'Tech Event', slug: 'tech-event' })],
+    })
+    await page.addInitScript(() => {
+      localStorage.setItem('app_locale', 'de')
+    })
+    await page.goto('/')
+
+    const badge = page.locator('.rank-context-badge')
+    await expect(badge).toBeVisible()
+    // German: 'Nach Datum, Qualität und Engagement'
+    await expect(badge).toContainText('Qualität')
   })
 })
