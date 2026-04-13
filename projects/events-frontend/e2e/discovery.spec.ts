@@ -3372,7 +3372,8 @@ test.describe('Event card language and timezone context', () => {
     const card = page.locator('.event-card', { hasText: 'Online Prague Event' })
     await expect(card).toBeVisible()
     await expect(card.locator('.event-detail-timezone')).toBeVisible()
-    await expect(card.locator('.event-detail-timezone')).toContainText('Europe/Prague')
+    // Timezone row must show a human-readable label, not the raw IANA identifier.
+    await expect(card.locator('.event-detail-timezone')).toContainText(/Central European|CET|CEST/i)
   })
 
   test('hybrid event card shows timezone row when timezone is set', async ({ page }) => {
@@ -3392,10 +3393,15 @@ test.describe('Event card language and timezone context', () => {
     const card = page.locator('.event-card', { hasText: 'Hybrid Berlin Event' })
     await expect(card).toBeVisible()
     await expect(card.locator('.event-detail-timezone')).toBeVisible()
-    await expect(card.locator('.event-detail-timezone')).toContainText('Europe/Berlin')
+    await expect(card.locator('.event-detail-timezone')).toContainText(/Central European|CET|CEST/i)
   })
 
-  test('in-person event card does not show timezone row even when timezone is set', async ({ page }) => {
+  test('in-person event card shows timezone row when timezone is set', async ({ page }) => {
+    // In-person events with an explicit timezone must show it so attendees in other
+    // regions can read the local event time without confusion.  Previously only
+    // ONLINE/HYBRID events showed timezone; this was inconsistent because an
+    // in-person event's time is displayed in the event's local timezone, not the
+    // viewer's browser timezone.  Showing the label makes that explicit.
     setupMockApi(page, {
       events: [
         makeApprovedEvent({
@@ -3410,6 +3416,26 @@ test.describe('Event card language and timezone context', () => {
     await page.goto('/')
 
     const card = page.locator('.event-card', { hasText: 'In Person Event' })
+    await expect(card).toBeVisible()
+    await expect(card.locator('.event-detail-timezone')).toBeVisible()
+    await expect(card.locator('.event-detail-timezone')).toContainText(/Central European|CET|CEST/i)
+  })
+
+  test('event card does not show timezone row when timezone is null', async ({ page }) => {
+    setupMockApi(page, {
+      events: [
+        makeApprovedEvent({
+          id: 'e-notz',
+          name: 'No Timezone Event',
+          slug: 'no-timezone-event',
+          attendanceMode: 'IN_PERSON',
+          timezone: null,
+        }),
+      ],
+    })
+    await page.goto('/')
+
+    const card = page.locator('.event-card', { hasText: 'No Timezone Event' })
     await expect(card).toBeVisible()
     await expect(card.locator('.event-detail-timezone')).toBeHidden()
   })
@@ -3432,7 +3458,7 @@ test.describe('Event card language and timezone context', () => {
     const card = page.locator('.event-card', { hasText: 'German Online Talk' })
     await expect(card).toBeVisible()
     await expect(card.locator('.event-detail-language')).toContainText('de')
-    await expect(card.locator('.event-detail-timezone')).toContainText('Europe/Berlin')
+    await expect(card.locator('.event-detail-timezone')).toContainText(/Central European|CET|CEST/i)
   })
 
   test('language and timezone context is visible on mobile viewport', async ({ page }) => {
@@ -3455,6 +3481,32 @@ test.describe('Event card language and timezone context', () => {
     await expect(card).toBeVisible()
     await expect(card.locator('.event-detail-language')).toBeVisible()
     await expect(card.locator('.event-detail-timezone')).toBeVisible()
+  })
+
+  test('event card time is displayed in the event timezone when set', async ({ page }) => {
+    // An event starting at 18:00 UTC with timezone Europe/Prague should show
+    // 20:00 (CET+2 in summer / CEST) on the card — not the viewer's local time.
+    // This tests that EventCard uses the event's IANA timezone for all events.
+    setupMockApi(page, {
+      events: [
+        makeApprovedEvent({
+          id: 'e-tz-time',
+          name: 'Prague Time Event',
+          slug: 'prague-time-event',
+          attendanceMode: 'IN_PERSON',
+          timezone: 'Europe/Prague',
+          startsAtUtc: '2026-07-15T16:00:00Z', // 16:00 UTC = 18:00 CEST
+        }),
+      ],
+    })
+    await page.goto('/')
+
+    const card = page.locator('.event-card', { hasText: 'Prague Time Event' })
+    await expect(card).toBeVisible()
+    // The Date row should include the abbreviated timezone name (e.g. "GMT+2", "CEST")
+    // to make the local event time unambiguous to international attendees.
+    const dateRow = card.locator('.event-detail-item').first()
+    await expect(dateRow).toContainText(/CEST|GMT\+2|CET/i)
   })
 })
 

@@ -45,14 +45,35 @@ const attendanceModeLabel = computed(() => {
 const eventLanguage = computed(() => props.event.language ?? null)
 
 /**
- * Show timezone for online and hybrid events when the timezone is specified.
- * In-person events don't need this — venue location implies timezone well enough.
+ * Returns the event's IANA timezone when explicitly set, regardless of attendance
+ * mode.  Using the event's canonical timezone for all date/time display ensures:
+ *   - Times are consistent between discovery cards and the event detail page.
+ *   - Attendees always see the local time at the event (not their own browser
+ *     timezone), which is what matters when deciding whether to attend.
+ * Online/hybrid events benefit most since there is no venue location to infer
+ * timezone from, but in-person events with an explicit timezone also show it so
+ * attendees in other regions can understand the local schedule without confusion.
  */
-const eventTimezone = computed(() => {
-  const mode = props.event.attendanceMode
-  if (mode !== 'ONLINE' && mode !== 'HYBRID') return null
-  return props.event.timezone ?? null
-})
+const eventTimezone = computed(() => props.event.timezone ?? null)
+
+/**
+ * Returns a human-readable timezone label (e.g. "Central European Time") for
+ * the timezone row.  Falls back to the raw IANA identifier when Intl cannot
+ * resolve a long name, so the display degrades gracefully.
+ */
+function formatTimezoneLabel(tz: string): string {
+  try {
+    const label = new Intl.DateTimeFormat(locale.value, {
+      timeZone: tz,
+      timeZoneName: 'long',
+    })
+      .formatToParts(new Date())
+      .find((p) => p.type === 'timeZoneName')?.value
+    return label ?? tz
+  } catch {
+    return tz
+  }
+}
 
 function formatDate(dateStr: string): string {
   const tz = eventTimezone.value ?? undefined
@@ -69,7 +90,11 @@ function formatTime(dateStr: string): string {
   return new Date(dateStr).toLocaleTimeString(locale.value, {
     hour: 'numeric',
     minute: '2-digit',
-    ...(tz ? { timeZone: tz } : {}),
+    // Include the abbreviated timezone name in the time string when the event
+    // has an explicit timezone so attendees immediately see the local time zone
+    // (e.g. "7:00 PM CET") without needing to look at the separate Timezone row.
+    // This matches the behaviour of the event detail page's formatTime function.
+    ...(tz ? { timeZone: tz, timeZoneName: 'short' } : {}),
   })
 }
 
@@ -151,7 +176,7 @@ async function handleFavoriteToggle() {
         </div>
         <div v-if="eventTimezone" class="event-detail-item event-detail-timezone">
           <dt>{{ t('eventCard.timezone') }}</dt>
-          <dd>{{ eventTimezone }}</dd>
+          <dd>{{ formatTimezoneLabel(eventTimezone) }}</dd>
         </div>
       </dl>
 
