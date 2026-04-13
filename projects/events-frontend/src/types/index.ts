@@ -279,6 +279,9 @@ export interface CommunityGroup {
   createdByUserId: string | null
 }
 
+/** Lifecycle status of a hub-community association */
+export type HubCommunityAssociationStatus = 'PENDING' | 'APPROVED' | 'REJECTED'
+
 /** Matches backend DomainCuratedCommunity entity (steward-curated hub community group) */
 export interface DomainCuratedCommunity {
   id: string
@@ -288,6 +291,14 @@ export interface DomainCuratedCommunity {
   displayOrder: number
   isEnabled: boolean
   annotation: string | null
+  /** Lifecycle status of this association. Absent on older admin-created entries (treated as APPROVED). */
+  status?: HubCommunityAssociationStatus
+  /** The domain hub this entry belongs to. Present only in myCommunityHubAssociations query. */
+  domain?: EventDomain
+  requestedByUserId?: string | null
+  reviewedByUserId?: string | null
+  reviewedAtUtc?: string | null
+  rejectionNote?: string | null
   createdAtUtc: string
   /**
    * Count of upcoming published events linked to this community.

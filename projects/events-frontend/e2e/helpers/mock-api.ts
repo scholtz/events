@@ -178,6 +178,11 @@ export type MockDomainCuratedCommunity = {
   displayOrder: number
   isEnabled: boolean
   annotation: string | null
+  status?: 'PENDING' | 'APPROVED' | 'REJECTED'
+  requestedByUserId?: string | null
+  reviewedByUserId?: string | null
+  reviewedAtUtc?: string | null
+  rejectionNote?: string | null
   createdAtUtc: string
 }
 
@@ -1487,6 +1492,34 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       return
     }
 
+    if (query.includes('query') && query.includes('MyCommunityHubAssociations')) {
+      const groupId = variables.groupId as string | undefined
+      const currentUser = state.users.find((u) => u.id === state.currentUserId)
+      if (!currentUser) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Not authorized', extensions: { code: 'AUTH_NOT_AUTHORIZED' } }] }),
+        })
+        return
+      }
+      const entries = groupId
+        ? state.domainCuratedCommunities
+            .filter((c) => c.groupId === groupId)
+            .sort((a, b) => new Date(b.createdAtUtc).getTime() - new Date(a.createdAtUtc).getTime())
+            .map((c) => ({
+              ...c,
+              domain: state.domains.find((d) => d.id === c.domainId) ?? null,
+            }))
+        : []
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { myCommunityHubAssociations: entries } }),
+      })
+      return
+    }
+
     if (query.includes('query') && query.includes('Me')) {
       const user = state.users.find((u) => u.id === state.currentUserId)
       if (!user) {
@@ -1942,7 +1975,12 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       const now = Date.now()
       const entries = domain
         ? state.domainCuratedCommunities
-            .filter((c) => c.domainId === domain.id && c.isEnabled)
+            .filter(
+              (c) =>
+                c.domainId === domain.id &&
+                c.isEnabled &&
+                (!c.status || c.status === 'APPROVED'),
+            )
             .sort((a, b) => a.displayOrder - b.displayOrder)
             .map((c) => {
               const group = state.communityGroups.find((g) => g.id === c.groupId) ?? null
@@ -1991,7 +2029,12 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       const entries = domainId
         ? state.domainCuratedCommunities
             .filter((c) => c.domainId === domainId)
-            .sort((a, b) => a.displayOrder - b.displayOrder)
+            .sort((a, b) => {
+              // Pending entries first
+              const aP = !a.status || a.status === 'PENDING' ? 0 : 1
+              const bP = !b.status || b.status === 'PENDING' ? 0 : 1
+              return aP - bP || a.displayOrder - b.displayOrder
+            })
             .map((c) => ({
               ...c,
               group: state.communityGroups.find((g) => g.id === c.groupId) ?? null,
@@ -2005,7 +2048,116 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       return
     }
 
-    // ── Community group mutations ─────────────────────────────────────────────
+    if (query.includes('mutation') && query.includes('RequestHubInclusion')) {
+      const input = variables.input as { groupId: string; domainId: string; note?: string | null }
+      const currentUser = state.users.find((u) => u.id === state.currentUserId)
+      if (!currentUser) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Not authorized', extensions: { code: 'AUTH_NOT_AUTHORIZED' } }] }),
+        })
+        return
+      }
+      const existing = state.domainCuratedCommunities.find(
+        (c) => c.groupId === input.groupId && c.domainId === input.domainId,
+      )
+      if (existing) {
+        if (existing.status === 'PENDING') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ errors: [{ message: 'A pending request already exists.', extensions: { code: 'REQUEST_PENDING' } }] }),
+          })
+          return
+        }
+        if (existing.status === 'APPROVED') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ errors: [{ message: 'Already approved.', extensions: { code: 'ALREADY_APPROVED' } }] }),
+          })
+          return
+        }
+        // Re-request after rejection
+        existing.status = 'PENDING'
+        existing.requestedByUserId = currentUser.id
+        existing.reviewedByUserId = null
+        existing.reviewedAtUtc = null
+        existing.rejectionNote = null
+        if (input.note?.trim()) existing.annotation = input.note.trim()
+        const group = state.communityGroups.find((g) => g.id === existing.groupId) ?? null
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: { requestHubInclusion: { ...existing, group } } }),
+        })
+        return
+      }
+      const entry: MockDomainCuratedCommunity = {
+        id: `req-${Date.now()}`,
+        domainId: input.domainId,
+        groupId: input.groupId,
+        displayOrder: state.domainCuratedCommunities.filter((c) => c.domainId === input.domainId).length,
+        isEnabled: false,
+        annotation: input.note?.trim() ?? null,
+        status: 'PENDING',
+        requestedByUserId: currentUser.id,
+        reviewedByUserId: null,
+        reviewedAtUtc: null,
+        rejectionNote: null,
+        createdAtUtc: new Date().toISOString(),
+      }
+      state.domainCuratedCommunities.push(entry)
+      const group = state.communityGroups.find((g) => g.id === input.groupId) ?? null
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { requestHubInclusion: { ...entry, group } } }),
+      })
+      return
+    }
+
+    if (query.includes('mutation') && query.includes('ReviewHubInclusionRequest')) {
+      const input = variables.input as { associationId: string; approve: boolean; rejectionNote?: string | null }
+      const currentUser = state.users.find((u) => u.id === state.currentUserId)
+      if (!currentUser) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Not authorized', extensions: { code: 'AUTH_NOT_AUTHORIZED' } }] }),
+        })
+        return
+      }
+      const entry = state.domainCuratedCommunities.find((c) => c.id === input.associationId)
+      if (!entry) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ errors: [{ message: 'Not found', extensions: { code: 'NOT_FOUND' } }] }),
+        })
+        return
+      }
+      if (input.approve) {
+        entry.status = 'APPROVED'
+        entry.isEnabled = true
+        entry.rejectionNote = null
+      } else {
+        entry.status = 'REJECTED'
+        entry.rejectionNote = input.rejectionNote?.trim() ?? null
+      }
+      entry.reviewedByUserId = currentUser.id
+      entry.reviewedAtUtc = new Date().toISOString()
+      const group = state.communityGroups.find((g) => g.id === entry.groupId) ?? null
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { reviewHubInclusionRequest: { ...entry, group } } }),
+      })
+      return
+    }
+
+
 
     if (query.includes('mutation') && query.includes('CreateCommunityGroup')) {
       const userId = getActiveUserId()

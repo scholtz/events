@@ -118,8 +118,11 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             // Each community group can only be curated once per domain
             entity.HasIndex(dcc => new { dcc.DomainId, dcc.GroupId }).IsUnique();
             entity.HasIndex(dcc => new { dcc.DomainId, dcc.DisplayOrder });
+            entity.HasIndex(dcc => new { dcc.DomainId, dcc.Status });
 
             entity.Property(dcc => dcc.Annotation).HasMaxLength(300);
+            entity.Property(dcc => dcc.RejectionNote).HasMaxLength(500);
+            entity.Property(dcc => dcc.Status).HasConversion<string>().HasMaxLength(32);
 
             entity.HasOne(dcc => dcc.Domain)
                 .WithMany()
@@ -130,6 +133,16 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .WithMany()
                 .HasForeignKey(dcc => dcc.GroupId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(dcc => dcc.RequestedBy)
+                .WithMany()
+                .HasForeignKey(dcc => dcc.RequestedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(dcc => dcc.ReviewedBy)
+                .WithMany()
+                .HasForeignKey(dcc => dcc.ReviewedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<DomainAdministrator>(entity =>

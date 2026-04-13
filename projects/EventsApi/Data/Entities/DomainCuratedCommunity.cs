@@ -4,9 +4,11 @@ using HotChocolate;
 namespace EventsApi.Data.Entities;
 
 /// <summary>
-/// An administrator-curated association between a domain hub and a community group.
+/// An association between a domain hub and a community group.
 /// Hub stewards can select, order, enable/disable, and annotate community groups
 /// to be featured on the public hub page.
+/// Community group administrators may also request hub inclusion, creating a PENDING
+/// entry that a domain administrator must approve before it appears publicly.
 /// </summary>
 public sealed class DomainCuratedCommunity
 {
@@ -28,6 +30,7 @@ public sealed class DomainCuratedCommunity
     /// <summary>
     /// When false the entry is kept for reference but excluded from public hub rendering.
     /// Defaults to true so newly added communities are immediately visible.
+    /// Only meaningful when Status == Approved.
     /// </summary>
     public bool IsEnabled { get; set; } = true;
 
@@ -36,6 +39,37 @@ public sealed class DomainCuratedCommunity
     /// Displayed publicly alongside the community card. Maximum 300 characters.
     /// </summary>
     public string? Annotation { get; set; }
+
+    /// <summary>
+    /// Lifecycle status of this association.
+    /// Entries created by domain/global administrators are set to Approved directly.
+    /// Entries initiated by community administrators via requestHubInclusion start as Pending.
+    /// </summary>
+    public HubCommunityAssociationStatus Status { get; set; } = HubCommunityAssociationStatus.Approved;
+
+    /// <summary>
+    /// The user who requested hub inclusion (set when a community admin initiates the request).
+    /// Null for entries created directly by domain/global administrators.
+    /// </summary>
+    public Guid? RequestedByUserId { get; set; }
+
+    [GraphQLIgnore]
+    public ApplicationUser? RequestedBy { get; set; }
+
+    /// <summary>The user who approved or rejected this association. Null if not yet reviewed.</summary>
+    public Guid? ReviewedByUserId { get; set; }
+
+    [GraphQLIgnore]
+    public ApplicationUser? ReviewedBy { get; set; }
+
+    /// <summary>When the association was approved or rejected. Null if not yet reviewed.</summary>
+    public DateTime? ReviewedAtUtc { get; set; }
+
+    /// <summary>
+    /// Optional note provided by the reviewer when rejecting the request.
+    /// Maximum 500 characters.
+    /// </summary>
+    public string? RejectionNote { get; set; }
 
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 

@@ -20327,6 +20327,734 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal(0, entries[0].GetProperty("upcomingPublishedEventCount").GetInt32());
     }
 
+    // ── RequestHubInclusion / ReviewHubInclusionRequest tests ─────────────────
+
+    [Fact]
+    public async Task RequestHubInclusion_GroupAdmin_CreatesPendingEntry()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var groupAdminId = Guid.Empty;
+        var groupId = Guid.Empty;
+        var domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var groupAdmin = CreateUser("hub-req-admin@example.com", "Group Admin");
+            groupAdminId = groupAdmin.Id;
+            var domain = CreateDomain("Request Hub", "request-hub");
+            domainId = domain.Id;
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Requesting Community",
+                Slug = "requesting-community",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Public,
+            };
+            groupId = group.Id;
+            dbContext.Users.Add(groupAdmin);
+            dbContext.Domains.Add(domain);
+            dbContext.CommunityGroups.Add(group);
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = groupId,
+                UserId = groupAdminId,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, groupAdminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation RequestHub($input: RequestHubInclusionInput!) {
+              requestHubInclusion(input: $input) {
+                id groupId domainId status isEnabled annotation
+              }
+            }
+            """,
+            new { input = new { groupId, domainId, note = "We run weekly meetups relevant to this hub." } });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("requestHubInclusion");
+        Assert.Equal("PENDING", result.GetProperty("status").GetString());
+        Assert.False(result.GetProperty("isEnabled").GetBoolean());
+        Assert.Equal("We run weekly meetups relevant to this hub.", result.GetProperty("annotation").GetString());
+
+        // Verify pending entry was persisted
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var saved = await db.DomainCuratedCommunities.SingleOrDefaultAsync(
+            dcc => dcc.DomainId == domainId && dcc.GroupId == groupId);
+        Assert.NotNull(saved);
+        Assert.Equal(EventsApi.Data.Entities.HubCommunityAssociationStatus.Pending, saved!.Status);
+        Assert.Equal(groupAdminId, saved.RequestedByUserId);
+    }
+
+    [Fact]
+    public async Task RequestHubInclusion_RegularMember_Forbidden()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var memberId = Guid.Empty;
+        var groupId = Guid.Empty;
+        var domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var member = CreateUser("hub-req-member@example.com", "Member");
+            memberId = member.Id;
+            var domain = CreateDomain("Member Request Hub", "member-request-hub");
+            domainId = domain.Id;
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Member Community",
+                Slug = "member-community",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Public,
+            };
+            groupId = group.Id;
+            dbContext.Users.Add(member);
+            dbContext.Domains.Add(domain);
+            dbContext.CommunityGroups.Add(group);
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = groupId,
+                UserId = memberId,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Member,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, memberId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation RequestHub($input: RequestHubInclusionInput!) {
+                  requestHubInclusion(input: $input) { status }
+                }
+                """,
+            variables = new { input = new { groupId, domainId, note = (string?)null } }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        Assert.True(errors.GetArrayLength() > 0);
+        var code = errors[0].GetProperty("extensions").GetProperty("code").GetString();
+        Assert.Equal("FORBIDDEN", code);
+    }
+
+    [Fact]
+    public async Task RequestHubInclusion_Unauthenticated_ReturnsAuthError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var groupId = Guid.NewGuid();
+        var domainId = Guid.NewGuid();
+
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation RequestHub($input: RequestHubInclusionInput!) {
+                  requestHubInclusion(input: $input) { status }
+                }
+                """,
+            variables = new { input = new { groupId, domainId, note = (string?)null } }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        Assert.True(errors.GetArrayLength() > 0);
+    }
+
+    [Fact]
+    public async Task RequestHubInclusion_DuplicatePending_ReturnsPendingError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var groupAdminId = Guid.Empty;
+        var groupId = Guid.Empty;
+        var domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var groupAdmin = CreateUser("hub-dup-admin@example.com", "Dup Admin");
+            groupAdminId = groupAdmin.Id;
+            var domain = CreateDomain("Dup Request Hub", "dup-request-hub");
+            domainId = domain.Id;
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Dup Community",
+                Slug = "dup-community",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Public,
+            };
+            groupId = group.Id;
+            dbContext.Users.Add(groupAdmin);
+            dbContext.Domains.Add(domain);
+            dbContext.CommunityGroups.Add(group);
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = groupId,
+                UserId = groupAdminId,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+            // Pre-existing pending entry
+            dbContext.DomainCuratedCommunities.Add(new EventsApi.Data.Entities.DomainCuratedCommunity
+            {
+                DomainId = domainId,
+                GroupId = groupId,
+                Status = EventsApi.Data.Entities.HubCommunityAssociationStatus.Pending,
+                RequestedByUserId = groupAdminId,
+                IsEnabled = false,
+                DisplayOrder = 0,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, groupAdminId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation RequestHub($input: RequestHubInclusionInput!) {
+                  requestHubInclusion(input: $input) { status }
+                }
+                """,
+            variables = new { input = new { groupId, domainId, note = (string?)null } }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        var code = errors[0].GetProperty("extensions").GetProperty("code").GetString();
+        Assert.Equal("REQUEST_PENDING", code);
+    }
+
+    [Fact]
+    public async Task RequestHubInclusion_AfterRejection_ReRequestSucceeds()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var groupAdminId = Guid.Empty;
+        var groupId = Guid.Empty;
+        var domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var groupAdmin = CreateUser("hub-rereq-admin@example.com", "Rerequest Admin");
+            groupAdminId = groupAdmin.Id;
+            var domain = CreateDomain("Rerequest Hub", "rerequest-hub");
+            domainId = domain.Id;
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Rerequest Community",
+                Slug = "rerequest-community",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Public,
+            };
+            groupId = group.Id;
+            dbContext.Users.Add(groupAdmin);
+            dbContext.Domains.Add(domain);
+            dbContext.CommunityGroups.Add(group);
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = groupId,
+                UserId = groupAdminId,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Admin,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+            // Pre-existing rejected entry
+            dbContext.DomainCuratedCommunities.Add(new EventsApi.Data.Entities.DomainCuratedCommunity
+            {
+                DomainId = domainId,
+                GroupId = groupId,
+                Status = EventsApi.Data.Entities.HubCommunityAssociationStatus.Rejected,
+                RequestedByUserId = groupAdminId,
+                RejectionNote = "Not relevant yet.",
+                IsEnabled = false,
+                DisplayOrder = 0,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, groupAdminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation RequestHub($input: RequestHubInclusionInput!) {
+              requestHubInclusion(input: $input) { status rejectionNote }
+            }
+            """,
+            new { input = new { groupId, domainId, note = (string?)null } });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("requestHubInclusion");
+        Assert.Equal("PENDING", result.GetProperty("status").GetString());
+        // Rejection note should be cleared on re-request
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("rejectionNote").ValueKind);
+    }
+
+    [Fact]
+    public async Task ReviewHubInclusionRequest_DomainAdmin_ApprovesRequest()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var domainAdminId = Guid.Empty;
+        var groupId = Guid.Empty;
+        var domainId = Guid.Empty;
+        var associationId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domainAdmin = CreateUser("hub-review-admin@example.com", "Domain Admin");
+            domainAdminId = domainAdmin.Id;
+            var domain = CreateDomain("Review Hub", "review-hub");
+            domainId = domain.Id;
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Review Community",
+                Slug = "review-community",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Public,
+            };
+            groupId = group.Id;
+            dbContext.Users.Add(domainAdmin);
+            dbContext.Domains.Add(domain);
+            dbContext.CommunityGroups.Add(group);
+            dbContext.DomainAdministrators.Add(new EventsApi.Data.Entities.DomainAdministrator
+            {
+                DomainId = domainId,
+                UserId = domainAdminId,
+            });
+            var association = new EventsApi.Data.Entities.DomainCuratedCommunity
+            {
+                DomainId = domainId,
+                GroupId = groupId,
+                Status = EventsApi.Data.Entities.HubCommunityAssociationStatus.Pending,
+                IsEnabled = false,
+                DisplayOrder = 0,
+            };
+            associationId = association.Id;
+            dbContext.DomainCuratedCommunities.Add(association);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, domainAdminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation ReviewHub($input: ReviewHubInclusionRequestInput!) {
+              reviewHubInclusionRequest(input: $input) {
+                status isEnabled reviewedAtUtc rejectionNote
+              }
+            }
+            """,
+            new { input = new { associationId, approve = true, rejectionNote = (string?)null } });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("reviewHubInclusionRequest");
+        Assert.Equal("APPROVED", result.GetProperty("status").GetString());
+        Assert.True(result.GetProperty("isEnabled").GetBoolean());
+        Assert.NotEqual(JsonValueKind.Null, result.GetProperty("reviewedAtUtc").ValueKind);
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("rejectionNote").ValueKind);
+
+        // Verify public query now includes this community
+        using var publicClient = factory.CreateClient();
+        using var publicDoc = await ExecuteGraphQlAsync(
+            publicClient,
+            """
+            query CuratedCommunities($domainSlug: String!) {
+              curatedCommunitiesForDomain(domainSlug: $domainSlug) { group { name } }
+            }
+            """,
+            new { domainSlug = "review-hub" });
+        var entries = publicDoc.RootElement.GetProperty("data").GetProperty("curatedCommunitiesForDomain");
+        Assert.Equal(1, entries.GetArrayLength());
+        Assert.Equal("Review Community", entries[0].GetProperty("group").GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task ReviewHubInclusionRequest_DomainAdmin_RejectsRequest()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var domainAdminId = Guid.Empty;
+        var groupId = Guid.Empty;
+        var domainId = Guid.Empty;
+        var associationId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domainAdmin = CreateUser("hub-reject-admin@example.com", "Reject Admin");
+            domainAdminId = domainAdmin.Id;
+            var domain = CreateDomain("Reject Hub", "reject-hub");
+            domainId = domain.Id;
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Rejected Community",
+                Slug = "rejected-community",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Public,
+            };
+            groupId = group.Id;
+            dbContext.Users.Add(domainAdmin);
+            dbContext.Domains.Add(domain);
+            dbContext.CommunityGroups.Add(group);
+            dbContext.DomainAdministrators.Add(new EventsApi.Data.Entities.DomainAdministrator
+            {
+                DomainId = domainId,
+                UserId = domainAdminId,
+            });
+            var association = new EventsApi.Data.Entities.DomainCuratedCommunity
+            {
+                DomainId = domainId,
+                GroupId = groupId,
+                Status = EventsApi.Data.Entities.HubCommunityAssociationStatus.Pending,
+                IsEnabled = false,
+                DisplayOrder = 0,
+            };
+            associationId = association.Id;
+            dbContext.DomainCuratedCommunities.Add(association);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, domainAdminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            mutation ReviewHub($input: ReviewHubInclusionRequestInput!) {
+              reviewHubInclusionRequest(input: $input) {
+                status isEnabled rejectionNote
+              }
+            }
+            """,
+            new { input = new { associationId, approve = false, rejectionNote = "Not aligned with hub focus." } });
+
+        var result = document.RootElement.GetProperty("data").GetProperty("reviewHubInclusionRequest");
+        Assert.Equal("REJECTED", result.GetProperty("status").GetString());
+        Assert.False(result.GetProperty("isEnabled").GetBoolean());
+        Assert.Equal("Not aligned with hub focus.", result.GetProperty("rejectionNote").GetString());
+
+        // Verify rejected entry does NOT appear publicly
+        using var publicClient = factory.CreateClient();
+        using var publicDoc = await ExecuteGraphQlAsync(
+            publicClient,
+            """
+            query CuratedCommunities($domainSlug: String!) {
+              curatedCommunitiesForDomain(domainSlug: $domainSlug) { group { name } }
+            }
+            """,
+            new { domainSlug = "reject-hub" });
+        var entries = publicDoc.RootElement.GetProperty("data").GetProperty("curatedCommunitiesForDomain");
+        Assert.Equal(0, entries.GetArrayLength());
+    }
+
+    [Fact]
+    public async Task ReviewHubInclusionRequest_NonDomainAdmin_Forbidden()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var regularUserId = Guid.Empty;
+        var associationId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var regularUser = CreateUser("hub-forbidden@example.com", "Regular User");
+            regularUserId = regularUser.Id;
+            var domain = CreateDomain("Forbidden Review Hub", "forbidden-review-hub");
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Forbidden Community",
+                Slug = "forbidden-community",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Public,
+            };
+            dbContext.Users.Add(regularUser);
+            dbContext.Domains.Add(domain);
+            dbContext.CommunityGroups.Add(group);
+            var association = new EventsApi.Data.Entities.DomainCuratedCommunity
+            {
+                DomainId = domain.Id,
+                GroupId = group.Id,
+                Status = EventsApi.Data.Entities.HubCommunityAssociationStatus.Pending,
+                IsEnabled = false,
+                DisplayOrder = 0,
+            };
+            associationId = association.Id;
+            dbContext.DomainCuratedCommunities.Add(association);
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, regularUserId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation ReviewHub($input: ReviewHubInclusionRequestInput!) {
+                  reviewHubInclusionRequest(input: $input) { status }
+                }
+                """,
+            variables = new { input = new { associationId, approve = true, rejectionNote = (string?)null } }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        Assert.True(errors.GetArrayLength() > 0);
+    }
+
+    [Fact]
+    public async Task ReviewHubInclusionRequest_Unauthenticated_ReturnsAuthError()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var associationId = Guid.NewGuid();
+
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                mutation ReviewHub($input: ReviewHubInclusionRequestInput!) {
+                  reviewHubInclusionRequest(input: $input) { status }
+                }
+                """,
+            variables = new { input = new { associationId, approve = true, rejectionNote = (string?)null } }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        Assert.True(errors.GetArrayLength() > 0);
+    }
+
+    [Fact]
+    public async Task CuratedCommunitiesForDomain_PendingEntry_NotReturnedPublicly()
+    {
+        // A pending request must never appear in the public query until approved.
+        await using var factory = new EventsApiWebApplicationFactory();
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domain = CreateDomain("Pending Public Hub", "pending-public-hub");
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Pending Group",
+                Slug = "pending-group",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Public,
+            };
+            dbContext.Domains.Add(domain);
+            dbContext.CommunityGroups.Add(group);
+            dbContext.DomainCuratedCommunities.Add(new EventsApi.Data.Entities.DomainCuratedCommunity
+            {
+                DomainId = domain.Id,
+                GroupId = group.Id,
+                Status = EventsApi.Data.Entities.HubCommunityAssociationStatus.Pending,
+                IsEnabled = false,
+                DisplayOrder = 0,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query CuratedCommunities($domainSlug: String!) {
+              curatedCommunitiesForDomain(domainSlug: $domainSlug) { group { name } }
+            }
+            """,
+            new { domainSlug = "pending-public-hub" });
+
+        var entries = document.RootElement.GetProperty("data").GetProperty("curatedCommunitiesForDomain");
+        Assert.Equal(0, entries.GetArrayLength());
+    }
+
+    [Fact]
+    public async Task DomainCuratedCommunitiesAdmin_IncludesPendingEntries()
+    {
+        // The admin query must return pending requests so domain admins can review them.
+        await using var factory = new EventsApiWebApplicationFactory();
+        var domainAdminId = Guid.Empty;
+        var domainId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var domainAdmin = CreateUser("hub-admin-pending@example.com", "Admin Pending", ApplicationUserRole.Admin);
+            domainAdminId = domainAdmin.Id;
+            var domain = CreateDomain("Admin Pending Hub", "admin-pending-hub");
+            domainId = domain.Id;
+            var groupA = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Approved Community", Slug = "approved-community-ap",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Public,
+            };
+            var groupB = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Pending Community", Slug = "pending-community-ap",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Public,
+            };
+            dbContext.Users.Add(domainAdmin);
+            dbContext.Domains.Add(domain);
+            dbContext.CommunityGroups.AddRange(groupA, groupB);
+            dbContext.DomainCuratedCommunities.AddRange(
+                new EventsApi.Data.Entities.DomainCuratedCommunity
+                {
+                    DomainId = domainId, GroupId = groupA.Id,
+                    Status = EventsApi.Data.Entities.HubCommunityAssociationStatus.Approved,
+                    IsEnabled = true, DisplayOrder = 0,
+                },
+                new EventsApi.Data.Entities.DomainCuratedCommunity
+                {
+                    DomainId = domainId, GroupId = groupB.Id,
+                    Status = EventsApi.Data.Entities.HubCommunityAssociationStatus.Pending,
+                    IsEnabled = false, DisplayOrder = 1,
+                });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, domainAdminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query AdminCurated($domainId: UUID!) {
+              domainCuratedCommunitiesAdmin(domainId: $domainId) {
+                group { name }
+                status
+              }
+            }
+            """,
+            new { domainId });
+
+        var entries = document.RootElement.GetProperty("data").GetProperty("domainCuratedCommunitiesAdmin");
+        // Both approved and pending entries must be returned
+        Assert.Equal(2, entries.GetArrayLength());
+        // Pending entries are sorted first
+        Assert.Equal("PENDING", entries[0].GetProperty("status").GetString());
+        Assert.Equal("APPROVED", entries[1].GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task MyCommunityHubAssociations_GroupAdmin_ReturnsAllStatuses()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var groupAdminId = Guid.Empty;
+        var groupId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var groupAdmin = CreateUser("hub-my-assoc@example.com", "My Assoc Admin");
+            groupAdminId = groupAdmin.Id;
+            var domainA = CreateDomain("Hub A", "hub-a-my");
+            var domainB = CreateDomain("Hub B", "hub-b-my");
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "My Association Community",
+                Slug = "my-assoc-community",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Public,
+            };
+            groupId = group.Id;
+            dbContext.Users.Add(groupAdmin);
+            dbContext.Domains.AddRange(domainA, domainB);
+            dbContext.CommunityGroups.Add(group);
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = groupId,
+                UserId = groupAdminId,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Owner,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+            dbContext.DomainCuratedCommunities.AddRange(
+                new EventsApi.Data.Entities.DomainCuratedCommunity
+                {
+                    DomainId = domainA.Id, GroupId = groupId,
+                    Status = EventsApi.Data.Entities.HubCommunityAssociationStatus.Approved,
+                    IsEnabled = true, DisplayOrder = 0,
+                },
+                new EventsApi.Data.Entities.DomainCuratedCommunity
+                {
+                    DomainId = domainB.Id, GroupId = groupId,
+                    Status = EventsApi.Data.Entities.HubCommunityAssociationStatus.Pending,
+                    IsEnabled = false, DisplayOrder = 0,
+                });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, groupAdminId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query MyAssoc($groupId: UUID!) {
+              myCommunityHubAssociations(groupId: $groupId) {
+                domainId status isEnabled
+              }
+            }
+            """,
+            new { groupId });
+
+        var entries = document.RootElement.GetProperty("data").GetProperty("myCommunityHubAssociations");
+        Assert.Equal(2, entries.GetArrayLength());
+        var statuses = entries.EnumerateArray().Select(e => e.GetProperty("status").GetString()).ToList();
+        Assert.Contains("APPROVED", statuses);
+        Assert.Contains("PENDING", statuses);
+    }
+
+    [Fact]
+    public async Task MyCommunityHubAssociations_RegularMember_Forbidden()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        var memberId = Guid.Empty;
+        var groupId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var member = CreateUser("hub-my-forbidden@example.com", "Forbidden Member");
+            memberId = member.Id;
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Forbidden My Hub Community",
+                Slug = "forbidden-my-hub",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Public,
+            };
+            groupId = group.Id;
+            dbContext.Users.Add(member);
+            dbContext.CommunityGroups.Add(group);
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = groupId,
+                UserId = memberId,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Member,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, memberId));
+
+        var response = await client.PostAsJsonAsync("/graphql", new
+        {
+            query = """
+                query MyAssoc($groupId: UUID!) {
+                  myCommunityHubAssociations(groupId: $groupId) { status }
+                }
+                """,
+            variables = new { groupId }
+        });
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
+        Assert.True(errors.GetArrayLength() > 0);
+        var code = errors[0].GetProperty("extensions").GetProperty("code").GetString();
+        Assert.Equal("FORBIDDEN", code);
+    }
+
     // ── Event discussion integration tests ────────────────────────────────────
 
     [Fact]

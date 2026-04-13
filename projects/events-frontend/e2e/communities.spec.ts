@@ -13,6 +13,7 @@ import {
   makeExternalEventPreview,
   makeTechDomain,
   loginAs,
+  seedAuthAndLocale,
 } from './helpers/mock-api'
 
 // ── Communities list page ─────────────────────────────────────────────────────
@@ -114,7 +115,7 @@ test.describe('Community detail page - public group', () => {
     await page.goto('/community/prague-crypto-circle')
     await expect(page.getByRole('heading', { name: 'Prague Crypto Circle' })).toBeVisible()
     await expect(page.getByText('1 member')).toBeVisible()
-    await expect(page.getByText('Public')).toBeVisible()
+    await expect(page.locator('.visibility-badge.public')).toContainText('Public')
   })
 
   test('shows summary description', async ({ page }) => {
@@ -1591,5 +1592,173 @@ test.describe('Community detail – related hubs section', () => {
     await page.goto('/community/prague-crypto-circle')
     await expect(page.getByRole('heading', { name: 'Teil dieser Hubs' })).toBeVisible()
     await expect(page.locator('.related-hub-cta').first()).toContainText('Hub erkunden')
+  })
+})
+
+// ── Hub inclusion request workflow ────────────────────────────────────────────
+
+test.describe('Community detail: hub inclusion requests', () => {
+  test('community admin sees hub inclusion section', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup({ name: 'Blockchain Builders', slug: 'blockchain-builders' })
+    const domain = makeTechDomain()
+    const membership = makeActiveMembership(group.id, admin.id, 'ADMIN')
+    const state = setupMockApi(page, {
+      users: [admin],
+      communityGroups: [group],
+      domains: [domain],
+    })
+    state.communityMemberships.push(membership)
+    await seedAuthAndLocale(page, admin, 'en')
+
+    await page.goto('/community/blockchain-builders')
+
+    await expect(page.getByRole('heading', { name: 'Hub Inclusion Requests' })).toBeVisible()
+    await expect(page.getByText('No hub inclusion requests yet.')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Request inclusion in a hub' })).toBeVisible()
+  })
+
+  test('community admin can submit a hub inclusion request', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup({ name: 'Submit Group', slug: 'submit-group' })
+    const domain = makeTechDomain()
+    const membership = makeActiveMembership(group.id, admin.id, 'ADMIN')
+    const state = setupMockApi(page, {
+      users: [admin],
+      communityGroups: [group],
+      domains: [domain],
+    })
+    state.communityMemberships.push(membership)
+    await seedAuthAndLocale(page, admin, 'en')
+
+    await page.goto('/community/submit-group')
+
+    // Select the hub from the dropdown
+    await page.locator('.hub-request-form select').selectOption({ label: 'Technology' })
+    // Fill optional note
+    await page.locator('.hub-request-form .form-textarea').fill('We run weekly AI meetups.')
+    // Submit
+    await page.locator('.hub-request-form').getByRole('button', { name: 'Send request' }).click()
+
+    // Success message should appear
+    await expect(
+      page.getByText(/Inclusion request sent/i),
+    ).toBeVisible()
+
+    // The hub now appears in the association list with pending status
+    await expect(page.locator('.hub-association-row')).toBeVisible()
+    await expect(page.locator('.hub-association-status--pending')).toContainText('Pending review')
+  })
+
+  test('community admin sees existing pending and approved hub associations', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup({ name: 'Multi Hub Group', slug: 'multi-hub-group' })
+    const domainA = makeTechDomain()
+    const domainB = { ...makeTechDomain(), id: 'domain-b', name: 'Design Hub', slug: 'design' }
+    const membership = makeActiveMembership(group.id, admin.id, 'OWNER')
+    const state = setupMockApi(page, {
+      users: [admin],
+      communityGroups: [group],
+      domains: [domainA, domainB],
+    })
+    state.communityMemberships.push(membership)
+    state.domainCuratedCommunities.push(
+      {
+        id: 'assoc-approved',
+        domainId: domainA.id,
+        groupId: group.id,
+        displayOrder: 0,
+        isEnabled: true,
+        annotation: null,
+        status: 'APPROVED',
+        createdAtUtc: new Date(Date.now() - 2000).toISOString(),
+      },
+      {
+        id: 'assoc-pending',
+        domainId: domainB.id,
+        groupId: group.id,
+        displayOrder: 0,
+        isEnabled: false,
+        annotation: null,
+        status: 'PENDING',
+        createdAtUtc: new Date().toISOString(),
+      },
+    )
+    await seedAuthAndLocale(page, admin, 'en')
+
+    await page.goto('/community/multi-hub-group')
+
+    // Both associations should appear
+    await expect(page.locator('.hub-association-row')).toHaveCount(2)
+    await expect(page.locator('.hub-association-status--approved')).toContainText('Approved')
+    await expect(page.locator('.hub-association-status--pending')).toContainText('Pending review')
+  })
+
+  test('community admin sees rejection note for rejected association', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup({ name: 'Rejected Group', slug: 'rejected-group' })
+    const domain = makeTechDomain()
+    const membership = makeActiveMembership(group.id, admin.id, 'ADMIN')
+    const state = setupMockApi(page, {
+      users: [admin],
+      communityGroups: [group],
+      domains: [domain],
+    })
+    state.communityMemberships.push(membership)
+    state.domainCuratedCommunities.push({
+      id: 'assoc-rejected',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: false,
+      annotation: null,
+      status: 'REJECTED',
+      rejectionNote: 'Not relevant to this hub.',
+      createdAtUtc: new Date().toISOString(),
+    })
+    await seedAuthAndLocale(page, admin, 'en')
+
+    await page.goto('/community/rejected-group')
+
+    await expect(page.locator('.hub-association-status--rejected')).toContainText('Rejected')
+    await expect(page.locator('.hub-association-rejection-note')).toContainText('Not relevant to this hub.')
+  })
+
+  test('Slovak locale: hub inclusion heading is localized', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup({ name: 'SK Hub Group', slug: 'sk-hub-group' })
+    const domain = makeTechDomain()
+    const membership = makeActiveMembership(group.id, admin.id, 'ADMIN')
+    const state = setupMockApi(page, {
+      users: [admin],
+      communityGroups: [group],
+      domains: [domain],
+    })
+    state.communityMemberships.push(membership)
+    await seedAuthAndLocale(page, admin, 'sk')
+
+    await page.goto('/community/sk-hub-group')
+
+    await expect(page.getByRole('heading', { name: 'Žiadosti o zaradenie do hubu' })).toBeVisible()
+    await expect(page.getByText('Zatiaľ žiadne žiadosti o zaradenie do hubu.')).toBeVisible()
+  })
+
+  test('German locale: hub inclusion heading is localized', async ({ page }) => {
+    const admin = makeAdminUser()
+    const group = makePublicGroup({ name: 'DE Hub Group', slug: 'de-hub-group' })
+    const domain = makeTechDomain()
+    const membership = makeActiveMembership(group.id, admin.id, 'ADMIN')
+    const state = setupMockApi(page, {
+      users: [admin],
+      communityGroups: [group],
+      domains: [domain],
+    })
+    state.communityMemberships.push(membership)
+    await seedAuthAndLocale(page, admin, 'de')
+
+    await page.goto('/community/de-hub-group')
+
+    await expect(page.getByRole('heading', { name: 'Hub-Aufnahmeanträge' })).toBeVisible()
+    await expect(page.getByText('Noch keine Hub-Aufnahmeanträge.')).toBeVisible()
   })
 })

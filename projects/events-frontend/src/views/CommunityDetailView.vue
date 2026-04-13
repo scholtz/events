@@ -6,11 +6,14 @@ import { RouterLink } from 'vue-router'
 import { useCommunitiesStore } from '@/stores/communities'
 import { useAuthStore } from '@/stores/auth'
 import { useEventsStore } from '@/stores/events'
+import { useDomainsStore } from '@/stores/domains'
 import EventCard from '@/components/events/EventCard.vue'
 import type {
   CommunityGroupDetail,
   CommunityMembership,
   CommunityMemberRole,
+  DomainCuratedCommunity,
+  EventDomain,
   ExternalSourceClaim,
   ExternalSourceType,
   ExternalEventPreview,
@@ -21,6 +24,7 @@ const { t } = useI18n()
 const route = useRoute()
 const communitiesStore = useCommunitiesStore()
 const eventsStore = useEventsStore()
+const domainsStore = useDomainsStore()
 const auth = useAuthStore()
 
 const detail = ref<CommunityGroupDetail | null>(null)
@@ -417,6 +421,87 @@ function roleLabel(role: CommunityMemberRole): string {
 function memberCountText(count: number): string {
   return count === 1 ? t('community.oneMember') : t('community.members', { count })
 }
+
+// ── Hub inclusion request ─────────────────────────────────────────────────────
+
+const hubAssociations = ref<DomainCuratedCommunity[]>([])
+const hubAssociationsLoading = ref(false)
+const hubAssociationsError = ref<string | null>(null)
+
+// For the request form: pick a domain hub from the full domain list
+const requestHubNote = ref('')
+const requestHubDomainId = ref('')
+const requestHubLoading = ref(false)
+const requestHubError = ref<string | null>(null)
+const requestHubSuccess = ref<string | null>(null)
+
+// All domains available to request inclusion in
+const availableDomains = ref<EventDomain[]>([])
+
+// Domains not yet requested/approved
+const requestableDomains = computed(() =>
+  availableDomains.value.filter(
+    (d) => !hubAssociations.value.some((a) => a.domainId === d.id),
+  ),
+)
+
+async function loadHubAssociations() {
+  if (!detail.value || !isAdmin.value) return
+  hubAssociationsLoading.value = true
+  hubAssociationsError.value = null
+  try {
+    await domainsStore.fetchDomains()
+    const associations = await domainsStore.fetchMyCommunityHubAssociations(detail.value.group.id)
+    hubAssociations.value = associations
+    availableDomains.value = domainsStore.domains.filter((d) => d.isActive)
+  } catch (err) {
+    hubAssociationsError.value = err instanceof Error ? err.message : t('community.hubInclusion.errorLoad')
+  } finally {
+    hubAssociationsLoading.value = false
+  }
+}
+
+async function handleRequestHubInclusion() {
+  if (!detail.value || !requestHubDomainId.value) return
+  requestHubLoading.value = true
+  requestHubError.value = null
+  requestHubSuccess.value = null
+  try {
+    const entry = await domainsStore.requestHubInclusion(
+      detail.value.group.id,
+      requestHubDomainId.value,
+      requestHubNote.value.trim() || null,
+    )
+    hubAssociations.value = [entry, ...hubAssociations.value]
+    requestHubDomainId.value = ''
+    requestHubNote.value = ''
+    requestHubSuccess.value = t('community.hubInclusion.requestSent')
+  } catch (err) {
+    requestHubError.value = err instanceof Error ? err.message : t('community.hubInclusion.errorRequest')
+  } finally {
+    requestHubLoading.value = false
+  }
+}
+
+function hubAssociationStatusLabel(status: DomainCuratedCommunity['status']): string {
+  const map: Record<string, string> = {
+    PENDING: t('community.hubInclusion.statusPending'),
+    APPROVED: t('community.hubInclusion.statusApproved'),
+    REJECTED: t('community.hubInclusion.statusRejected'),
+  }
+  return map[status ?? 'APPROVED'] ?? status ?? ''
+}
+
+// Load hub associations when group is loaded and user is admin
+watch(
+  [detail, () => isAdmin.value],
+  async ([d, admin]) => {
+    if (d && admin && auth.isAuthenticated) {
+      await loadHubAssociations()
+    }
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -963,6 +1048,94 @@ function memberCountText(count: number): string {
                   </button>
                 </div>
               </div>
+            </section>
+
+            <!-- ── Hub inclusion requests ── -->
+            <section class="admin-section hub-inclusion-section">
+              <h2 class="section-heading">{{ t('community.hubInclusion.heading') }}</h2>
+              <p class="section-desc">{{ t('community.hubInclusion.description') }}</p>
+
+              <div v-if="hubAssociationsError" class="error-banner">{{ hubAssociationsError }}</div>
+
+              <div v-if="hubAssociationsLoading" class="hub-inclusions-loading">
+                {{ t('common.loading') }}
+              </div>
+              <template v-else>
+                <!-- Current associations list -->
+                <div v-if="hubAssociations.length > 0" class="hub-associations-list">
+                  <div
+                    v-for="assoc in hubAssociations"
+                    :key="assoc.id"
+                    class="hub-association-row"
+                  >
+                    <div class="hub-association-info">
+                      <RouterLink
+                        v-if="assoc.domain"
+                        :to="`/category/${assoc.domain.slug}`"
+                        class="hub-association-name"
+                        target="_blank"
+                      >{{ assoc.domain.name }}</RouterLink>
+                      <span v-else class="hub-association-name">{{ assoc.domainId }}</span>
+                      <span
+                        class="hub-association-status"
+                        :class="`hub-association-status--${(assoc.status ?? 'approved').toLowerCase()}`"
+                        :aria-label="`Status: ${hubAssociationStatusLabel(assoc.status)}`"
+                      >
+                        {{ hubAssociationStatusLabel(assoc.status) }}
+                      </span>
+                    </div>
+                    <p v-if="assoc.rejectionNote" class="hub-association-rejection-note" role="alert">
+                      <em>{{ t('community.hubInclusion.rejectedNote') }}:</em> {{ assoc.rejectionNote }}
+                    </p>
+                  </div>
+                </div>
+                <p v-else class="hub-inclusions-empty text-secondary">
+                  {{ t('community.hubInclusion.empty') }}
+                </p>
+
+                <!-- Request form -->
+                <p v-if="requestHubSuccess" class="success-banner" role="status">{{ requestHubSuccess }}</p>
+                <p v-if="requestHubError" class="field-error" role="alert">{{ requestHubError }}</p>
+                <div v-if="requestableDomains.length > 0" class="hub-request-form">
+                  <h3 class="hub-request-form-title">{{ t('community.hubInclusion.requestTitle') }}</h3>
+                  <label class="form-field">
+                    <span>{{ t('community.hubInclusion.selectHub') }}</span>
+                    <select
+                      v-model="requestHubDomainId"
+                      class="form-input"
+                      :aria-label="t('community.hubInclusion.selectHub')"
+                    >
+                      <option value="">{{ t('community.hubInclusion.selectHubPlaceholder') }}</option>
+                      <option
+                        v-for="d in requestableDomains"
+                        :key="d.id"
+                        :value="d.id"
+                      >{{ d.name }}</option>
+                    </select>
+                  </label>
+                  <label class="form-field">
+                    <span>{{ t('community.hubInclusion.noteLabel') }}</span>
+                    <textarea
+                      v-model="requestHubNote"
+                      class="form-input form-textarea"
+                      rows="3"
+                      maxlength="300"
+                      :placeholder="t('community.hubInclusion.notePlaceholder')"
+                    ></textarea>
+                  </label>
+                  <button
+                    type="button"
+                    class="btn btn-primary"
+                    :disabled="!requestHubDomainId || requestHubLoading"
+                    @click="handleRequestHubInclusion"
+                  >
+                    {{ requestHubLoading ? t('common.loading') : t('community.hubInclusion.submitRequest') }}
+                  </button>
+                </div>
+                <p v-else-if="hubAssociations.length > 0 && !requestHubSuccess" class="text-secondary hub-request-no-eligible">
+                  {{ t('community.hubInclusion.allRequested') }}
+                </p>
+              </template>
             </section>
           </template>
         </template>
@@ -1754,5 +1927,96 @@ function memberCountText(count: number): string {
     flex: 1 1 calc(50% - 0.375rem);
     max-width: calc(50% - 0.375rem);
   }
+}
+
+/* ── Hub inclusion requests section ──────────────────────────────────────── */
+.hub-inclusion-section {
+  margin-top: 1.5rem;
+}
+
+.hub-associations-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.hub-association-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.625rem 0.875rem;
+  background: var(--color-surface-raised, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.hub-association-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.hub-association-name {
+  font-weight: 600;
+  color: var(--color-primary);
+  text-decoration: none;
+  font-size: 0.9375rem;
+}
+
+.hub-association-name:hover {
+  text-decoration: underline;
+}
+
+.hub-association-status {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.15em 0.55em;
+  border-radius: 9999px;
+  letter-spacing: 0.02em;
+}
+
+.hub-association-status--pending {
+  background: var(--color-warning-bg, #fff8e1);
+  color: var(--color-warning, #b7791f);
+}
+
+.hub-association-status--approved {
+  background: var(--color-success-bg, #e8f5e9);
+  color: var(--color-success, #27ae60);
+}
+
+.hub-association-status--rejected {
+  background: var(--color-error-bg, #fff0f0);
+  color: var(--color-error, #c0392b);
+}
+
+.hub-association-rejection-note {
+  font-size: 0.8125rem;
+  color: var(--color-error, #c0392b);
+  margin: 0;
+}
+
+.hub-inclusions-empty,
+.hub-request-no-eligible {
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+}
+
+.hub-request-form {
+  margin-top: 1.25rem;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.hub-request-form-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  margin: 0;
 }
 </style>

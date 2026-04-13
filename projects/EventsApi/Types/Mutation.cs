@@ -851,6 +851,7 @@ public sealed class Mutation
                 GroupId = item.GroupId,
                 DisplayOrder = i,
                 IsEnabled = item.IsEnabled,
+                Status = HubCommunityAssociationStatus.Approved,
                 Annotation = string.IsNullOrWhiteSpace(item.Annotation) ? null : item.Annotation.Trim(),
             })
             .ToList();
@@ -866,6 +867,139 @@ public sealed class Mutation
 
         return newEntries;
     }
+
+    /// <summary>
+    /// Allows a community group administrator to request that their group be featured
+    /// in a specific domain hub. The request enters PENDING state and must be reviewed
+    /// by a domain administrator or global administrator.
+    /// Only Owner/Admin members of the group may call this.
+    /// A group may have at most one pending or approved entry per hub.
+    /// </summary>
+    [Authorize]
+    public async Task<DomainCuratedCommunity> RequestHubInclusionAsync(
+        RequestHubInclusionInput input,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var userId = claimsPrincipal.GetRequiredUserId();
+
+        if (!claimsPrincipal.IsAdmin())
+        {
+            var isGroupAdmin = await dbContext.CommunityMemberships.AnyAsync(
+                cm => cm.GroupId == input.GroupId && cm.UserId == userId &&
+                      (cm.Role == CommunityMemberRole.Admin || cm.Role == CommunityMemberRole.Owner) &&
+                      cm.Status == CommunityMemberStatus.Active,
+                cancellationToken);
+
+            if (!isGroupAdmin)
+                throw CreateError("Only group administrators can request hub inclusion for their community.", "FORBIDDEN");
+        }
+
+        var group = await dbContext.CommunityGroups.FindAsync([input.GroupId], cancellationToken)
+            ?? throw CreateError($"Community group '{input.GroupId}' was not found.", "GROUP_NOT_FOUND");
+
+        if (!group.IsActive)
+            throw CreateError($"Community group '{group.Name}' is not active.", "GROUP_INACTIVE");
+
+        var domain = await dbContext.Domains.FindAsync([input.DomainId], cancellationToken)
+            ?? throw CreateError($"Domain hub '{input.DomainId}' was not found.", "DOMAIN_NOT_FOUND");
+
+        if (!domain.IsActive)
+            throw CreateError($"Domain hub '{domain.Name}' is not active.", "DOMAIN_INACTIVE");
+
+        if (input.Note is { Length: > 300 })
+            throw CreateError("Note must not exceed 300 characters.", "NOTE_TOO_LONG");
+
+        // Check if there is already an association (pending, approved, or rejected)
+        var existing = await dbContext.DomainCuratedCommunities
+            .SingleOrDefaultAsync(dcc => dcc.DomainId == input.DomainId && dcc.GroupId == input.GroupId, cancellationToken);
+
+        if (existing != null)
+        {
+            if (existing.Status == HubCommunityAssociationStatus.Pending)
+                throw CreateError("A pending request already exists for this community and hub.", "REQUEST_PENDING");
+
+            if (existing.Status == HubCommunityAssociationStatus.Approved)
+                throw CreateError("This community is already featured in this hub.", "ALREADY_APPROVED");
+
+            // Re-request after rejection
+            existing.Status = HubCommunityAssociationStatus.Pending;
+            existing.RequestedByUserId = userId;
+            existing.ReviewedByUserId = null;
+            existing.ReviewedAtUtc = null;
+            existing.RejectionNote = null;
+            existing.Annotation = string.IsNullOrWhiteSpace(input.Note) ? existing.Annotation : input.Note.Trim();
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await dbContext.Entry(existing).Reference(e => e.Group).LoadAsync(cancellationToken);
+            return existing;
+        }
+
+        var entry = new DomainCuratedCommunity
+        {
+            DomainId = input.DomainId,
+            GroupId = input.GroupId,
+            Status = HubCommunityAssociationStatus.Pending,
+            RequestedByUserId = userId,
+            IsEnabled = false, // will be enabled when approved
+            DisplayOrder = await dbContext.DomainCuratedCommunities
+                .Where(dcc => dcc.DomainId == input.DomainId)
+                .CountAsync(cancellationToken),
+            Annotation = string.IsNullOrWhiteSpace(input.Note) ? null : input.Note.Trim(),
+        };
+
+        dbContext.DomainCuratedCommunities.Add(entry);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        entry.Group = group;
+        return entry;
+    }
+
+    /// <summary>
+    /// Allows a domain administrator or global administrator to approve or reject
+    /// a pending hub-inclusion request. On approval the entry becomes publicly visible
+    /// (IsEnabled is set to true). On rejection a note may be provided.
+    /// </summary>
+    [Authorize]
+    public async Task<DomainCuratedCommunity> ReviewHubInclusionRequestAsync(
+        ReviewHubInclusionRequestInput input,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var entry = await dbContext.DomainCuratedCommunities
+            .Include(dcc => dcc.Group)
+            .SingleOrDefaultAsync(dcc => dcc.Id == input.AssociationId, cancellationToken)
+            ?? throw CreateError("Hub-inclusion request not found.", "NOT_FOUND");
+
+        if (entry.Status != HubCommunityAssociationStatus.Pending)
+            throw CreateError("Only pending requests can be reviewed.", "INVALID_STATE");
+
+        if (input.RejectionNote is { Length: > 500 })
+            throw CreateError("Rejection note must not exceed 500 characters.", "NOTE_TOO_LONG");
+
+        await EnsureDomainAdminOrGlobalAdminAsync(entry.DomainId, claimsPrincipal, dbContext, cancellationToken);
+
+        var reviewerId = claimsPrincipal.GetRequiredUserId();
+
+        if (input.Approve)
+        {
+            entry.Status = HubCommunityAssociationStatus.Approved;
+            entry.IsEnabled = true;
+            entry.RejectionNote = null;
+        }
+        else
+        {
+            entry.Status = HubCommunityAssociationStatus.Rejected;
+            entry.RejectionNote = string.IsNullOrWhiteSpace(input.RejectionNote) ? null : input.RejectionNote.Trim();
+        }
+
+        entry.ReviewedByUserId = reviewerId;
+        entry.ReviewedAtUtc = DateTime.UtcNow;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return entry;
+    }
+
 
     [Authorize]
     public async Task<SavedSearch> SaveSearchAsync(

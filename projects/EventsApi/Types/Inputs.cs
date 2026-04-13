@@ -386,6 +386,45 @@ public sealed class SetDomainCuratedCommunitiesInput
 }
 
 /// <summary>
+/// Input for a community group administrator to request that their group be featured
+/// in a specific domain hub. The request enters PENDING state and must be approved
+/// by a domain administrator or global administrator.
+/// </summary>
+public sealed class RequestHubInclusionInput
+{
+    /// <summary>The community group to be featured in the hub.</summary>
+    public Guid GroupId { get; init; }
+
+    /// <summary>The domain hub in which the community group is requesting inclusion.</summary>
+    public Guid DomainId { get; init; }
+
+    /// <summary>
+    /// Optional note from the requester explaining why their community belongs in this hub.
+    /// Maximum 300 characters. Stored as the initial Annotation on the entry.
+    /// </summary>
+    public string? Note { get; init; }
+}
+
+/// <summary>
+/// Input for a domain administrator or global administrator to approve or reject
+/// a pending hub-inclusion request.
+/// </summary>
+public sealed class ReviewHubInclusionRequestInput
+{
+    /// <summary>The ID of the DomainCuratedCommunity entry to review.</summary>
+    public Guid AssociationId { get; init; }
+
+    /// <summary>True to approve; false to reject.</summary>
+    public bool Approve { get; init; }
+
+    /// <summary>
+    /// Optional note provided when rejecting the request.
+    /// Maximum 500 characters. Ignored when Approve is true.
+    /// </summary>
+    public string? RejectionNote { get; init; }
+}
+
+/// <summary>
 /// Input for a global admin to approve or reject an external-source ownership claim.
 /// Only global admins may call reviewExternalSourceClaim.
 /// </summary>

@@ -439,6 +439,21 @@ async function handleSaveLinks() {
 
 // ── Curated community handlers ────────────────────────────────────────────────
 
+// Separate pending requests from approved/disabled entries
+const pendingRequests = computed(() =>
+  curatedCommunities.value.filter((c: DomainCuratedCommunity) => c.status === 'PENDING'),
+)
+const approvedCommunities = computed(() =>
+  curatedCommunities.value.filter(
+    (c: DomainCuratedCommunity) => !c.status || c.status === 'APPROVED',
+  ),
+)
+
+// Per-request inline rejection note state (requestId -> note string)
+const pendingRejectNotes = ref<Record<string, string>>({})
+const pendingReviewLoading = ref<Record<string, boolean>>({})
+const pendingReviewError = ref<Record<string, string>>({})
+
 const pickableCommunityGroups = computed(() =>
   availableCommunityGroups.value.filter(
     (g: CommunityGroup) =>
@@ -461,6 +476,7 @@ function handleAddCuratedCommunity() {
       displayOrder: curatedCommunities.value.length,
       isEnabled: true,
       annotation: null,
+      status: 'APPROVED' as const,
       createdAtUtc: new Date().toISOString(),
     },
   ]
@@ -476,14 +492,20 @@ function handleRemoveCuratedCommunity(groupId: string) {
 }
 
 function handleMoveCuratedCommunity(index: number, direction: 'up' | 'down') {
+  // Move within the approved list; approved list indices are relative to curatedCommunities
+  const approvedList = approvedCommunities.value
   const newIndex = direction === 'up' ? index - 1 : index + 1
-  if (newIndex < 0 || newIndex >= curatedCommunities.value.length) return
+  if (newIndex < 0 || newIndex >= approvedList.length) return
   // Clone to avoid in-place mutation before Vue detects changes
   const items = curatedCommunities.value.map((c) => ({ ...c }))
-  // splice out the element and insert at the new position
-  const removed = items.splice(index, 1)
-  if (!removed[0]) return
-  items.splice(newIndex, 0, removed[0])
+  // Find the actual indices in the full list
+  const itemA = approvedList[index]
+  const itemB = approvedList[newIndex]
+  if (!itemA || !itemB) return
+  const idxA = items.findIndex((c) => c.id === itemA.id)
+  const idxB = items.findIndex((c) => c.id === itemB.id)
+  if (idxA === -1 || idxB === -1) return;
+  [items[idxA], items[idxB]] = [items[idxB]!, items[idxA]!]
   curatedCommunities.value = items
   curatedCommunitiesSuccess.value = false
 }
@@ -493,19 +515,60 @@ async function handleSaveCuratedCommunities() {
   curatedCommunitiesSuccess.value = false
   curatedCommunitiesSaving.value = true
   try {
-    curatedCommunities.value = await domainsStore.setCuratedCommunities(
+    const updated = await domainsStore.setCuratedCommunities(
       domain.value!.id,
-      curatedCommunities.value.map((c: DomainCuratedCommunity) => ({
+      approvedCommunities.value.map((c: DomainCuratedCommunity) => ({
         groupId: c.groupId,
         isEnabled: c.isEnabled,
         annotation: c.annotation,
       })),
     )
+    // Keep pending requests in the list alongside the fresh approved entries
+    curatedCommunities.value = [...pendingRequests.value, ...updated]
     curatedCommunitiesSuccess.value = true
   } catch {
     curatedCommunitiesError.value = t('hubManage.curatedCommunities.saveError')
   } finally {
     curatedCommunitiesSaving.value = false
+  }
+}
+
+async function handleApproveRequest(associationId: string) {
+  pendingReviewError.value[associationId] = ''
+  pendingReviewLoading.value[associationId] = true
+  try {
+    const updated = await domainsStore.reviewHubInclusionRequest(associationId, true)
+    // Replace the pending entry with the approved one in the list
+    curatedCommunities.value = curatedCommunities.value.map((c: DomainCuratedCommunity) =>
+      c.id === associationId ? { ...updated, group: c.group } : c,
+    )
+  } catch {
+    pendingReviewError.value[associationId] = t('hubManage.curatedCommunities.reviewError')
+  } finally {
+    pendingReviewLoading.value[associationId] = false
+  }
+}
+
+async function handleRejectRequest(associationId: string) {
+  pendingReviewError.value[associationId] = ''
+  pendingReviewLoading.value[associationId] = true
+  try {
+    const note = pendingRejectNotes.value[associationId] || null
+    const updated = await domainsStore.reviewHubInclusionRequest(associationId, false, note)
+    // Remove the rejected request from the visible list (rejected entries are not shown publicly
+    // or in the pending section; they remain in the backend for audit purposes)
+    curatedCommunities.value = curatedCommunities.value.filter(
+      (c: DomainCuratedCommunity) => c.id !== associationId,
+    )
+    // Persist the rejected entry back as reference if needed
+    curatedCommunities.value = [...curatedCommunities.value, { ...updated, group: curatedCommunities.value.find((c: DomainCuratedCommunity) => c.id === associationId)?.group ?? updated.group }]
+    // Actually re-fetch to get clean state
+    curatedCommunities.value = await domainsStore.fetchCuratedCommunities(domain.value!.id)
+    delete pendingRejectNotes.value[associationId]
+  } catch {
+    pendingReviewError.value[associationId] = t('hubManage.curatedCommunities.reviewError')
+  } finally {
+    pendingReviewLoading.value[associationId] = false
   }
 }
 
@@ -1181,10 +1244,75 @@ const pickableEvents = computed(() =>
               {{ curatedCommunitiesError }}
             </p>
 
-            <!-- Curated community list -->
+            <!-- ── Pending inclusion requests ── -->
+            <div
+              v-if="pendingRequests.length > 0"
+              class="hub-pending-requests"
+              aria-labelledby="pending-requests-heading"
+            >
+              <h3 id="pending-requests-heading" class="hub-pending-requests-title">
+                {{ t('hubManage.curatedCommunities.pendingRequestsTitle') }}
+                <span class="hub-pending-badge">{{ pendingRequests.length }}</span>
+              </h3>
+              <ul class="hub-pending-request-list" aria-label="Pending hub inclusion requests">
+                <li
+                  v-for="req in pendingRequests"
+                  :key="req.id"
+                  class="hub-pending-request-item"
+                >
+                  <div class="hub-pending-request-info">
+                    <RouterLink
+                      :to="`/community/${req.group.slug}`"
+                      class="hub-curated-community-name"
+                      target="_blank"
+                    >{{ req.group.name }}</RouterLink>
+                    <p v-if="req.group.summary" class="hub-curated-community-summary">
+                      {{ req.group.summary }}
+                    </p>
+                    <p v-if="req.annotation" class="hub-pending-request-note">
+                      <em>{{ t('hubManage.curatedCommunities.requestNote') }}:</em> {{ req.annotation }}
+                    </p>
+                  </div>
+                  <div class="hub-pending-request-actions">
+                    <div class="hub-pending-reject-row">
+                      <input
+                        v-model="pendingRejectNotes[req.id]"
+                        class="form-input hub-pending-reject-input"
+                        type="text"
+                        maxlength="500"
+                        :placeholder="t('hubManage.curatedCommunities.rejectionNotePlaceholder')"
+                      />
+                    </div>
+                    <p v-if="pendingReviewError[req.id]" class="field-error" role="alert">
+                      {{ pendingReviewError[req.id] }}
+                    </p>
+                    <div class="hub-pending-review-buttons">
+                      <button
+                        type="button"
+                        class="btn btn-primary btn-sm"
+                        :disabled="pendingReviewLoading[req.id]"
+                        @click="handleApproveRequest(req.id)"
+                      >
+                        {{ t('hubManage.curatedCommunities.approve') }}
+                      </button>
+                      <button
+                        type="button"
+                        class="btn btn-outline btn-sm btn-danger"
+                        :disabled="pendingReviewLoading[req.id]"
+                        @click="handleRejectRequest(req.id)"
+                      >
+                        {{ t('hubManage.curatedCommunities.reject') }}
+                      </button>
+                    </div>
+                  </div>
+                </li>
+              </ul>
+            </div>
+
+            <!-- Curated community list (approved) -->
             <ul class="hub-curated-community-list" aria-label="Curated communities">
               <li
-                v-for="(entry, index) in curatedCommunities"
+                v-for="(entry, index) in approvedCommunities"
                 :key="entry.groupId"
                 class="hub-curated-community-item"
               >
@@ -1237,7 +1365,7 @@ const pickableEvents = computed(() =>
                   <button
                     type="button"
                     class="btn btn-outline btn-sm"
-                    :disabled="index === curatedCommunities.length - 1"
+                    :disabled="index === approvedCommunities.length - 1"
                     :aria-label="`Move ${entry.group.name} down`"
                     @click="handleMoveCuratedCommunity(index, 'down')"
                   >
@@ -1255,7 +1383,7 @@ const pickableEvents = computed(() =>
             </ul>
 
             <p
-              v-if="!curatedCommunities.length"
+              v-if="!approvedCommunities.length"
               class="text-secondary hub-curated-community-empty"
             >
               {{ t('hubManage.curatedCommunities.empty') }}
@@ -1263,7 +1391,7 @@ const pickableEvents = computed(() =>
 
             <!-- Add community picker -->
             <div
-              v-if="curatedCommunities.length < MAX_CURATED_COMMUNITIES"
+              v-if="approvedCommunities.length < MAX_CURATED_COMMUNITIES"
               class="hub-add-curated-community-form"
             >
               <select
@@ -1291,7 +1419,7 @@ const pickableEvents = computed(() =>
             </div>
 
             <p
-              v-if="pickableCommunityGroups.length === 0 && curatedCommunities.length === 0"
+              v-if="pickableCommunityGroups.length === 0 && approvedCommunities.length === 0 && pendingRequests.length === 0"
               class="text-secondary hub-curated-community-no-eligible"
             >
               {{ t('hubManage.curatedCommunities.noEligibleGroups') }}
@@ -1908,6 +2036,99 @@ const pickableEvents = computed(() =>
 
   .hub-add-curated-community-form {
     flex-direction: column;
+  }
+}
+
+/* ── Pending requests ── */
+.hub-pending-requests {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  border: 1px solid var(--color-warning, #f59e0b);
+  border-radius: var(--radius-md);
+  background: rgba(245, 158, 11, 0.06);
+}
+
+.hub-pending-requests-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  margin: 0 0 0.75rem;
+  color: var(--color-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.hub-pending-badge {
+  background: var(--color-warning, #f59e0b);
+  color: #000;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.1em 0.55em;
+  line-height: 1.4;
+}
+
+.hub-pending-request-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.hub-pending-request-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 0.75rem;
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.hub-pending-request-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.hub-pending-request-note {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+.hub-pending-request-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 220px;
+}
+
+.hub-pending-reject-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.hub-pending-reject-input {
+  font-size: 0.8125rem;
+  padding: 0.3rem 0.5rem;
+}
+
+.hub-pending-review-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+@media (max-width: 600px) {
+  .hub-pending-request-item {
+    flex-direction: column;
+  }
+
+  .hub-pending-request-actions {
+    min-width: 0;
+    width: 100%;
   }
 }
 </style>
