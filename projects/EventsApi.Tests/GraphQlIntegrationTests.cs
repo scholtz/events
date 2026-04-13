@@ -21055,6 +21055,245 @@ public sealed class GraphQlIntegrationTests
         Assert.Equal("FORBIDDEN", code);
     }
 
+    // ── DiscoveryRankBucket integration tests ─────────────────────────────────
+
+    [Fact]
+    public async Task GetRankBucket_ReturnsUpcomingSoon_ForEventStartingWithinSevenDays()
+    {
+        // An event that starts in 3 days should be labelled UPCOMING_SOON (≤7 day window).
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("bucket-soon@example.com", "Bucket Soon Tester");
+            var domain = CreateDomain("BucketHub", "bucket-hub");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            dbContext.Events.Add(CreateEvent(
+                "Soon Event", "soon-event", "Starts in 3 days.", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(3), domain, user));
+        });
+
+        using var client = factory.CreateClient();
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query Events($filter: EventFilterInput) {
+              events(filter: $filter) { name rankBucket }
+            }
+            """,
+            new { filter = new { sortBy = "UPCOMING" } });
+
+        var events = document.RootElement.GetProperty("data").GetProperty("events");
+        Assert.Equal(1, events.GetArrayLength());
+        Assert.Equal("UPCOMING_SOON", events[0].GetProperty("rankBucket").GetString());
+    }
+
+    [Fact]
+    public async Task GetRankBucket_ReturnsRecentlyAdded_ForNewlyPublishedFutureEvent()
+    {
+        // An event published 5 days ago that starts in 20 days (outside the "soon" window)
+        // should be labelled RECENTLY_ADDED (published ≤14 days ago and starts in the future).
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("bucket-recent@example.com", "Bucket Recent Tester");
+            var domain = CreateDomain("RecentHub", "recent-hub");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Recent Event", "recent-event", "Published recently.", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(20), domain, user,
+                submittedAtUtc: DateTime.UtcNow.AddDays(-5));
+            // Override PublishedAtUtc so it falls within the 14-day window
+            ev.PublishedAtUtc = DateTime.UtcNow.AddDays(-5);
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query Events($filter: EventFilterInput) {
+              events(filter: $filter) { name rankBucket }
+            }
+            """,
+            new { filter = new { sortBy = "UPCOMING" } });
+
+        var events = document.RootElement.GetProperty("data").GetProperty("events");
+        Assert.Equal(1, events.GetArrayLength());
+        Assert.Equal("RECENTLY_ADDED", events[0].GetProperty("rankBucket").GetString());
+    }
+
+    [Fact]
+    public async Task GetRankBucket_ReturnsUpcoming_ForFarFutureEventPublishedLongAgo()
+    {
+        // An event starting in 60 days that was published 30 days ago falls into neither
+        // "upcoming soon" nor "recently added" — it should be labelled UPCOMING.
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("bucket-upcoming@example.com", "Bucket Upcoming Tester");
+            var domain = CreateDomain("UpcomingHub", "upcoming-hub");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Far Future Event", "far-future-event", "Far in the future.", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(60), domain, user,
+                submittedAtUtc: DateTime.UtcNow.AddDays(-30));
+            ev.PublishedAtUtc = DateTime.UtcNow.AddDays(-30);
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query Events($filter: EventFilterInput) {
+              events(filter: $filter) { name rankBucket }
+            }
+            """,
+            new { filter = new { sortBy = "UPCOMING" } });
+
+        var events = document.RootElement.GetProperty("data").GetProperty("events");
+        Assert.Equal(1, events.GetArrayLength());
+        Assert.Equal("UPCOMING", events[0].GetProperty("rankBucket").GetString());
+    }
+
+    [Fact]
+    public async Task GetRankBucket_ReturnsPast_ForEventThatAlreadyOccurred()
+    {
+        // An event whose start date is in the past should be labelled PAST.
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("bucket-past@example.com", "Bucket Past Tester");
+            var domain = CreateDomain("PastHub", "past-hub");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Past Event", "past-event", "This event is over.", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(-10), domain, user,
+                submittedAtUtc: DateTime.UtcNow.AddDays(-30));
+            ev.PublishedAtUtc = DateTime.UtcNow.AddDays(-30);
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query Events($filter: EventFilterInput) {
+              events(filter: $filter) { name rankBucket }
+            }
+            """,
+            new { filter = new { sortBy = "UPCOMING" } });
+
+        var events = document.RootElement.GetProperty("data").GetProperty("events");
+        Assert.Equal(1, events.GetArrayLength());
+        Assert.Equal("PAST", events[0].GetProperty("rankBucket").GetString());
+    }
+
+    [Fact]
+    public async Task GetRankBucket_UpcomingSoonTakesPrecedenceOverRecentlyAdded()
+    {
+        // An event starting in 3 days that was also published 5 days ago should be labelled
+        // UPCOMING_SOON (highest priority bucket), not RECENTLY_ADDED.
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("bucket-priority@example.com", "Bucket Priority Tester");
+            var domain = CreateDomain("PriorityHub", "priority-hub");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+            var ev = CreateEvent(
+                "Priority Event", "priority-event", "Starts soon and was published recently.", "Venue", "Prague",
+                DateTime.UtcNow.AddDays(3), domain, user,
+                submittedAtUtc: DateTime.UtcNow.AddDays(-5));
+            ev.PublishedAtUtc = DateTime.UtcNow.AddDays(-5);
+            dbContext.Events.Add(ev);
+        });
+
+        using var client = factory.CreateClient();
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query Events($filter: EventFilterInput) {
+              events(filter: $filter) { name rankBucket }
+            }
+            """,
+            new { filter = new { sortBy = "UPCOMING" } });
+
+        var events = document.RootElement.GetProperty("data").GetProperty("events");
+        Assert.Equal(1, events.GetArrayLength());
+        // UPCOMING_SOON must win over RECENTLY_ADDED when both conditions hold
+        Assert.Equal("UPCOMING_SOON", events[0].GetProperty("rankBucket").GetString());
+    }
+
+    [Fact]
+    public async Task GetRankBucket_AllBuckets_ReturnedCorrectlyInSingleQuery()
+    {
+        // Verifies that all four bucket values are correctly assigned within a single
+        // query result — confirming the resolver logic is stable across diverse events.
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("bucket-all@example.com", "Bucket All Tester");
+            var domain = CreateDomain("AllBucketHub", "all-bucket-hub");
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(domain);
+
+            // UPCOMING_SOON: starts in 2 days
+            dbContext.Events.Add(CreateEvent(
+                "Soon Event", "all-soon-event", "Soon.", "V", "Prague",
+                DateTime.UtcNow.AddDays(2), domain, user));
+
+            // RECENTLY_ADDED: published 7 days ago, starts in 30 days
+            var recentEv = CreateEvent(
+                "Recent Event", "all-recent-event", "Recent.", "V", "Prague",
+                DateTime.UtcNow.AddDays(30), domain, user,
+                submittedAtUtc: DateTime.UtcNow.AddDays(-7));
+            recentEv.PublishedAtUtc = DateTime.UtcNow.AddDays(-7);
+            dbContext.Events.Add(recentEv);
+
+            // UPCOMING: published 20 days ago, starts in 45 days
+            var futureEv = CreateEvent(
+                "Future Event", "all-future-event", "Future.", "V", "Prague",
+                DateTime.UtcNow.AddDays(45), domain, user,
+                submittedAtUtc: DateTime.UtcNow.AddDays(-20));
+            futureEv.PublishedAtUtc = DateTime.UtcNow.AddDays(-20);
+            dbContext.Events.Add(futureEv);
+
+            // PAST: started 5 days ago
+            var pastEv = CreateEvent(
+                "Past Event", "all-past-event", "Past.", "V", "Prague",
+                DateTime.UtcNow.AddDays(-5), domain, user,
+                submittedAtUtc: DateTime.UtcNow.AddDays(-20));
+            pastEv.PublishedAtUtc = DateTime.UtcNow.AddDays(-20);
+            dbContext.Events.Add(pastEv);
+        });
+
+        using var client = factory.CreateClient();
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query Events($filter: EventFilterInput) {
+              events(filter: $filter) { name rankBucket }
+            }
+            """,
+            new { filter = new { sortBy = "UPCOMING" } });
+
+        var events = document.RootElement.GetProperty("data").GetProperty("events")
+            .EnumerateArray()
+            .ToDictionary(
+                e => e.GetProperty("name").GetString()!,
+                e => e.GetProperty("rankBucket").GetString()!);
+
+        Assert.Equal("UPCOMING_SOON",   events["Soon Event"]);
+        Assert.Equal("RECENTLY_ADDED",  events["Recent Event"]);
+        Assert.Equal("UPCOMING",        events["Future Event"]);
+        Assert.Equal("PAST",            events["Past Event"]);
+    }
+
     // ── Event discussion integration tests ────────────────────────────────────
 
     [Fact]

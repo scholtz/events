@@ -87,6 +87,13 @@ export type MockEvent = {
   language: string | null
   eventTags: { id: string; domain: { id: string; name: string; slug: string; subdomain: string } }[]
   communityGroups?: { id: string; name: string; slug: string; summary: string | null }[]
+  /**
+   * Server-computed discovery ranking bucket (mirrors DiscoveryRankBucket enum).
+   * Computed dynamically by addRankBucket() rather than stored statically, so it
+   * stays accurate even as startsAtUtc/publishedAtUtc shift relative to "now".
+   * Populated automatically by the mock events handler — tests do not need to set this.
+   */
+  rankBucket?: 'UPCOMING_SOON' | 'RECENTLY_ADDED' | 'UPCOMING' | 'PAST'
 }
 
 export type MockSavedSearch = {
@@ -1857,7 +1864,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
     }
 
     if (query.includes('query') && query.includes('DiscoveryEvents')) {
-      const filteredEvents = filterEventsForDiscovery(state.events, variables.filter)
+      const filteredEvents = filterEventsForDiscovery(state.events, variables.filter).map(withRankBucket)
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -1867,7 +1874,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
     }
 
     if (query.includes('query') && query.includes('CategoryEvents')) {
-      const filteredEvents = filterEventsForDiscovery(state.events, variables.filter)
+      const filteredEvents = filterEventsForDiscovery(state.events, variables.filter).map(withRankBucket)
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -1880,7 +1887,7 @@ export function setupMockApi(page: Page, initial?: Partial<MockState>): MockStat
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ data: { events: state.events } }),
+        body: JSON.stringify({ data: { events: state.events.map(withRankBucket) } }),
       })
       return
     }
@@ -2758,6 +2765,47 @@ export async function setAuthUser(page: Page, user: MockUser): Promise<void> {
       expires: new Date(Date.now() + 7_200_000).toISOString(),
     },
   )
+}
+
+/**
+ * Mirrors the server-side CatalogEventExtension.GetRankBucket logic.
+ *
+ * Thresholds must stay in sync with the backend (CatalogEventExtension.cs):
+ *   UpcomingSoonDays = 7, RecentlyAddedDays = 14
+ *
+ * Returns the rank bucket string exactly as HotChocolate serialises the enum —
+ * SCREAMING_SNAKE_CASE — so it matches what CatalogEvent.rankBucket carries
+ * after GraphQL deserialisation.
+ */
+function computeRankBucket(event: MockEvent): MockEvent['rankBucket'] {
+  const now = new Date()
+  const starts = new Date(event.startsAtUtc)
+  const daysUntilStart = (starts.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+
+  // UPCOMING_SOON: starts within the next 7 days
+  if (starts > now && daysUntilStart <= 7) return 'UPCOMING_SOON'
+
+  // RECENTLY_ADDED: published within last 14 days AND starts in the future (outside soon window)
+  if (starts > now && event.publishedAtUtc) {
+    const published = new Date(event.publishedAtUtc)
+    const daysSincePublish = (now.getTime() - published.getTime()) / (1000 * 60 * 60 * 24)
+    if (daysSincePublish >= 0 && daysSincePublish <= 14) return 'RECENTLY_ADDED'
+  }
+
+  // UPCOMING: generic upcoming event
+  if (starts > now) return 'UPCOMING'
+
+  // PAST: already occurred
+  return 'PAST'
+}
+
+/**
+ * Enriches a MockEvent with a freshly-computed rankBucket, mirroring the
+ * CatalogEventExtension.GetRankBucket resolver. Call this before serialising
+ * events into GraphQL responses so the field is always present and current.
+ */
+function withRankBucket(event: MockEvent): MockEvent {
+  return { ...event, rankBucket: computeRankBucket(event) }
 }
 
 function filterEventsForDiscovery(events: MockEvent[], filter?: Record<string, unknown>) {
