@@ -1316,4 +1316,131 @@ test.describe('Hub Manage page (/hub/:slug/manage)', () => {
       page.getByText('Noch keine kuratierten Community-Gruppen.'),
     ).toBeVisible()
   })
+
+  // ── Hub inclusion request workflow ────────────────────────────────────────
+  test('pending inclusion request is shown to domain admin', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    const group = makePublicGroup({ name: 'Requesting Group', slug: 'requesting-group' })
+    const pendingEntry: MockDomainCuratedCommunity = {
+      id: 'cc-pending',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: false,
+      annotation: 'We organize weekly blockchain meetups.',
+      status: 'PENDING',
+      requestedByUserId: 'other-user-id',
+      createdAtUtc: new Date().toISOString(),
+    }
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      communityGroups: [group],
+      domainCuratedCommunities: [pendingEntry],
+    })
+    await loginAs(page, admin)
+
+    await page.goto('/hub/technology/manage')
+
+    // Pending requests section should be visible
+    await expect(page.getByRole('heading', { name: /Pending inclusion requests/i })).toBeVisible()
+    // The requesting group should appear in the pending list
+    await expect(page.locator('.hub-pending-request-list').getByRole('link', { name: 'Requesting Group' })).toBeVisible()
+    // The annotation/note should show
+    await expect(page.locator('.hub-pending-request-note')).toContainText('We organize weekly blockchain meetups.')
+  })
+
+  test('domain admin can approve a pending inclusion request', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    const group = makePublicGroup({ name: 'Approvable Group', slug: 'approvable-group' })
+    const pendingEntry: MockDomainCuratedCommunity = {
+      id: 'cc-pending-approve',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: false,
+      annotation: null,
+      status: 'PENDING',
+      createdAtUtc: new Date().toISOString(),
+    }
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      communityGroups: [group],
+      domainCuratedCommunities: [pendingEntry],
+    })
+    await loginAs(page, admin)
+
+    await page.goto('/hub/technology/manage')
+
+    // Click Approve button in the pending requests section
+    await page.locator('.hub-pending-request-list').getByRole('button', { name: 'Approve' }).click()
+
+    // The pending section should disappear (no more pending entries)
+    await expect(page.locator('.hub-pending-requests')).not.toBeVisible()
+    // The approved group should now appear in the curated list
+    await expect(page.locator('.hub-curated-community-list').getByRole('link', { name: 'Approvable Group' })).toBeVisible()
+  })
+
+  test('domain admin can reject a pending inclusion request with a note', async ({ page }) => {
+    const admin = makeAdminUser()
+    const domain = makeTechDomain()
+    const group = makePublicGroup({ name: 'Rejectable Group', slug: 'rejectable-group' })
+    const pendingEntry: MockDomainCuratedCommunity = {
+      id: 'cc-pending-reject',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: false,
+      annotation: null,
+      status: 'PENDING',
+      createdAtUtc: new Date().toISOString(),
+    }
+    setupMockApi(page, {
+      users: [admin],
+      domains: [domain],
+      communityGroups: [group],
+      domainCuratedCommunities: [pendingEntry],
+    })
+    await loginAs(page, admin)
+
+    await page.goto('/hub/technology/manage')
+
+    // Type rejection note and reject
+    await page.locator('.hub-pending-reject-input').fill('Not aligned with hub focus.')
+    await page.locator('.hub-pending-request-list').getByRole('button', { name: 'Reject' }).click()
+
+    // The pending section should disappear
+    await expect(page.locator('.hub-pending-requests')).not.toBeVisible()
+    // The empty message should be shown
+    await expect(page.getByText('No community groups curated yet.')).toBeVisible()
+  })
+
+  test('pending entry does not appear in the public curated communities section', async ({ page }) => {
+    // This tests that the mock-api correctly filters pending entries from the public query
+    const domain = makeTechDomain()
+    const group = makePublicGroup({ name: 'Hidden Pending Group', slug: 'hidden-pending' })
+    const pendingEntry: MockDomainCuratedCommunity = {
+      id: 'cc-hidden-pending',
+      domainId: domain.id,
+      groupId: group.id,
+      displayOrder: 0,
+      isEnabled: false,
+      annotation: null,
+      status: 'PENDING',
+      createdAtUtc: new Date().toISOString(),
+    }
+    setupMockApi(page, {
+      domains: [domain],
+      communityGroups: [group],
+      domainCuratedCommunities: [pendingEntry],
+    })
+
+    await page.goto('/category/technology')
+
+    // The pending group should NOT appear publicly
+    await expect(page.getByText('Hidden Pending Group')).not.toBeVisible()
+  })
 })

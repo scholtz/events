@@ -217,8 +217,8 @@ public sealed class Query
                 cancellationToken);
 
     /// <summary>
-    /// Returns the enabled curated community groups for a domain hub, ordered by DisplayOrder.
-    /// Only enabled entries for active community groups are returned.
+    /// Returns the enabled, approved curated community groups for a domain hub, ordered by DisplayOrder.
+    /// Only approved and enabled entries for active community groups are returned.
     /// Both public and private groups may appear — private groups are explicitly curated
     /// by a hub administrator and show a "Request Access" call-to-action to users.
     /// Publicly accessible without authentication.
@@ -232,6 +232,7 @@ public sealed class Query
         var entries = await dbContext.DomainCuratedCommunities
             .AsNoTracking()
             .Where(dcc => dcc.Domain.Slug == normalizedSlug && dcc.Domain.IsActive)
+            .Where(dcc => dcc.Status == HubCommunityAssociationStatus.Approved)
             .Where(dcc => dcc.IsEnabled)
             .Where(dcc => dcc.Group.IsActive)
             .OrderBy(dcc => dcc.DisplayOrder)
@@ -266,7 +267,7 @@ public sealed class Query
     }
 
     /// <summary>
-    /// Returns all curated community entries for a domain hub (including disabled),
+    /// Returns all curated community entries for a domain hub (including disabled, pending, rejected),
     /// for use in the hub management UI.
     /// Restricted to domain administrators and global administrators.
     /// </summary>
@@ -296,8 +297,48 @@ public sealed class Query
         return await dbContext.DomainCuratedCommunities
             .AsNoTracking()
             .Where(dcc => dcc.DomainId == domainId)
-            .OrderBy(dcc => dcc.DisplayOrder)
+            .OrderBy(dcc => dcc.Status == HubCommunityAssociationStatus.Pending ? 0 : 1)
+            .ThenBy(dcc => dcc.DisplayOrder)
             .Include(dcc => dcc.Group)
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Returns all hub-community associations for a specific community group, visible to the group's admins.
+    /// Includes pending, approved, and rejected entries so community administrators can track their requests.
+    /// Restricted to group administrators (Owner/Admin) and global administrators.
+    /// </summary>
+    [Authorize]
+    public async Task<IReadOnlyList<DomainCuratedCommunity>> GetMyCommunityHubAssociationsAsync(
+        Guid groupId,
+        ClaimsPrincipal claimsPrincipal,
+        [Service] AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var userId = claimsPrincipal.GetRequiredUserId();
+
+        if (!claimsPrincipal.IsAdmin())
+        {
+            var isGroupAdmin = await dbContext.CommunityMemberships.AnyAsync(
+                cm => cm.GroupId == groupId && cm.UserId == userId &&
+                      (cm.Role == CommunityMemberRole.Admin || cm.Role == CommunityMemberRole.Owner) &&
+                      cm.Status == CommunityMemberStatus.Active,
+                cancellationToken);
+
+            if (!isGroupAdmin)
+            {
+                throw new GraphQLException(ErrorBuilder.New()
+                    .SetMessage("Only group administrators can view hub associations for a community.")
+                    .SetCode("FORBIDDEN")
+                    .Build());
+            }
+        }
+
+        return await dbContext.DomainCuratedCommunities
+            .AsNoTracking()
+            .Where(dcc => dcc.GroupId == groupId)
+            .OrderByDescending(dcc => dcc.CreatedAtUtc)
+            .Include(dcc => dcc.Domain)
             .ToListAsync(cancellationToken);
     }
 

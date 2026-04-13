@@ -197,8 +197,13 @@ export const useDomainsStore = defineStore('domains', () => {
   }
 
   const CURATED_COMMUNITY_FIELDS = `
-    id domainId groupId displayOrder isEnabled annotation createdAtUtc
+    id domainId groupId displayOrder isEnabled annotation status requestedByUserId reviewedByUserId reviewedAtUtc rejectionNote createdAtUtc
     group { id name slug summary visibility isActive createdAtUtc createdByUserId }
+  `
+
+  const CURATED_COMMUNITY_WITH_DOMAIN_FIELDS = `
+    id domainId groupId displayOrder isEnabled annotation status requestedByUserId reviewedByUserId reviewedAtUtc rejectionNote createdAtUtc
+    domain { id name slug description logoUrl primaryColor isActive }
   `
 
   async function fetchCuratedCommunities(domainId: string): Promise<DomainCuratedCommunity[]> {
@@ -222,6 +227,44 @@ export const useDomainsStore = defineStore('domains', () => {
       { input: { domainId, communities } },
     )
     return data.setDomainCuratedCommunities
+  }
+
+  async function requestHubInclusion(
+    groupId: string,
+    domainId: string,
+    note: string | null = null,
+  ): Promise<DomainCuratedCommunity> {
+    const data = await gqlRequest<{ requestHubInclusion: DomainCuratedCommunity }>(
+      `mutation RequestHubInclusion($input: RequestHubInclusionInput!) {
+        requestHubInclusion(input: $input) { ${CURATED_COMMUNITY_FIELDS} }
+      }`,
+      { input: { groupId, domainId, note } },
+    )
+    return data.requestHubInclusion
+  }
+
+  async function reviewHubInclusionRequest(
+    associationId: string,
+    approve: boolean,
+    rejectionNote: string | null = null,
+  ): Promise<DomainCuratedCommunity> {
+    const data = await gqlRequest<{ reviewHubInclusionRequest: DomainCuratedCommunity }>(
+      `mutation ReviewHubInclusionRequest($input: ReviewHubInclusionRequestInput!) {
+        reviewHubInclusionRequest(input: $input) { ${CURATED_COMMUNITY_FIELDS} }
+      }`,
+      { input: { associationId, approve, rejectionNote } },
+    )
+    return data.reviewHubInclusionRequest
+  }
+
+  async function fetchMyCommunityHubAssociations(groupId: string): Promise<DomainCuratedCommunity[]> {
+    const data = await gqlRequest<{ myCommunityHubAssociations: DomainCuratedCommunity[] }>(
+      `query MyCommunityHubAssociations($groupId: UUID!) {
+        myCommunityHubAssociations(groupId: $groupId) { ${CURATED_COMMUNITY_WITH_DOMAIN_FIELDS} }
+      }`,
+      { groupId },
+    )
+    return data.myCommunityHubAssociations
   }
 
   const SCHEDULED_FEATURED_EVENT_FIELDS = `
@@ -301,6 +344,9 @@ export const useDomainsStore = defineStore('domains', () => {
     setDomainLinks,
     fetchCuratedCommunities,
     setCuratedCommunities,
+    requestHubInclusion,
+    reviewHubInclusionRequest,
+    fetchMyCommunityHubAssociations,
     fetchScheduledFeaturedEvents,
     scheduleFeaturedEvent,
     updateScheduledFeaturedEvent,
