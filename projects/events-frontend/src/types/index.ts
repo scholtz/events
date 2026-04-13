@@ -114,6 +114,18 @@ export interface CatalogEvent {
   timezone: string | null
   /** BCP 47 language tag for the primary language of the event (e.g. "en", "cs", "de"). Null if unspecified. */
   language: string | null
+  /**
+   * Server-computed discovery ranking bucket.
+   * Explains why this event appears where it does in discovery/hub listings.
+   * - `UPCOMING_SOON`   — starts within the next 7 days
+   * - `RECENTLY_ADDED`  — published within the last 14 days (and starts in the future, outside the soon window)
+   * - `UPCOMING`        — generic upcoming event
+   * - `PAST`            — event has already occurred
+   *
+   * Populated only when fetched via EVENT_FIELDS fragment (not on draft/admin views).
+   * Falls back to client-side computation when absent.
+   */
+  rankBucket?: 'UPCOMING_SOON' | 'RECENTLY_ADDED' | 'UPCOMING' | 'PAST'
 }
 
 /** Matches backend DashboardOverview response */

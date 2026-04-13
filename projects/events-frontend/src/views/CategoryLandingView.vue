@@ -363,16 +363,34 @@ const UPCOMING_SOON_DAYS = 7
 const RECENTLY_ADDED_DAYS = 14
 
 /**
+ * Maps the server-side DiscoveryRankBucket enum value to the UI cue key.
+ * Returns null for UPCOMING and PAST (no badge shown for those).
+ */
+function rankCueFromBucket(bucket: string): 'upcomingSoon' | 'recentlyAdded' | null {
+  if (bucket === 'UPCOMING_SOON') return 'upcomingSoon'
+  if (bucket === 'RECENTLY_ADDED') return 'recentlyAdded'
+  return null
+}
+
+/**
  * Returns a per-event ranking-cue key that explains why this event appears where it does
- * within the hub's non-featured event grid:
+ * within the hub's non-featured event grid.
+ *
+ * Prefers the server-provided `rankBucket` field (set by CatalogEventExtension.GetRankBucket)
+ * so the ranking logic lives in a single authoritative place. Falls back to local date-based
+ * computation for events fetched before the field was added to the GraphQL schema.
  *
  * - `'upcomingSoon'`   — starts within the next UPCOMING_SOON_DAYS days
  * - `'recentlyAdded'`  — published within the last RECENTLY_ADDED_DAYS days (and not upcomingSoon)
- * - `null`             — no cue (event is beyond both thresholds)
+ * - `null`             — no cue (event is beyond both thresholds or is in the past)
  *
  * At most one label is shown per event to keep the UI calm and uncluttered.
  */
 function rankCueForEvent(event: CatalogEvent): 'upcomingSoon' | 'recentlyAdded' | null {
+  // Prefer the authoritative server-side bucket when available
+  if (event.rankBucket) return rankCueFromBucket(event.rankBucket)
+
+  // Legacy client-side fallback (for cached events that don't carry rankBucket yet)
   const now = new Date()
   const starts = new Date(event.startsAtUtc)
   const msDiff = starts.getTime() - now.getTime()
