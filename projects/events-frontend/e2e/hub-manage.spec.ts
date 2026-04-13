@@ -1379,7 +1379,7 @@ test.describe('Hub Manage page (/hub/:slug/manage)', () => {
     await page.locator('.hub-pending-request-list').getByRole('button', { name: 'Approve' }).click()
 
     // The pending section should disappear (no more pending entries)
-    await expect(page.locator('.hub-pending-requests')).not.toBeVisible()
+    await expect(page.locator('.hub-pending-requests')).toBeHidden()
     // The approved group should now appear in the curated list
     await expect(page.locator('.hub-curated-community-list').getByRole('link', { name: 'Approvable Group' })).toBeVisible()
   })
@@ -1413,7 +1413,7 @@ test.describe('Hub Manage page (/hub/:slug/manage)', () => {
     await page.locator('.hub-pending-request-list').getByRole('button', { name: 'Reject' }).click()
 
     // The pending section should disappear
-    await expect(page.locator('.hub-pending-requests')).not.toBeVisible()
+    await expect(page.locator('.hub-pending-requests')).toBeHidden()
     // The empty message should be shown
     await expect(page.getByText('No community groups curated yet.')).toBeVisible()
   })
@@ -1441,6 +1441,6 @@ test.describe('Hub Manage page (/hub/:slug/manage)', () => {
     await page.goto('/category/technology')
 
     // The pending group should NOT appear publicly
-    await expect(page.getByText('Hidden Pending Group')).not.toBeVisible()
+    await expect(page.getByText('Hidden Pending Group')).toBeHidden()
   })
 })
