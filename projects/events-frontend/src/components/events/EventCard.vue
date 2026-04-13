@@ -63,7 +63,7 @@ const eventTimezone = computed(() => props.event.timezone ?? null)
  */
 function formatTimezoneLabel(tz: string): string {
   try {
-    const label = new Intl.DateTimeFormat('en-US', {
+    const label = new Intl.DateTimeFormat(locale.value, {
       timeZone: tz,
       timeZoneName: 'long',
     })
