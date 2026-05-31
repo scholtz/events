@@ -2719,6 +2719,37 @@ test.describe('Category hub: per-event ranking cue badges', () => {
     const eventCardWraps = page.locator('.event-card-wrap')
     await expect(eventCardWraps).toHaveCount(3)
   })
+
+  test('server-provided rankingCue drives the badge over local date heuristics', async ({
+    page,
+  }) => {
+    // The event's own dates (far-future start, old publication) would locally compute to
+    // NO cue. The server-provided rankingCue must take precedence so ranking stays
+    // consistent with the API instead of being reproduced on the client.
+    const domain = makeTechDomain()
+    const inOneYear = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
+    const longAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
+
+    setupMockApi(page, {
+      domains: [domain],
+      events: [
+        makeApprovedEvent({
+          id: 'server-cue',
+          name: 'Server Cue Event',
+          slug: 'server-cue-event',
+          startsAtUtc: inOneYear,
+          endsAtUtc: inOneYear,
+          publishedAtUtc: longAgo,
+          rankingCue: 'UPCOMING_SOON',
+        }),
+      ],
+    })
+
+    await page.goto('/category/technology')
+
+    await expect(page.locator('.rank-cue-badge--upcoming')).toBeVisible()
+    await expect(page.locator('.rank-cue-badge--upcoming')).toContainText('Upcoming soon')
+  })
 })
 
 // ---------------------------------------------------------------------------

@@ -3033,6 +3033,76 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task EventsQuery_ExposesDeterministicRankingCue_FromPublicDatesOnly()
+    {
+        // Verifies the server-computed rankingCue is deterministic and derived purely from
+        // public dates (start date / publication date), so the frontend does not have to
+        // reproduce ranking logic. Also confirms non-public (pending) events never appear
+        // in the public list, so no ranking cue is exposed for them.
+        await using var factory = new EventsApiWebApplicationFactory();
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("rankcue@example.com", "Rank Cue Tester");
+            var tech = CreateDomain("Tech", "tech-rankcue");
+            var now = DateTime.UtcNow;
+
+            dbContext.Users.Add(user);
+            dbContext.Domains.Add(tech);
+
+            // Starts within the next few days → UPCOMING_SOON.
+            var soon = CreateEvent(
+                "Soon Event", "soon-event", "Starts soon.",
+                "Venue", "Prague", now.AddDays(2), tech, user);
+
+            // Starts far in the future but published just now → RECENTLY_ADDED.
+            var fresh = CreateEvent(
+                "Fresh Event", "fresh-event", "Just published.",
+                "Venue", "Prague", now.AddDays(60), tech, user);
+            fresh.PublishedAtUtc = now.AddDays(-1);
+
+            // Starts far in the future and published long ago → NONE.
+            var stale = CreateEvent(
+                "Stale Event", "stale-event", "Old publication.",
+                "Venue", "Prague", now.AddDays(90), tech, user);
+            stale.PublishedAtUtc = now.AddDays(-30);
+
+            // Pending (non-public) event — must never appear in the public list.
+            var pending = CreateEvent(
+                "Pending Event", "pending-event", "Awaiting moderation.",
+                "Venue", "Prague", now.AddDays(1), tech, user,
+                status: EventStatus.PendingApproval);
+
+            dbContext.Events.AddRange(soon, fresh, stale, pending);
+        });
+
+        using var client = factory.CreateClient();
+
+        using var result = await ExecuteGraphQlAsync(
+            client,
+            """
+            query Events($filter: EventFilterInput) {
+              events(filter: $filter) { name rankingCue }
+            }
+            """,
+            new { filter = new { sortBy = "UPCOMING" } });
+
+        var events = result.RootElement
+            .GetProperty("data")
+            .GetProperty("events")
+            .EnumerateArray()
+            .ToDictionary(
+                e => e.GetProperty("name").GetString()!,
+                e => e.GetProperty("rankingCue").GetString());
+
+        Assert.Equal("UPCOMING_SOON", events["Soon Event"]);
+        Assert.Equal("RECENTLY_ADDED", events["Fresh Event"]);
+        Assert.Equal("NONE", events["Stale Event"]);
+
+        // The pending event is non-public and must not leak through discovery.
+        Assert.DoesNotContain("Pending Event", events.Keys);
+    }
+
+    [Fact]
     public async Task MyDashboard_ReturnsAnalyticsWithCorrectInterestedCounts()
     {
         await using var factory = new EventsApiWebApplicationFactory();

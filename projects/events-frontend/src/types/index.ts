@@ -10,6 +10,12 @@ export type EventStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'PUBLISHED' | 'REJECTED
 /** Matches backend EventSortOption enum */
 export type EventSortOption = 'UPCOMING' | 'NEWEST' | 'RELEVANCE'
 
+/**
+ * Matches backend EventRankingCue enum. A concise, server-computed explanation of why a
+ * public event surfaces where it does in discovery, derived purely from public dates.
+ */
+export type EventRankingCue = 'NONE' | 'UPCOMING_SOON' | 'RECENTLY_ADDED'
+
 export type EventPriceFilter = 'ALL' | 'FREE' | 'PAID'
 
 /** Matches backend ApplicationUser entity */
@@ -114,6 +120,12 @@ export interface CatalogEvent {
   timezone: string | null
   /** BCP 47 language tag for the primary language of the event (e.g. "en", "cs", "de"). Null if unspecified. */
   language: string | null
+  /**
+   * Server-computed ranking cue explaining why this event surfaces where it does.
+   * Authoritative source for ranking-cue badges; clients should prefer this over
+   * reproducing the heuristic locally. Optional for resilience against older payloads.
+   */
+  rankingCue?: EventRankingCue
 }
 
 /** Matches backend DashboardOverview response */

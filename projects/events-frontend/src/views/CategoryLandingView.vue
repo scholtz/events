@@ -118,7 +118,7 @@ const EVENT_FIELDS = `
   latitude longitude startsAtUtc endsAtUtc
   submittedAtUtc updatedAtUtc publishedAtUtc
   adminNotes status isFree priceAmount currencyCode domainId mapUrl
-  attendanceMode timezone
+  attendanceMode timezone rankingCue
   domain { id name slug subdomain }
   submittedBy { displayName }
 `
@@ -373,6 +373,13 @@ const RECENTLY_ADDED_DAYS = 14
  * At most one label is shown per event to keep the UI calm and uncluttered.
  */
 function rankCueForEvent(event: CatalogEvent): 'upcomingSoon' | 'recentlyAdded' | null {
+  // Prefer the authoritative, server-computed cue so ordering stays consistent across
+  // screens. Fall back to the local heuristic only when the field is absent (e.g. older
+  // cached payloads), keeping the UI resilient.
+  if (event.rankingCue === 'UPCOMING_SOON') return 'upcomingSoon'
+  if (event.rankingCue === 'RECENTLY_ADDED') return 'recentlyAdded'
+  if (event.rankingCue === 'NONE') return null
+
   const now = new Date()
   const starts = new Date(event.startsAtUtc)
   const msDiff = starts.getTime() - now.getTime()

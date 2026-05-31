@@ -14,6 +14,58 @@ namespace EventsApi.Types;
 public sealed class CatalogEventExtension
 {
     /// <summary>
+    /// Number of days ahead within which an event is labelled <see cref="EventRankingCue.UpcomingSoon"/>.
+    /// Kept narrow so the cue genuinely signals immediacy. Mirrored on the frontend.
+    /// </summary>
+    internal const int UpcomingSoonDays = 7;
+
+    /// <summary>
+    /// Number of days after publication within which an event is labelled
+    /// <see cref="EventRankingCue.RecentlyAdded"/>. Mirrored on the frontend.
+    /// </summary>
+    internal const int RecentlyAddedDays = 14;
+
+    /// <summary>
+    /// Returns a deterministic, privacy-safe ranking cue explaining why this event surfaces
+    /// where it does in discovery results. Computed purely from the event's own public dates,
+    /// so it never exposes moderation-only or non-public data:
+    ///
+    /// - <see cref="EventRankingCue.UpcomingSoon"/>  — starts within the next <see cref="UpcomingSoonDays"/> days.
+    /// - <see cref="EventRankingCue.RecentlyAdded"/> — published within the last <see cref="RecentlyAddedDays"/>
+    ///   days (and not already <see cref="EventRankingCue.UpcomingSoon"/>).
+    /// - <see cref="EventRankingCue.None"/>          — beyond both windows.
+    ///
+    /// Exposing this server-side keeps the cue authoritative and consistent across screens,
+    /// rather than having each client reproduce the ranking heuristic independently.
+    /// </summary>
+    public EventRankingCue GetRankingCue([Parent] CatalogEvent catalogEvent)
+        => ComputeRankingCue(catalogEvent, DateTime.UtcNow);
+
+    /// <summary>
+    /// Pure ranking-cue computation, exposed internally so it can be unit-tested
+    /// deterministically against a fixed reference time.
+    /// </summary>
+    internal static EventRankingCue ComputeRankingCue(CatalogEvent catalogEvent, DateTime utcNow)
+    {
+        var daysUntilStart = (catalogEvent.StartsAtUtc - utcNow).TotalDays;
+        if (daysUntilStart >= 0 && daysUntilStart <= UpcomingSoonDays)
+        {
+            return EventRankingCue.UpcomingSoon;
+        }
+
+        if (catalogEvent.PublishedAtUtc is { } publishedAtUtc)
+        {
+            var daysSincePublish = (utcNow - publishedAtUtc).TotalDays;
+            if (daysSincePublish >= 0 && daysSincePublish <= RecentlyAddedDays)
+            {
+                return EventRankingCue.RecentlyAdded;
+            }
+        }
+
+        return EventRankingCue.None;
+    }
+
+    /// <summary>
     /// Returns the number of users who have saved/favorited this event.
     /// This is a privacy-safe aggregate that communicates event momentum
     /// without exposing individual attendee identities.
