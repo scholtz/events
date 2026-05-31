@@ -85,6 +85,8 @@ export type MockEvent = {
   attendanceMode: 'IN_PERSON' | 'ONLINE' | 'HYBRID'
   timezone: string | null
   language: string | null
+  /** Server-computed ranking cue. When present, drives ranking-cue badges authoritatively. */
+  rankingCue?: 'NONE' | 'UPCOMING_SOON' | 'RECENTLY_ADDED'
   eventTags: { id: string; domain: { id: string; name: string; slug: string; subdomain: string } }[]
   communityGroups?: { id: string; name: string; slug: string; summary: string | null }[]
 }

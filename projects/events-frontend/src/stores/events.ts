@@ -17,7 +17,7 @@ const EVENT_FIELDS = `
   latitude longitude startsAtUtc endsAtUtc
   submittedAtUtc updatedAtUtc publishedAtUtc
   adminNotes status isFree priceAmount currencyCode domainId mapUrl
-  attendanceMode timezone language
+  attendanceMode timezone language rankingCue
   domain { id name slug subdomain }
   eventTags { id domain { id name slug subdomain } }
   submittedBy { displayName }
@@ -29,7 +29,7 @@ const DETAIL_EVENT_FIELDS = `
   latitude longitude startsAtUtc endsAtUtc
   submittedAtUtc updatedAtUtc publishedAtUtc
   adminNotes status isFree priceAmount currencyCode domainId mapUrl
-  attendanceMode timezone language
+  attendanceMode timezone language rankingCue
   domain { id name slug subdomain description logoUrl primaryColor accentColor overviewContent curatorCredit }
   eventTags { id domain { id name slug subdomain } }
   submittedBy { displayName }
