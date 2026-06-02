@@ -145,6 +145,9 @@ test.describe('Sort order', () => {
   })
 
   test('UPCOMING (default) sort shows earliest-starting event first', async ({ page }) => {
+    const earlyStart = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+    const lateStart = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString()
+
     setupMockApi(page, {
       domains: [makeTechDomain()],
       events: [
@@ -152,13 +155,13 @@ test.describe('Sort order', () => {
           id: 'e-late',
           name: 'Late Summit',
           slug: 'late-summit',
-          startsAtUtc: '2027-01-01T10:00:00Z',
+          startsAtUtc: lateStart,
         }),
         makeApprovedEvent({
           id: 'e-early',
           name: 'Early Summit',
           slug: 'early-summit',
-          startsAtUtc: '2026-05-01T10:00:00Z',
+          startsAtUtc: earlyStart,
         }),
       ],
     })
@@ -395,7 +398,7 @@ test.describe('URL-persisted filter state', () => {
     await expect(page.getByLabel('Keyword')).toHaveValue('summit')
     await expect(page.getByLabel('Location')).toHaveValue('Prague')
     await expect(page.getByLabel('From')).toHaveValue('2026-01-01')
-    await expect(page.getByLabel('To')).toHaveValue('2026-12-31')
+    await expect(page.getByLabel('To', { exact: true })).toHaveValue('2026-12-31')
     await expect(page.getByLabel('Price', { exact: true })).toHaveValue('PAID')
     await expect(page.getByLabel('Sort by')).toHaveValue('NEWEST')
   })
@@ -1128,7 +1131,7 @@ test.describe('Date range filter', () => {
 
     // Panel auto-expands because date range filters are advanced filters
     await expect(page.getByLabel('From')).toHaveValue('2026-06-01')
-    await expect(page.getByLabel('To')).toHaveValue('2026-12-31')
+    await expect(page.getByLabel('To', { exact: true })).toHaveValue('2026-12-31')
     await expect(page.locator('.filter-chip', { hasText: /from/i })).toBeVisible()
     await expect(page.locator('.filter-chip', { hasText: /to/i })).toBeVisible()
   })

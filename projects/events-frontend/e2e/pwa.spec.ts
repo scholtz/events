@@ -48,8 +48,8 @@ test.describe('PWA manifest', () => {
     await page.goto('/')
 
     const manifestLocator = page.locator('link[rel="manifest"]')
-    await expect(manifestLocator).toBeAttached()
-    const href = await manifestLocator.getAttribute('href')
+    await expect(manifestLocator.first()).toBeAttached()
+    const href = await manifestLocator.first().getAttribute('href')
     expect(typeof href).toBe('string')
     expect(href).toMatch(/manifest\.webmanifest/)
   })

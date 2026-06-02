@@ -285,7 +285,7 @@ test.describe('Community detail page - admin member management', () => {
     await page.getByRole('button', { name: 'Approve' }).click()
 
     // After approval, the pending member moves to active members
-    await expect(page.getByText('Members')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Members' })).toBeVisible()
     await expect(page.getByText('Contributor User')).toBeVisible()
   })
 

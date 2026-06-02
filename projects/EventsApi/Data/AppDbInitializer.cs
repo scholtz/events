@@ -1,9 +1,12 @@
 using System.Data;
+using System.Globalization;
+using System.Text;
 using EventsApi.Configuration;
 using EventsApi.Data.Entities;
 using EventsApi.Utilities;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.Options;
 using Microsoft.Data.Sqlite;
 
@@ -167,6 +170,19 @@ public sealed class AppDbInitializer(
     {
         if (!_dbContext.Database.IsSqlite())
         {
+            // Relational providers other than SQLite (e.g. PostgreSQL in production) are not
+            // covered by the SQLite-specific bootstrap below. EnsureCreatedAsync only creates
+            // the schema for a brand-new database and never alters an existing one, so a
+            // long-lived database that predates newer entity columns ends up missing them.
+            // Querying such a database throws (surfaced to GraphQL clients as the opaque
+            // "Unexpected Execution Error"). Reconcile any missing columns from the EF model
+            // so the schema stays in sync after upgrades. Non-relational providers (e.g. the
+            // in-memory provider used by tests) have no database schema to reconcile.
+            if (_dbContext.Database.IsRelational())
+            {
+                await EnsureModelColumnsAsync(cancellationToken);
+            }
+
             return;
         }
 
@@ -592,6 +608,183 @@ public sealed class AppDbInitializer(
                 CREATE INDEX "IX_EventDiscussionEntries_CreatedAtUtc" ON "EventDiscussionEntries" ("CreatedAtUtc");
                 """,
                 cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Reconciles the live relational schema with the EF Core model by adding any columns the
+    /// model expects but the database is missing. This handles schema drift on relational
+    /// providers such as PostgreSQL, where <c>EnsureCreatedAsync</c> only bootstraps a brand-new
+    /// database and never alters an existing one. A long-lived database that predates newer
+    /// entity columns would otherwise be missing them, and querying such a database throws —
+    /// surfaced to GraphQL clients as the opaque "Unexpected Execution Error".
+    ///
+    /// Only additive, idempotent <c>ALTER TABLE ... ADD COLUMN</c> statements are issued, derived
+    /// from the model's own column names and store types, so no data is dropped or rewritten and
+    /// future columns are picked up automatically. Tables that do not yet exist are left to
+    /// <c>EnsureCreatedAsync</c> (fresh databases) and are skipped here.
+    /// </summary>
+    private async Task EnsureModelColumnsAsync(CancellationToken cancellationToken)
+    {
+        foreach (var entityType in _dbContext.Model.GetEntityTypes())
+        {
+            var storeObject = StoreObjectIdentifier.Create(entityType, StoreObjectType.Table);
+            if (storeObject is null)
+            {
+                continue;
+            }
+
+            var table = storeObject.Value;
+            var existingColumns = await GetExistingColumnsAsync(table.Name, table.Schema, cancellationToken);
+            if (existingColumns.Count == 0)
+            {
+                // The table is absent (or not visible). Creating tables is out of scope here;
+                // fresh databases get them from EnsureCreatedAsync.
+                continue;
+            }
+
+            foreach (var property in entityType.GetProperties())
+            {
+                var columnName = property.GetColumnName(table);
+                if (columnName is null || existingColumns.Contains(columnName))
+                {
+                    continue;
+                }
+
+                var ddl = BuildAddColumnDdl(table, columnName, property);
+                await _dbContext.Database.ExecuteSqlRawAsync(ddl, cancellationToken);
+            }
+        }
+    }
+
+    private async Task<HashSet<string>> GetExistingColumnsAsync(
+        string tableName,
+        string? schema,
+        CancellationToken cancellationToken)
+    {
+        var connection = _dbContext.Database.GetDbConnection();
+        if (connection.State != ConnectionState.Open)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = schema is null
+            ? "SELECT column_name FROM information_schema.columns WHERE table_name = @table;"
+            : "SELECT column_name FROM information_schema.columns WHERE table_name = @table AND table_schema = @schema;";
+
+        var tableParameter = command.CreateParameter();
+        tableParameter.ParameterName = "@table";
+        tableParameter.Value = tableName;
+        command.Parameters.Add(tableParameter);
+
+        if (schema is not null)
+        {
+            var schemaParameter = command.CreateParameter();
+            schemaParameter.ParameterName = "@schema";
+            schemaParameter.Value = schema;
+            command.Parameters.Add(schemaParameter);
+        }
+
+        var columns = new HashSet<string>(StringComparer.Ordinal);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            columns.Add(reader.GetString(0));
+        }
+
+        return columns;
+    }
+
+    private static string BuildAddColumnDdl(StoreObjectIdentifier table, string columnName, IProperty property)
+    {
+        var qualifiedTable = table.Schema is null
+            ? $"\"{table.Name}\""
+            : $"\"{table.Schema}\".\"{table.Name}\"";
+
+        var builder = new StringBuilder()
+            .Append("ALTER TABLE ").Append(qualifiedTable)
+            .Append(" ADD COLUMN \"").Append(columnName).Append("\" ")
+            .Append(property.GetColumnType(table));
+
+        if (property.IsColumnNullable(table))
+        {
+            builder.Append(" NULL");
+        }
+        else
+        {
+            builder.Append(" NOT NULL");
+
+            // Existing rows need a value for a new NOT NULL column, so emit a DEFAULT derived
+            // from the model (or a type-appropriate fallback) to keep the ALTER safe on a
+            // populated table.
+            var defaultClause = BuildDefaultClause(property);
+            if (defaultClause is not null)
+            {
+                builder.Append(" DEFAULT ").Append(defaultClause);
+            }
+        }
+
+        return builder.Append(';').ToString();
+    }
+
+    private static string? BuildDefaultClause(IProperty property)
+    {
+        var defaultValueSql = property.GetDefaultValueSql();
+        if (!string.IsNullOrWhiteSpace(defaultValueSql))
+        {
+            return defaultValueSql;
+        }
+
+        var defaultValue = property.GetDefaultValue();
+        if (defaultValue is not null)
+        {
+            return FormatSqlLiteral(defaultValue);
+        }
+
+        var clrType = Nullable.GetUnderlyingType(property.ClrType) ?? property.ClrType;
+        if (clrType.IsEnum || clrType == typeof(string))
+        {
+            return "''";
+        }
+
+        if (clrType == typeof(bool))
+        {
+            return "FALSE";
+        }
+
+        if (clrType == typeof(Guid))
+        {
+            return "'00000000-0000-0000-0000-000000000000'";
+        }
+
+        if (clrType == typeof(DateTime) || clrType == typeof(DateTimeOffset))
+        {
+            return "CURRENT_TIMESTAMP";
+        }
+
+        if (clrType == typeof(int) || clrType == typeof(long) || clrType == typeof(short)
+            || clrType == typeof(byte) || clrType == typeof(decimal) || clrType == typeof(double)
+            || clrType == typeof(float))
+        {
+            return "0";
+        }
+
+        return null;
+    }
+
+    private static string FormatSqlLiteral(object value)
+    {
+        switch (value)
+        {
+            case bool boolean:
+                return boolean ? "TRUE" : "FALSE";
+            case byte or short or int or long or decimal or double or float:
+                return Convert.ToString(value, CultureInfo.InvariantCulture)!;
+            case string text:
+                return "'" + text.Replace("'", "''") + "'";
+            default:
+                return "'" + value.ToString()!.Replace("'", "''") + "'";
         }
     }
 
