@@ -59,7 +59,7 @@ jobs:
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
-          context: ./${{ env.PROJECT_PATH }}
+          context: ./projects
           file: ./${{ env.PROJECT_PATH }}/Dockerfile
           push: true
           tags: |
