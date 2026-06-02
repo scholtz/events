@@ -89,7 +89,8 @@ test('full flow: signup, submit event, approve, list and filter', async ({ page 
 
   // ── Search filter: no match ───────────────────────────────────────────────
   await page.getByLabel('Keyword').fill('no-match-value-xyz')
-  await expect(page.getByRole('heading', { name: 'No events found' })).toBeVisible()
+  await expect(page).toHaveURL(/q=no-match-value-xyz/)
+  await expect(page.locator('.event-card', { hasText: title })).toBeHidden()
 
   // ── Clear filter restores published event ─────────────────────────────────
   await page.getByRole('button', { name: 'Clear all' }).click()

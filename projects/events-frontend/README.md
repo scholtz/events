@@ -50,10 +50,10 @@ npx playwright install
 # When testing on CI, must build the project first
 npm run build
 
-# Runs the end-to-end tests
+# Runs the end-to-end tests on Chromium
 npm run test:e2e
-# Runs the tests only on Chromium
-npm run test:e2e -- --project=chromium
+# Runs the end-to-end tests on all configured browsers
+npm run test:e2e:all
 # Runs the tests of a specific file
 npm run test:e2e -- tests/example.spec.ts
 # Runs the tests in debug mode
