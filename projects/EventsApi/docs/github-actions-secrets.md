@@ -69,10 +69,12 @@ On a push to `main`, the deploy job:
 2. Fails fast if the Kubernetes deployment manifest contains `Data Source=` or tries to use a full `db-connection-string` secret.
 3. Creates or updates the Kubernetes secret `events-api-secrets` in the `events-api` namespace.
 4. Writes the GitHub secret value into Kubernetes as the `db-password` key.
-5. Deploys PostgreSQL inside the cluster using `deploy/k8s/postgres.yaml` and `deploy/k8s/persistent-volume-claim.yaml`.
+5. Deploys PostgreSQL 18 inside the cluster using `deploy/k8s/postgres.yaml` and `deploy/k8s/persistent-volume-claim.yaml`.
 6. Applies the API deployment where `ConnectionStrings__EventsCatalog` is built from the in-cluster `events-postgres` service and `events-api-secrets/db-password`.
 
 That means changing the GitHub secret is enough for the next successful deployment to refresh both the PostgreSQL password environment variable and the API connection string password.
+
+The PostgreSQL pod runs as the image's `postgres` user instead of root. This avoids the official entrypoint trying to `chown` the mounted PVC path, which can fail on NFS-backed storage with `Operation not permitted`.
 
 ## Verify after deployment
 

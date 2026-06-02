@@ -142,6 +142,6 @@ query AdminOverview {
 ## Deployment
 - Container image build uses `Dockerfile`
 - Kubernetes manifests live in `deploy/k8s`
-- PostgreSQL is deployed in-cluster by `deploy/k8s/postgres.yaml`
+- PostgreSQL 18 is deployed in-cluster by `deploy/k8s/postgres.yaml`
 - GitHub Actions workflow lives at `../../.github/workflows/events-api-ci-cd.yml`
 - Deployment secrets are documented in `docs/github-actions-secrets.md`

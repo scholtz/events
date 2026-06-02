@@ -97,6 +97,14 @@ jobs:
             echo "Production deployment must connect to the in-cluster events-postgres service."
             exit 1
           fi
+          if ! grep -q "postgres:18" ${{ env.PROJECT_PATH }}/deploy/k8s/postgres.yaml; then
+            echo "Production PostgreSQL deployment must use PostgreSQL 18."
+            exit 1
+          fi
+          if ! grep -q "runAsUser: 999" ${{ env.PROJECT_PATH }}/deploy/k8s/postgres.yaml; then
+            echo "Production PostgreSQL deployment must run as the postgres user to avoid PVC chown failures."
+            exit 1
+          fi
 
       - name: Setup kubectl
         uses: azure/setup-kubectl@v4

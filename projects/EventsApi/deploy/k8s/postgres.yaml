@@ -28,9 +28,16 @@ spec:
       labels:
         app: events-postgres
     spec:
+      securityContext:
+        fsGroup: 999
+        fsGroupChangePolicy: OnRootMismatch
       containers:
         - name: postgres
-          image: postgres:16-alpine
+          image: postgres:18
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
+            runAsGroup: 999
           ports:
             - containerPort: 5432
           env:
@@ -38,6 +45,8 @@ spec:
               value: events
             - name: POSTGRES_USER
               value: events_api
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -65,8 +74,8 @@ spec:
             periodSeconds: 20
           volumeMounts:
             - name: postgres-data
-              mountPath: /var/lib/postgresql/data
-              subPath: data
+              mountPath: /var/lib/postgresql/data/pgdata
+              subPath: pgdata
       volumes:
         - name: postgres-data
           persistentVolumeClaim:
