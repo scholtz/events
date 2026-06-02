@@ -17,6 +17,9 @@ test('full flow: signup, submit event, approve, list and filter', async ({ page 
   })
 
   const title = `Playwright Event ${Date.now()}`
+  const futureStartDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10)
 
   // ── Home page loads ──────────────────────────────────────────────────────
   await page.goto('/')
@@ -43,7 +46,7 @@ test('full flow: signup, submit event, approve, list and filter', async ({ page 
   await page.getByRole('button', { name: 'Next' }).click()
 
   // Step 2: Date & Time
-  await page.getByLabel('Start Date *').fill('2026-03-15')
+  await page.getByLabel('Start Date *').fill(futureStartDate)
   await page.getByRole('button', { name: 'Next' }).click()
 
   // Step 3: Pricing (free — default)
@@ -88,8 +91,8 @@ test('full flow: signup, submit event, approve, list and filter', async ({ page 
   await page.getByLabel('Keyword').fill('no-match-value-xyz')
   await expect(page.getByRole('heading', { name: 'No events found' })).toBeVisible()
 
-  // ── Search filter: match ──────────────────────────────────────────────────
-  await page.getByLabel('Keyword').fill(title)
+  // ── Clear filter restores published event ─────────────────────────────────
+  await page.getByRole('button', { name: 'Clear all' }).click()
   await expect(page.locator('.event-card', { hasText: title })).toBeVisible()
 })
 
