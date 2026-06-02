@@ -78,8 +78,23 @@ jobs:
 
       - name: Check secrets
         run: |
-          if [ -z "${{ secrets.KUBE_CONFIG_DATA }}" ] || [ -z "${{ secrets.EVENTS_API_JWT_SIGNING_KEY }}" ] || [ -z "${{ secrets.EVENTS_API_ADMIN_PASSWORD }}" ]; then
+          if [ -z "${{ secrets.KUBE_CONFIG_DATA }}" ] || [ -z "${{ secrets.EVENTS_API_DB_PASSWORD }}" ] || [ -z "${{ secrets.EVENTS_API_JWT_SIGNING_KEY }}" ] || [ -z "${{ secrets.EVENTS_API_ADMIN_PASSWORD }}" ]; then
             echo "Required secrets are not set. Skipping deployment."
+            exit 1
+          fi
+
+      - name: Validate deployment database configuration
+        run: |
+          if grep -q "Data Source=" ${{ env.PROJECT_PATH }}/deploy/k8s/deployment.yaml; then
+            echo "Production deployment must not use a SQLite Data Source connection string."
+            exit 1
+          fi
+          if grep -q "db-connection-string" ${{ env.PROJECT_PATH }}/deploy/k8s/deployment.yaml; then
+            echo "Production deployment must build ConnectionStrings__EventsCatalog from db-password, not a full connection-string secret."
+            exit 1
+          fi
+          if ! grep -q "events-postgres" ${{ env.PROJECT_PATH }}/deploy/k8s/deployment.yaml; then
+            echo "Production deployment must connect to the in-cluster events-postgres service."
             exit 1
           fi
 
@@ -93,18 +108,28 @@ jobs:
           mkdir -p ~/.kube
           echo "${{ secrets.KUBE_CONFIG_DATA }}" | base64 --decode > ~/.kube/config
 
-      - name: Apply namespace and storage
+      - name: Apply namespace
         run: |
           kubectl apply -f ${{ env.PROJECT_PATH }}/deploy/k8s/namespace.yaml
-          kubectl apply -f ${{ env.PROJECT_PATH }}/deploy/k8s/persistent-volume-claim.yaml
 
       - name: Create or update application secrets
+        env:
+          DB_PASSWORD: ${{ secrets.EVENTS_API_DB_PASSWORD }}
+          JWT_SIGNING_KEY: ${{ secrets.EVENTS_API_JWT_SIGNING_KEY }}
+          ADMIN_PASSWORD: ${{ secrets.EVENTS_API_ADMIN_PASSWORD }}
         run: |
           kubectl create secret generic events-api-secrets \
             --namespace events-api \
-            --from-literal=jwt-signing-key='${{ secrets.EVENTS_API_JWT_SIGNING_KEY }}' \
-            --from-literal=admin-password='${{ secrets.EVENTS_API_ADMIN_PASSWORD }}' \
+            --from-literal=db-password="$DB_PASSWORD" \
+            --from-literal=jwt-signing-key="$JWT_SIGNING_KEY" \
+            --from-literal=admin-password="$ADMIN_PASSWORD" \
             --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy PostgreSQL
+        run: |
+          kubectl apply -f ${{ env.PROJECT_PATH }}/deploy/k8s/persistent-volume-claim.yaml
+          kubectl apply -f ${{ env.PROJECT_PATH }}/deploy/k8s/postgres.yaml
+          kubectl rollout status deployment/events-postgres --namespace events-api
 
       - name: Deploy application
         run: |

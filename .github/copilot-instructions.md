@@ -15,7 +15,7 @@
 
 ## Technology and conventions
 - Frontend uses Vue 3 + TypeScript + Vite.
-- Backend uses ASP.NET Core 8, Hot Chocolate GraphQL, Entity Framework Core, and JWT bearer authentication.
+- Backend uses ASP.NET Core 10, Hot Chocolate GraphQL, Entity Framework Core, PostgreSQL via Npgsql, and JWT bearer authentication.
 - Frontend communicates with the backend exclusively via GraphQL using a lightweight fetch-based client (`src/lib/graphql.ts`). There is no Supabase dependency.
 - The GraphQL endpoint URL is configured via `VITE_GRAPHQL_URL` environment variable (defaults to `https://events-api.de-4.biatec.io/graphql`).
 - State management uses Pinia with the Composition API (`defineStore` with `setup` function syntax).
@@ -54,6 +54,14 @@
 - Backend CORS is configured in `appsettings.json` under `Cors.AllowedOrigins`.
 - Production CORS origins are also set via environment variables in the K8s deployment (`Cors__AllowedOrigins__0`, etc.).
 - Allowed origins include: `http://localhost:5173`, `https://events-delta-black.vercel.app`, `https://events-scholtz.vercel.app`.
+
+## Backend deployment configuration
+- Production backend deployments use PostgreSQL through `UseNpgsql`; never configure `ConnectionStrings__EventsCatalog` with a SQLite-style `Data Source=...` value in K8s manifests or production secrets.
+- Production Kubernetes deploys PostgreSQL in-cluster via `projects/EventsApi/deploy/k8s/postgres.yaml` and exposes it as service `events-postgres`.
+- `projects/EventsApi/deploy/k8s/deployment.yaml` must build `ConnectionStrings__EventsCatalog` from fixed in-cluster settings plus `events-api-secrets` key `db-password`; do not store a full DB connection string in Kubernetes.
+- `.github/workflows/events-api-ci-cd.yml` must create/update `events-api-secrets` key `db-password` from GitHub secret `EVENTS_API_DB_PASSWORD` before applying PostgreSQL or the API deployment.
+- After backend tests, frontend E2E tests, and CI pipeline checks pass, still verify deployment-facing config for provider parity: `Program.cs` database provider, `appsettings.json`, Docker/K8s env vars, and GitHub Actions secrets must agree on PostgreSQL/Npgsql.
+- When modifying backend data access, deployment manifests, Dockerfiles, or CI/CD workflows, run a manifest sanity check that fails if production K8s config contains `Data Source=` for `ConnectionStrings__EventsCatalog` or reintroduces a `db-connection-string` secret.
 
 ## Organizer analytics quality standards
 

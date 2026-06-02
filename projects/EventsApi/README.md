@@ -6,7 +6,7 @@
 - GraphQL API for public event discovery and authenticated management
 - Event domain taxonomy with administrator-managed `slug` and `subdomain`
 - JWT authentication for contributors and administrators
-- Entity Framework Core storage using SQLite by default
+- Entity Framework Core storage using PostgreSQL via Npgsql outside the test environment
 - Seeded sample data for Prague crypto and AI events
 - Contributor dashboard queries and admin moderation queries/mutations
 - Automated tests, container image build, and Kubernetes deployment manifests
@@ -142,4 +142,6 @@ query AdminOverview {
 ## Deployment
 - Container image build uses `Dockerfile`
 - Kubernetes manifests live in `deploy/k8s`
+- PostgreSQL is deployed in-cluster by `deploy/k8s/postgres.yaml`
 - GitHub Actions workflow lives at `../../.github/workflows/events-api-ci-cd.yml`
+- Deployment secrets are documented in `docs/github-actions-secrets.md`
