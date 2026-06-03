@@ -58,7 +58,7 @@
 ## Backend deployment configuration
 - Production backend deployments use PostgreSQL through `UseNpgsql`; never configure `ConnectionStrings__EventsCatalog` with a SQLite-style `Data Source=...` value in K8s manifests or production secrets.
 - Production Kubernetes deploys PostgreSQL 18 in-cluster via `projects/EventsApi/deploy/k8s/postgres.yaml` and exposes it as service `events-postgres`.
-- The PostgreSQL container must run as the image's `postgres` user (`runAsUser: 999`, `runAsGroup: 999`) with `PGDATA` mounted at `/var/lib/postgresql/data/pgdata`; do not run it as root, because NFS-backed PVCs can fail on entrypoint `chown` with `Operation not permitted`.
+- The PostgreSQL container must run as the image's `postgres` user (`runAsUser: 999`, `runAsGroup: 999`) with the PVC mounted at `/var/lib/postgresql/data` and `PGDATA=/var/lib/postgresql/data/pgdata`; do not mount the PVC directly at `PGDATA` or use `subPath: pgdata`, because NFS-backed PVCs can fail on entrypoint `chown` or `initdb` `chmod` with `Operation not permitted`.
 - `projects/EventsApi/deploy/k8s/deployment.yaml` must build `ConnectionStrings__EventsCatalog` from fixed in-cluster settings plus `events-api-secrets` key `db-password`; do not store a full DB connection string in Kubernetes.
 - `.github/workflows/events-api-ci-cd.yml` must create/update `events-api-secrets` key `db-password` from GitHub secret `EVENTS_API_DB_PASSWORD` before applying PostgreSQL or the API deployment.
 - After backend tests, frontend E2E tests, and CI pipeline checks pass, still verify deployment-facing config for provider parity: `Program.cs` database provider, `appsettings.json`, Docker/K8s env vars, and GitHub Actions secrets must agree on PostgreSQL/Npgsql.

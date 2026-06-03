@@ -105,6 +105,14 @@ jobs:
             echo "Production PostgreSQL deployment must run as the postgres user to avoid PVC chown failures."
             exit 1
           fi
+          if grep -q "mountPath: /var/lib/postgresql/data/pgdata" ${{ env.PROJECT_PATH }}/deploy/k8s/postgres.yaml; then
+            echo "Production PostgreSQL deployment must mount the PVC at /var/lib/postgresql/data, not directly at PGDATA, to avoid initdb chmod failures."
+            exit 1
+          fi
+          if grep -q "subPath: pgdata" ${{ env.PROJECT_PATH }}/deploy/k8s/postgres.yaml; then
+            echo "Production PostgreSQL deployment must not mount PGDATA as a subPath because initdb chmod can fail on the mounted directory."
+            exit 1
+          fi
 
       - name: Setup kubectl
         uses: azure/setup-kubectl@v4

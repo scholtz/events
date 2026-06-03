@@ -74,7 +74,7 @@ On a push to `main`, the deploy job:
 
 That means changing the GitHub secret is enough for the next successful deployment to refresh both the PostgreSQL password environment variable and the API connection string password.
 
-The PostgreSQL pod runs as the image's `postgres` user instead of root. This avoids the official entrypoint trying to `chown` the mounted PVC path, which can fail on NFS-backed storage with `Operation not permitted`.
+The PostgreSQL pod runs as the image's `postgres` user instead of root. The PVC is mounted at `/var/lib/postgresql/data`, while `PGDATA` points to `/var/lib/postgresql/data/pgdata` inside that mount. This avoids both the official entrypoint trying to `chown` the mounted PVC path and `initdb` trying to `chmod` a mounted `PGDATA` directory, which can fail on NFS-backed storage with `Operation not permitted`.
 
 ## Verify after deployment
 
