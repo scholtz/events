@@ -10257,6 +10257,69 @@ public sealed class GraphQlIntegrationTests
     }
 
     [Fact]
+    public async Task CommunityGroupBySlug_AuthenticatedMember_ReturnsMembershipUser()
+    {
+        await using var factory = new EventsApiWebApplicationFactory();
+        Guid userId = Guid.Empty;
+
+        await SeedAsync(factory, dbContext =>
+        {
+            var user = CreateUser("cg-member-detail@example.com", "Member Detail");
+            userId = user.Id;
+            dbContext.Users.Add(user);
+
+            var group = new EventsApi.Data.Entities.CommunityGroup
+            {
+                Name = "Member Detail Group",
+                Slug = "member-detail-group",
+                Summary = "A group with a member.",
+                Visibility = EventsApi.Data.Entities.CommunityVisibility.Public,
+                CreatedByUserId = user.Id,
+            };
+            dbContext.CommunityGroups.Add(group);
+
+            dbContext.CommunityMemberships.Add(new EventsApi.Data.Entities.CommunityMembership
+            {
+                GroupId = group.Id,
+                UserId = user.Id,
+                Role = EventsApi.Data.Entities.CommunityMemberRole.Member,
+                Status = EventsApi.Data.Entities.CommunityMemberStatus.Active,
+            });
+        });
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await CreateTokenAsync(factory, userId));
+
+        using var document = await ExecuteGraphQlAsync(
+            client,
+            """
+            query GetGroup($slug: String!) {
+              communityGroupBySlug(slug: $slug) {
+                group { name slug }
+                memberCount
+                myMembership {
+                  id
+                  groupId
+                  userId
+                  role
+                  status
+                  user { id displayName email }
+                  group { id name slug }
+                }
+              }
+            }
+            """,
+            new { slug = "member-detail-group" });
+
+        var detail = document.RootElement.GetProperty("data").GetProperty("communityGroupBySlug");
+        var membership = detail.GetProperty("myMembership");
+        Assert.Equal(userId.ToString(), membership.GetProperty("userId").GetString());
+        Assert.Equal("Member Detail", membership.GetProperty("user").GetProperty("displayName").GetString());
+        Assert.Equal("cg-member-detail@example.com", membership.GetProperty("user").GetProperty("email").GetString());
+        Assert.Equal("Member Detail Group", membership.GetProperty("group").GetProperty("name").GetString());
+    }
+
+    [Fact]
     public async Task CommunityGroupBySlug_PrivateGroup_ReturnsNullForUnauthenticated()
     {
         await using var factory = new EventsApiWebApplicationFactory();
